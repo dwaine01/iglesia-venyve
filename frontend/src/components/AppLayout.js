@@ -1,0 +1,243 @@
+import React, { useState } from 'react';
+import { Outlet, NavLink, useLocation } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import { Button } from './ui/button';
+import { Sheet, SheetContent, SheetTrigger } from './ui/sheet';
+import { Separator } from './ui/separator';
+import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
+import {
+  LayoutDashboard, BookOpen, Map, Calendar, Users, BarChart3, LogOut, Menu, ChevronRight,
+  Crown, Star, Trophy, Presentation, NotebookPen
+} from 'lucide-react';
+
+import { LOGO_IGLESIA } from '../data/presentationData';
+const LOGO_URL = LOGO_IGLESIA;
+
+// Menu items by role
+const getNavItems = (rol) => {
+  if (rol === 'pastor') {
+    return [
+      { to: '/dashboard-general', icon: Crown, label: 'Dashboard General', end: true },
+      { to: '/bitacora', icon: NotebookPen, label: 'Bitácora Evangelística' },
+      { to: '/presentacion', icon: Presentation, label: 'Manual 7 Semanas' },
+      { type: 'separator', label: 'Administración' },
+      { to: '/estadisticas', icon: BarChart3, label: 'Estadísticas Globales' },
+    ];
+  }
+  
+  if (rol === 'persona') {
+    return [
+      { to: '/mi-progreso', icon: Trophy, label: 'Mi Progreso', end: true },
+      { type: 'separator', label: 'Mis Semanas' },
+      { to: '/mi-semana/1', icon: Calendar, label: 'Semana 1 - Preparación' },
+      { to: '/mi-semana/2', icon: Calendar, label: 'Semana 2 - Invasión' },
+      { to: '/mi-semana/3', icon: Calendar, label: 'Semana 3 - MCD' },
+      { to: '/mi-semana/4', icon: Calendar, label: 'Semana 4 - NPT' },
+      { to: '/mi-semana/5', icon: Calendar, label: 'Semana 5 - Liberación' },
+      { to: '/mi-semana/6', icon: Calendar, label: 'Semana 6 - Bendición' },
+      { to: '/mi-semana/7', icon: Calendar, label: 'Semana 7 - Sanidad' },
+    ];
+  }
+  
+  // Default: lider
+  return [
+    { to: '/', icon: LayoutDashboard, label: 'Dashboard', end: true },
+    { to: '/introduccion', icon: BookOpen, label: 'Introducción' },
+    { to: '/mapa', icon: Map, label: 'Mapa 7 Semanas' },
+    { type: 'separator', label: 'Semanas' },
+    { to: '/semana/1', icon: Calendar, label: 'Semana 1 - Preparación' },
+    { to: '/semana/2', icon: Calendar, label: 'Semana 2 - Invasión' },
+    { to: '/semana/3', icon: Calendar, label: 'Semana 3 - MCD' },
+    { to: '/semana/4', icon: Calendar, label: 'Semana 4 - NPT' },
+    { to: '/semana/5', icon: Calendar, label: 'Semana 5 - Liberación' },
+    { to: '/semana/6', icon: Calendar, label: 'Semana 6 - Bendición' },
+    { to: '/semana/7', icon: Calendar, label: 'Semana 7 - Sanidad' },
+    { type: 'separator', label: 'Herramientas' },
+    { to: '/registro', icon: Users, label: 'Registro de Contactos' },
+    { to: '/bitacora', icon: NotebookPen, label: 'Bitácora Evangelística' },
+    { to: '/presentacion', icon: Presentation, label: 'Manual 7 Semanas' },
+    { to: '/estadisticas', icon: BarChart3, label: 'Estadísticas' },
+  ];
+};
+
+const breadcrumbMap = {
+  '/': 'Dashboard',
+  '/dashboard-general': 'Dashboard General',
+  '/mi-progreso': 'Mi Progreso',
+  '/presentacion': 'Manual 7 Semanas',
+  '/introduccion': 'Introducción del Manual',
+  '/mapa': 'Mapa de las 7 Semanas',
+  '/registro': 'Registro de Contactos',
+  '/bitacora': 'Bitácora Evangelística',
+  '/estadisticas': 'Estadísticas',
+};
+
+function SidebarContent({ onClose }) {
+  const { user, logout } = useAuth();
+  const navItems = getNavItems(user?.rol);
+
+  const getRolLabel = () => {
+    if (user?.rol === 'pastor') return 'Pastor (Acceso Maestro)';
+    if (user?.rol === 'persona') return 'Consolidado';
+    return 'Líder';
+  };
+
+  const getRolIcon = () => {
+    if (user?.rol === 'pastor') return <Crown className="w-4 h-4 text-yellow-500" />;
+    if (user?.rol === 'persona') return <Star className="w-4 h-4 text-[#C8A951]" />;
+    return <Users className="w-4 h-4 text-[#1B2A4A]" />;
+  };
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Logo */}
+      <div className="p-4 flex items-center gap-3 border-b border-border bg-gradient-to-br from-[#0F1A33] to-[#1B2A4A]">
+        <img src={LOGO_URL} alt="Casa de Oración Ven y Ve"
+             className="w-11 h-11 object-contain logo-transparent" />
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-white truncate" style={{ fontFamily: 'Spectral, serif' }}>Ven y Ve</p>
+          <p className="text-[10px] text-[#C8A951] truncate uppercase tracking-wider">Casa de Oración</p>
+        </div>
+      </div>
+
+      {/* User Info */}
+      <div className="p-4 border-b border-border bg-gradient-to-r from-[#F5F0E8] to-[#FAFAF8]">
+        <div className="flex items-center gap-2 mb-1">
+          {getRolIcon()}
+          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+            {getRolLabel()}
+          </span>
+        </div>
+        <p className="text-sm font-semibold text-foreground truncate">{user?.nombre || 'Usuario'}</p>
+      </div>
+
+      {/* Navigation */}
+      <nav className="flex-1 overflow-y-auto p-3 space-y-1">
+        {navItems.map((item, idx) => {
+          if (item.type === 'separator') {
+            return (
+              <div key={idx} className="pt-4 pb-2">
+                <Separator className="mb-2" />
+                <p className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  {item.label}
+                </p>
+              </div>
+            );
+          }
+
+          const Icon = item.icon;
+          return (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={item.end}
+              onClick={onClose}
+              className={({ isActive }) =>
+                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                  isActive
+                    ? 'bg-[#1B2A4A] text-white shadow-md'
+                    : 'text-muted-foreground hover:bg-[#F5F0E8] hover:text-foreground'
+                }`
+              }
+            >
+              <Icon className="w-4 h-4 shrink-0" />
+              <span className="truncate">{item.label}</span>
+            </NavLink>
+          );
+        })}
+      </nav>
+
+      {/* Logout */}
+      <div className="p-3 border-t border-border">
+        <Button
+          variant="ghost"
+          onClick={() => {
+            logout();
+            onClose?.();
+          }}
+          className="w-full justify-start text-destructive hover:text-destructive hover:bg-red-50"
+        >
+          <LogOut className="w-4 h-4 mr-3" />
+          Cerrar Sesión
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+export default function AppLayout() {
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const location = useLocation();
+
+  const getBreadcrumb = () => {
+    const path = location.pathname;
+    if (breadcrumbMap[path]) return breadcrumbMap[path];
+    if (path.startsWith('/semana/')) return `Semana ${path.split('/')[2]}`;
+    if (path.startsWith('/mi-semana/')) return `Mi Semana ${path.split('/')[2]}`;
+    if (path.startsWith('/persona/')) return 'Gestión de Persona';
+    if (path.startsWith('/lider/')) return 'Dashboard del Líder';
+    return 'Página';
+  };
+
+  return (
+    <div className="flex h-screen overflow-hidden bg-background">
+      {/* Desktop Sidebar */}
+      <aside className="hidden lg:flex lg:flex-col w-64 border-r border-border bg-card">
+        <SidebarContent />
+      </aside>
+
+      {/* Mobile Sidebar (Sheet) */}
+      <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+        <SheetContent side="left" className="p-0 w-[85vw] max-w-xs">
+          <VisuallyHidden>
+            <h2>Menu de navegación</h2>
+          </VisuallyHidden>
+          <SidebarContent onClose={() => setMobileOpen(false)} />
+        </SheetContent>
+      </Sheet>
+
+      {/* Main Content */}
+      <main className="flex-1 overflow-y-auto">
+        {/* Top Bar: hamburger + breadcrumb + logo (mobile) */}
+        <div className="sticky top-0 z-20 bg-card/95 backdrop-blur-md border-b border-border">
+          <div className="flex items-center gap-2 px-3 py-2.5 lg:px-6 lg:py-3">
+            {/* Hamburger - solo mobile */}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="lg:hidden shrink-0 h-9 w-9"
+              onClick={() => setMobileOpen(true)}
+              data-testid="btn-menu-mobile"
+              aria-label="Abrir menú"
+            >
+              <Menu className="w-5 h-5" />
+            </Button>
+
+            {/* Logo mini - solo mobile */}
+            <div className="flex items-center gap-2 lg:hidden shrink-0">
+              <div className="w-9 h-9 rounded-md bg-[#0F1A33] flex items-center justify-center p-0.5">
+                <img
+                  src={LOGO_URL}
+                  alt="Ven y Ve"
+                  className="w-full h-full object-contain logo-transparent"
+                />
+              </div>
+              <span className="font-semibold text-sm text-foreground" style={{ fontFamily: 'Spectral, serif' }}>
+                Ven y Ve
+              </span>
+            </div>
+
+            {/* Breadcrumb - desktop ve completo, mobile oculto hasta sm */}
+            <div className="hidden sm:flex items-center gap-2 text-sm text-muted-foreground min-w-0 flex-1 lg:flex-initial">
+              <span className="hidden lg:inline">Inicio</span>
+              <ChevronRight className="w-4 h-4 hidden lg:inline" />
+              <span className="text-foreground font-medium truncate">{getBreadcrumb()}</span>
+            </div>
+          </div>
+        </div>
+
+        <Outlet />
+      </main>
+    </div>
+  );
+}

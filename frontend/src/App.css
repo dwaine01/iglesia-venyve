@@ -1,0 +1,175 @@
+/* App styles - enhanced with animations */
+.reading-content {
+  max-width: 72ch;
+  line-height: 1.8;
+}
+
+.reading-content p {
+  margin-bottom: 1rem;
+}
+
+.reading-content h3 {
+  margin-top: 2rem;
+  margin-bottom: 0.75rem;
+}
+
+.week-card-hover {
+  transition: transform 0.25s cubic-bezier(.4,0,.2,1), box-shadow 0.25s cubic-bezier(.4,0,.2,1), border-color 0.25s ease;
+}
+
+.week-card-hover:hover {
+  transform: translateY(-6px) scale(1.02);
+  box-shadow: 0 16px 40px rgba(27, 42, 74, 0.18);
+  border-color: hsl(43, 52%, 55%);
+}
+
+/* Animated gradient border glow */
+.glow-card {
+  position: relative;
+  overflow: hidden;
+}
+.glow-card::before {
+  content: '';
+  position: absolute;
+  top: -2px; left: -2px; right: -2px; bottom: -2px;
+  background: linear-gradient(135deg, #C8A951 0%, #1FA6A0 50%, #C8A951 100%);
+  border-radius: inherit;
+  z-index: -1;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+.glow-card:hover::before {
+  opacity: 1;
+}
+
+/* Pulse animation */
+@keyframes pulse-gold {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(200, 169, 81, 0.4); }
+  50% { box-shadow: 0 0 0 12px rgba(200, 169, 81, 0); }
+}
+.pulse-gold {
+  animation: pulse-gold 2s infinite;
+}
+
+/* Shimmer effect */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.shimmer-text {
+  background: linear-gradient(90deg, #C8A951 0%, #E2CF8A 25%, #C8A951 50%, #E2CF8A 75%, #C8A951 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: shimmer 3s linear infinite;
+}
+
+/* Float animation */
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-8px); }
+}
+.float-anim {
+  animation: float 3s ease-in-out infinite;
+}
+
+/* Scale pulse */
+@keyframes scale-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+.scale-pulse {
+  animation: scale-pulse 2s ease-in-out infinite;
+}
+
+/* Fade in up */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.fade-in-up {
+  animation: fadeInUp 0.5s ease-out forwards;
+}
+
+/* Stagger children */
+.stagger-children > * {
+  opacity: 0;
+  animation: fadeInUp 0.4s ease-out forwards;
+}
+.stagger-children > *:nth-child(1) { animation-delay: 0.05s; }
+.stagger-children > *:nth-child(2) { animation-delay: 0.1s; }
+.stagger-children > *:nth-child(3) { animation-delay: 0.15s; }
+.stagger-children > *:nth-child(4) { animation-delay: 0.2s; }
+.stagger-children > *:nth-child(5) { animation-delay: 0.25s; }
+.stagger-children > *:nth-child(6) { animation-delay: 0.3s; }
+.stagger-children > *:nth-child(7) { animation-delay: 0.35s; }
+
+/* Animated counter number */
+.counter-number {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Glow text */
+.glow-text {
+  text-shadow: 0 0 20px rgba(200, 169, 81, 0.3), 0 0 40px rgba(200, 169, 81, 0.1);
+}
+
+/* Gradient underline animation */
+.gradient-underline {
+  position: relative;
+  display: inline-block;
+}
+.gradient-underline::after {
+  content: '';
+  position: absolute;
+  bottom: -4px;
+  left: 0;
+  width: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #C8A951, #1FA6A0);
+  border-radius: 2px;
+  transition: width 0.4s cubic-bezier(.4,0,.2,1);
+}
+.gradient-underline:hover::after {
+  width: 100%;
+}
+
+/* Animated background dots */
+@keyframes moveDots {
+  0% { background-position: 0 0; }
+  100% { background-position: 40px 40px; }
+}
+.animated-dots {
+  background-image: radial-gradient(circle, rgba(200,169,81,0.08) 1px, transparent 1px);
+  background-size: 20px 20px;
+  animation: moveDots 4s linear infinite;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: hsl(40, 33%, 98%);
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(40, 14%, 82%);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(215, 16%, 55%);
+}
+
+/* Print styles */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+}

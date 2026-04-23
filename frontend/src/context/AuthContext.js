@@ -1,0 +1,61 @@
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import axios from 'axios';
+
+const AuthContext = createContext(null);
+const API = process.env.REACT_APP_BACKEND_URL || '';
+
+export function AuthProvider({ children }) {
+  const [user, setUser] = useState(null);
+  const [token, setToken] = useState(localStorage.getItem('token'));
+  const [loading, setLoading] = useState(true);
+
+  const logout = useCallback(() => {
+    localStorage.removeItem('token');
+    setToken(null);
+    setUser(null);
+  }, []);
+
+  useEffect(() => {
+    if (token) {
+      axios.get(`${API}/api/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
+        .then(res => {
+          setUser(res.data);
+          setLoading(false);
+        })
+        .catch(() => {
+          logout();
+          setLoading(false);
+        });
+    } else {
+      setLoading(false);
+    }
+  }, [token, logout]);
+
+  const login = async (email, password) => {
+    const res = await axios.post(`${API}/api/auth/login`, { email, password });
+    localStorage.setItem('token', res.data.token);
+    setToken(res.data.token);
+    setUser(res.data.user);
+    return res.data;
+  };
+
+  const register = async (nombre, email, password, rol = 'obrero') => {
+    const res = await axios.post(`${API}/api/auth/register`, { nombre, email, password, rol });
+    localStorage.setItem('token', res.data.token);
+    setToken(res.data.token);
+    setUser(res.data.user);
+    return res.data;
+  };
+
+  const getAuthHeaders = () => ({
+    headers: { Authorization: `Bearer ${token}` }
+  });
+
+  return (
+    <AuthContext.Provider value={{ user, token, loading, login, register, logout, getAuthHeaders, API }}>
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+export const useAuth = () => useContext(AuthContext);

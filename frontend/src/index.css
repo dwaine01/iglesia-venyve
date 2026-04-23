@@ -1,0 +1,65 @@
+@import url('https://fonts.googleapis.com/css2?family=Spectral:wght@400;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Logo con fondo transparente - usa mix-blend-mode para eliminar fondo negro */
+.logo-transparent {
+  mix-blend-mode: screen;
+}
+.logo-transparent-light {
+  /* Para mostrar sobre fondos claros - invierte los colores para eliminar el negro */
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.15));
+  background: transparent;
+}
+@media print {
+  .logo-transparent,
+  .logo-transparent-light {
+    mix-blend-mode: normal !important;
+  }
+}
+
+
+@layer base {
+  :root {
+    --background: 40 33% 98%;
+    --foreground: 222 47% 11%;
+    --card: 40 33% 99%;
+    --card-foreground: 222 47% 11%;
+    --popover: 40 33% 99%;
+    --popover-foreground: 222 47% 11%;
+    --primary: 221 46% 20%;
+    --primary-foreground: 40 33% 98%;
+    --secondary: 40 20% 93%;
+    --secondary-foreground: 221 46% 20%;
+    --muted: 40 18% 92%;
+    --muted-foreground: 215 16% 35%;
+    --accent: 43 52% 55%;
+    --accent-foreground: 221 46% 16%;
+    --border: 40 14% 86%;
+    --input: 40 14% 86%;
+    --ring: 43 52% 55%;
+    --destructive: 0 72% 45%;
+    --destructive-foreground: 40 33% 98%;
+    --radius: 0.75rem;
+    --chart-1: 221 46% 20%;
+    --chart-2: 43 52% 55%;
+    --chart-3: 186 55% 38%;
+    --chart-4: 215 16% 35%;
+    --chart-5: 40 18% 92%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'IBM Plex Sans', sans-serif;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Spectral', serif;
+  }
+}
