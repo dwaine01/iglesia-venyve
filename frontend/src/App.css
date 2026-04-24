@@ -65,6 +65,20 @@
   animation: shimmer 3s linear infinite;
 }
 
+/* Fade-in quote rotation - elegant entrance for login rotating quotes */
+@keyframes fade-in-quote {
+  0% { opacity: 0; transform: translateY(8px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+.fade-in-quote {
+  animation: fade-in-quote 0.8s ease-out;
+}
+
+/* Radial gradient utility for decorative blur orbs */
+.bg-gradient-radial {
+  background-image: radial-gradient(circle, var(--tw-gradient-stops));
+}
+
 /* Float animation */
 @keyframes float {
   0%, 100% { transform: translateY(0px); }
@@ -164,6 +178,15 @@
   background: hsl(215, 16%, 55%);
 }
 
+/*
+  Login (navy) micro-interactions
+  - Evitar transition: all
+  - Solo propiedades necesarias
+*/
+.login-focus-ring {
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
 /* Print styles */
 @media print {
   .no-print {
@@ -172,4 +195,46 @@
   .print-only {
     display: block !important;
   }
+}
+
+
+/* =========================
+   Login / Certificado institucional
+   - Fondo navy uniforme + textura sutil
+   - Hairlines dorados
+   - Inputs consistentes
+   ========================= */
+
+.login-noise {
+  background-image:
+    radial-gradient(circle at 20% 10%, rgba(200, 169, 81, 0.06), transparent 55%),
+    radial-gradient(circle at 80% 90%, rgba(31, 166, 160, 0.05), transparent 60%);
+  opacity: 1;
+}
+
+.login-dots {
+  background-image: radial-gradient(circle, rgba(200, 169, 81, 0.08) 1px, transparent 1px);
+  background-size: 22px 22px;
+  opacity: 0.06;
+}
+
+.login-gold {
+  color: #c8a951;
+  text-shadow: 0 0 18px rgba(200, 169, 81, 0.18);
+}
+
+.login-input {
+  background: rgba(11, 20, 40, 0.55);
+  border-color: rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.login-input::placeholder {
+  color: rgba(255, 255, 255, 0.32);
+}
+
+.login-input:focus-visible {
+  outline: none;
+  border-color: rgba(200, 169, 81, 0.45);
+  box-shadow: 0 0 0 4px rgba(200, 169, 81, 0.18);
 }
