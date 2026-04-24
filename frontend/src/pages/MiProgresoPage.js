@@ -12,29 +12,82 @@ import { motion } from 'framer-motion';
 import { StatusBadge, ProgressVsExpected } from '../components/StatusBadge';
 
 export default function MiProgresoPage() {
-  const { API, getAuthHeaders } = useAuth();
+  const { API, getAuthHeaders, user } = useAuth();
   const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchData = async () => {
+      // Plan A: endpoint unificado role-based (rapido, trae todo)
       try {
         const res = await axios.get(`${API}/api/dashboard/role-based`, getAuthHeaders());
         setData(res.data);
-      } catch (err) {
-        console.error(err);
+        setLoading(false);
+        return;
+      } catch (errA) {
+        // Si devuelve 404 "Perfil no encontrado" significa que la persona no tiene
+        // registro en la coleccion `people` (registro directo en `users` sin invite-code).
+        // Cubrimos el caso con fallback a endpoints individuales.
+        console.warn('[MiProgreso] role-based no disponible, usando fallback:', errA?.response?.status);
+      }
+
+      // Plan B: componer datos desde endpoints basicos que siempre responden
+      try {
+        const [dashRes, checklistsRes] = await Promise.all([
+          axios.get(`${API}/api/dashboard`, getAuthHeaders()),
+          axios.get(`${API}/api/checklists`, getAuthHeaders()),
+        ]);
+
+        const dash = dashRes.data || {};
+        const checklists = Array.isArray(checklistsRes.data) ? checklistsRes.data : [];
+
+        // Calcular estrellas = semanas con todas las tareas completadas
+        // Semana actual = primera semana incompleta (o 7 si todas completas)
+        let estrellas = 0;
+        let semanaActual = 1;
+        let firstIncompleteFound = false;
+        const ordered = [...checklists].sort((a, b) => (a.semana || 0) - (b.semana || 0));
+        ordered.forEach((cl) => {
+          const tareas = Array.isArray(cl.tareas) ? cl.tareas : [];
+          const allDone = tareas.length > 0 && tareas.every((t) => t.completada);
+          if (allDone) {
+            estrellas += 1;
+            if (!firstIncompleteFound) semanaActual = Math.min((cl.semana || 1) + 1, 7);
+          } else if (!firstIncompleteFound) {
+            semanaActual = cl.semana || 1;
+            firstIncompleteFound = true;
+          }
+        });
+
+        setData({
+          person: {
+            nombre: user?.nombre || 'Discipulo',
+            foto_url: null,
+          },
+          semana_actual: semanaActual,
+          estrellas,
+          progreso_general: Math.round(dash.overall_progress || 0),
+          total_tasks: dash.total_tasks || 0,
+          completed_tasks: dash.completed_tasks || 0,
+          checklists: ordered,
+          estado_dinamico: null,
+        });
+      } catch (errB) {
+        console.error('[MiProgreso] fallback tambien fallo:', errB);
+        setData(null);
       } finally {
         setLoading(false);
       }
     };
     fetchData();
-  }, [API, getAuthHeaders]);
+  }, [API, getAuthHeaders, user]);
 
   if (loading) return <div className="p-8 text-center">Cargando tu progreso...</div>;
   if (!data) return <div className="p-8 text-center">Error al cargar datos</div>;
 
-  const { person, semana_actual, estrellas, progreso_general, total_tasks, completed_tasks, checklists, estado_dinamico } = data;
+  const { person = {}, semana_actual = 1, estrellas = 0, progreso_general = 0, total_tasks = 0, completed_tasks = 0, checklists = [], estado_dinamico } = data;
+  const personNombre = person?.nombre || 'Discipulo';
 
   const getMensajeMotivacional = () => {
     if (estado_dinamico?.key === 'excelente') return '¡Eres un campeón! Vas por encima del ritmo. ¡Sigue brillando!';
@@ -60,17 +113,17 @@ export default function MiProgresoPage() {
               }}></div>
             </div>
             <div className="relative z-10 flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6">
-              {person.foto_url ? (
-                <img src={person.foto_url} alt={person.nombre}
+              {person?.foto_url ? (
+                <img src={person.foto_url} alt={personNombre}
                      className="w-16 h-16 sm:w-20 sm:h-20 rounded-full border-4 border-[#C8A951] object-cover shrink-0" />
               ) : (
                 <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full border-4 border-[#C8A951] bg-gradient-to-br from-[#C8A951] to-[#E2CF8A] flex items-center justify-center text-xl sm:text-2xl font-bold text-[#1B2A4A] shrink-0">
-                  {person.nombre.charAt(0)}
+                  {personNombre.charAt(0).toUpperCase()}
                 </div>
               )}
               <div className="flex-1 min-w-0">
                 <h1 className="text-xl sm:text-3xl font-bold truncate" style={{ fontFamily: 'Spectral, serif' }}>
-                  {person.nombre}
+                  {personNombre}
                 </h1>
                 <p className="text-white/60 mt-1 text-sm sm:text-base">Tu Proceso de Consolidación</p>
                 <div className="flex flex-wrap items-center gap-2 mt-3">
