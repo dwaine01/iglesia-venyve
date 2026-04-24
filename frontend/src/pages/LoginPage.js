@@ -32,6 +32,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [nombre, setNombre] = useState('');
   const [inviteCode, setInviteCode] = useState('');
+  const [inviteCodeError, setInviteCodeError] = useState('');
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
   const [quoteIdx, setQuoteIdx] = useState(0);
@@ -50,12 +51,14 @@ export default function LoginPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setInviteCodeError('');
     setLoading(true);
     try {
       if (isRegister) {
         const codeClean = (inviteCode || '').trim().toUpperCase();
         if (!codeClean) {
-          toast.error('El codigo de invitacion es obligatorio');
+          setInviteCodeError('El codigo de invitacion es obligatorio.');
+          toast.error('Debes ingresar tu codigo de invitacion');
           setLoading(false);
           return;
         }
@@ -67,7 +70,13 @@ export default function LoginPage() {
       }
       navigate('/');
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Error al iniciar sesion');
+      const detail = err.response?.data?.detail;
+      const msg = typeof detail === 'string' ? detail : 'Error al iniciar sesion';
+      // Si el error viene del codigo, resaltar el campo
+      if (isRegister && typeof detail === 'string' && detail.toLowerCase().includes('codigo')) {
+        setInviteCodeError(detail);
+      }
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -190,22 +199,33 @@ export default function LoginPage() {
                     {isRegister && (
                       <>
                         <div className="space-y-1.5">
-                          <Label htmlFor="invite_code" className="text-[#C8A951] text-[10px] uppercase tracking-wider font-semibold">
+                          <Label htmlFor="invite_code" className={`text-[10px] uppercase tracking-wider font-semibold ${inviteCodeError ? 'text-red-400' : 'text-[#C8A951]'}`}>
                             Codigo de invitacion *
                           </Label>
                           <Input
                             id="invite_code"
                             value={inviteCode}
-                            onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
+                            onChange={(e) => { setInviteCode(e.target.value.toUpperCase()); if (inviteCodeError) setInviteCodeError(''); }}
                             placeholder="Ej: AB3XK7YP"
                             required
                             maxLength={12}
+                            aria-invalid={!!inviteCodeError}
                             data-testid="register-invite-code-input"
-                            className="bg-transparent border-[#C8A951]/40 text-white placeholder:text-white/30 focus-visible:ring-[#C8A951]/50 focus-visible:border-[#C8A951]/80 h-10 font-mono tracking-[0.2em] uppercase"
+                            className={`bg-transparent text-white placeholder:text-white/30 h-10 font-mono tracking-[0.2em] uppercase ${
+                              inviteCodeError
+                                ? 'border-red-500/70 focus-visible:ring-red-500/50 focus-visible:border-red-500'
+                                : 'border-[#C8A951]/40 focus-visible:ring-[#C8A951]/50 focus-visible:border-[#C8A951]/80'
+                            }`}
                           />
-                          <p className="text-[10px] text-white/40 leading-tight">
-                            Solicita tu codigo al lider que te dara seguimiento.
-                          </p>
+                          {inviteCodeError ? (
+                            <p className="text-[11px] text-red-400 leading-tight" data-testid="register-invite-code-error">
+                              {inviteCodeError}
+                            </p>
+                          ) : (
+                            <p className="text-[10px] text-white/40 leading-tight">
+                              Solicita tu codigo al lider que te dara seguimiento.
+                            </p>
+                          )}
                         </div>
                         <div className="space-y-1.5">
                           <Label htmlFor="nombre" className="text-white/75 text-[10px] uppercase tracking-wider font-semibold">

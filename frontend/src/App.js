@@ -77,7 +77,7 @@ function App() {
             <Route path="mapa" element={<MapaPage />} />
             <Route path="semana/:weekNum" element={<SemanaPage />} />
             <Route path="persona/:personId/semana/:weekNum" element={<SemanaPage />} />
-            <Route path="registro" element={<RegistroPage />} />
+            <Route path="registro" element={<StaffRoute><RegistroPage /></StaffRoute>} />
             <Route path="bitacora" element={<StaffRoute><BitacoraPage /></StaffRoute>} />
             <Route path="codigos" element={<StaffRoute><CodigosInvitacionPage /></StaffRoute>} />
             <Route path="estadisticas" element={<EstadisticasPage />} />
