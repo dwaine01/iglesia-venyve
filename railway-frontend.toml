@@ -1,0 +1,13 @@
+# Railway config para el service FRONTEND (sublime-motivation -> panel.iglesiavenyve.org)
+# Builder: nixpacks auto-detecta React; build con yarn; runtime con 'serve'
+
+[build]
+builder = "nixpacks"
+buildCommand = "cd frontend && yarn install --frozen-lockfile && yarn build"
+
+[deploy]
+startCommand = "cd frontend && npx -y serve@14 -s build -l $PORT"
+healthcheckPath = "/"
+healthcheckTimeout = 300
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 10

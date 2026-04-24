@@ -1,0 +1,13 @@
+# Railway config para el service BACKEND (iglesia-venyve -> iglesia-venyve-production.up.railway.app)
+# Builder: nixpacks auto-detecta Python; instala deps; corre uvicorn en $PORT
+
+[build]
+builder = "nixpacks"
+buildCommand = "cd backend && pip install --no-cache-dir -r requirements.txt && python -m playwright install --with-deps chromium"
+
+[deploy]
+startCommand = "cd backend && python -m uvicorn server:app --host 0.0.0.0 --port $PORT"
+healthcheckPath = "/api/health"
+healthcheckTimeout = 300
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 10
