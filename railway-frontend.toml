@@ -1,14 +1,7 @@
-# Railway config para el service FRONTEND (sublime-motivation -> panel.iglesiavenyve.org)
-# yarn.lock existe en frontend/ pero Railway no trae yarn preinstalado;
-# lo instalamos globalmente via npm antes del build.
-
 [build]
-builder = "nixpacks"
-buildCommand = "npm install -g yarn@1.22 && cd frontend && yarn install --frozen-lockfile && yarn build"
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile.frontend"
 
 [deploy]
-startCommand = "cd frontend && npx -y serve@14 -s build -l $PORT"
-healthcheckPath = "/"
-healthcheckTimeout = 300
-restartPolicyType = "on_failure"
+restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10
