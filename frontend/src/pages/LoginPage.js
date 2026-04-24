@@ -31,6 +31,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [nombre, setNombre] = useState('');
+  const [inviteCode, setInviteCode] = useState('');
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
   const [quoteIdx, setQuoteIdx] = useState(0);
@@ -52,7 +53,13 @@ export default function LoginPage() {
     setLoading(true);
     try {
       if (isRegister) {
-        await register(nombre, email, password);
+        const codeClean = (inviteCode || '').trim().toUpperCase();
+        if (!codeClean) {
+          toast.error('El codigo de invitacion es obligatorio');
+          setLoading(false);
+          return;
+        }
+        await register(nombre, email, password, codeClean);
         toast.success('Cuenta creada exitosamente');
       } else {
         await login(email, password);
@@ -181,20 +188,40 @@ export default function LoginPage() {
 
                   <form onSubmit={handleSubmit} className="space-y-3.5">
                     {isRegister && (
-                      <div className="space-y-1.5">
-                        <Label htmlFor="nombre" className="text-white/75 text-[10px] uppercase tracking-wider font-semibold">
-                          Nombre completo
-                        </Label>
-                        <Input
-                          id="nombre"
-                          value={nombre}
-                          onChange={(e) => setNombre(e.target.value)}
-                          placeholder="Ej: Juan Perez"
-                          required
-                          data-testid="register-name-input"
-                          className="bg-transparent border-white/20 text-white placeholder:text-white/30 focus-visible:ring-[#C8A951]/50 focus-visible:border-[#C8A951]/60 h-10"
-                        />
-                      </div>
+                      <>
+                        <div className="space-y-1.5">
+                          <Label htmlFor="invite_code" className="text-[#C8A951] text-[10px] uppercase tracking-wider font-semibold">
+                            Codigo de invitacion *
+                          </Label>
+                          <Input
+                            id="invite_code"
+                            value={inviteCode}
+                            onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
+                            placeholder="Ej: AB3XK7YP"
+                            required
+                            maxLength={12}
+                            data-testid="register-invite-code-input"
+                            className="bg-transparent border-[#C8A951]/40 text-white placeholder:text-white/30 focus-visible:ring-[#C8A951]/50 focus-visible:border-[#C8A951]/80 h-10 font-mono tracking-[0.2em] uppercase"
+                          />
+                          <p className="text-[10px] text-white/40 leading-tight">
+                            Solicita tu codigo al lider que te dara seguimiento.
+                          </p>
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label htmlFor="nombre" className="text-white/75 text-[10px] uppercase tracking-wider font-semibold">
+                            Nombre completo
+                          </Label>
+                          <Input
+                            id="nombre"
+                            value={nombre}
+                            onChange={(e) => setNombre(e.target.value)}
+                            placeholder="Ej: Juan Perez"
+                            required
+                            data-testid="register-name-input"
+                            className="bg-transparent border-white/20 text-white placeholder:text-white/30 focus-visible:ring-[#C8A951]/50 focus-visible:border-[#C8A951]/60 h-10"
+                          />
+                        </div>
+                      </>
                     )}
                     <div className="space-y-1.5">
                       <Label htmlFor="email" className="text-white/75 text-[10px] uppercase tracking-wider font-semibold">

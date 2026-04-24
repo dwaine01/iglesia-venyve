@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException, Depends, status, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, EmailStr, field_validator
 from typing import Optional, List
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import os
 import jwt
 import bcrypt
@@ -57,12 +57,18 @@ class UserRegister(BaseModel):
     nombre: str
     email: EmailStr
     password: str
-    rol: str = "lider"  # pastor, lider, persona
+    invite_code: str  # OBLIGATORIO: codigo que da el lider/pastor
 
 
 class UserLogin(BaseModel):
     email: EmailStr
     password: str
+
+
+class InviteCodeCreate(BaseModel):
+    """Para generar un codigo. El rol_to_assign y leader_id se derivan del creador."""
+    destinatario_nombre: Optional[str] = ""  # para acordarse a quien se lo envio
+    destinatario_email: Optional[str] = ""  # opcional
 
 
 class ContactCreate(BaseModel):
@@ -472,21 +478,70 @@ async def compute_leader_aggregate_status(personas: list) -> dict:
 # --- Auth Routes ---
 @app.post("/api/auth/register")
 async def register(user: UserRegister):
+    """Registro publico OBLIGATORIO con codigo de invitacion.
+    El codigo determina el rol y el leader_id del nuevo usuario:
+    - Codigo generado por pastor master -> nuevo usuario es pastor
+    - Codigo generado por pastor -> nuevo usuario es lider, leader_id=id del pastor
+    - Codigo generado por lider -> nuevo usuario es persona, leader_id=id del lider
+    """
     existing = await db.users.find_one({"email": user.email})
     if existing:
-        raise HTTPException(status_code=400, detail="Email ya registrado")
-    
+        raise HTTPException(status_code=400, detail="Este correo ya esta registrado")
+
+    # Validar codigo de invitacion
+    code_clean = (user.invite_code or "").strip().upper()
+    if not code_clean:
+        raise HTTPException(status_code=400, detail="El codigo de invitacion es obligatorio")
+
+    invite = await db.invite_codes.find_one({"code": code_clean})
+    if not invite:
+        raise HTTPException(status_code=400, detail="Codigo de invitacion invalido")
+
+    if invite.get("used_at"):
+        raise HTTPException(status_code=400, detail="Este codigo ya fue utilizado")
+
+    expires_at = invite.get("expires_at")
+    if expires_at and datetime.now(timezone.utc) > expires_at.replace(tzinfo=timezone.utc) if expires_at.tzinfo is None else datetime.now(timezone.utc) > expires_at:
+        raise HTTPException(status_code=400, detail="Este codigo ha caducado")
+
+    # Crear usuario con rol y leader_id del codigo
+    assigned_rol = invite["role_to_assign"]
+    assigned_leader_id = invite.get("leader_id_to_assign")
+
     hashed = bcrypt.hashpw(user.password.encode(), bcrypt.gensalt())
     user_doc = {
         "nombre": user.nombre,
         "email": user.email,
         "password": hashed.decode(),
-        "rol": user.rol,
+        "rol": assigned_rol,
+        "leader_id": assigned_leader_id,
         "created_at": datetime.utcnow(),
+        "registered_via_invite": code_clean,
     }
     result = await db.users.insert_one(user_doc)
     user_id = str(result.inserted_id)
-    
+
+    # Marcar codigo como usado
+    await db.invite_codes.update_one(
+        {"_id": invite["_id"]},
+        {"$set": {"used_at": datetime.now(timezone.utc), "used_by_user_id": user_id}},
+    )
+
+    # Si es persona, tambien crearla en la coleccion people (para CRUD del lider)
+    if assigned_rol == "persona" and assigned_leader_id:
+        await db.people.insert_one({
+            "leader_id": assigned_leader_id,
+            "user_id": user_id,
+            "nombre": user.nombre,
+            "email": user.email,
+            "telefono": "",
+            "edad": None,
+            "estado": "contactado",
+            "current_semana": 1,
+            "created_at": datetime.utcnow(),
+            "registered_via_invite": True,
+        })
+
     # Initialize checklists for all 7 weeks
     for semana, tareas in DEFAULT_CHECKLISTS.items():
         await db.checklists.insert_one({
@@ -495,7 +550,7 @@ async def register(user: UserRegister):
             "tareas": tareas,
             "updated_at": datetime.utcnow(),
         })
-    
+
     # Initialize progress for all 7 weeks
     for semana in range(1, 8):
         await db.progress.insert_one({
@@ -507,9 +562,147 @@ async def register(user: UserRegister):
             "oraciones_realizadas": 0,
             "updated_at": datetime.utcnow(),
         })
-    
-    token = create_token(user_id, user.email, user.rol)
-    return {"token": token, "user": {"id": user_id, "nombre": user.nombre, "email": user.email, "rol": user.rol}}
+
+    token = create_token(user_id, user.email, assigned_rol)
+    return {
+        "token": token,
+        "user": {"id": user_id, "nombre": user.nombre, "email": user.email, "rol": assigned_rol},
+    }
+
+
+# =============================================================================
+# INVITE CODES - Sistema de codigos de invitacion
+# =============================================================================
+import secrets
+import string as _string
+
+INVITE_CODE_TTL_DAYS = 30  # Caducidad de codigos no usados
+
+
+def _generate_code(length: int = 8) -> str:
+    """Genera un codigo alfanumerico (sin caracteres ambiguos)."""
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # sin I, O, 0, 1
+    return "".join(secrets.choice(alphabet) for _ in range(length))
+
+
+async def _create_unique_code(length: int = 8, max_attempts: int = 10) -> str:
+    for _ in range(max_attempts):
+        code = _generate_code(length)
+        existing = await db.invite_codes.find_one({"code": code})
+        if not existing:
+            return code
+    raise HTTPException(status_code=500, detail="No fue posible generar un codigo unico, intenta de nuevo")
+
+
+@app.post("/api/invite-codes")
+async def create_invite_code(body: InviteCodeCreate, authorization: Optional[str] = Header(None)):
+    """Genera un codigo de invitacion.
+    - Pastor master / pastor  -> genera codigos para LIDER (nuevo lider no queda vinculado a nadie)
+    - Lider                   -> genera codigos para PERSONA (queda vinculada a este lider)
+    """
+    payload = await get_current_user(authorization)
+    rol = payload.get("rol")
+    creator_id = payload["user_id"]
+
+    if rol not in ("pastor", "lider"):
+        raise HTTPException(status_code=403, detail="Solo pastores y lideres pueden generar codigos")
+
+    # Determinar rol a asignar segun quien crea
+    if rol == "pastor":
+        role_to_assign = "lider"
+        leader_id_to_assign = None  # lider raiz, no queda bajo otro lider
+    else:
+        role_to_assign = "persona"
+        leader_id_to_assign = creator_id  # persona queda bajo este lider
+
+    code = await _create_unique_code()
+    expires_at = datetime.now(timezone.utc) + timedelta(days=INVITE_CODE_TTL_DAYS)
+
+    doc = {
+        "code": code,
+        "created_by_user_id": creator_id,
+        "created_by_rol": rol,
+        "role_to_assign": role_to_assign,
+        "leader_id_to_assign": leader_id_to_assign,
+        "destinatario_nombre": (body.destinatario_nombre or "").strip(),
+        "destinatario_email": (body.destinatario_email or "").strip().lower(),
+        "created_at": datetime.now(timezone.utc),
+        "expires_at": expires_at,
+        "used_at": None,
+        "used_by_user_id": None,
+    }
+    result = await db.invite_codes.insert_one(doc)
+    doc["_id"] = str(result.inserted_id)
+    # Normalizar dates a isoformat
+    for k in ("created_at", "expires_at"):
+        if doc.get(k):
+            doc[k] = doc[k].isoformat()
+    return doc
+
+
+@app.get("/api/invite-codes")
+async def list_invite_codes(authorization: Optional[str] = Header(None)):
+    """Lista los codigos que el usuario actual genero."""
+    payload = await get_current_user(authorization)
+    rol = payload.get("rol")
+    creator_id = payload["user_id"]
+    if rol not in ("pastor", "lider"):
+        raise HTTPException(status_code=403, detail="Solo pastores y lideres pueden ver codigos")
+
+    cursor = db.invite_codes.find({"created_by_user_id": creator_id}).sort("created_at", -1)
+    items = []
+    now_utc = datetime.now(timezone.utc)
+    async for doc in cursor:
+        expires_at = doc.get("expires_at")
+        used_at = doc.get("used_at")
+        # Estado: used | expired | active
+        if used_at:
+            estado = "usado"
+        elif expires_at and (expires_at if expires_at.tzinfo else expires_at.replace(tzinfo=timezone.utc)) < now_utc:
+            estado = "vencido"
+        else:
+            estado = "activo"
+
+        items.append({
+            "id": str(doc["_id"]),
+            "code": doc["code"],
+            "role_to_assign": doc.get("role_to_assign"),
+            "destinatario_nombre": doc.get("destinatario_nombre", ""),
+            "destinatario_email": doc.get("destinatario_email", ""),
+            "created_at": doc["created_at"].isoformat() if doc.get("created_at") else None,
+            "expires_at": doc["expires_at"].isoformat() if doc.get("expires_at") else None,
+            "used_at": doc["used_at"].isoformat() if doc.get("used_at") else None,
+            "used_by_user_id": doc.get("used_by_user_id"),
+            "estado": estado,
+        })
+    return items
+
+
+@app.delete("/api/invite-codes/{code_id}")
+async def revoke_invite_code(code_id: str, authorization: Optional[str] = Header(None)):
+    """Revoca un codigo no usado (lo marca como vencido inmediatamente)."""
+    payload = await get_current_user(authorization)
+    creator_id = payload["user_id"]
+    try:
+        doc = await db.invite_codes.find_one({"_id": ObjectId(code_id), "created_by_user_id": creator_id})
+    except Exception:
+        raise HTTPException(status_code=400, detail="ID invalido")
+
+    if not doc:
+        raise HTTPException(status_code=404, detail="Codigo no encontrado")
+
+    if doc.get("used_at"):
+        raise HTTPException(status_code=400, detail="No se puede revocar un codigo ya usado")
+
+    # Marcar como vencido
+    await db.invite_codes.update_one(
+        {"_id": ObjectId(code_id)},
+        {"$set": {"expires_at": datetime.now(timezone.utc) - timedelta(seconds=1)}},
+    )
+    return {"ok": True, "message": "Codigo revocado"}
+
+
+
 
 
 @app.post("/api/auth/login")

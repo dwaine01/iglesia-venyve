@@ -17,6 +17,7 @@ import PresentacionPresenterPage from './pages/PresentacionPresenterPage';
 import PresentacionAudiencePage from './pages/PresentacionAudiencePage';
 import PresentacionJoinPage from './pages/PresentacionJoinPage';
 import PresentacionImprimirPage from './pages/PresentacionImprimirPage';
+import CodigosInvitacionPage from './pages/CodigosInvitacionPage';
 import AppLayout from './components/AppLayout';
 import './App.css';
 
@@ -78,6 +79,7 @@ function App() {
             <Route path="persona/:personId/semana/:weekNum" element={<SemanaPage />} />
             <Route path="registro" element={<RegistroPage />} />
             <Route path="bitacora" element={<StaffRoute><BitacoraPage /></StaffRoute>} />
+            <Route path="codigos" element={<StaffRoute><CodigosInvitacionPage /></StaffRoute>} />
             <Route path="estadisticas" element={<EstadisticasPage />} />
             <Route path="presentacion" element={<PresentacionHomePage />} />
             

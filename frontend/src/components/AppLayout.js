@@ -7,7 +7,7 @@ import { Separator } from './ui/separator';
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 import {
   LayoutDashboard, BookOpen, Map, Calendar, Users, BarChart3, LogOut, Menu, ChevronRight,
-  Crown, Star, Trophy, Presentation, NotebookPen
+  Crown, Star, Trophy, Presentation, NotebookPen, KeyRound
 } from 'lucide-react';
 
 import { LOGO_IGLESIA } from '../data/presentationData';
@@ -19,6 +19,7 @@ const getNavItems = (rol) => {
     return [
       { to: '/dashboard-general', icon: Crown, label: 'Dashboard General', end: true },
       { to: '/bitacora', icon: NotebookPen, label: 'Bitácora Evangelística' },
+      { to: '/codigos', icon: KeyRound, label: 'Códigos de Invitación' },
       { to: '/presentacion', icon: Presentation, label: 'Manual 7 Semanas' },
       { type: 'separator', label: 'Administración' },
       { to: '/estadisticas', icon: BarChart3, label: 'Estadísticas Globales' },
@@ -54,6 +55,7 @@ const getNavItems = (rol) => {
     { to: '/semana/7', icon: Calendar, label: 'Semana 7 - Sanidad' },
     { type: 'separator', label: 'Herramientas' },
     { to: '/registro', icon: Users, label: 'Registro de Contactos' },
+    { to: '/codigos', icon: KeyRound, label: 'Códigos de Invitación' },
     { to: '/bitacora', icon: NotebookPen, label: 'Bitácora Evangelística' },
     { to: '/presentacion', icon: Presentation, label: 'Manual 7 Semanas' },
     { to: '/estadisticas', icon: BarChart3, label: 'Estadísticas' },
@@ -69,6 +71,7 @@ const breadcrumbMap = {
   '/mapa': 'Mapa de las 7 Semanas',
   '/registro': 'Registro de Contactos',
   '/bitacora': 'Bitácora Evangelística',
+  '/codigos': 'Códigos de Invitación',
   '/estadisticas': 'Estadísticas',
 };
 
