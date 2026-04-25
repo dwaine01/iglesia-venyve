@@ -17,6 +17,7 @@ import PresentacionPresenterPage from './pages/PresentacionPresenterPage';
 import PresentacionAudiencePage from './pages/PresentacionAudiencePage';
 import PresentacionJoinPage from './pages/PresentacionJoinPage';
 import PresentacionImprimirPage from './pages/PresentacionImprimirPage';
+import PresentacionNotasPage from './pages/PresentacionNotasPage';
 import CodigosInvitacionPage from './pages/CodigosInvitacionPage';
 import AppLayout from './components/AppLayout';
 import './App.css';
@@ -63,6 +64,7 @@ function App() {
           {/* Rutas de presentación full-screen (fuera del AppLayout) */}
           <Route path="/presentacion/presenter" element={<StaffRoute><PresentacionPresenterPage /></StaffRoute>} />
           <Route path="/presentacion/audiencia/:code" element={<PresentacionAudiencePage />} />
+          <Route path="/presentacion/notas/:code" element={<PresentacionNotasPage />} />
           <Route path="/presentacion/unirse" element={<PresentacionJoinPage />} />
           <Route path="/presentacion/imprimir" element={<PresentacionImprimirPage />} />
           <Route path="/" element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>

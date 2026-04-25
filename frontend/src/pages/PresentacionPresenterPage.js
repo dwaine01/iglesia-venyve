@@ -6,7 +6,7 @@ import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import {
   ChevronLeft, ChevronRight, Home, Eye, EyeOff, Presentation,
-  Copy, Monitor, Users, Clock, ListOrdered, CheckCircle2, Save, Edit3
+  Copy, Monitor, Users, Clock, ListOrdered, CheckCircle2, Save, Edit3, Tv2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
@@ -141,6 +141,16 @@ export default function PresentacionPresenterPage() {
     const link = `${window.location.origin}/presentacion/audiencia/${session.code}`;
     navigator.clipboard.writeText(link);
     toast.success('Enlace copiado');
+  };
+
+  const openNotasTV = () => {
+    if (!session) return;
+    const link = `${window.location.origin}/presentacion/notas/${session.code}`;
+    // Copia el link al portapapeles ademas de abrirlo, asi la pastora puede
+    // pegarlo en el navegador del Smart TV de detras del escenario.
+    try { navigator.clipboard.writeText(link); } catch (e) { /* noop */ }
+    window.open(link, '_blank', 'noopener,noreferrer');
+    toast.success('Pantalla de Notas abierta · Enlace copiado');
   };
 
   const slide = SLIDES[current];
@@ -322,6 +332,10 @@ export default function PresentacionPresenterPage() {
         <div className="flex items-center gap-2">
           <Button size="sm" variant="ghost" onClick={() => setShowPreview(!showPreview)} className="text-white/70 hover:text-white hover:bg-white/10">
             {showPreview ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+          </Button>
+          <Button size="sm" variant="ghost" onClick={openNotasTV} className="text-white/70 hover:text-[#C8A951] hover:bg-white/10 gap-1.5" title="Abrir pantalla de Notas (TV detras del escenario)" data-testid="btn-abrir-notas-tv">
+            <Tv2 className="w-4 h-4" />
+            <span className="hidden md:inline text-xs font-semibold">Notas TV</span>
           </Button>
           <Button size="sm" variant="ghost" onClick={copyLink} className="text-white/70 hover:text-white hover:bg-white/10 hidden sm:flex" title="Copiar enlace para audiencia">
             <Monitor className="w-4 h-4" />
