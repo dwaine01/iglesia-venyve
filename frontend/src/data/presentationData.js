@@ -288,16 +288,16 @@ const NOTAS_PUERTAS = {
     transicion: 'Recuerda esto: Dios envía la cosecha… pero la iglesia tiene que estar preparada para recibirla. Y cuando todo esto está listo… hay momentos donde Dios no solo toca una persona… sino multitudes. Y esos momentos… no se improvisan. Se planifican. Esa es la siguiente puerta: la Puerta 9… Congresos y Eventos Especiales.',
   },
   9: {
-    abrir: 'Hay momentos que cambian a una iglesia para siempre: un congreso, un retiro de lanzamiento, una noche de gloria. Esos momentos no se improvisan tres semanas antes, y los próximos los vamos a planificar con disciplina espiritual.',
+    abrir: 'Hay momentos… que no son normales. Son momentos donde Dios acelera lo que tomó meses… en una sola noche. Un congreso. Un retiro. Una noche de gloria. Pero escúchame bien: esos momentos… no se improvisan. Se planifican. Y se preparan en lo espiritual y en lo práctico.',
     decir: [
-      'Congresos y Eventos Especiales son los puntos de inflexión donde Dios acelera de un solo golpe lo que el sistema construye semana a semana.',
-      'Cada evento debe tener cuatro datos por escrito antes de promocionarse: fecha, equipo responsable, presupuesto en números y meta de almas alcanzadas.',
-      'En un evento se cruzan todas las puertas: Pastoral predica, Multimedia transmite, Finanzas administra, Cocina alimenta, Ujieres reciben. Es la sinfonía completa.',
+      'Por eso existe la Puerta 9: Congresos y Eventos Especiales. Esto no es agenda… esto es impulso espiritual. Esto es donde Dios mete una velocidad nueva al sistema.',
+      'Ahora, esto es clave: un evento no empieza cuando se anuncia. Empieza cuando se define. Y todo evento serio debe tener 4 cosas escritas: fecha exacta, equipo responsable, presupuesto en números reales y meta de almas alcanzadas. Si no tiene eso… no es evento. Es intención. Y las intenciones no producen resultados.',
+      'Ahora mira esto: en un evento… todas las puertas trabajan juntas. Puerta 3 ministra. Puerta 2 recibe. Puerta 5 discipula. Puerta 7 comunica. Puerta 8 sostiene. Puerta 6 da seguimiento. Es una sinfonía completa. Si una falla… todo se siente. Por eso los eventos no son de un ministerio… son de TODA la iglesia.',
     ],
-    ilustrar: 'Nehemías llamó a la suya Puerta Oriental, por donde entra el Rey de gloria. Cada congreso nuestro debe abrir cielos sobre la congregación, no solo llenar bancas y vender camisetas. La diferencia se mide en testimonios escritos después del evento.',
-    preguntar: 'El próximo evento grande de esta iglesia... ¿va a ser un mover de Dios documentado con testimonios, o un evento más que la gente olvida en una semana porque no se ministró nada profundo?',
-    aplicar: 'Esta semana, definimos en una hoja: 1) FECHA del próximo evento grande, 2) NOMBRE del coordinador, 3) PRESUPUESTO en dólares, 4) META de almas. Pegamos esa hoja en la oficina pastoral. Si no está escrito, no existe.',
-    transicion: 'Cerramos las nueve puertas. Ahora levantamos la mirada al sistema completo: la estructura general.',
+    ilustrar: 'Ahora te llevo a lo espiritual: Nehemías llamó a esta… la Puerta Oriental. La puerta por donde entra el Rey. Eso significa algo poderoso: cada evento que hagamos… debe abrirle paso a Dios. No solo llenar sillas. No solo hacer ruido. Sino provocar un encuentro real. Y te lo digo claro: la diferencia entre un evento normal y un mover de Dios… se mide después. En testimonios. En vidas cambiadas. En decisiones firmes.',
+    preguntar: 'Ahora la pregunta incómoda: el próximo evento de esta iglesia… ¿va a ser inolvidable en el espíritu… o desechable en la memoria? Porque hay eventos que la gente olvida en 7 días… y hay eventos que marcan una vida por años. Y eso no depende de la emoción… depende de la preparación.',
+    aplicar: 'Ahora vamos a ejecutar: esta misma semana… se define el próximo evento grande. No "algún día". No "cuando se pueda". Esta semana. Y se escribe en una hoja: fecha, nombre del coordinador, presupuesto, meta de almas. Se pega en la oficina. Porque si no está escrito… no existe.',
+    transicion: 'Recuerda esto: Dios se mueve en momentos… pero honra la preparación. Y cuando todo esto se alinea… las puertas dejan de ser ideas… y se convierten en un sistema vivo. Ya no estamos improvisando iglesia… estamos construyendo Reino con orden. Cerramos las nueve puertas. Ahora levantamos la mirada… y vemos el sistema completo funcionando.',
   },
 };
 
