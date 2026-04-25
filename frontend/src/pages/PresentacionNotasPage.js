@@ -2,8 +2,8 @@ import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
-import { SLIDES } from '../data/presentationData';
-import { AlertCircle, Wifi, WifiOff, BookOpen } from 'lucide-react';
+import { SLIDES, RESUMENES_NOTAS } from '../data/presentationData';
+import { AlertCircle, Wifi, WifiOff, BookOpen, Zap, FileText, CheckCircle2 } from 'lucide-react';
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
@@ -27,6 +27,22 @@ export default function PresentacionNotasPage() {
   const [error, setError] = useState(null);
   const [connected, setConnected] = useState(false);
   const scrollRef = useRef(null);
+  // 'completo' = notas extendidas (5-7 min) · 'express' = resumen rápido (1-2 min)
+  // Se sincroniza con el modo elegido en la laptop pastora vía localStorage.
+  const [notesMode, setNotesMode] = useState(() => {
+    try {
+      return localStorage.getItem('presenter_notes_mode') || 'completo';
+    } catch {
+      return 'completo';
+    }
+  });
+  const toggleNotesMode = () => {
+    setNotesMode((prev) => {
+      const next = prev === 'completo' ? 'express' : 'completo';
+      try { localStorage.setItem('presenter_notes_mode', next); } catch { /* noop */ }
+      return next;
+    });
+  };
 
   // Polling de la sesion (mismo intervalo que la audiencia: 1.5s)
   useEffect(() => {
@@ -75,7 +91,7 @@ export default function PresentacionNotasPage() {
       }, delay)
     );
     return () => timers.forEach(clearTimeout);
-  }, [currentSlide]);
+  }, [currentSlide, notesMode]);
 
   if (error) {
     return (
@@ -133,8 +149,26 @@ export default function PresentacionNotasPage() {
           </div>
 
           <div className="shrink-0 flex flex-col items-end gap-2">
-            <div className="bg-[#C8A951] text-[#1B2A4A] text-2xl font-bold px-5 py-2 rounded-lg font-mono">
-              {currentSlide + 1} / {SLIDES.length}
+            <div className="flex items-center gap-3">
+              <button
+                onClick={toggleNotesMode}
+                data-testid="toggle-notes-mode-tv"
+                title={notesMode === 'express' ? 'Cambiar a notas completas' : 'Cambiar a resumen rápido'}
+                className={`flex items-center gap-2 text-lg font-bold uppercase tracking-widest px-4 py-2 rounded-lg border-2 transition-colors ${
+                  notesMode === 'express'
+                    ? 'bg-[#C8A951] text-[#1B2A4A] border-[#C8A951] hover:bg-[#B89841]'
+                    : 'bg-transparent text-white border-white/40 hover:border-white hover:bg-white/10'
+                }`}
+              >
+                {notesMode === 'express' ? (
+                  <><Zap className="w-5 h-5" /> Express</>
+                ) : (
+                  <><FileText className="w-5 h-5" /> Completo</>
+                )}
+              </button>
+              <div className="bg-[#C8A951] text-[#1B2A4A] text-2xl font-bold px-5 py-2 rounded-lg font-mono">
+                {currentSlide + 1} / {SLIDES.length}
+              </div>
             </div>
             <div className="flex items-center gap-2 bg-black/40 backdrop-blur-sm rounded-full px-3 py-1">
               {connected ? (
@@ -178,41 +212,84 @@ export default function PresentacionNotasPage() {
               </div>
             )}
 
-            {noteEntries.length === 0 && (
+            {noteEntries.length === 0 && notesMode !== 'express' && (
               <div className="text-center py-20">
                 <p className="text-3xl text-white/40">Sin notas para este slide.</p>
               </div>
             )}
 
-            {noteEntries.map(([key, value]) => (
-              <div key={key} className="pb-8 border-b border-white/10 last:border-0">
-                <p className="text-2xl uppercase tracking-[0.25em] text-[#C8A951] font-bold mb-5">
-                  {formatKey(key)}
-                </p>
-                {Array.isArray(value) ? (
-                  <ul className="space-y-4">
-                    {value.map((item, i) => (
+            {/* MODO EXPRESS: resumen rápido para presentar en 1-2 min */}
+            {notesMode === 'express' && RESUMENES_NOTAS[slide.id] ? (
+              <div className="space-y-10">
+                <div className="bg-gradient-to-br from-[#C8A951]/20 to-[#C8A951]/5 border-2 border-[#C8A951] rounded-2xl p-10">
+                  <p className="text-2xl uppercase tracking-[0.25em] text-[#C8A951] font-bold mb-5 flex items-center gap-3">
+                    <Zap className="w-7 h-7" /> Idea Central
+                  </p>
+                  <p
+                    className="text-4xl md:text-5xl text-white leading-snug font-semibold"
+                    style={{ fontFamily: 'Spectral, serif' }}
+                  >
+                    {RESUMENES_NOTAS[slide.id].idea}
+                  </p>
+                </div>
+
+                <div className="pb-8 border-b border-white/10">
+                  <p className="text-2xl uppercase tracking-[0.25em] text-[#C8A951] font-bold mb-6">
+                    Puntos Clave
+                  </p>
+                  <ul className="space-y-5">
+                    {RESUMENES_NOTAS[slide.id].puntos.map((punto, i) => (
                       <li
                         key={i}
                         className="flex items-start gap-5 text-3xl md:text-4xl text-white leading-relaxed"
                       >
-                        <span className="text-[#C8A951] font-bold shrink-0 mt-1">
-                          {i + 1}.
-                        </span>
-                        <span>{item}</span>
+                        <CheckCircle2 className="w-10 h-10 text-[#1FA6A0] shrink-0 mt-1" />
+                        <span>{punto}</span>
                       </li>
                     ))}
                   </ul>
-                ) : (
-                  <p
-                    className="text-3xl md:text-4xl text-white leading-relaxed"
-                    style={{ fontFamily: 'Spectral, serif' }}
-                  >
-                    {value}
+                </div>
+
+                <div className="bg-[#1FA6A0]/10 border-l-8 border-[#1FA6A0] pl-8 py-5 rounded-r-lg">
+                  <p className="text-2xl uppercase tracking-[0.25em] text-[#1FA6A0] font-bold mb-3">
+                    Transición
                   </p>
-                )}
+                  <p className="text-3xl md:text-4xl text-white italic leading-snug">
+                    {RESUMENES_NOTAS[slide.id].transicion}
+                  </p>
+                </div>
               </div>
-            ))}
+            ) : (
+              noteEntries.map(([key, value]) => (
+                <div key={key} className="pb-8 border-b border-white/10 last:border-0">
+                  <p className="text-2xl uppercase tracking-[0.25em] text-[#C8A951] font-bold mb-5">
+                    {formatKey(key)}
+                  </p>
+                  {Array.isArray(value) ? (
+                    <ul className="space-y-4">
+                      {value.map((item, i) => (
+                        <li
+                          key={i}
+                          className="flex items-start gap-5 text-3xl md:text-4xl text-white leading-relaxed"
+                        >
+                          <span className="text-[#C8A951] font-bold shrink-0 mt-1">
+                            {i + 1}.
+                          </span>
+                          <span>{item}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p
+                      className="text-3xl md:text-4xl text-white leading-relaxed"
+                      style={{ fontFamily: 'Spectral, serif' }}
+                    >
+                      {value}
+                    </p>
+                  )}
+                </div>
+              ))
+            )}
           </motion.div>
         </AnimatePresence>
       </div>

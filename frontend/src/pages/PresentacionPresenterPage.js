@@ -6,11 +6,11 @@ import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import {
   ChevronLeft, ChevronRight, Home, Eye, EyeOff, Presentation,
-  Copy, Monitor, Users, Clock, ListOrdered, CheckCircle2, Save, Edit3, Tv2
+  Copy, Monitor, Users, Clock, ListOrdered, CheckCircle2, Save, Edit3, Tv2, Zap, FileText
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
-import { SLIDES } from '../data/presentationData';
+import { SLIDES, RESUMENES_NOTAS } from '../data/presentationData';
 import { SlideRenderer } from '../components/slides/SlideComponents';
 
 export default function PresentacionPresenterPage() {
@@ -27,6 +27,21 @@ export default function PresentacionPresenterPage() {
   const [editingNote, setEditingNote] = useState(false);
   const [noteText, setNoteText] = useState('');
   const [savingNote, setSavingNote] = useState(false);
+  // 'completo' = notas extendidas (5-7 min) · 'express' = resumen rápido (1-2 min)
+  const [notesMode, setNotesMode] = useState(() => {
+    try {
+      return localStorage.getItem('presenter_notes_mode') || 'completo';
+    } catch {
+      return 'completo';
+    }
+  });
+  const toggleNotesMode = () => {
+    setNotesMode((prev) => {
+      const next = prev === 'completo' ? 'express' : 'completo';
+      try { localStorage.setItem('presenter_notes_mode', next); } catch { /* noop */ }
+      return next;
+    });
+  };
 
   // Load custom notes
   useEffect(() => {
@@ -262,6 +277,24 @@ export default function PresentacionPresenterPage() {
               <Badge className="bg-[#1B2A4A] text-white text-sm px-3 py-1">
                 <ListOrdered className="w-4 h-4 mr-2" /> Slide {current + 1} de {SLIDES.length}
               </Badge>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={toggleNotesMode}
+                className={`h-8 gap-1 text-xs font-bold border-2 ${
+                  notesMode === 'express'
+                    ? 'bg-[#C8A951] text-white border-[#C8A951] hover:bg-[#B89841]'
+                    : 'bg-white text-[#1B2A4A] border-[#1B2A4A] hover:bg-slate-50'
+                }`}
+                data-testid="toggle-notes-mode-laptop"
+                title={notesMode === 'express' ? 'Cambiar a notas completas' : 'Cambiar a resumen rápido'}
+              >
+                {notesMode === 'express' ? (
+                  <><Zap className="w-3.5 h-3.5" /> EXPRESS</>
+                ) : (
+                  <><FileText className="w-3.5 h-3.5" /> COMPLETO</>
+                )}
+              </Button>
               <div className="flex items-center gap-2">
                 <span className="text-xs uppercase tracking-widest text-[#C8A951] font-bold">Notas del Presentador</span>
                 {!editingNote ? (
@@ -305,26 +338,62 @@ export default function PresentacionPresenterPage() {
               </div>
             ) : null}
 
-            {/* Slide built-in notes */}
-            {Object.entries(slide.notes || {}).map(([key, value]) => (
-              <div key={key} className="pb-4 border-b border-[#E7E2D6] last:border-0">
-                <p className="text-sm font-bold uppercase tracking-widest text-[#C8A951] mb-2">
-                  {formatKey(key)}
-                </p>
-                {Array.isArray(value) ? (
+            {/* Slide built-in notes — modo COMPLETO o EXPRESS */}
+            {notesMode === 'express' && RESUMENES_NOTAS[slide.id] ? (
+              <div className="space-y-5">
+                <div className="bg-gradient-to-br from-[#FBF9F3] to-white border-2 border-[#C8A951] rounded-xl p-5 sm:p-7 shadow-sm">
+                  <p className="text-xs font-bold uppercase tracking-widest text-[#C8A951] mb-3 flex items-center gap-2">
+                    <Zap className="w-4 h-4" /> IDEA CENTRAL
+                  </p>
+                  <p className="text-2xl sm:text-3xl text-[#1B2A4A] leading-snug font-semibold" style={{ fontFamily: 'Spectral, serif' }}>
+                    {RESUMENES_NOTAS[slide.id].idea}
+                  </p>
+                </div>
+
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-widest text-[#C8A951] mb-3">
+                    PUNTOS CLAVE
+                  </p>
                   <ul className="space-y-3">
-                    {value.map((item, i) => (
+                    {RESUMENES_NOTAS[slide.id].puntos.map((punto, i) => (
                       <li key={i} className="flex items-start gap-3 text-xl sm:text-2xl text-[#1B2A4A] leading-relaxed">
                         <CheckCircle2 className="w-6 h-6 text-[#1FA6A0] shrink-0 mt-1" />
-                        <span>{item}</span>
+                        <span>{punto}</span>
                       </li>
                     ))}
                   </ul>
-                ) : (
-                  <p className="text-xl sm:text-2xl text-[#1B2A4A] leading-relaxed">{value}</p>
-                )}
+                </div>
+
+                <div className="bg-slate-50 border-l-4 border-[#1FA6A0] rounded-r-lg p-4">
+                  <p className="text-xs font-bold uppercase tracking-widest text-[#1FA6A0] mb-2">
+                    TRANSICIÓN
+                  </p>
+                  <p className="text-lg sm:text-xl text-[#1B2A4A] italic leading-relaxed">
+                    {RESUMENES_NOTAS[slide.id].transicion}
+                  </p>
+                </div>
               </div>
-            ))}
+            ) : (
+              Object.entries(slide.notes || {}).map(([key, value]) => (
+                <div key={key} className="pb-4 border-b border-[#E7E2D6] last:border-0">
+                  <p className="text-sm font-bold uppercase tracking-widest text-[#C8A951] mb-2">
+                    {formatKey(key)}
+                  </p>
+                  {Array.isArray(value) ? (
+                    <ul className="space-y-3">
+                      {value.map((item, i) => (
+                        <li key={i} className="flex items-start gap-3 text-xl sm:text-2xl text-[#1B2A4A] leading-relaxed">
+                          <CheckCircle2 className="w-6 h-6 text-[#1FA6A0] shrink-0 mt-1" />
+                          <span>{item}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-xl sm:text-2xl text-[#1B2A4A] leading-relaxed">{value}</p>
+                  )}
+                </div>
+              ))
+            )}
           </div>
         </div>
       </div>

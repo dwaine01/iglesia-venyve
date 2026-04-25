@@ -708,3 +708,264 @@ export const SLIDES = [
     },
   },
 ];
+
+// ============================================================================
+// RESÚMENES EXPRESS — Versión corta de cada slide (1-2 minutos por slide)
+// Se activan con el toggle "Express" en la laptop pastora y en el teleprompter TV.
+// Cada resumen: 1 idea central + 3 puntos accionables + 1 transición.
+// ============================================================================
+
+export const RESUMENES_NOTAS = {
+  'portada': {
+    idea: 'Hoy esta iglesia cruza una línea: del espectador al obrero.',
+    puntos: [
+      'Dios no nos llamó a venir los domingos a cumplir — nos llamó a edificar una generación.',
+      'Hoy se termina la iglesia espectadora. Hoy comienza la iglesia que trabaja.',
+      'Vamos a ver tres cosas: el QUÉ, el CÓMO y tu rol.',
+    ],
+    transicion: 'Antes de avanzar, vamos a ver el mapa completo.',
+  },
+  'indice': {
+    idea: 'El índice no es decoración, es dirección.',
+    puntos: [
+      '29 páginas, 9 puertas, 7 semanas — todo con propósito.',
+      '4 partes: Fundamentos, Puertas, Liderazgo, Estrategia. Nada se salta.',
+      'Lo que despierta tu curiosidad revela dónde Dios quiere usarte.',
+    ],
+    transicion: 'Antes del sistema, está el llamado.',
+  },
+  'invitacion': {
+    idea: 'Esto nació en oración y madrugadas — no es información, es estrategia.',
+    puntos: [
+      'Hay vidas, sueños y puertas esperando que tú obedezcas.',
+      'Cosas buenas sin orden cansan; con orden multiplican.',
+      'Subraya lo que te confronte — eso revela tu primer paso.',
+    ],
+    transicion: '¿Para quién es este manual? La respuesta te incluye a ti.',
+  },
+  'para-quien-promesa': {
+    idea: 'Léelo con lápiz, oración y equipo — desde tu rol.',
+    puntos: [
+      'Tres acciones: subraya impacto, asterisco lo que harás, signo de pregunta lo que confronta.',
+      'Si aplicamos con disciplina, vamos a ver fruto.',
+      'Define hoy desde qué rol lo lees: pastor, líder, mentor, servidor o nuevo creyente.',
+    ],
+    transicion: 'Veamos el sistema completo en una sola imagen.',
+  },
+  'intro-manual': {
+    idea: 'Pasamos de iglesia de actividades a iglesia de procesos.',
+    puntos: [
+      '5 pilares: corazón, base bíblica, proceso, herramientas, estrategia.',
+      'Si falla un pilar, todo se debilita — Dios nos dio sistema completo.',
+      'No queremos iglesia ocupada, queremos iglesia efectiva.',
+    ],
+    transicion: 'Ahora el primer pilar: nuestra identidad.',
+  },
+  'identidad': {
+    idea: 'Tu identidad es lo que eres cuando nadie te ve.',
+    puntos: [
+      'Visión: levantar discípulos que se conviertan en líderes.',
+      'Misión: 4 pasos en orden — evangelizar, consolidar, discipular, enviar.',
+      '7 valores: Presencia de Dios, Amor por las almas, Relaciones, Formación, Multiplicación, Orden, Excelencia.',
+    ],
+    transicion: 'Esto no nació en una junta — está en Nehemías 3.',
+  },
+  'lema-nehemias': {
+    idea: 'Cosecha y Restitución no es lema — es palabra profética.',
+    puntos: [
+      'Nehemías comenzó por las puertas — sin puertas no hay protección.',
+      'Trabajo por zonas: cada quien sabía qué proteger.',
+      'Las brechas no son demonios — son procesos incompletos.',
+    ],
+    transicion: 'Ahora el sistema concreto: la Ley de las 7 Semanas.',
+  },
+  'ley-7-semanas': {
+    idea: 'Siete decisiones con disciplina parten un año en dos.',
+    puntos: [
+      'S1 Preparación · S2 Invasión · S3 MCD · S4 NPT · S5 Liberación · S6 Bendición · S7 Sanidad.',
+      'No se negocian, no se cambian, no se saltan — efecto dominó.',
+      '"La visión no es abstracta, es concreta. Lo concreto produce resultados."',
+    ],
+    transicion: 'Ahora el motor: el Modelo CAP.',
+  },
+  'modelo-cap': {
+    idea: 'Crecer sin estructura es perder lo que Dios envía.',
+    puntos: [
+      'CAP = Consolidación y Activación por Puertas. El don es la llave.',
+      '3 niveles: Formación, Seguimiento, Crecimiento.',
+      'Sin CAP se pierden. Con CAP cada uno tiene proceso, líder, puerta y destino.',
+    ],
+    transicion: 'Ahora el ritmo que activa todo: Tiempo 3, Operación 72.',
+  },
+  'operacion-72': {
+    idea: 'Tiempo 3 es el patrón de Dios — 72 horas deciden todo.',
+    puntos: [
+      '3 días al nuevo creyente · 21 días LBS · 72 horas decide · 3 meses consolida.',
+      'El problema no es falta de gente — es falta de respuesta a tiempo.',
+      'Mes 1 afirma llamado · Mes 2 entiende servicio · Mes 3 activa para ganar.',
+    ],
+    transicion: 'Ahora la columna vertebral: las 9 puertas.',
+  },
+  'las-9-puertas': {
+    idea: '9 puertas = diseño de Dios. Cada necesidad tiene una respuesta.',
+    puntos: [
+      'Enfermo→P6 · Crisis→P3 · Petición→P1 · Nuevo creyente→P5 · Visitante→P2 · Retiro→P4 · Comunicación→P7 · Recursos→P8 · Evento→P9.',
+      'Cada puerta requiere 4: líder, asistente, equipo, metas.',
+      'Cada miembro un lugar, cada necesidad una respuesta, cada vida un proceso.',
+    ],
+    transicion: 'Empezamos con la base: Puerta 1.',
+  },
+  'puerta-1': {
+    idea: 'Sin oración no hay iglesia — solo edificio.',
+    puntos: [
+      'Cubrir: pastor, líderes, visitantes, células.',
+      '3 acciones diarias: pastor por nombre, visitantes, células con su líder.',
+      'La oración no es religiosa — es estratégica.',
+    ],
+    transicion: 'Donde hay oración, llegan personas. La Puerta 2.',
+  },
+  'puerta-2': {
+    idea: 'Aquí nadie entra y sale igual.',
+    puntos: [
+      'El primer día: saludo, tarjeta, MCD+NPT, mentor — ese mismo día.',
+      'Proceso: visión, Espíritu Santo, LBS, bautismo, retiro, 3 meses.',
+      'El padre del pródigo no esperó al lunes — corrió.',
+    ],
+    transicion: 'Para crisis urgentes: Puerta 3.',
+  },
+  'puerta-3': {
+    idea: 'Hay dolores que llegan un martes a las 3 AM. Aquí responderemos.',
+    puntos: [
+      'Crisis: muerte, divorcio, adicción, suicidio.',
+      '4 acciones: oración, consejería 30 min, canalizar, acompañar 7 días.',
+      'No reemplaza al pastor — sostiene al alma hasta que llegue.',
+    ],
+    transicion: 'Heridas profundas necesitan retiro: Puerta 4.',
+  },
+  'puerta-4': {
+    idea: 'Hay batallas que se ganan en encuentro profundo, no en un culto.',
+    puntos: [
+      'LBS: Liberación rompe cadenas · Bendición afirma identidad · Sanidad restaura alma — 21 días.',
+      'No se salta ninguna fase — proceso completo.',
+      'Sin valle no hay autoridad. Sin proceso no hay transformación.',
+    ],
+    transicion: 'Después del retiro hay que formar. Puerta 5.',
+  },
+  'puerta-5': {
+    idea: '3 meses deciden 30 años.',
+    puntos: [
+      'Mentor = puente entre evangelio y vida real.',
+      '3 hábitos: reunión semanal, mensaje semanal, oración por nombre.',
+      'Pablo a Timoteo a hombres fieles a otros — 4 generaciones.',
+    ],
+    transicion: 'A los que se alejaron, vamos por ellos. Puerta 6.',
+  },
+  'puerta-6': {
+    idea: 'Si solo cuidamos al que viene el domingo, perdemos al que dejó de venir el lunes.',
+    puntos: [
+      '5 frentes semanales: enfermo, ausente, amigo, hogar nuevo, alejado.',
+      'Mensaje: "No estás solo. Tu vida importa."',
+      'La gente no se pierde cuando alguien va por ellos.',
+    ],
+    transicion: 'El mensaje debe salir del templo. Puerta 7.',
+  },
+  'puerta-7': {
+    idea: 'Una persona puede llorar a las 2 AM y abrir su teléfono. ¿Qué encontrará?',
+    puntos: [
+      'Multimedia no es lujo — es misión.',
+      'Cada culto editado y publicado en menos de 48 horas.',
+      'Si no fluimos en lo digital, otros ocuparán ese púlpito.',
+    ],
+    transicion: 'Para sostenerlo necesitamos recursos. Puerta 8.',
+  },
+  'puerta-8': {
+    idea: 'Visión sin recursos termina en frustración.',
+    puntos: [
+      '3 inventarios siempre completos: Biblias, manuales, materiales.',
+      'Si llegan 20 personas, ¿hay 20 Biblias? La demora cuesta almas.',
+      'Lo que se administra con orden alcanza más.',
+    ],
+    transicion: 'Para multitudes, planificación: Puerta 9.',
+  },
+  'puerta-9': {
+    idea: 'Los momentos de Dios no se improvisan, se planifican.',
+    puntos: [
+      '4 datos por escrito: fecha, equipo, presupuesto, meta de almas.',
+      'En un evento todas las puertas trabajan — sinfonía completa.',
+      'La diferencia con un mover de Dios se mide en testimonios después.',
+    ],
+    transicion: 'Cerramos las 9 puertas. Ahora el sistema completo.',
+  },
+  'estructura-general': {
+    idea: 'Sin estructura todo se diluye.',
+    puntos: [
+      'Pastor → Coordinador → 9 líderes → Equipos → Iglesia.',
+      'Células DETECTAN (radar). Puertas RESPONDEN (equipo).',
+      'Flujo: llega → P2 recibe → célula → discipulado → retiro → sirve → líder → abre célula.',
+    ],
+    transicion: 'En el centro: el líder de puerta.',
+  },
+  'lider-puerta': {
+    idea: 'Tu liderazgo se mide por los líderes que dejas formados.',
+    puntos: [
+      'NO es jefe que manda y grita — si te tienen miedo, eres presión con título.',
+      '4 funciones: Cuidar, Ubicar, Activar, Desarrollar.',
+      'Un líder verdadero crea capacidad, no dependencia.',
+    ],
+    transicion: 'Para formar al nuevo creyente: el mentor.',
+  },
+  'mentor': {
+    idea: 'El mentor es puente entre el evangelio y la vida real.',
+    puntos: [
+      '4 propósitos: afirmar fe, cambiar estilo, integrar, preparar para servir.',
+      'Perfil: oración, amor por almas, base bíblica, paciencia, testimonio limpio.',
+      '4 responsabilidades semanales: contacto, reunión 1h, oración por nombre, integración.',
+    ],
+    transicion: 'El mentor sigue un mapa: Discipulado en 8 Semanas.',
+  },
+  'discipulado-8-semanas': {
+    idea: 'Las primeras 8 semanas deciden si echa raíces o se seca.',
+    puntos: [
+      'Raíces (S1-S4): Salvación, Oración, Biblia, Iglesia.',
+      'Cosecha (S5-S8): Cambio de vida, Visión, Don, Liderazgo.',
+      'En 8 semanas: "Me convertí el domingo" → "Estoy formando a alguien más."',
+    ],
+    transicion: '¿Cuándo está realmente consolidado?',
+  },
+  'consolidado-puerta': {
+    idea: 'No queremos personas presentes — queremos personas firmes.',
+    puntos: [
+      '4 indicadores: Ubicación, Activación, Cobertura, Proceso.',
+      'Si falta UNO, no está consolidado — está de paso.',
+      'Jesús no levantó una multitud, levantó doce. Y cambió el mundo.',
+    ],
+    transicion: 'Para sostener el sistema: la reunión mensual.',
+  },
+  'reunion-supervisores': {
+    idea: '30 minutos donde el sistema vive o se muere.',
+    puntos: [
+      'Agenda: 5+5+10+5+5 (inicio, supervisor, detección, ajustes, activación).',
+      'Tu rol: ENFOCAR, CORREGIR, ACTIVAR. No moderadora, no secretaria.',
+      '3 frases cultura: "Vamos al punto", "¿Cuál es el siguiente paso?", "Antes del lunes."',
+    ],
+    transicion: 'Una sola meta: formar líderes que multipliquen.',
+  },
+  'estrategia-ganar': {
+    idea: 'No queremos iglesia que intenta — queremos iglesia que ejecuta.',
+    puntos: [
+      'Meta: 40 líderes formados, activos, multiplicando.',
+      'Cada 2 semanas debe haber movimiento medible.',
+      'Una persona bien atendida → 90 días → líder.',
+    ],
+    transicion: 'Cuando entra en cultura, ya no crece por eventos — crece por ADN.',
+  },
+  'cultura-cierre': {
+    idea: 'Hoy esta iglesia cruza una línea — entramos en CULTURA.',
+    puntos: [
+      'Células detectan, Puertas responden, Liderazgo supervisa, Dios transforma.',
+      'Año de Cosecha y Restitución — no por emoción, por disciplina.',
+      'Cultura es lo que haces cuando nadie te está mirando.',
+    ],
+    transicion: 'Escribe 3 líneas: PUERTA · NOMBRE+APELLIDO · FECHA. La cosecha ya comenzó.',
+  },
+};
