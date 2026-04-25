@@ -191,16 +191,16 @@ export const LAS_7_SEMANAS = [
 // Notas pastorales por puerta (slides 12-20)
 const NOTAS_PUERTAS = {
   1: {
-    abrir: 'Antes de hablar de estrategias, hablemos del altar. Esta primera puerta no es un departamento más: es el aire que va a respirar todo lo que vamos a construir juntos a partir de hoy.',
+    abrir: 'Antes de hablar de estrategias… tenemos que hablar del altar. Porque esta puerta… no es un ministerio más… es la base de todo. Es el aire que va a respirar todo lo que estamos construyendo. Si esta puerta está débil… todo lo demás se cae.',
     decir: [
-      'La Puerta 1 cubre espiritualmente al pastor, a los líderes, a los visitantes y a cada célula del nuevo sistema. Sin esa cobertura, nada de lo que viene se sostiene.',
-      'Tres acciones diarias del equipo de intercesión: orar por el pastor por nombre, orar por los visitantes del domingo anterior, y orar por cada célula con su líder.',
-      'Cuando un equipo dedica 30 minutos diarios a interceder, en menos de tres meses la atmósfera de la iglesia cambia. Es ley espiritual, no opinión.',
+      'La Puerta 1 — Intercesión Profética — tiene una asignación clara: cubrir espiritualmente todo el sistema. Cubrir al pastor. Cubrir a los líderes. Cubrir a los visitantes. Cubrir cada célula. Porque sin cobertura… no hay crecimiento que permanezca.',
+      'Tres acciones diarias… que no se negocian: orar por el pastor por nombre. Orar por los visitantes del domingo. Orar por cada célula y su líder. Eso no es opcional… eso es fundamento.',
+      'Cuando un equipo ora constantemente… la atmósfera cambia. No en años… en semanas. Porque la oración… no es religiosa… es estratégica.',
     ],
-    ilustrar: 'Nehemías reconstruyó la Puerta de la Fuente antes que ninguna otra. Sabía que sin agua no hay ciudad. Hoy lo digo con peso pastoral: sin oración no hay iglesia, solo edificio bonito con sillas vacías por dentro.',
-    preguntar: '¿Cuándo fue la última vez que un equipo de esta iglesia se reunió a orar más de 30 minutos seguidos, sin agenda, solo a buscar el rostro de Dios? Eso se acaba esta semana.',
-    aplicar: 'Esta semana agendamos UN día fijo (lunes o jueves) de 7 a 8 PM para vigilia de Puerta 1. Convocamos mínimo a 5 intercesores y repartimos una lista escrita con: 1) nombre del pastor, 2) los 3 últimos visitantes, 3) las células que están iniciando.',
-    transicion: 'Donde hay oración, llegan personas nuevas. La primera puerta que ellas tocan no es esta: es la Puerta 2.',
+    ilustrar: 'Nehemías comenzó por la Puerta de la Fuente. Porque entendía algo: sin agua… no hay ciudad. Y hoy te lo digo claro: sin oración… no hay iglesia. Puede haber música… puede haber predicación… puede haber actividad… pero no hay vida.',
+    preguntar: 'Te hago una pregunta directa: ¿Cuándo fue la última vez que un grupo de esta iglesia se sentó a orar… sin prisa… sin agenda… solo a buscar a Dios? Si no lo recuerdas… ahí está el problema. Pero también… ahí comienza el cambio.',
+    aplicar: 'Ahora vamos a hacerlo práctico: esta semana vamos a establecer un día fijo de intercesión. Lunes o jueves. De 7 a 8 PM. Mínimo 5 intercesores. Y con una lista clara: el nombre del pastor, los últimos visitantes, las células activas. Porque aquí no oramos al aire… oramos con dirección.',
+    transicion: 'Recuerda esto: donde hay oración… Dios envía personas. Y cuando esas personas llegan… entran por una puerta específica. La siguiente puerta… es la Puerta 2: Bienvenida y Consolidación.',
   },
   2: {
     abrir: 'Vamos a ser una iglesia donde nadie se va sin que lo hayan mirado a los ojos. Esa decisión la tomamos hoy, todos juntos, sin excepción.',
