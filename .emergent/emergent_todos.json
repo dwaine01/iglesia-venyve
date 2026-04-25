@@ -1,5 +1,6 @@
 [
   {
+<<<<<<< Updated upstream
     "content": "Crear hook reutilizable useScreenZoom para vistas de pantalla independientes",
     "status": "completed"
   },
@@ -18,5 +19,21 @@
   {
     "content": "Commit + push a GitHub para deploy en Railway",
     "status": "completed"
+=======
+    "content": "Reescribir las notas con tono pastoral profundo (corazón, reflexión, impacto)",
+    "status": "in_progress"
+  },
+  {
+    "content": "Verificar que los tipos de slide y estructura no se rompan",
+    "status": "pending"
+  },
+  {
+    "content": "Compilar y revisar visualmente con screenshot",
+    "status": "pending"
+  },
+  {
+    "content": "Commit + push a GitHub para deploy automático",
+    "status": "pending"
+>>>>>>> Stashed changes
   }
 ]
