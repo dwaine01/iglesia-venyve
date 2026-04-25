@@ -1,18 +1,18 @@
 [
   {
-    "content": "Reescribir las notas con tono pastoral profundo (corazón, reflexión, impacto)",
+    "content": "Reescribir TODAS las notas con acentos correctos (ñ, á, é, í, ó, ú)",
     "status": "completed"
   },
   {
-    "content": "Verificar que los tipos de slide y estructura no se rompan",
+    "content": "Cambiar tono: \"primer mover\" + llamado a comprometerse con la visión",
     "status": "completed"
   },
   {
-    "content": "Compilar y revisar visualmente con screenshot",
+    "content": "Incorporar 7 valores reales y frases textuales del manual",
     "status": "completed"
   },
   {
-    "content": "Commit + push a GitHub para deploy automático",
+    "content": "Verificar compilación y push a GitHub",
     "status": "completed"
   }
 ]
