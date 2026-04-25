@@ -4,6 +4,8 @@ import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
 import { SLIDES, RESUMENES_NOTAS } from '../data/presentationData';
 import { AlertCircle, Wifi, WifiOff, BookOpen, Zap, FileText, CheckCircle2 } from 'lucide-react';
+import { useScreenZoom } from '../hooks/useScreenZoom';
+import { ScreenZoomControl } from '../components/ScreenZoomControl';
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
@@ -43,6 +45,10 @@ export default function PresentacionNotasPage() {
       return next;
     });
   };
+
+  // Zoom independiente para el TV teleprompter detras del escenario.
+  // Default 125% para que la pastora lea desde el escenario sin esfuerzo.
+  const { zoom, increment, decrement, containerRef: zoomRef } = useScreenZoom('teleprompter_zoom', 1.25);
 
   // Polling de la sesion (mismo intervalo que la audiencia: 1.5s)
   useEffect(() => {
@@ -121,9 +127,10 @@ export default function PresentacionNotasPage() {
 
   return (
     <div
-      className="fixed inset-0 bg-[#0A0F1C] z-40 overflow-hidden flex flex-col"
+      className="fixed inset-0 bg-[#0A0F1C] z-40 overflow-hidden"
       data-testid="notas-view"
     >
+      <div ref={zoomRef} className="absolute inset-0 flex flex-col">
       {/* Header sutil con titulo del slide y estado de conexion */}
       <div className="shrink-0 px-10 pt-8 pb-5 border-b border-white/10 bg-gradient-to-b from-[#0F1A33] to-transparent">
         <div className="flex items-start justify-between gap-6">
@@ -135,7 +142,7 @@ export default function PresentacionNotasPage() {
               </span>
             </div>
             <h1
-              className="text-5xl md:text-6xl lg:text-7xl font-bold text-white leading-tight truncate"
+              className="text-5xl md:text-6xl lg:text-7xl font-bold text-white leading-tight line-clamp-2"
               style={{ fontFamily: 'Spectral, serif' }}
               data-testid="notas-titulo"
             >
@@ -303,6 +310,17 @@ export default function PresentacionNotasPage() {
           Sincronizada en vivo
         </p>
       </div>
+      </div>
+
+      {/* Control de zoom flotante (auto-oculta tras 3.5s sin actividad) */}
+      <ScreenZoomControl
+        zoom={zoom}
+        increment={increment}
+        decrement={decrement}
+        position="bottom-right"
+        variant="dark"
+        testId="teleprompter-zoom-control"
+      />
     </div>
   );
 }

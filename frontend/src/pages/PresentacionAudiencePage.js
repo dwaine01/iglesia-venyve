@@ -5,16 +5,31 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { SLIDES } from '../data/presentationData';
 import { SlideRenderer } from '../components/slides/SlideComponents';
 import { AlertCircle, Wifi, WifiOff } from 'lucide-react';
+import { useScreenZoom } from '../hooks/useScreenZoom';
+import { ScreenZoomControl } from '../components/ScreenZoomControl';
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
+/**
+ * Vista PUBLICA del espectador para la pantalla LED del auditorio
+ * (17 pies de ancho x 7 pies de altura).
+ *
+ * Aplica un zoom configurable y persistente (default 150%) sobre el
+ * contenedor del slide para que el contenido sea legible desde el
+ * fondo de la sala. El control flotante en la esquina inferior
+ * derecha permite ajustar al vuelo segun la sala/distancia.
+ */
 export default function PresentacionAudiencePage() {
   const { code } = useParams();
   const navigate = useNavigate();
   const [currentSlide, setCurrentSlide] = useState(0);
   const [error, setError] = useState(null);
   const [connected, setConnected] = useState(false);
-  const [sessionInfo, setSessionInfo] = useState(null);
+  const [, setSessionInfo] = useState(null);
+
+  // Zoom independiente para la pantalla LED (default 150% - calibrado
+  // para una pantalla de 17x7 ft con audiencia a 5-15 metros).
+  const { zoom, increment, decrement, containerRef } = useScreenZoom('audiencia_led_zoom', 1.5);
 
   useEffect(() => {
     if (!code) { navigate('/presentacion/unirse'); return; }
@@ -71,16 +86,29 @@ export default function PresentacionAudiencePage() {
         )}
       </div>
 
-      <AnimatePresence mode="wait">
-        <motion.div key={currentSlide}
-          initial={{ opacity: 0, scale: 0.98 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0, scale: 1.02 }}
-          transition={{ duration: 0.4 }}
-          className="absolute inset-0 overflow-y-auto">
-          <SlideRenderer slide={slide} />
-        </motion.div>
-      </AnimatePresence>
+      {/* Contenedor con zoom — TODO el slide se escala proporcionalmente */}
+      <div ref={containerRef} className="absolute inset-0 overflow-hidden">
+        <AnimatePresence mode="wait">
+          <motion.div key={currentSlide}
+            initial={{ opacity: 0, scale: 0.98 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 1.02 }}
+            transition={{ duration: 0.4 }}
+            className="absolute inset-0 overflow-y-auto">
+            <SlideRenderer slide={slide} />
+          </motion.div>
+        </AnimatePresence>
+      </div>
+
+      {/* Control de zoom flotante (auto-oculta tras 3.5s sin actividad) */}
+      <ScreenZoomControl
+        zoom={zoom}
+        increment={increment}
+        decrement={decrement}
+        position="bottom-right"
+        variant="dark"
+        testId="audience-zoom-control"
+      />
     </div>
   );
 }
