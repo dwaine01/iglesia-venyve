@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 
 import { LOGO_IGLESIA } from '../data/presentationData';
+import DisplayScaleToggle from './DisplayScaleToggle';
 const LOGO_URL = LOGO_IGLESIA;
 
 // Menu items by role
@@ -235,6 +236,11 @@ export default function AppLayout() {
               <span className="hidden lg:inline">Inicio</span>
               <ChevronRight className="w-4 h-4 hidden lg:inline" />
               <span className="text-foreground font-medium truncate">{getBreadcrumb()}</span>
+            </div>
+
+            {/* Spacer + acciones a la derecha */}
+            <div className="flex-1 sm:flex-initial sm:ml-auto flex items-center justify-end gap-1">
+              <DisplayScaleToggle />
             </div>
           </div>
         </div>
