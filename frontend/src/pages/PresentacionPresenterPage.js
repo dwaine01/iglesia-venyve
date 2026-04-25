@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
@@ -22,6 +22,7 @@ export default function PresentacionPresenterPage() {
   const [startTime] = useState(Date.now());
   const [elapsed, setElapsed] = useState('00:00');
   const creatingRef = useRef(false);
+  const notesScrollRef = useRef(null);
   const [customNotes, setCustomNotes] = useState({});
   const [editingNote, setEditingNote] = useState(false);
   const [noteText, setNoteText] = useState('');
@@ -37,6 +38,21 @@ export default function PresentacionPresenterPage() {
     };
     loadNotes();
   }, [API, getAuthHeaders]);
+
+  // Auto-scroll al tope de las notas al cambiar de slide.
+  // Garantiza que la pastora siempre empiece a leer desde la primera línea
+  // sin tener que usar el cursor para subir el scroll cada vez que avanza.
+  useLayoutEffect(() => {
+    const el = notesScrollRef.current;
+    if (!el) return;
+    el.scrollTop = 0;
+    const timers = [50, 200, 500, 800].map((delay) =>
+      setTimeout(() => {
+        if (notesScrollRef.current) notesScrollRef.current.scrollTop = 0;
+      }, delay)
+    );
+    return () => timers.forEach(clearTimeout);
+  }, [current]);
 
   // Cronómetro
   useEffect(() => {
@@ -268,7 +284,7 @@ export default function PresentacionPresenterPage() {
             )}
           </div>
 
-          <div className="flex-1 overflow-y-auto p-5 sm:p-8 space-y-4">
+          <div ref={notesScrollRef} className="flex-1 overflow-y-auto p-5 sm:p-8 space-y-4">
             {/* Custom editable note */}
             {editingNote ? (
               <div className="mb-4">
