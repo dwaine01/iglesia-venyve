@@ -6,7 +6,7 @@ import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import {
   ChevronLeft, ChevronRight, Home, Eye, EyeOff, Presentation,
-  Copy, Monitor, Users, Clock, ListOrdered, CheckCircle2
+  Copy, Monitor, Users, Clock, ListOrdered, CheckCircle2, Save, Edit3
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
@@ -22,6 +22,21 @@ export default function PresentacionPresenterPage() {
   const [startTime] = useState(Date.now());
   const [elapsed, setElapsed] = useState('00:00');
   const creatingRef = useRef(false);
+  const [customNotes, setCustomNotes] = useState({});
+  const [editingNote, setEditingNote] = useState(false);
+  const [noteText, setNoteText] = useState('');
+  const [savingNote, setSavingNote] = useState(false);
+
+  // Load custom notes
+  useEffect(() => {
+    const loadNotes = async () => {
+      try {
+        const res = await axios.get(`${API}/api/presentation/notes`, getAuthHeaders());
+        setCustomNotes(res.data);
+      } catch (e) {}
+    };
+    loadNotes();
+  }, [API, getAuthHeaders]);
 
   // Cronómetro
   useEffect(() => {
@@ -97,6 +112,28 @@ export default function PresentacionPresenterPage() {
     if (!session) return;
     navigator.clipboard.writeText(session.code);
     toast.success(`Código copiado: ${session.code}`);
+  };
+
+  // Update note text when slide changes
+  useEffect(() => {
+    const slideId = SLIDES[current]?.id;
+    setNoteText(customNotes[slideId] || '');
+    setEditingNote(false);
+  }, [current, customNotes]);
+
+  const saveNote = async () => {
+    setSavingNote(true);
+    try {
+      const slideId = SLIDES[current]?.id;
+      await axios.post(`${API}/api/presentation/notes`, { slide_id: slideId, note_text: noteText }, getAuthHeaders());
+      setCustomNotes(prev => ({ ...prev, [slideId]: noteText }));
+      setEditingNote(false);
+      toast.success('Nota guardada');
+    } catch (e) {
+      toast.error('Error al guardar nota');
+    } finally {
+      setSavingNote(false);
+    }
   };
 
   const copyLink = () => {
@@ -192,41 +229,73 @@ export default function PresentacionPresenterPage() {
           )}
         </div>
 
-        {/* RIGHT: Notas del presentador */}
+        {/* RIGHT: Notas del presentador - GRANDE Y EDITABLE */}
         <div className="lg:col-span-2 bg-white flex flex-col overflow-hidden">
-          <div className="p-3 sm:p-4 border-b border-[#E7E2D6] bg-gradient-to-r from-[#F5F0E8] to-[#FAFAF8]">
-            <div className="flex items-center justify-between mb-1">
-              <Badge className="bg-[#1B2A4A] text-white text-xs">
-                <ListOrdered className="w-3 h-3 mr-1" /> Slide {current + 1}
+          <div className="p-4 sm:p-6 border-b border-[#E7E2D6] bg-gradient-to-r from-[#F5F0E8] to-[#FAFAF8]">
+            <div className="flex items-center justify-between mb-2">
+              <Badge className="bg-[#1B2A4A] text-white text-sm px-3 py-1">
+                <ListOrdered className="w-4 h-4 mr-2" /> Slide {current + 1} de {SLIDES.length}
               </Badge>
-              <span className="text-[10px] uppercase tracking-widest text-[#C8A951] font-bold">Notas del Presentador</span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs uppercase tracking-widest text-[#C8A951] font-bold">Notas del Presentador</span>
+                {!editingNote ? (
+                  <Button size="sm" variant="outline" onClick={() => setEditingNote(true)} className="h-8 gap-1 text-xs">
+                    <Edit3 className="w-3.5 h-3.5" /> Editar
+                  </Button>
+                ) : (
+                  <Button size="sm" onClick={saveNote} disabled={savingNote} className="h-8 gap-1 text-xs bg-[#1FA6A0] hover:bg-[#178F89] text-white">
+                    <Save className="w-3.5 h-3.5" /> {savingNote ? 'Guardando...' : 'Guardar'}
+                  </Button>
+                )}
+              </div>
             </div>
-            <h2 className="text-xl sm:text-2xl font-bold text-[#1B2A4A] leading-tight" style={{ fontFamily: 'Spectral, serif' }}>
+            <h2 className="text-3xl sm:text-4xl font-bold text-[#1B2A4A] leading-tight" style={{ fontFamily: 'Spectral, serif' }}>
               {slide.title}
             </h2>
-            {slide.subtitle && <p className="text-sm text-muted-foreground italic">{slide.subtitle}</p>}
+            {slide.subtitle && <p className="text-lg text-muted-foreground italic mt-1">{slide.subtitle}</p>}
             {slide.verse && (
-              <p className="text-xs text-[#C8A951] font-bold mt-1">📖 {slide.verse}</p>
+              <p className="text-base text-[#C8A951] font-bold mt-2">📖 {slide.verse}</p>
             )}
           </div>
 
-          <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-3">
+          <div className="flex-1 overflow-y-auto p-5 sm:p-8 space-y-4">
+            {/* Custom editable note */}
+            {editingNote ? (
+              <div className="mb-4">
+                <textarea
+                  value={noteText}
+                  onChange={(e) => setNoteText(e.target.value)}
+                  className="w-full h-48 p-4 text-2xl leading-relaxed text-[#1B2A4A] border-2 border-[#C8A951] rounded-lg resize-y focus:outline-none focus:ring-2 focus:ring-[#C8A951]"
+                  placeholder="Escribe tus notas aquí..."
+                  autoFocus
+                  style={{ fontFamily: 'Spectral, serif' }}
+                />
+              </div>
+            ) : noteText ? (
+              <div className="mb-4 p-4 bg-[#FBF9F3] border-l-4 border-[#C8A951] rounded-r-lg">
+                <p className="text-2xl sm:text-3xl text-[#1B2A4A] leading-relaxed whitespace-pre-wrap" style={{ fontFamily: 'Spectral, serif' }}>
+                  {noteText}
+                </p>
+              </div>
+            ) : null}
+
+            {/* Slide built-in notes */}
             {Object.entries(slide.notes || {}).map(([key, value]) => (
-              <div key={key} className="pb-3 border-b border-[#E7E2D6] last:border-0">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-[#C8A951] mb-1.5">
+              <div key={key} className="pb-4 border-b border-[#E7E2D6] last:border-0">
+                <p className="text-sm font-bold uppercase tracking-widest text-[#C8A951] mb-2">
                   {formatKey(key)}
                 </p>
                 {Array.isArray(value) ? (
-                  <ul className="space-y-1.5">
+                  <ul className="space-y-3">
                     {value.map((item, i) => (
-                      <li key={i} className="flex items-start gap-2 text-sm text-[#1B2A4A] leading-relaxed">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-[#1FA6A0] shrink-0 mt-1" />
+                      <li key={i} className="flex items-start gap-3 text-xl sm:text-2xl text-[#1B2A4A] leading-relaxed">
+                        <CheckCircle2 className="w-6 h-6 text-[#1FA6A0] shrink-0 mt-1" />
                         <span>{item}</span>
                       </li>
                     ))}
                   </ul>
                 ) : (
-                  <p className="text-sm text-[#1B2A4A] leading-relaxed">{value}</p>
+                  <p className="text-xl sm:text-2xl text-[#1B2A4A] leading-relaxed">{value}</p>
                 )}
               </div>
             ))}

@@ -1168,6 +1168,32 @@ async def get_pastor_notes(leader_id: str, authorization: Optional[str] = Header
 
 
 
+# --- Notas de Presentación (editables por slide) ---
+
+@app.post("/api/presentation/notes")
+async def save_presentation_note(data: dict, authorization: Optional[str] = Header(None)):
+    """Guardar nota personalizada del presentador por slide"""
+    payload = await get_current_user(authorization)
+    slide_id = data.get("slide_id")
+    note_text = data.get("note_text", "")
+    
+    if not slide_id:
+        raise HTTPException(status_code=400, detail="slide_id requerido")
+    
+    await db.presentation_notes.update_one(
+        {"user_id": payload["user_id"], "slide_id": slide_id},
+        {"$set": {"user_id": payload["user_id"], "slide_id": slide_id, "note_text": note_text, "updated_at": datetime.utcnow()}},
+        upsert=True
+    )
+    return {"message": "Nota guardada"}
+
+@app.get("/api/presentation/notes")
+async def get_presentation_notes(authorization: Optional[str] = Header(None)):
+    """Obtener todas las notas del presentador"""
+    payload = await get_current_user(authorization)
+    notes = await db.presentation_notes.find({"user_id": payload["user_id"]}).to_list(100)
+    return {n["slide_id"]: n.get("note_text", "") for n in notes}
+
 # --- Presentación: Sincronización Presenter ↔ Audience ---
 import secrets
 
