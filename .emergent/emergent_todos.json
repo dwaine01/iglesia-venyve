@@ -1,18 +1,22 @@
 [
   {
-    "content": "Generar RESUMENES_NOTAS para los 28 slides en presentationData.js",
-    "status": "in_progress"
+    "content": "Crear hook reutilizable useScreenZoom para vistas de pantalla independientes",
+    "status": "completed"
   },
   {
-    "content": "Agregar toggle Express/Completo en PresentacionPresenterPage.js (laptop)",
-    "status": "pending"
+    "content": "Aplicar zoom configurable a PresentacionAudiencePage (LED 17x7 ft)",
+    "status": "completed"
   },
   {
-    "content": "Agregar toggle Express/Completo en PresentacionNotasPage.js (TV)",
-    "status": "pending"
+    "content": "Aplicar zoom configurable a PresentacionNotasPage (Teleprompter TV)",
+    "status": "completed"
   },
   {
-    "content": "Verificar compilación y push final con todos los cambios",
-    "status": "pending"
+    "content": "Verificar visualmente ambas pantallas con screenshots",
+    "status": "completed"
+  },
+  {
+    "content": "Commit + push a GitHub para deploy en Railway",
+    "status": "completed"
   }
 ]
