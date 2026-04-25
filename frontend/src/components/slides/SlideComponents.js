@@ -449,24 +449,22 @@ export const SlideOperacion72 = () => (
 );
 
 // ============================================================
-// SLIDE: LAS 9 PUERTAS (mockup arqueado + arco 3D + placa robusta)
-// Optimizado para pantalla LED 17ft x 7ft (ratio ~2.43:1):
-// - Encabezado arriba con espacio generoso
-// - 9 puertas centradas verticalmente, en arco 3D suave (sin
-//   cortes en los extremos)
-// - Placa profesional PEGADA debajo de cada puerta (no al fondo)
+// SLIDE: LAS 9 PUERTAS (mockup de puertas cuadradas profesionales)
+// Diseno realista tipo puerta de madera con cabeza cuadrada,
+// 4 paneles, placa de numero metalica, manija y bisagras.
+// Perspectiva 3D suave en arco para LED 17ft x 7ft.
 // ============================================================
-const ArchedDoorWithPlaque = ({ puerta, index }) => {
+const SquareDoor = ({ puerta, index }) => {
   const Icon = ICON_MAP[puerta.icon] || DoorOpen;
-  // Perspectiva curva suave: angulos pequenos para evitar cortes
+  // Perspectiva 3D suave (sin cortes en los extremos)
   const offset = index - 4;
-  const rotY = -offset * 4.5; // izq mira a la derecha, der a la izquierda
-  const translateZ = -Math.abs(offset) * 18; // extremos al fondo
-  const liftY = -Math.abs(offset) * 2.5;
+  const rotY = -offset * 4;
+  const translateZ = -Math.abs(offset) * 16;
+  const liftY = -Math.abs(offset) * 2;
 
   return (
     <div className="h-full flex flex-col items-center justify-center gap-3 xl:gap-4 min-w-0 px-1">
-      {/* PUERTA arqueada con perspectiva 3D */}
+      {/* PUERTA */}
       <div
         className="relative w-full flex justify-center"
         style={{
@@ -476,90 +474,93 @@ const ArchedDoorWithPlaque = ({ puerta, index }) => {
         }}
       >
         <motion.div
-          initial={{ opacity: 0, y: 30, scale: 0.92 }}
+          initial={{ opacity: 0, y: 24, scale: 0.94 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           transition={{ delay: 0.05 + index * 0.05, type: 'spring', stiffness: 80 }}
           className="relative w-full max-w-[170px]"
           style={{ aspectRatio: '1 / 1.95' }}
         >
-          {/* Marco exterior oscuro con tope arqueado */}
+          {/* Marco exterior de madera oscura (cabeza cuadrada) */}
           <div
-            className="absolute inset-0 bg-gradient-to-b from-[#3a2a1c] to-[#1a110a] shadow-[0_22px_38px_-14px_rgba(0,0,0,0.45)]"
-            style={{ borderRadius: '50% 50% 4px 4px / 30% 30% 4px 4px' }}
+            className="absolute inset-0 rounded-md bg-gradient-to-b from-[#3a2a1c] via-[#2a1d12] to-[#1a110a] shadow-[0_22px_38px_-14px_rgba(0,0,0,0.55)] ring-1 ring-black/40"
           >
-            {/* Cuerpo interior de la puerta */}
+            {/* Hoja de la puerta (color del ministerio) */}
             <div
-              className={`absolute bg-gradient-to-b ${puerta.color} overflow-hidden`}
-              style={{
-                top: '6px',
-                left: '6px',
-                right: '6px',
-                bottom: '6px',
-                borderRadius: '50% 50% 2px 2px / 30% 30% 2px 2px',
-              }}
+              className={`absolute inset-[5px] rounded-sm bg-gradient-to-b ${puerta.color} overflow-hidden ring-1 ring-black/30`}
             >
               {/* Highlight diagonal */}
               <span
                 className="absolute inset-0 pointer-events-none"
                 style={{
                   background:
-                    'linear-gradient(135deg, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0.08) 35%, transparent 60%)',
+                    'linear-gradient(135deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.06) 38%, transparent 65%)',
                 }}
                 aria-hidden="true"
               />
 
-              {/* Bisagras */}
+              {/* Bisagras a la izquierda */}
               <span
-                className="absolute left-1 top-[35%] w-1 h-3 bg-[#C8A951] rounded-sm shadow-sm ring-1 ring-black/30"
+                className="absolute left-[3px] top-[12%] w-[3px] h-3.5 bg-gradient-to-b from-[#E2CF8A] to-[#A37C2C] rounded-[1px] shadow-sm ring-1 ring-black/40"
                 aria-hidden="true"
               />
               <span
-                className="absolute left-1 bottom-[15%] w-1 h-3 bg-[#C8A951] rounded-sm shadow-sm ring-1 ring-black/30"
-                aria-hidden="true"
-              />
-
-              {/* Manija dorada */}
-              <span
-                className="absolute right-1.5 top-1/2 w-2.5 h-2.5 xl:w-3 xl:h-3 rounded-full bg-gradient-to-br from-[#F2D98F] to-[#A37C2C] ring-1 ring-black/40 shadow-md z-[2]"
+                className="absolute left-[3px] bottom-[12%] w-[3px] h-3.5 bg-gradient-to-b from-[#E2CF8A] to-[#A37C2C] rounded-[1px] shadow-sm ring-1 ring-black/40"
                 aria-hidden="true"
               />
 
-              {/* Panel arqueado superior con icono */}
+              {/* Placa metalica con numero (tipo numero de habitacion) */}
               <div
-                className="absolute z-[1] border-2 border-white/40 bg-black/15 flex items-center justify-center"
+                className="absolute z-[3] left-1/2 -translate-x-1/2 top-[5%] flex items-center justify-center rounded-sm bg-gradient-to-b from-[#F2D98F] via-[#C8A951] to-[#8A6918] shadow-md ring-1 ring-black/40"
                 style={{
-                  top: '8%',
+                  width: '46%',
+                  height: '14%',
+                }}
+              >
+                <span
+                  className="font-black text-[#1a110a] leading-none drop-shadow-sm"
+                  style={{
+                    fontFamily: 'Spectral, serif',
+                    fontSize: 'clamp(14px, 1.6vw, 26px)',
+                  }}
+                >
+                  {puerta.num}
+                </span>
+              </div>
+
+              {/* Panel superior (con icono) */}
+              <div
+                className="absolute z-[1] border-2 border-white/35 bg-black/15 rounded-[2px] flex items-center justify-center shadow-inner"
+                style={{
+                  top: '22%',
                   left: '12%',
                   right: '12%',
-                  height: '38%',
-                  borderRadius: '50% 50% 2px 2px / 50% 50% 2px 2px',
+                  height: '32%',
                 }}
               >
                 <Icon className="w-7 h-7 sm:w-8 sm:h-8 xl:w-10 xl:h-10 text-white drop-shadow-lg" />
               </div>
 
-              {/* Panel rectangular inferior */}
+              {/* Panel inferior (decorativo) */}
               <div
-                className="absolute z-[1] border-2 border-white/40 bg-black/15 rounded-sm"
+                className="absolute z-[1] border-2 border-white/35 bg-black/15 rounded-[2px] shadow-inner"
                 style={{
-                  top: '52%',
+                  top: '58%',
                   left: '12%',
                   right: '12%',
                   bottom: '8%',
                 }}
               />
 
-              {/* Cruz interna */}
-              <div
-                className="absolute z-[2] left-1/2 -translate-x-1/2 w-0.5 bg-white/25"
-                style={{ top: '60%', height: '12%' }}
+              {/* Manija dorada */}
+              <span
+                className="absolute right-2 top-1/2 z-[2] -translate-y-1/2 flex items-center"
                 aria-hidden="true"
-              />
-              <div
-                className="absolute z-[2] left-1/2 -translate-x-1/2 h-0.5 bg-white/25"
-                style={{ top: '64%', width: '8%' }}
-                aria-hidden="true"
-              />
+              >
+                {/* Placa de la manija */}
+                <span className="w-1 h-5 bg-gradient-to-b from-[#E2CF8A] to-[#8A6918] rounded-sm shadow-sm ring-1 ring-black/40" />
+                {/* Bola de la manija */}
+                <span className="absolute -left-0.5 top-1/2 -translate-y-1/2 w-2.5 h-2.5 xl:w-3 xl:h-3 rounded-full bg-gradient-to-br from-[#F8E8B4] via-[#C8A951] to-[#6E5410] ring-1 ring-black/50 shadow-md" />
+              </span>
             </div>
           </div>
 
@@ -572,61 +573,19 @@ const ArchedDoorWithPlaque = ({ puerta, index }) => {
         </motion.div>
       </div>
 
-      {/* PLACA robusta PEGADA debajo de la puerta */}
-      <motion.div
-        initial={{ opacity: 0, y: 8 }}
+      {/* Nombre del ministerio (texto simple, debajo de la puerta) */}
+      <motion.p
+        initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.25 + index * 0.04 }}
-        className="relative w-full"
+        className="text-center font-semibold text-[#1B2A4A] leading-[1.2] px-0.5"
+        style={{
+          fontFamily: 'Spectral, serif',
+          fontSize: 'clamp(11px, 1.05vw, 16px)',
+        }}
       >
-        {/* Linea conectora puerta -> placa */}
-        <div
-          className="absolute -top-3 left-1/2 -translate-x-1/2 w-px h-3 bg-gradient-to-b from-transparent to-[#1a110a]/40"
-          aria-hidden="true"
-        />
-
-        <div className="relative bg-white border border-[#E7E2D6] rounded-xl shadow-md px-2.5 xl:px-3 py-2.5 xl:py-3 flex flex-col items-center text-center overflow-hidden">
-          {/* Banda lateral con el color del ministerio */}
-          <span
-            className={`absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b ${puerta.color}`}
-            aria-hidden="true"
-          />
-          <span
-            className={`absolute right-0 top-0 bottom-0 w-1 bg-gradient-to-b ${puerta.color}`}
-            aria-hidden="true"
-          />
-
-          {/* Numero en circulo dorado */}
-          <div
-            className="rounded-full bg-gradient-to-br from-[#F2D98F] to-[#A37C2C] flex items-center justify-center text-white font-black shadow ring-2 ring-white -mt-5 mb-1.5"
-            style={{
-              width: 'clamp(28px, 2.6vw, 42px)',
-              height: 'clamp(28px, 2.6vw, 42px)',
-            }}
-          >
-            <span
-              style={{
-                fontFamily: 'Spectral, serif',
-                fontSize: 'clamp(14px, 1.4vw, 22px)',
-                lineHeight: 1,
-              }}
-            >
-              {puerta.num}
-            </span>
-          </div>
-
-          {/* Nombre del ministerio */}
-          <p
-            className="font-bold text-[#1B2A4A] leading-[1.15]"
-            style={{
-              fontFamily: 'Spectral, serif',
-              fontSize: 'clamp(10px, 0.95vw, 15px)',
-            }}
-          >
-            {puerta.nombre}
-          </p>
-        </div>
-      </motion.div>
+        {puerta.nombre}
+      </motion.p>
     </div>
   );
 };
@@ -656,7 +615,7 @@ export const SlideLas9Puertas = () => (
       </p>
     </motion.div>
 
-    {/* Cuerpo central: 9 puertas + placas, centradas verticalmente */}
+    {/* Cuerpo central: 9 puertas + nombres, centradas verticalmente */}
     <div
       className="flex-1 flex items-center justify-center min-h-0 px-6 xl:px-12 py-4"
       style={{ perspective: '2200px' }}
@@ -666,7 +625,7 @@ export const SlideLas9Puertas = () => (
         style={{ transformStyle: 'preserve-3d' }}
       >
         {LAS_9_PUERTAS.map((p, i) => (
-          <ArchedDoorWithPlaque key={p.num} puerta={p} index={i} />
+          <SquareDoor key={p.num} puerta={p} index={i} />
         ))}
       </div>
     </div>
