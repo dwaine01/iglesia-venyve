@@ -173,6 +173,9 @@ export const LAS_7_SEMANAS = [
 ];
 
 export const SLIDES = [
+  // ============================================================
+  // 1. PORTADA (manual pág 1)
+  // ============================================================
   {
     id: 'portada',
     type: 'portada',
@@ -182,10 +185,74 @@ export const SLIDES = [
     notes: {
       introduccion: 'Esta presentación unifica los fundamentos bíblicos, el modelo CAP (Consolidación y Activación por Puertas), la Operación 72, y la Ley de las 7 Semanas.',
       objetivo: 'Al final de esta presentación cada líder debe entender: QUÉ es el sistema, CÓMO se implementa, y CUÁL es su rol dentro del mismo.',
-      tiempoSugerido: '45-60 minutos totales',
+      tiempoSugerido: '60-75 minutos totales',
       leer: '"Escribe la visión y declárala en tablas, para que corra el que leyere en ella." — Habacuc 2:2',
     },
   },
+
+  // ============================================================
+  // 2. ÍNDICE (manual pág 2 - movido aquí en encuadernación)
+  // ============================================================
+  {
+    id: 'indice',
+    type: 'indice',
+    title: 'Índice del Manual',
+    subtitle: '29 páginas · 9 puertas · 7 semanas',
+    notes: {
+      introduccion: 'Este índice es la guía maestra del manual. La primera página después de la portada permite a la pastora ubicarse rápido y a la audiencia ver el panorama completo.',
+      partes: [
+        'Parte I (Fundamentos): Introducción y secciones 01-06',
+        'Parte II (Las 9 Puertas del Sistema): P1-P9 explicadas una por una',
+        'Parte III (Liderazgo y Formación): secciones 16-19',
+        'Parte IV (Estrategia y Ejecución): secciones 20-22 + Llamado Final',
+      ],
+      tiempoSugerido: '2-3 minutos',
+      indicacion: 'Mostrar el índice da seguridad. La audiencia entiende que esto es serio, ordenado, y que cada tema se va a tratar a fondo.',
+    },
+  },
+
+  // ============================================================
+  // 3. UNA INVITACIÓN (manual pág 3)
+  // ============================================================
+  {
+    id: 'invitacion',
+    type: 'invitacion',
+    title: 'Una Invitación',
+    subtitle: 'Bienvenido a este Manual',
+    notes: {
+      mensaje: 'Hay vidas esperando ser alcanzadas, sueños esperando ser activados, y puertas esperando ser abiertas. Este manual no nació de una idea humana; nació de una convicción profética: que Dios quiere hacer algo nuevo, y lo hará a través de personas dispuestas a servir con excelencia.',
+      noEsSoloInformacion: 'Lo que tienes en tus manos NO es solo información. Es un mapa. Es una estrategia espiritual diseñada para transformar tu manera de ver la iglesia, el ministerio y tu propio llamado.',
+      cita: '"Donde no hay visión, el pueblo perece. Pero donde hay visión clara, hay dirección; donde hay orden, hay crecimiento; y donde hay propósito, hay multiplicación."',
+      queEncontraran: [
+        'El corazón del sistema (visión, misión, valores)',
+        'Una base bíblica sólida (Nehemías 3 y Tiempo 3)',
+        'Un proceso claro de transformación (7 semanas)',
+        'Herramientas prácticas (mentores, líderes, supervisores)',
+        'Una estrategia de ganar (metas medibles)',
+      ],
+      enfoque: 'Durante demasiado tiempo hemos hecho cosas buenas sin orden. Hoy es diferente. Hoy tenemos un SISTEMA, una RUTA, y un PROPÓSITO que se puede medir.',
+    },
+  },
+
+  // ============================================================
+  // 4. ¿PARA QUIÉN? + PROMESA (manual pág 4)
+  // ============================================================
+  {
+    id: 'para-quien-promesa',
+    type: 'para-quien-promesa',
+    title: '¿Para quién es este manual?',
+    subtitle: 'Cómo leerlo · Nuestra Promesa',
+    notes: {
+      paraQuien: 'Para el PASTOR que quiere levantar un equipo fuerte. Para el LÍDER que sueña con ver a su gente crecer. Para el MENTOR que desea formar vidas con propósito. Para el SERVIDOR que aún no sabe cuál es su puerta. Y para el NUEVO CREYENTE que está dando sus primeros pasos.',
+      comoLeerlo: 'No lo leas como un libro más. Léelo CON LÁPIZ EN MANO, con oración, con tu equipo al lado. Subraya lo que impacta tu corazón. Marca lo que quieres implementar. Regresa a las secciones que te desafían. Está diseñado para ser USADO, no solo guardado.',
+      promesa: 'Si aplicas con disciplina lo que aquí está escrito, VERÁS FRUTO. No porque este manual sea mágico, sino porque está alineado con los principios que Dios mismo estableció para edificar Su casa.',
+      llamadoFinal: 'Hoy comienza algo nuevo. Gira la página.',
+    },
+  },
+
+  // ============================================================
+  // 5. INTRO-MANUAL (Infografía oficial - manual pág 5)
+  // ============================================================
   {
     id: 'intro-manual',
     type: 'intro-manual',
@@ -206,15 +273,13 @@ export const SLIDES = [
         'La disciplina en la ejecución',
         'El trabajo en equipo con un mismo objetivo',
       ],
-      propositoManual: [
-        'Facilitar la comprensión del proceso completo',
-        'Guiar paso a paso la implementación del modelo',
-        'Alinear equipos bajo una misma visión',
-        'Garantizar resultados consistentes y sostenibles',
-      ],
       cierre: 'Más que un programa, este sistema es una ESTRATEGIA DE TRANSFORMACIÓN. Si se sigue con disciplina, unidad y compromiso, produce IMPACTO REAL Y DURADERO.',
     },
   },
+
+  // ============================================================
+  // 6. NUESTRA IDENTIDAD (manual sección 01, pág 6)
+  // ============================================================
   {
     id: 'identidad',
     type: 'identidad',
@@ -228,6 +293,10 @@ export const SLIDES = [
       explicacion: 'Explicar que ESTOS valores no son decorativos. Cada puerta se evalúa con ellos. Preguntar: "¿Mi área refleja Orden? ¿Tengo Amor por las almas?"',
     },
   },
+
+  // ============================================================
+  // 7. LEMA · NEHEMÍAS (manual sección 02, pág 7)
+  // ============================================================
   {
     id: 'lema-nehemias',
     type: 'lema-nehemias',
@@ -241,6 +310,10 @@ export const SLIDES = [
       aplicacion: 'Hoy la iglesia también necesita puertas reconstruidas para recibir, cuidar y multiplicar.',
     },
   },
+
+  // ============================================================
+  // 8. LEY DE LAS 7 SEMANAS (manual sección 03, pág 8)
+  // ============================================================
   {
     id: 'ley-7-semanas',
     type: 'ley-7-semanas',
@@ -260,6 +333,10 @@ export const SLIDES = [
       cierre: 'Más que un programa, este sistema es una ESTRATEGIA DE TRANSFORMACIÓN. Si se sigue con disciplina, unidad y compromiso, produce IMPACTO REAL Y DURADERO.',
     },
   },
+
+  // ============================================================
+  // 9. MODELO CAP (manual sección 04, pág 10)
+  // ============================================================
   {
     id: 'modelo-cap',
     type: 'modelo-cap',
@@ -274,11 +351,15 @@ export const SLIDES = [
       problemaQueResuelve: 'Evita que las personas se pierdan por falta de un sistema sólido de integración.',
     },
   },
+
+  // ============================================================
+  // 10. OPERACIÓN 72 (manual sección 05, pág 11)
+  // ============================================================
   {
     id: 'operacion-72',
     type: 'operacion-72',
     title: 'Operación 72',
-    subtitle: 'Equipo por Puertas',
+    subtitle: 'Equipo por Puertas · Tiempo 3',
     verse: 'Isaías 61:1-5',
     notes: {
       baseProfetica: 'El propósito por el cual el Padre envía al Hijo al mundo: predicar las buenas noticias, ministrar sanidad al corazón herido, proclamar libertad a cautivos, año de la buena voluntad de Jehová.',
@@ -291,9 +372,13 @@ export const SLIDES = [
         'Luego, 3 meses de seguimiento con cada nuevo creyente',
       ],
       procesoFormacion: 'Mes 1: profundizar en el llamado. Mes 2: profundizar en el privilegio de servir. Mes 3: enseñar el devocional "Predestinado para ganar".',
-      enfoqueMensaje: 'El mensaje debe ser sobre el Evangelio del Reino (Lucas 4:6-19). Enfocarnos en el que tiene sed. Los "perros" son generaciones pervertidas sexualmente; los "marranos" los que hacen perder el tiempo y no aprecian las perlas.',
+      enfoqueMensaje: 'El mensaje debe ser sobre el Evangelio del Reino (Lucas 4:6-19). Enfocarnos en el que tiene sed.',
     },
   },
+
+  // ============================================================
+  // 11. LAS 9 PUERTAS (intro - manual sección 06, pág 12)
+  // ============================================================
   {
     id: 'las-9-puertas',
     type: 'las-9-puertas',
@@ -307,18 +392,53 @@ export const SLIDES = [
         'Petición urgente → Puerta 1 (Intercesión)',
         'Crisis → Puerta 3 (Atención pastoral)',
         'Evento → Puerta 9 (Congresos y eventos)',
+        'Visitante primera vez → Puerta 2 (Bienvenida)',
+        'Difusión digital → Puerta 7 (Multimedia)',
+        'Material didáctico → Puerta 8 (Administración)',
+        'Encuentro profundo → Puerta 4 (Retiros LBS)',
       ],
       cadaPuerta: 'Cada puerta tiene: un líder responsable, un asistente, un equipo de apoyo, y metas anuales.',
+      indicacion: 'Después de esta vista panorámica vamos a entrar puerta por puerta — 9 slides individuales con propósito, funciones, responsabilidades y estructura de cada una.',
     },
   },
+
+  // ============================================================
+  // 12-20. PUERTAS INDIVIDUALES (P1-P9, manual págs 13-21)
+  // ============================================================
+  ...LAS_9_PUERTAS.map((p, idx) => ({
+    id: `puerta-${p.num}`,
+    type: 'puerta-individual',
+    puertaIdx: idx,
+    title: `Puerta ${p.num}: ${p.nombre}`,
+    subtitle: p.resumen || '',
+    notes: {
+      proposito: p.proposito,
+      ...(p.nehemias ? { nehemias: p.nehemias } : {}),
+      ...(p.funciones ? { funciones: p.funciones } : {}),
+      ...(p.responsabilidades ? { responsabilidades: p.responsabilidades } : {}),
+      ...(p.actividades ? { actividades: p.actividades } : {}),
+      ...(p.proceso ? { proceso: p.proceso } : {}),
+      ...(p.bienvenida ? { procesoBienvenida: p.bienvenida } : {}),
+      ...(p.estructura ? { estructura: p.estructura } : {}),
+      ...(p.indicadores ? { indicadores: p.indicadores } : {}),
+      ...(p.ministerios ? { ministeriosApoyo: p.ministerios.join(' · ') } : {}),
+      ...(p.tiempo ? { tiempoSugerido: p.tiempo } : {}),
+      ...(p.operacion72 ? { operacion72: p.operacion72 } : {}),
+      compromiso: `"Cada puerta tiene su tiempo; cada tiempo tiene su puerta. Servir aquí es edificar el Reino." — Compromiso · Puerta ${p.num}`,
+    },
+  })),
+
+  // ============================================================
+  // 21. ESTRUCTURA GENERAL (manual sección 16, pág 22)
+  // ============================================================
   {
     id: 'estructura-general',
     type: 'estructura',
     title: 'Estructura General del Sistema',
-    subtitle: 'Jerarquía y Conexión con Células',
+    subtitle: 'Jerarquía · Células · Cultura',
     notes: {
       jerarquia: [
-        'Pastor Principal',
+        'Pastor Principal — Visión y dirección del ministerio',
         'Coordinador General del Ministerio Celular',
         'Junta Directiva (9 líderes) + Líderes de cada Puerta',
         'Equipos de servidores por puerta',
@@ -338,11 +458,15 @@ export const SLIDES = [
       declaracion: 'Aquí cada miembro tiene un lugar, cada necesidad tiene una respuesta, y cada vida tiene un proceso.',
     },
   },
+
+  // ============================================================
+  // 22. EL LÍDER DE PUERTA (manual sección 17, pág 23)
+  // ============================================================
   {
     id: 'lider-puerta',
     type: 'lider',
     title: 'El Líder de Puerta',
-    subtitle: '¿Qué es un líder?',
+    subtitle: 'Cuidar · Ubicar · Activar · Desarrollar',
     notes: {
       queEs: 'Un líder NO es un jefe. Un líder es: un FORMADOR (invierte en el crecimiento de otros), un CUIDADOR (se preocupa genuinamente por las personas), un ACTIVADOR (motiva y genera movimiento).',
       cuidar: 'CUIDAR: conocer a su gente, saber cómo están emocional, espiritual y personalmente; estar presente y disponible.',
@@ -350,8 +474,13 @@ export const SLIDES = [
       activar: 'ACTIVAR: dar oportunidades para servir, impulsar a dar el siguiente paso, generar participación y compromiso.',
       desarrollar: 'DESARROLLAR: formar nuevos líderes, acompañar procesos de crecimiento, multiplicar el liderazgo.',
       enfoque: 'No solo queremos CONSOLIDAR personas, queremos consolidarlas EN UNA PUERTA.',
+      ley: '"El verdadero liderazgo no se mide por cuántos te siguen, sino por cuántos líderes levantas."',
     },
   },
+
+  // ============================================================
+  // 23. PROPÓSITO DEL MENTOR (manual sección 18, pág 24)
+  // ============================================================
   {
     id: 'mentor',
     type: 'mentor',
@@ -359,25 +488,13 @@ export const SLIDES = [
     subtitle: '2 Timoteo 2:2',
     notes: {
       existePara: 'Afirmar la fe del nuevo creyente · Ayudarlo a cambiar su estilo de vida · Integrarlo a la iglesia · Prepararlo para servir.',
-      perfil: [
-        'ESPIRITUAL: vida de oración, amor por las personas, conocimiento bíblico básico.',
-        'CARÁCTER: paciencia, responsabilidad, buen testimonio.',
-      ],
+      perfilEspiritual: 'Vida de oración constante · Amor genuino por las personas · Conocimiento bíblico básico · Llenura del Espíritu.',
+      perfilCaracter: 'Paciencia con el proceso · Responsabilidad y puntualidad · Buen testimonio público · Humildad y servicio.',
       responsabilidades: [
-        'Contacto semanal (llamada o mensaje)',
-        'Reunión de discipulado (1 vez por semana)',
-        'Cuidado espiritual (orar por la persona, escuchar)',
-        'Integración (llevarlo a la célula, conectarlo a una puerta)',
-      ],
-      discipulado8: [
-        'S1: Salvación y seguridad en Cristo (2 Co 5:17)',
-        'S2: Oración y relación con Dios (Jer 33:3)',
-        'S3: La Biblia y crecimiento espiritual',
-        'S4: La iglesia y congregarse',
-        'S5: Cambio de vida y santidad',
-        'S6: (continuación)',
-        'S7: Descubrir el don - servir en una puerta',
-        'S8: Preparación para el liderazgo',
+        'Contacto semanal (llamada o mensaje personal)',
+        'Reunión de discipulado (1 vez por semana, cara a cara)',
+        'Cuidado espiritual (orar, escuchar sin juzgar, aconsejar)',
+        'Integración (acompañar a la célula y a su puerta)',
       ],
       metas: 'Que la persona: se mantenga en la iglesia · entre a una célula · descubra su don · comience a servir.',
       errores: 'Abandonar el seguimiento · ser muy duro o muy pasivo · no escuchar · no orar.',
@@ -385,29 +502,39 @@ export const SLIDES = [
       declaracion: '"Señor, me comprometo a formar vidas, a cuidar personas y a levantar discípulos para tu Reino."',
     },
   },
+
+  // ============================================================
+  // 24. DISCIPULADO EN 8 SEMANAS (manual sección 19, pág 25)
+  // ============================================================
   {
-    id: 'estrategia-ganar',
-    type: 'estrategia',
-    title: 'Estrategia de Ganar',
-    subtitle: 'Metas de la primera etapa',
+    id: 'discipulado-8-semanas',
+    type: 'discipulado-8',
+    title: 'Discipulado en 8 Semanas',
+    subtitle: 'El mapa del nuevo creyente',
     notes: {
-      meta: '40 líderes servidores (primera etapa de consolidación).',
-      en2semanas: ['Personas que hacen MCD y NPT', 'Personas en Bienvenida (2 veces al mes)', 'Personas en retiros LBS (cada 2 meses)'],
-      discipulados: [
-        'Primer discipulado: "Mi llamado es sobrenatural"',
-        'Segundo y tercer discipulado',
+      contexto: 'Las primeras 8 semanas son DECISIVAS. Determinan si el nuevo creyente se queda o se pierde. Este plan semanal te da estructura clara — ningún tema al azar, ninguna semana sin propósito.',
+      semanas: [
+        'S1: Salvación y seguridad en Cristo (2 Co 5:17 · Ser nueva criatura)',
+        'S2: Oración y relación con Dios (Jer 33:3 · Aprender a hablar con Él)',
+        'S3: La Biblia y crecimiento espiritual (alimento diario del alma)',
+        'S4: La iglesia y congregarse (no piedras sueltas, somos familia)',
+        'S5: Cambio de vida y santidad (el evangelio transforma lo práctico)',
+        'S6: Visión y propósito (descubrir para qué fuimos creados)',
+        'S7: Descubrir el don · servir en una puerta (activar lo de Dios)',
+        'S8: Preparación para el liderazgo (de discípulo a formador)',
       ],
-      planAbril: 'Quien desee estar en el ministerio de consolidación tendrá una reseña especial en su carnet.',
-      proceso: 'Toda la iglesia que se inscriba para trabajar en una puerta comenzará con MCD y NPT (aunque haya leído los libros).',
-      visita: 'Damaris (coordinadora) visitará por segunda vez. Ese día: confirma datos · entrega regalo · ofrece MCD · conecta con mentor.',
-      invasiones: 'La iglesia sirviendo está invitada a las 5 invasiones del año. Cada persona trabajará con su lista de oración.',
+      enfoque: 'Cada semana tiene un objetivo concreto y un texto bíblico ancla. El mentor lleva al discípulo paso a paso, sin saltarse ninguna fase.',
     },
   },
+
+  // ============================================================
+  // 25. CONSOLIDADO DE PUERTA (manual sección 20, pág 26)
+  // ============================================================
   {
     id: 'consolidado-puerta',
     type: 'consolidado',
     title: 'Consolidado de Puerta',
-    subtitle: 'No por emoción, por evidencia',
+    subtitle: 'No por emoción · Por evidencia',
     notes: {
       definicion: 'Una persona consolidada de puerta: ya fue UBICADA en su ministerio · está siendo FORMADA · está ACTIVA dentro de su área.',
       indicadores: [
@@ -419,11 +546,15 @@ export const SLIDES = [
       enfoque: 'No vamos a ASUMIR quién está consolidado. LO VAMOS A MEDIR. No queremos solo personas presentes, queremos personas FIRMES.',
     },
   },
+
+  // ============================================================
+  // 26. REUNIÓN MENSUAL DE SUPERVISORES (manual sección 21, pág 27)
+  // ============================================================
   {
     id: 'reunion-supervisores',
     type: 'reunion',
     title: 'Reunión Mensual de Supervisores',
-    subtitle: 'Estructura y reglas',
+    subtitle: '30 minutos · Máximo enfoque',
     notes: {
       enfoque: '"Esta reunión no es para dar reportes... es para asegurar que el SISTEMA está avanzando."',
       agenda: [
@@ -440,6 +571,32 @@ export const SLIDES = [
       ejemplosBloqueos: ['No llegan al encuentro', 'No terminan discipulado', 'No hay seguimiento'],
     },
   },
+
+  // ============================================================
+  // 27. ESTRATEGIA DE GANAR (manual sección 22, pág 28) — MOVIDA
+  // ============================================================
+  {
+    id: 'estrategia-ganar',
+    type: 'estrategia',
+    title: 'Estrategia de Ganar',
+    subtitle: '40 líderes · Plan anual',
+    notes: {
+      meta: '40 líderes servidores (primera etapa de consolidación).',
+      en2semanas: ['Personas que hacen MCD y NPT', 'Personas en Bienvenida (2 veces al mes)', 'Personas en retiros LBS (cada 2 meses)'],
+      discipulados: [
+        'Primer discipulado: "Mi llamado es sobrenatural"',
+        'Segundo y tercer discipulado',
+      ],
+      planAbril: 'Quien desee estar en el ministerio de consolidación tendrá una reseña especial en su carnet.',
+      proceso: 'Toda la iglesia que se inscriba para trabajar en una puerta comenzará con MCD y NPT (aunque haya leído los libros).',
+      visita: 'Damaris (coordinadora) visitará por segunda vez. Ese día: confirma datos · entrega regalo · ofrece MCD · conecta con mentor.',
+      invasiones: 'La iglesia sirviendo está invitada a las 5 invasiones del año. Cada persona trabajará con su lista de oración.',
+    },
+  },
+
+  // ============================================================
+  // 28. CULTURA Y LLAMADO FINAL (manual pág 29)
+  // ============================================================
   {
     id: 'cultura-cierre',
     type: 'cierre',

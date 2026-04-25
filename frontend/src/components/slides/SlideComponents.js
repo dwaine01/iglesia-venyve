@@ -985,12 +985,349 @@ export const SlideCierre = () => {
 };
 
 // ============================================================
+// SLIDE: ÍNDICE (página 2 del manual)
+// ============================================================
+export const SlideIndice = () => (
+  <div
+    className="h-full w-full flex flex-col px-8 sm:px-12 py-7 xl:py-10 bg-gradient-to-br from-[#F5F0E8] via-[#FAFAF8] to-[#EDE8DD] overflow-hidden"
+    data-testid="slide-indice"
+  >
+    <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="shrink-0 mb-5">
+      <p className="text-xs uppercase tracking-[0.3em] text-[#C8A951] font-bold mb-1">Contenido del Manual</p>
+      <h1 className="text-4xl sm:text-5xl xl:text-7xl font-bold text-[#1B2A4A]" style={{ fontFamily: 'Spectral, serif' }}>
+        Índice
+      </h1>
+      <div className="flex items-center gap-3 mt-3">
+        <div className="w-20 h-1 bg-[#C8A951]" />
+        <p className="text-xs xl:text-sm italic text-[#1B2A4A]/60">29 páginas · 9 puertas · 7 semanas</p>
+      </div>
+    </motion.div>
+
+    <div className="flex-1 grid grid-cols-2 gap-6 xl:gap-10 min-h-0 overflow-hidden">
+      {/* Columna I: Fundamentos + Liderazgo */}
+      <div className="flex flex-col gap-5 min-h-0">
+        <IndiceParte numeral="I" titulo="Fundamentos" items={[
+          ['', 'Una Invitación', '3'],
+          ['', '¿Para quién? · Promesa', '4'],
+          ['', 'Panorama · Infografía', '5'],
+          ['01', 'Nuestra Identidad', '6'],
+          ['02', '9 Puertas en Nehemías 3', '7'],
+          ['03', 'La Ley de las 7 Semanas', '8'],
+          ['04', 'Modelo CAP', '10'],
+          ['05', 'Operación 72', '11'],
+          ['06', 'Las 9 Puertas (Intro)', '12'],
+        ]} />
+        <IndiceParte numeral="III" titulo="Liderazgo y Formación" items={[
+          ['16', 'Estructura General', '22'],
+          ['17', 'El Líder de Puerta', '23'],
+          ['18', 'Propósito del Mentor', '24'],
+          ['19', 'Discipulado en 8 Semanas', '25'],
+        ]} />
+      </div>
+
+      {/* Columna II: 9 Puertas + Estrategia */}
+      <div className="flex flex-col gap-5 min-h-0">
+        <IndiceParte numeral="II" titulo="Las 9 Puertas del Sistema" items={LAS_9_PUERTAS.map((p, i) => [
+          `P${p.num}`, p.nombre, String(13 + i),
+        ])} />
+        <IndiceParte numeral="IV" titulo="Estrategia y Ejecución" items={[
+          ['20', 'Consolidado de Puerta', '26'],
+          ['21', 'Reunión de Supervisores', '27'],
+          ['22', 'Estrategia de Ganar', '28'],
+          ['', 'Llamado Final', '29'],
+        ]} />
+      </div>
+    </div>
+  </div>
+);
+
+const IndiceParte = ({ numeral, titulo, items }) => (
+  <div className="flex flex-col min-h-0">
+    <div className="flex items-baseline gap-2 mb-2 pb-2 border-b-2 border-[#C8A951]/40 shrink-0">
+      <span className="text-2xl xl:text-3xl font-bold text-[#C8A951]" style={{ fontFamily: 'Spectral, serif' }}>{numeral}</span>
+      <p className="text-[10px] xl:text-xs uppercase tracking-widest text-[#C8A951] font-bold">{titulo}</p>
+    </div>
+    <div className="flex-1 overflow-y-auto pr-1">
+      {items.map(([num, t, pag], i) => (
+        <div key={i} className="flex items-baseline gap-2 py-0.5 text-[#1B2A4A] border-b border-dotted border-[#1B2A4A]/15">
+          {num && <span className="text-[10px] xl:text-xs font-bold text-[#C8A951] w-7 shrink-0">{num}</span>}
+          {!num && <span className="w-7 shrink-0" />}
+          <span className="flex-1 text-xs xl:text-sm leading-tight" style={{ fontFamily: 'Spectral, serif' }}>{t}</span>
+          <span className="text-[10px] xl:text-xs font-mono text-[#1B2A4A]/50 shrink-0">{pag}</span>
+        </div>
+      ))}
+    </div>
+  </div>
+);
+
+// ============================================================
+// SLIDE: UNA INVITACIÓN (página 3 del manual)
+// ============================================================
+export const SlideInvitacion = () => (
+  <div className="h-full w-full flex flex-col px-8 xl:px-16 py-8 xl:py-12 bg-gradient-to-br from-[#F5F0E8] via-[#FAFAF8] to-[#EDE8DD] overflow-hidden" data-testid="slide-invitacion">
+    <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="text-center shrink-0 mb-6">
+      <p className="text-xs xl:text-sm uppercase tracking-[0.3em] text-[#C8A951] font-bold mb-2">Bienvenido a este Manual</p>
+      <h1 className="text-4xl sm:text-5xl xl:text-7xl font-bold text-[#1B2A4A] leading-tight" style={{ fontFamily: 'Spectral, serif' }}>
+        Una <span className="italic text-[#C8A951]">Invitación</span>
+      </h1>
+      <div className="w-24 h-0.5 bg-[#C8A951] mx-auto mt-4" />
+    </motion.div>
+
+    <div className="flex-1 max-w-5xl mx-auto flex flex-col justify-center gap-5 min-h-0 overflow-hidden">
+      <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.1 }}
+        className="text-base xl:text-2xl leading-relaxed text-[#1B2A4A]" style={{ fontFamily: 'Spectral, serif' }}>
+        Hay vidas esperando ser alcanzadas, sueños esperando ser activados, y puertas esperando ser
+        abiertas. Este manual no nació de una idea humana; nació de una <strong>convicción profética</strong>:
+        que Dios quiere hacer algo nuevo, y lo hará a través de personas dispuestas a servir con
+        excelencia.
+      </motion.p>
+
+      <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.2 }}
+        className="p-5 xl:p-7 bg-gradient-to-r from-[#C8A951]/15 to-[#E2CF8A]/8 border-l-4 border-[#C8A951] rounded-r-lg">
+        <p className="text-base xl:text-2xl italic text-[#1B2A4A] leading-relaxed" style={{ fontFamily: 'Spectral, serif' }}>
+          "Donde no hay visión, el pueblo perece. Pero donde hay visión clara, hay dirección;
+          donde hay orden, hay crecimiento; y donde hay propósito, hay multiplicación."
+        </p>
+      </motion.div>
+
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
+        <h3 className="text-xl xl:text-2xl font-bold text-[#1B2A4A] mb-3" style={{ fontFamily: 'Spectral, serif' }}>
+          ¿Qué encontrarás aquí?
+        </h3>
+        <div className="grid grid-cols-2 xl:grid-cols-3 gap-2.5 xl:gap-3">
+          {[
+            ['El corazón del sistema', 'Visión, misión y valores'],
+            ['Base bíblica sólida', 'Nehemías 3 y Tiempo 3'],
+            ['Proceso claro', 'De persona a líder en 7 semanas'],
+            ['Herramientas prácticas', 'Mentores, líderes y supervisores'],
+            ['Estrategia de ganar', 'Metas concretas y medibles'],
+          ].map(([t, d], i) => (
+            <div key={i} className="flex items-start gap-2 p-2.5 xl:p-3 bg-white/60 border border-[#E7E2D6] rounded-lg">
+              <div className="w-7 h-7 xl:w-9 xl:h-9 rounded-full bg-[#1B2A4A] text-[#C8A951] font-bold flex items-center justify-center shrink-0 text-xs xl:text-sm">{String(i + 1).padStart(2, '0')}</div>
+              <div className="min-w-0">
+                <p className="font-bold text-sm xl:text-base text-[#1B2A4A] leading-tight">{t}</p>
+                <p className="text-[11px] xl:text-sm text-[#1B2A4A]/70 leading-snug">{d}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </motion.div>
+    </div>
+  </div>
+);
+
+// ============================================================
+// SLIDE: ¿PARA QUIÉN? + PROMESA (página 4 del manual)
+// ============================================================
+export const SlideParaQuienPromesa = () => (
+  <div className="h-full w-full flex flex-col px-8 xl:px-16 py-8 xl:py-10 bg-gradient-to-br from-[#F5F0E8] via-[#FAFAF8] to-[#EDE8DD] overflow-hidden" data-testid="slide-para-quien-promesa">
+    <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="text-center shrink-0 mb-5">
+      <p className="text-xs uppercase tracking-[0.3em] text-[#C8A951] font-bold mb-1">Continuación</p>
+      <h1 className="text-3xl sm:text-4xl xl:text-6xl font-bold text-[#1B2A4A] leading-tight" style={{ fontFamily: 'Spectral, serif' }}>
+        ¿Para quién es <span className="italic text-[#C8A951]">este manual?</span>
+      </h1>
+      <div className="w-20 h-0.5 bg-[#C8A951] mx-auto mt-3" />
+    </motion.div>
+
+    <div className="flex-1 max-w-6xl mx-auto w-full flex flex-col gap-4 min-h-0 overflow-hidden">
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.1 }}
+        className="grid grid-cols-3 xl:grid-cols-6 gap-2 xl:gap-3">
+        {[
+          ['Pastor', 'Levantar equipo fuerte', '#1B2A4A'],
+          ['Líder', 'Ver crecer a su gente', '#C8A951'],
+          ['Mentor', 'Formar vidas', '#7C2D6F'],
+          ['Servidor', 'Descubrir su puerta', '#0F766E'],
+          ['Nuevo creyente', 'Proceso ordenado', '#B45309'],
+          ['Supervisor', 'Coordinar movimiento', '#7E22CE'],
+        ].map(([t, d, c], i) => (
+          <motion.div key={i} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 + i * 0.06 }}
+            className="p-3 xl:p-4 bg-white border-l-4 rounded-lg shadow-sm" style={{ borderLeftColor: c }}>
+            <p className="font-bold text-sm xl:text-lg text-[#1B2A4A] leading-tight" style={{ fontFamily: 'Spectral, serif' }}>{t}</p>
+            <p className="text-[11px] xl:text-sm text-[#1B2A4A]/70 leading-snug mt-1">{d}</p>
+          </motion.div>
+        ))}
+      </motion.div>
+
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.4 }}
+        className="flex-1 grid grid-cols-1 xl:grid-cols-2 gap-4 min-h-0">
+        <div className="bg-white border border-[#E7E2D6] rounded-xl p-5 xl:p-7 shadow-sm">
+          <p className="text-xs uppercase tracking-[0.25em] text-[#C8A951] font-bold mb-2">Cómo leerlo</p>
+          <p className="text-sm xl:text-lg leading-relaxed text-[#1B2A4A]" style={{ fontFamily: 'Spectral, serif' }}>
+            No lo leas como un libro más. Léelo <strong>con lápiz en mano</strong>, con oración, con tu equipo
+            al lado. Subraya lo que impacta. Marca lo que quieres implementar. Regresa a las secciones
+            que te desafían. <em>Está diseñado para ser usado.</em>
+          </p>
+        </div>
+
+        <div className="relative bg-gradient-to-br from-[#1B2A4A] to-[#0F1A33] text-white rounded-xl p-5 xl:p-7 overflow-hidden shadow-md">
+          <div className="absolute top-0 right-0 w-40 h-40 bg-[#C8A951]/10 rounded-full -mr-20 -mt-20" />
+          <p className="text-xs uppercase tracking-[0.3em] text-[#C8A951] font-bold mb-2 relative">Nuestra Promesa</p>
+          <p className="text-sm xl:text-lg italic leading-relaxed relative" style={{ fontFamily: 'Spectral, serif' }}>
+            Si aplicas con disciplina lo que aquí está escrito, <strong className="text-[#C8A951] not-italic">verás fruto</strong>.
+            No porque este manual sea mágico, sino porque está alineado con los principios que Dios mismo
+            estableció para edificar Su casa.
+          </p>
+          <div className="w-12 h-0.5 bg-[#C8A951] my-3 relative" />
+          <p className="text-xs xl:text-sm text-white/80 relative">Hoy comienza algo nuevo. Gira la página.</p>
+        </div>
+      </motion.div>
+    </div>
+  </div>
+);
+
+// ============================================================
+// SLIDE: PUERTA INDIVIDUAL (P1-P9) — usa LAS_9_PUERTAS[index]
+// ============================================================
+export const SlidePuertaIndividual = ({ slide }) => {
+  const puerta = LAS_9_PUERTAS[slide.puertaIdx];
+  if (!puerta) return null;
+  const Icon = ICON_MAP[puerta.icon] || DoorOpen;
+
+  return (
+    <div className={`h-full w-full flex flex-col bg-gradient-to-br from-[#F5F0E8] via-[#FAFAF8] to-[#EDE8DD] overflow-hidden`} data-testid={`slide-puerta-${puerta.num}`}>
+      {/* Header con color del ministerio */}
+      <div className={`relative shrink-0 px-8 xl:px-12 py-5 xl:py-7 bg-gradient-to-r ${puerta.color} text-white overflow-hidden`}>
+        <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full -mr-32 -mt-32" />
+        <div className="absolute bottom-0 left-0 w-32 h-32 bg-black/15 rounded-full -ml-16 -mb-16" />
+        <div className="relative flex items-center gap-4 xl:gap-6">
+          <div className="w-16 h-16 xl:w-24 xl:h-24 rounded-2xl bg-white/15 backdrop-blur-sm border-2 border-white/30 flex items-center justify-center shrink-0 shadow-lg">
+            <Icon className="w-8 h-8 xl:w-12 xl:h-12 text-white drop-shadow-lg" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[10px] xl:text-sm uppercase tracking-[0.3em] font-bold opacity-90">Puerta {puerta.num}</p>
+            <h1 className="text-2xl sm:text-3xl xl:text-5xl font-bold leading-tight drop-shadow" style={{ fontFamily: 'Spectral, serif' }}>
+              {puerta.nombre}
+            </h1>
+            {puerta.resumen && (
+              <p className="text-sm xl:text-lg italic opacity-90 mt-1" style={{ fontFamily: 'Spectral, serif' }}>
+                {puerta.resumen}
+              </p>
+            )}
+          </div>
+          <div className="hidden md:flex shrink-0 w-20 h-20 xl:w-28 xl:h-28 rounded-full bg-white text-[#1B2A4A] items-center justify-center shadow-2xl ring-4 ring-white/30">
+            <span className="font-black" style={{ fontFamily: 'Spectral, serif', fontSize: 'clamp(28px, 3.5vw, 56px)' }}>{puerta.num}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Contenido */}
+      <div className="flex-1 min-h-0 overflow-y-auto px-8 xl:px-12 py-5 xl:py-7">
+        {puerta.nehemias && (
+          <p className="text-sm xl:text-base italic font-semibold mb-3" style={{ color: puerta.accent }}>
+            📖 {puerta.nehemias}
+          </p>
+        )}
+
+        <div className="p-4 xl:p-5 bg-white border-l-4 rounded-r-lg shadow-sm mb-4" style={{ borderLeftColor: puerta.accent }}>
+          <p className="text-[10px] xl:text-xs uppercase tracking-widest font-bold mb-1.5" style={{ color: puerta.accent }}>Propósito</p>
+          <p className="text-sm xl:text-lg leading-relaxed text-[#1B2A4A]" style={{ fontFamily: 'Spectral, serif' }}>
+            {puerta.proposito}
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 xl:gap-4">
+          {puerta.funciones && <PuertaListBlock titulo="Funciones" items={puerta.funciones} accent={puerta.accent} />}
+          {puerta.responsabilidades && <PuertaListBlock titulo="Responsabilidades" items={puerta.responsabilidades} accent={puerta.accent} />}
+          {puerta.actividades && <PuertaListBlock titulo="Actividades" items={puerta.actividades} accent={puerta.accent} />}
+          {puerta.proceso && <PuertaListBlock titulo="Proceso" items={puerta.proceso} accent={puerta.accent} />}
+          {puerta.bienvenida && <PuertaListBlock titulo="Proceso de Bienvenida" items={puerta.bienvenida} accent={puerta.accent} />}
+          {puerta.estructura && <PuertaListBlock titulo="Estructura" items={puerta.estructura} accent={puerta.accent} />}
+          {puerta.indicadores && <PuertaListBlock titulo="Indicadores de Éxito" items={puerta.indicadores} accent={puerta.accent} />}
+        </div>
+
+        {puerta.ministerios && (
+          <div className="mt-4">
+            <p className="text-[10px] xl:text-xs uppercase tracking-widest font-bold mb-2" style={{ color: puerta.accent }}>Ministerios de Apoyo</p>
+            <div className="flex flex-wrap gap-2">
+              {puerta.ministerios.map(m => (
+                <span key={m} className="px-3 py-1 text-white text-xs xl:text-sm rounded-full font-medium shadow" style={{ backgroundColor: puerta.accent }}>
+                  {m}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {puerta.tiempo && (
+          <div className="mt-4 p-3 xl:p-4 rounded-lg text-sm xl:text-base italic font-medium" style={{ backgroundColor: `${puerta.accent}20`, border: `1px solid ${puerta.accent}66` }}>
+            ⏱ {puerta.tiempo}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const PuertaListBlock = ({ titulo, items, accent }) => (
+  <div className="bg-white border border-[#E7E2D6] rounded-lg p-3 xl:p-4 shadow-sm">
+    <p className="text-[10px] xl:text-xs uppercase tracking-widest font-bold mb-2" style={{ color: accent }}>{titulo}</p>
+    <ul className="space-y-1">
+      {items.map((it, i) => (
+        <li key={i} className="flex items-start gap-2 text-sm xl:text-base text-[#1B2A4A] leading-snug">
+          <span className="font-bold mt-0.5 shrink-0" style={{ color: accent }}>•</span>
+          <span>{it}</span>
+        </li>
+      ))}
+    </ul>
+  </div>
+);
+
+// ============================================================
+// SLIDE: DISCIPULADO EN 8 SEMANAS (página 25 del manual)
+// ============================================================
+const DISCIPULADO_8 = [
+  ['S1', 'Salvación y seguridad en Cristo', '2 Corintios 5:17 · Ser nueva criatura'],
+  ['S2', 'Oración y relación con Dios', 'Jeremías 33:3 · Aprender a hablar con Él'],
+  ['S3', 'La Biblia y crecimiento espiritual', 'El alimento diario del alma'],
+  ['S4', 'La iglesia y congregarse', 'No somos piedras sueltas, somos familia'],
+  ['S5', 'Cambio de vida y santidad', 'El evangelio transforma lo práctico'],
+  ['S6', 'Visión y propósito', 'Descubrir para qué fuimos creados'],
+  ['S7', 'Descubrir el don', 'Servir en una puerta'],
+  ['S8', 'Preparación para el liderazgo', 'De discípulo a formador'],
+];
+
+export const SlideDiscipulado8 = () => (
+  <div className="h-full w-full flex flex-col px-8 xl:px-12 py-6 xl:py-9 bg-gradient-to-br from-[#F5F0E8] via-[#FAFAF8] to-[#EDE8DD] overflow-hidden" data-testid="slide-discipulado-8">
+    <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="text-center shrink-0 mb-5">
+      <div className="inline-flex items-center gap-1.5 bg-[#1B2A4A] text-white rounded-full px-3 py-1 mb-2 font-bold text-[10px] xl:text-xs uppercase tracking-widest">
+        <BookOpen className="w-3 h-3" /> Mapa del Nuevo Creyente
+      </div>
+      <h2 className="text-3xl sm:text-4xl xl:text-6xl font-bold text-[#1B2A4A] leading-tight" style={{ fontFamily: 'Spectral, serif' }}>
+        Discipulado en <span className="text-[#C8A951]">8 Semanas</span>
+      </h2>
+      <p className="text-xs xl:text-base text-muted-foreground mt-1">
+        Las primeras 8 semanas son decisivas — determinan si el nuevo creyente se queda o se pierde.
+      </p>
+    </motion.div>
+
+    <div className="flex-1 grid grid-cols-2 xl:grid-cols-4 gap-2.5 xl:gap-3 min-h-0 max-w-[1700px] mx-auto w-full">
+      {DISCIPULADO_8.map(([s, t, d], i) => (
+        <motion.div key={s} initial={{ opacity: 0, y: 18, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ delay: 0.05 + i * 0.05, type: 'spring', stiffness: 95 }}
+          className="bg-white border-2 border-[#E7E2D6] rounded-xl p-3 xl:p-4 shadow-sm flex items-start gap-3 hover:border-[#C8A951]/60 transition-colors">
+          <div className="w-12 h-12 xl:w-16 xl:h-16 rounded-lg bg-gradient-to-br from-[#C8A951] to-[#A37C2C] text-white font-black flex items-center justify-center shrink-0 shadow-md" style={{ fontFamily: 'Spectral, serif', fontSize: 'clamp(16px, 1.8vw, 28px)' }}>
+            {s}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-bold text-sm xl:text-lg text-[#1B2A4A] leading-tight" style={{ fontFamily: 'Spectral, serif' }}>{t}</p>
+            <p className="text-[11px] xl:text-sm text-[#1B2A4A]/65 leading-snug mt-0.5">{d}</p>
+          </div>
+        </motion.div>
+      ))}
+    </div>
+  </div>
+);
+
+// ============================================================
 // Renderer central
 // ============================================================
 export const SlideRenderer = ({ slide }) => {
   if (!slide) return null;
   switch (slide.type) {
     case 'portada': return <SlidePortada slide={slide} />;
+    case 'indice': return <SlideIndice />;
+    case 'invitacion': return <SlideInvitacion />;
+    case 'para-quien-promesa': return <SlideParaQuienPromesa />;
     case 'intro-manual': return <SlideIntroManual />;
     case 'identidad': return <SlideIdentidad />;
     case 'lema-nehemias': return <SlideLemaNehemias />;
@@ -998,9 +1335,11 @@ export const SlideRenderer = ({ slide }) => {
     case 'modelo-cap': return <SlideModeloCAP />;
     case 'operacion-72': return <SlideOperacion72 />;
     case 'las-9-puertas': return <SlideLas9Puertas />;
+    case 'puerta-individual': return <SlidePuertaIndividual slide={slide} />;
     case 'estructura': return <SlideEstructura />;
     case 'lider': return <SlideLider />;
     case 'mentor': return <SlideMentor />;
+    case 'discipulado-8': return <SlideDiscipulado8 />;
     case 'estrategia': return <SlideEstrategia />;
     case 'consolidado': return <SlideConsolidado />;
     case 'reunion': return <SlideReunionSupervisores />;
