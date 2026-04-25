@@ -27,9 +27,9 @@ export default function PresentacionAudiencePage() {
   const [connected, setConnected] = useState(false);
   const [, setSessionInfo] = useState(null);
 
-  // Zoom independiente para la pantalla LED (default 150% - calibrado
+  // Zoom independiente para la pantalla LED (default 125% - calibrado
   // para una pantalla de 17x7 ft con audiencia a 5-15 metros).
-  const { zoom, increment, decrement, containerRef } = useScreenZoom('audiencia_led_zoom', 1.5);
+  const { zoom, increment, decrement, containerRef } = useScreenZoom('audiencia_led_zoom', 1.25);
 
   useEffect(() => {
     if (!code) { navigate('/presentacion/unirse'); return; }
