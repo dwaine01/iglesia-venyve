@@ -63,3 +63,26 @@
     font-family: 'Spectral', serif;
   }
 }
+
+/* ============================================
+   MODO PROYECTOR / PANTALLA GRANDE
+   Para pantallas LED de iglesia (17ft x 7ft)
+   Aumenta tamaño de todo sin perder estructura
+   ============================================ */
+@media (min-width: 1920px) {
+  html {
+    font-size: 22px;
+  }
+}
+
+@media (min-width: 2560px) {
+  html {
+    font-size: 28px;
+  }
+}
+
+@media (min-width: 3840px) {
+  html {
+    font-size: 36px;
+  }
+}
