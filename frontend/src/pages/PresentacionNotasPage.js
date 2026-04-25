@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -60,9 +60,21 @@ export default function PresentacionNotasPage() {
     };
   }, [code, navigate]);
 
-  // Reset scroll al cambiar de slide
-  useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = 0;
+  // Reset scroll al cambiar de slide.
+  // useLayoutEffect garantiza que el reset corra ANTES del paint, y los
+  // timers adicionales aseguran que sobreviva la animacion de framer-motion
+  // (entry de 0.35s) para que la pastora SIEMPRE empiece a leer desde la
+  // primera linea sin tener que tocar el cursor.
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTop = 0;
+    const timers = [50, 200, 500, 800].map((delay) =>
+      setTimeout(() => {
+        if (scrollRef.current) scrollRef.current.scrollTop = 0;
+      }, delay)
+    );
+    return () => timers.forEach(clearTimeout);
   }, [currentSlide]);
 
   if (error) {
