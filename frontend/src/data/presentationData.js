@@ -351,16 +351,16 @@ export const SLIDES = [
     title: 'Una Invitación',
     subtitle: 'Bienvenido a este Manual',
     notes: {
-      abrir: 'Lo que tienes en las manos no nació de una idea humana ni de una junta administrativa. Nació en madrugadas de oración, frente a Dios, después de meses de buscar dirección con convicción profética clara.',
+      abrir: 'Lo que tienes en las manos no nació de una idea humana… ni de una reunión administrativa. Nació en oración… en madrugadas… en búsqueda… y en una convicción clara de que Dios quiere hacer algo nuevo.',
       decir: [
         'Hay vidas concretas esperando ser alcanzadas con tu llamada. Hay sueños esperando ser activados con tu mentoría. Hay puertas esperando ser abiertas con tu obediencia.',
-        'Esto no es información para acumular en una libreta: es estrategia espiritual para ejecutar esta misma semana, no en seis meses.',
-        'Hacer cosas buenas sin orden cansa el alma y produce desgaste. Hacer cosas buenas con orden multiplica vida y genera fruto que permanece.',
+        'Esto no es información para guardar en una libreta… es estrategia espiritual para ejecutar esta misma semana.',
+        'Porque hacer cosas buenas sin orden… cansa. Pero hacer cosas buenas con orden… multiplica. Produce fruto… y fruto que permanece.',
       ],
-      ilustrar: 'La Biblia dice: "Donde no hay visión, el pueblo se desenfrena." Hoy no estás perdiendo el tiempo asistiendo a otra reunión. Estás recibiendo una visión por la que valdrá la pena vivir los próximos 12 meses sin distraerte.',
-      preguntar: '¿Cuántas cosas buenas hemos estado haciendo que NO han producido fruto medible? ¿Y cuánto tiempo más vamos a esperar para corregir el rumbo todos juntos?',
-      aplicar: 'Saca un bolígrafo ahora. Cada vez que una frase te impacte el corazón en este manual, subráyala. Al final del día, repasa lo subrayado: ahí está tu primer paso de obediencia para esta semana.',
-      transicion: 'Ahora la pregunta no es solo QUÉ hace este manual. Es para QUIÉN fue escrito. La respuesta te incluye a ti.',
+      ilustrar: 'La Biblia dice: "Donde no hay visión, el pueblo se desenfrena." Por eso hoy no estás en otra reunión más… estás recibiendo una visión por la que vale la pena vivir… y trabajar los próximos meses sin distracción.',
+      preguntar: 'Te hago una pregunta directa: ¿Cuántas cosas buenas hemos estado haciendo… pero sin fruto real? ¿Y cuánto tiempo más vamos a seguir así… sin corregir el rumbo?',
+      aplicar: 'Ahora haz algo práctico: saca un bolígrafo. Cada vez que una frase te confronte… subráyala. Porque lo que te confronta… revela lo que Dios quiere trabajar en ti. Y al final del día… lo que subrayaste no es información… es tu primer paso de obediencia.',
+      transicion: 'Ahora la pregunta no es solo qué es este manual… la pregunta es: ¿para quién es? Y la respuesta… te incluye a ti.',
     },
   },
 
