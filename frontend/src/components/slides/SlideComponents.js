@@ -449,40 +449,108 @@ export const SlideOperacion72 = () => (
 );
 
 // ============================================================
-// SLIDE: LAS 9 PUERTAS (grid)
+// SLIDE: LAS 9 PUERTAS (mockup de puertas reales, fila horizontal)
+// Optimizado para pantalla LED 17ft x 7ft (ratio ~2.43:1):
+// los 9 ministerios entran en UNA sola pantalla sin scroll, cada
+// uno renderizado como una puerta de madera con marco, paneles
+// y manija dorada (estilo "pasillo de puertas").
 // ============================================================
-export const SlideLas9Puertas = () => (
-  <div className="min-h-full px-4 sm:px-6 py-8 bg-gradient-to-br from-[#F5F0E8] via-[#FAFAF8] to-[#EDE8DD]">
-    <div className="max-w-6xl mx-auto">
-      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="text-center mb-6">
-        <div className="inline-flex items-center gap-1.5 bg-[#1B2A4A] text-white rounded-full px-3 py-1 mb-3 font-bold text-xs uppercase tracking-widest">
-          <DoorOpen className="w-3 h-3" /> 9 Ministerios
-        </div>
-        <h2 className="text-3xl sm:text-5xl font-bold text-[#1B2A4A]" style={{ fontFamily: 'Spectral, serif' }}>
-          Las <span className="text-[#C8A951]">9 Puertas</span> del Sistema
-        </h2>
-        <p className="text-sm text-muted-foreground mt-2">Cada puerta organiza un ministerio con líderes, equipos y metas.</p>
-      </motion.div>
-
-      <div className="grid grid-cols-3 gap-2 sm:gap-3">
-        {LAS_9_PUERTAS.map((p, i) => {
-          const Icon = ICON_MAP[p.icon] || DoorOpen;
-          return (
-            <motion.div key={p.num} initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: 0.05 + i * 0.05, type: 'spring' }}
-              className="relative aspect-square rounded-2xl overflow-hidden shadow-lg">
-              <div className={`absolute inset-0 bg-gradient-to-br ${p.color}`} />
-              <div className="absolute inset-0 bg-black/10" />
-              <div className="relative z-10 h-full flex flex-col items-center justify-center text-white p-2 sm:p-3 text-center">
-                <div className="text-[9px] sm:text-[10px] font-bold opacity-80 mb-1">PUERTA {p.num}</div>
-                <Icon className="w-6 h-6 sm:w-10 sm:h-10 mb-1.5 drop-shadow-lg" />
-                <p className="text-[10px] sm:text-sm font-bold leading-tight">{p.nombre}</p>
-              </div>
-            </motion.div>
-          );
-        })}
+const Door = ({ puerta, index }) => {
+  const Icon = ICON_MAP[puerta.icon] || DoorOpen;
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 24 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.05 + index * 0.06, type: 'spring', stiffness: 80 }}
+      className="relative h-full flex flex-col items-stretch min-w-0"
+    >
+      {/* Dintel: marco superior de la puerta */}
+      <div className="bg-gradient-to-b from-[#3a2a1c] to-[#2a1d12] rounded-t-md shadow-md py-1 px-1.5 text-center shrink-0 border-x-2 border-t-2 border-[#1a110a]">
+        <p className="text-[9px] xl:text-[10px] font-black text-[#C8A951] uppercase tracking-[0.18em] leading-tight whitespace-nowrap">
+          Puerta {puerta.num}
+        </p>
       </div>
+
+      {/* Cuerpo de la puerta */}
+      <div
+        className={`relative flex-1 bg-gradient-to-b ${puerta.color} border-x-2 border-b-2 border-[#1a110a] shadow-2xl flex flex-col p-1.5 xl:p-2 overflow-hidden min-h-0`}
+      >
+        {/* Bisagras a la izquierda */}
+        <span className="absolute left-0.5 top-3 w-1 h-3 bg-[#C8A951]/80 rounded-sm shadow-sm" aria-hidden="true" />
+        <span className="absolute left-0.5 bottom-3 w-1 h-3 bg-[#C8A951]/80 rounded-sm shadow-sm" aria-hidden="true" />
+
+        {/* Manija dorada */}
+        <span
+          className="absolute right-1 top-1/2 -translate-y-1/2 w-2 h-2 xl:w-2.5 xl:h-2.5 rounded-full bg-gradient-to-br from-[#F2D98F] to-[#A37C2C] ring-1 ring-black/20 shadow"
+          aria-hidden="true"
+        />
+
+        {/* Highlight diagonal (efecto luz) */}
+        <span
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background:
+              'linear-gradient(135deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.05) 35%, transparent 60%)',
+          }}
+          aria-hidden="true"
+        />
+
+        {/* Panel superior (icono) */}
+        <div className="relative z-[1] flex-[1.2] border-2 border-white/30 rounded-sm flex items-center justify-center bg-black/5 mb-1 min-h-0">
+          <Icon className="w-6 h-6 sm:w-8 sm:h-8 xl:w-10 xl:h-10 text-white drop-shadow-lg" />
+        </div>
+
+        {/* Panel inferior (nombre) */}
+        <div className="relative z-[1] flex-1 border-2 border-white/30 rounded-sm flex items-center justify-center text-center px-1 bg-black/5 min-h-0">
+          <p
+            className="text-white font-bold leading-[1.1] drop-shadow-md"
+            style={{ fontSize: 'clamp(9px, 0.9vw, 14px)' }}
+          >
+            {puerta.nombre}
+          </p>
+        </div>
+      </div>
+
+      {/* Sombra del piso */}
+      <div className="h-1 mx-1 bg-black/30 rounded-full blur-sm shrink-0" aria-hidden="true" />
+    </motion.div>
+  );
+};
+
+export const SlideLas9Puertas = () => (
+  <div
+    className="h-full w-full flex flex-col px-4 sm:px-6 py-4 xl:py-6 bg-gradient-to-br from-[#F5F0E8] via-[#FAFAF8] to-[#EDE8DD] overflow-hidden"
+    data-testid="slide-9-puertas"
+  >
+    {/* Header compacto */}
+    <motion.div
+      initial={{ opacity: 0, y: -10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="text-center mb-3 xl:mb-4 shrink-0"
+    >
+      <div className="inline-flex items-center gap-1.5 bg-[#1B2A4A] text-white rounded-full px-3 py-1 mb-2 font-bold text-[10px] xl:text-xs uppercase tracking-widest">
+        <DoorOpen className="w-3 h-3" /> 9 Ministerios
+      </div>
+      <h2
+        className="text-2xl sm:text-3xl xl:text-5xl font-bold text-[#1B2A4A] leading-tight"
+        style={{ fontFamily: 'Spectral, serif' }}
+      >
+        Las <span className="text-[#C8A951]">9 Puertas</span> del Sistema
+      </h2>
+      <p className="text-[11px] xl:text-sm text-muted-foreground mt-1">
+        Cada puerta organiza un ministerio con líderes, equipos y metas.
+      </p>
+    </motion.div>
+
+    {/* Piso (linea de horizonte sutil) */}
+    <div className="flex-1 grid grid-cols-9 gap-1.5 xl:gap-2 min-h-0 relative">
+      {LAS_9_PUERTAS.map((p, i) => (
+        <Door key={p.num} puerta={p} index={i} />
+      ))}
     </div>
+
+    {/* Linea del piso */}
+    <div className="h-[2px] bg-gradient-to-r from-transparent via-[#1a110a]/30 to-transparent shrink-0 mt-1" aria-hidden="true" />
   </div>
 );
 
