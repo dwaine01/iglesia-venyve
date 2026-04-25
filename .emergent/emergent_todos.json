@@ -1,22 +1,18 @@
 [
   {
-    "content": "Lanzar testing_agent para QA integral backend",
+    "content": "Reescribir las notas con tono pastoral profundo (corazón, reflexión, impacto)",
     "status": "completed"
   },
   {
-    "content": "Revisar reporte backend y corregir bugs (91.4% + hardening RBAC aplicado)",
+    "content": "Verificar que los tipos de slide y estructura no se rompan",
     "status": "completed"
   },
   {
-    "content": "Lanzar testing_agent para QA integral frontend",
+    "content": "Compilar y revisar visualmente con screenshot",
     "status": "completed"
   },
   {
-    "content": "Revisar reporte frontend - hallazgo MEDIUM era falso positivo (botones responsive correctos)",
-    "status": "completed"
-  },
-  {
-    "content": "Actualizar plan.md marcando Phase 3 como COMPLETADA",
+    "content": "Commit + push a GitHub para deploy automático",
     "status": "completed"
   }
 ]
