@@ -449,97 +449,168 @@ export const SlideOperacion72 = () => (
 );
 
 // ============================================================
-// SLIDE: LAS 9 PUERTAS (mockup de puertas reales en pasillo)
+// SLIDE: LAS 9 PUERTAS (mockup arqueado + perspectiva 3D)
 // Optimizado para pantalla LED 17ft x 7ft (ratio ~2.43:1):
-// - Encabezado arriba (compacto)
-// - 9 puertas en una fila con proporcion real de puerta (~1:1.9)
-// - Nombre del ministerio DEBAJO de cada puerta
+// - Encabezado arriba
+// - 9 puertas centradas verticalmente, dispuestas en ARCO con
+//   perspectiva 3D (centro al frente, extremos rotados hacia
+//   adentro). Tope ARQUEADO estilo catedral/iglesia.
+// - Nombre minimalista DEBAJO con numero grande dorado.
 // ============================================================
-const Door = ({ puerta, index }) => {
+const ArchedDoor = ({ puerta, index }) => {
   const Icon = ICON_MAP[puerta.icon] || DoorOpen;
+  // Perspectiva curva: centro (i=4) de frente, extremos rotados hacia adentro
+  const offset = index - 4; // -4..+4
+  const rotY = -offset * 7; // izq mira a la derecha, der a la izquierda
+  const translateZ = -Math.abs(offset) * 32; // extremos al fondo
+  const liftY = -Math.abs(offset) * 5; // extremos un poco mas arriba (efecto concha)
+
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 24 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.05 + index * 0.05, type: 'spring', stiffness: 90 }}
-      className="h-full flex flex-col items-center justify-end gap-2 min-w-0"
-    >
-      {/* PUERTA */}
-      <div className="w-full flex flex-col items-center" style={{ flex: '0 1 auto' }}>
-        <div
-          className="relative w-full max-w-[180px] mx-auto"
-          style={{ aspectRatio: '1 / 1.9' }}
+    <div className="h-full flex flex-col items-center min-w-0">
+      {/* PUERTA con perspectiva 3D */}
+      <div
+        className="relative w-full flex justify-center"
+        style={{
+          transform: `rotateY(${rotY}deg) translateZ(${translateZ}px) translateY(${liftY}px)`,
+          transformOrigin: 'center bottom',
+          transformStyle: 'preserve-3d',
+        }}
+      >
+        <motion.div
+          initial={{ opacity: 0, y: 30, scale: 0.9 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ delay: 0.05 + index * 0.05, type: 'spring', stiffness: 80 }}
+          className="relative w-full max-w-[180px]"
+          style={{ aspectRatio: '1 / 2' }}
         >
-          {/* Dintel (marco superior con numero) */}
-          <div className="absolute -top-1 inset-x-0 z-20 flex justify-center">
-            <div className="bg-gradient-to-b from-[#3a2a1c] to-[#2a1d12] rounded-t-md shadow-md py-1 px-3 border-x-2 border-t-2 border-[#1a110a]">
-              <p className="text-[10px] xl:text-xs font-black text-[#C8A951] uppercase tracking-[0.18em] leading-none whitespace-nowrap">
-                Puerta {puerta.num}
-              </p>
-            </div>
-          </div>
-
-          {/* Cuerpo de la puerta */}
+          {/* Marco exterior oscuro con tope arqueado */}
           <div
-            className={`absolute inset-0 mt-3 rounded-t-lg border-[3px] border-[#1a110a] shadow-2xl bg-gradient-to-b ${puerta.color} overflow-hidden`}
+            className="absolute inset-0 bg-gradient-to-b from-[#3a2a1c] to-[#1a110a] shadow-[0_25px_40px_-12px_rgba(0,0,0,0.4)]"
+            style={{ borderRadius: '50% 50% 4px 4px / 30% 30% 4px 4px' }}
           >
-            {/* Highlight diagonal (efecto luz) */}
-            <span
-              className="absolute inset-0 pointer-events-none"
+            {/* Cuerpo interior de la puerta (mas pequeno, dejando ver el marco) */}
+            <div
+              className={`absolute bg-gradient-to-b ${puerta.color} overflow-hidden`}
               style={{
-                background:
-                  'linear-gradient(135deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.08) 35%, transparent 60%)',
+                top: '6px',
+                left: '6px',
+                right: '6px',
+                bottom: '6px',
+                borderRadius: '50% 50% 2px 2px / 30% 30% 2px 2px',
               }}
-              aria-hidden="true"
-            />
+            >
+              {/* Highlight diagonal */}
+              <span
+                className="absolute inset-0 pointer-events-none"
+                style={{
+                  background:
+                    'linear-gradient(135deg, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0.08) 35%, transparent 60%)',
+                }}
+                aria-hidden="true"
+              />
 
-            {/* Bisagras a la izquierda */}
-            <span
-              className="absolute left-0.5 top-3 w-1 h-3 bg-[#C8A951] rounded-sm shadow-sm ring-1 ring-black/30"
-              aria-hidden="true"
-            />
-            <span
-              className="absolute left-0.5 bottom-3 w-1 h-3 bg-[#C8A951] rounded-sm shadow-sm ring-1 ring-black/30"
-              aria-hidden="true"
-            />
+              {/* Bisagras */}
+              <span
+                className="absolute left-1 top-[35%] w-1 h-3 bg-[#C8A951] rounded-sm shadow-sm ring-1 ring-black/30"
+                aria-hidden="true"
+              />
+              <span
+                className="absolute left-1 bottom-[15%] w-1 h-3 bg-[#C8A951] rounded-sm shadow-sm ring-1 ring-black/30"
+                aria-hidden="true"
+              />
 
-            {/* Manija dorada */}
-            <span
-              className="absolute right-1.5 top-1/2 -translate-y-1/2 w-2.5 h-2.5 xl:w-3 xl:h-3 rounded-full bg-gradient-to-br from-[#F2D98F] to-[#A37C2C] ring-1 ring-black/30 shadow-md z-[2]"
-              aria-hidden="true"
-            />
+              {/* Manija dorada */}
+              <span
+                className="absolute right-1.5 top-1/2 w-2.5 h-2.5 xl:w-3 xl:h-3 rounded-full bg-gradient-to-br from-[#F2D98F] to-[#A37C2C] ring-1 ring-black/40 shadow-md z-[2]"
+                aria-hidden="true"
+              />
 
-            {/* 4 paneles clasicos de puerta (2 x 2) */}
-            <div className="absolute inset-2 grid grid-rows-2 gap-1.5 z-[1]">
-              {/* Panel superior con icono */}
-              <div className="border-2 border-white/40 rounded-sm bg-black/10 flex items-center justify-center">
+              {/* Panel arqueado superior con icono (sigue la curva del tope) */}
+              <div
+                className="absolute z-[1] border-2 border-white/40 bg-black/15 flex items-center justify-center"
+                style={{
+                  top: '8%',
+                  left: '12%',
+                  right: '12%',
+                  height: '38%',
+                  borderRadius: '50% 50% 2px 2px / 50% 50% 2px 2px',
+                }}
+              >
                 <Icon className="w-7 h-7 sm:w-8 sm:h-8 xl:w-10 xl:h-10 text-white drop-shadow-lg" />
               </div>
-              {/* Panel inferior decorativo (vacio, marca de panel) */}
-              <div className="border-2 border-white/40 rounded-sm bg-black/10" />
+
+              {/* Panel rectangular inferior (decorativo) */}
+              <div
+                className="absolute z-[1] border-2 border-white/40 bg-black/15 rounded-sm"
+                style={{
+                  top: '52%',
+                  left: '12%',
+                  right: '12%',
+                  bottom: '8%',
+                }}
+              />
+
+              {/* Cruz/ornamento sutil en panel inferior */}
+              <div
+                className="absolute z-[2] left-1/2 -translate-x-1/2 w-0.5 bg-white/20"
+                style={{ top: '60%', height: '12%' }}
+                aria-hidden="true"
+              />
+              <div
+                className="absolute z-[2] left-1/2 -translate-x-1/2 h-0.5 bg-white/20"
+                style={{ top: '64%', width: '8%' }}
+                aria-hidden="true"
+              />
             </div>
           </div>
 
-          {/* Sombra del piso */}
+          {/* Sombra del piso (proporcional a la cercania) */}
           <div
-            className="absolute -bottom-1 inset-x-2 h-1.5 bg-black/40 rounded-full blur-sm"
+            className="absolute -bottom-2 left-1/2 -translate-x-1/2 h-2 bg-black/40 rounded-full blur-md"
+            style={{ width: `${85 - Math.abs(offset) * 5}%` }}
             aria-hidden="true"
           />
-        </div>
+        </motion.div>
       </div>
-
-      {/* NOMBRE DEL MINISTERIO (debajo de la puerta) */}
-      <div className="w-full text-center px-0.5 mt-1">
-        <p
-          className="font-bold text-[#1B2A4A] leading-[1.15]"
-          style={{ fontSize: 'clamp(10px, 0.95vw, 15px)' }}
-        >
-          {puerta.nombre}
-        </p>
-      </div>
-    </motion.div>
+    </div>
   );
 };
+
+const DoorLabel = ({ puerta, index }) => (
+  <motion.div
+    initial={{ opacity: 0, y: 10 }}
+    animate={{ opacity: 1, y: 0 }}
+    transition={{ delay: 0.3 + index * 0.04 }}
+    className="flex flex-col items-center text-center px-1 min-w-0"
+  >
+    <div className="flex items-baseline gap-1.5 mb-1">
+      <span
+        className="font-bold text-[#C8A951] leading-none"
+        style={{
+          fontFamily: 'Spectral, serif',
+          fontSize: 'clamp(20px, 2vw, 32px)',
+        }}
+      >
+        {puerta.num}
+      </span>
+      <span
+        className="text-[#1B2A4A]/40 font-light tracking-widest leading-none"
+        style={{ fontSize: 'clamp(8px, 0.7vw, 11px)' }}
+      >
+        ─
+      </span>
+    </div>
+    <p
+      className="font-bold text-[#1B2A4A] leading-[1.15]"
+      style={{
+        fontFamily: 'Spectral, serif',
+        fontSize: 'clamp(10px, 0.95vw, 15px)',
+      }}
+    >
+      {puerta.nombre}
+    </p>
+  </motion.div>
+);
 
 export const SlideLas9Puertas = () => (
   <div
@@ -550,7 +621,7 @@ export const SlideLas9Puertas = () => (
     <motion.div
       initial={{ opacity: 0, y: -10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="text-center mb-3 xl:mb-4 shrink-0"
+      className="text-center mb-2 xl:mb-3 shrink-0"
     >
       <div className="inline-flex items-center gap-1.5 bg-[#1B2A4A] text-white rounded-full px-3 py-1 mb-2 font-bold text-[10px] xl:text-xs uppercase tracking-widest">
         <DoorOpen className="w-3 h-3" /> 9 Ministerios
@@ -566,18 +637,33 @@ export const SlideLas9Puertas = () => (
       </p>
     </motion.div>
 
-    {/* Pasillo de 9 puertas + descripcion debajo */}
-    <div className="flex-1 grid grid-cols-9 gap-2 xl:gap-3 min-h-0 items-end">
-      {LAS_9_PUERTAS.map((p, i) => (
-        <Door key={p.num} puerta={p} index={i} />
-      ))}
+    {/* Escena 3D: arco curvado de puertas */}
+    <div
+      className="flex-[1.7] flex items-center justify-center min-h-0"
+      style={{ perspective: '1800px' }}
+    >
+      <div
+        className="grid grid-cols-9 gap-2 xl:gap-3 w-full max-w-[1750px] mx-auto h-full items-center"
+        style={{ transformStyle: 'preserve-3d' }}
+      >
+        {LAS_9_PUERTAS.map((p, i) => (
+          <ArchedDoor key={p.num} puerta={p} index={i} />
+        ))}
+      </div>
     </div>
 
-    {/* Linea del piso */}
+    {/* Linea del piso (sutil) */}
     <div
-      className="h-[2px] bg-gradient-to-r from-transparent via-[#1a110a]/30 to-transparent shrink-0 mt-2"
+      className="h-[1px] bg-gradient-to-r from-transparent via-[#1a110a]/20 to-transparent shrink-0 my-2"
       aria-hidden="true"
     />
+
+    {/* Etiquetas minimalistas debajo del arco */}
+    <div className="grid grid-cols-9 gap-2 xl:gap-3 w-full max-w-[1750px] mx-auto shrink-0">
+      {LAS_9_PUERTAS.map((p, i) => (
+        <DoorLabel key={p.num} puerta={p} index={i} />
+      ))}
+    </div>
   </div>
 );
 
