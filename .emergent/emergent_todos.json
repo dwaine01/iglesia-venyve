@@ -1,39 +1,22 @@
 [
   {
-<<<<<<< Updated upstream
-    "content": "Crear hook reutilizable useScreenZoom para vistas de pantalla independientes",
+    "content": "Backend: nuevo modelo de jerarquía + endpoints + permisos + límite 30 + seed",
     "status": "completed"
   },
   {
-    "content": "Aplicar zoom configurable a PresentacionAudiencePage (LED 17x7 ft)",
+    "content": "Frontend: AuthContext + RoleBadge + AppLayout adaptados",
     "status": "completed"
   },
   {
-    "content": "Aplicar zoom configurable a PresentacionNotasPage (Teleprompter TV)",
+    "content": "Frontend: páginas Login + Registro con código + Dashboard + Mi Equipo + Códigos",
     "status": "completed"
   },
   {
-    "content": "Verificar visualmente ambas pantallas con screenshots",
+    "content": "Verificación visual end-to-end",
     "status": "completed"
   },
   {
-    "content": "Commit + push a GitHub para deploy en Railway",
+    "content": "Commit + push para deploy",
     "status": "completed"
-=======
-    "content": "Reescribir las notas con tono pastoral profundo (corazón, reflexión, impacto)",
-    "status": "in_progress"
-  },
-  {
-    "content": "Verificar que los tipos de slide y estructura no se rompan",
-    "status": "pending"
-  },
-  {
-    "content": "Compilar y revisar visualmente con screenshot",
-    "status": "pending"
-  },
-  {
-    "content": "Commit + push a GitHub para deploy automático",
-    "status": "pending"
->>>>>>> Stashed changes
   }
 ]
