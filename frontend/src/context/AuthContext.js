@@ -11,6 +11,7 @@ export function AuthProvider({ children }) {
 
   const logout = useCallback(() => {
     localStorage.removeItem('token');
+    localStorage.removeItem('user');
     setToken(null);
     setUser(null);
   }, []);
@@ -19,7 +20,10 @@ export function AuthProvider({ children }) {
     if (token) {
       axios.get(`${API}/api/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
         .then(res => {
-          setUser(res.data);
+          // Hierarchy v2 envuelve en {user: ...}; el legacy regresaba el user plano.
+          const u = res.data?.user || res.data;
+          setUser(u);
+          if (u) localStorage.setItem('user', JSON.stringify(u));
           setLoading(false);
         })
         .catch(() => {
@@ -34,14 +38,18 @@ export function AuthProvider({ children }) {
   const login = async (email, password) => {
     const res = await axios.post(`${API}/api/auth/login`, { email, password });
     localStorage.setItem('token', res.data.token);
+    localStorage.setItem('user', JSON.stringify(res.data.user));
     setToken(res.data.token);
     setUser(res.data.user);
     return res.data;
   };
 
-  const register = async (nombre, email, password, invite_code) => {
-    const res = await axios.post(`${API}/api/auth/register`, { nombre, email, password, invite_code });
+  const registerWithCode = async ({ code, nombre, apellido, email, password, telefono }) => {
+    const res = await axios.post(`${API}/api/auth/register-with-code`, {
+      code, nombre, apellido, email, password, telefono,
+    });
     localStorage.setItem('token', res.data.token);
+    localStorage.setItem('user', JSON.stringify(res.data.user));
     setToken(res.data.token);
     setUser(res.data.user);
     return res.data;
@@ -52,7 +60,7 @@ export function AuthProvider({ children }) {
   });
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, login, register, logout, getAuthHeaders, API }}>
+    <AuthContext.Provider value={{ user, token, loading, login, registerWithCode, logout, getAuthHeaders, API }}>
       {children}
     </AuthContext.Provider>
   );

@@ -3,56 +3,43 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { Toaster } from './components/ui/sonner';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import LoginPage from './pages/LoginPage';
-import DashboardPage from './pages/DashboardPage';
-import DashboardGeneralPage from './pages/DashboardGeneralPage';
-import MiProgresoPage from './pages/MiProgresoPage';
+import RegistroConCodigoPage from './pages/RegistroConCodigoPage';
+import DashboardJerarquicoPage from './pages/DashboardJerarquicoPage';
+import MiEquipoPage from './pages/MiEquipoPage';
+import CodigosInvitacionPage from './pages/CodigosInvitacionPage';
 import IntroduccionPage from './pages/IntroduccionPage';
 import MapaPage from './pages/MapaPage';
-import SemanaPage from './pages/SemanaPage';
-import RegistroPage from './pages/RegistroPage';
-import EstadisticasPage from './pages/EstadisticasPage';
-import BitacoraPage from './pages/BitacoraPage';
 import PresentacionHomePage from './pages/PresentacionHomePage';
 import PresentacionPresenterPage from './pages/PresentacionPresenterPage';
 import PresentacionAudiencePage from './pages/PresentacionAudiencePage';
 import PresentacionJoinPage from './pages/PresentacionJoinPage';
 import PresentacionImprimirPage from './pages/PresentacionImprimirPage';
 import PresentacionNotasPage from './pages/PresentacionNotasPage';
-import CodigosInvitacionPage from './pages/CodigosInvitacionPage';
 import AppLayout from './components/AppLayout';
 import './App.css';
 
+function Loading() {
+  return (
+    <div className="flex items-center justify-center min-h-screen bg-[#0B1428]">
+      <div className="text-lg text-white/70">Cargando...</div>
+    </div>
+  );
+}
+
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
-  if (loading) return <div className="flex items-center justify-center min-h-screen"><div className="text-lg text-muted-foreground">Cargando...</div></div>;
+  if (loading) return <Loading />;
   if (!user) return <Navigate to="/login" />;
   return children;
 }
 
-// Solo para pastores
-function PastorOnlyRoute({ children }) {
+/** Bloquea rutas para Discipulo (los que solo consumen contenido). */
+function PresenterRoute({ children }) {
   const { user, loading } = useAuth();
-  if (loading) return <div className="flex items-center justify-center min-h-screen"><div className="text-lg text-muted-foreground">Cargando...</div></div>;
+  if (loading) return <Loading />;
   if (!user) return <Navigate to="/login" />;
-  if (user.rol !== 'pastor') return <Navigate to="/" />;
+  if (user.rol === 'discipulo') return <Navigate to="/" />;
   return children;
-}
-
-// Para pastores y líderes
-function StaffRoute({ children }) {
-  const { user, loading } = useAuth();
-  if (loading) return <div className="flex items-center justify-center min-h-screen"><div className="text-lg text-muted-foreground">Cargando...</div></div>;
-  if (!user) return <Navigate to="/login" />;
-  if (user.rol !== 'pastor' && user.rol !== 'lider') return <Navigate to="/" />;
-  return children;
-}
-
-// Redirect to correct dashboard based on role
-function RoleDashboard() {
-  const { user } = useAuth();
-  if (user?.rol === 'pastor') return <Navigate to="/dashboard-general" />;
-  if (user?.rol === 'persona') return <Navigate to="/mi-progreso" />;
-  return <DashboardPage />;
 }
 
 function App() {
@@ -60,34 +47,26 @@ function App() {
     <AuthProvider>
       <Router>
         <Routes>
+          {/* Publicas */}
           <Route path="/login" element={<LoginPage />} />
-          {/* Rutas de presentación full-screen (fuera del AppLayout) */}
-          <Route path="/presentacion/presenter" element={<StaffRoute><PresentacionPresenterPage /></StaffRoute>} />
+          <Route path="/registro" element={<RegistroConCodigoPage />} />
+          <Route path="/registro/:code" element={<RegistroConCodigoPage />} />
+
+          {/* Presentacion full-screen (fuera del AppLayout) */}
+          <Route path="/presentacion/presenter" element={<PresenterRoute><PresentacionPresenterPage /></PresenterRoute>} />
           <Route path="/presentacion/audiencia/:code" element={<PresentacionAudiencePage />} />
           <Route path="/presentacion/notas/:code" element={<PresentacionNotasPage />} />
           <Route path="/presentacion/unirse" element={<PresentacionJoinPage />} />
           <Route path="/presentacion/imprimir" element={<PresentacionImprimirPage />} />
+
+          {/* App protegida */}
           <Route path="/" element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
-            <Route index element={<RoleDashboard />} />
-            
-            {/* Pastor routes */}
-            <Route path="dashboard-general" element={<DashboardGeneralPage />} />
-            <Route path="lider/:liderId/dashboard" element={<DashboardPage />} />
-            
-            {/* Lider routes */}
+            <Route index element={<DashboardJerarquicoPage />} />
+            <Route path="equipo" element={<PresenterRoute><MiEquipoPage /></PresenterRoute>} />
+            <Route path="equipo/codigos" element={<PresenterRoute><CodigosInvitacionPage /></PresenterRoute>} />
             <Route path="introduccion" element={<IntroduccionPage />} />
             <Route path="mapa" element={<MapaPage />} />
-            <Route path="semana/:weekNum" element={<SemanaPage />} />
-            <Route path="persona/:personId/semana/:weekNum" element={<SemanaPage />} />
-            <Route path="registro" element={<StaffRoute><RegistroPage /></StaffRoute>} />
-            <Route path="bitacora" element={<StaffRoute><BitacoraPage /></StaffRoute>} />
-            <Route path="codigos" element={<StaffRoute><CodigosInvitacionPage /></StaffRoute>} />
-            <Route path="estadisticas" element={<EstadisticasPage />} />
-            <Route path="presentacion" element={<PresentacionHomePage />} />
-            
-            {/* Persona routes */}
-            <Route path="mi-progreso" element={<MiProgresoPage />} />
-            <Route path="mi-semana/:weekNum" element={<SemanaPage />} />
+            <Route path="presentacion" element={<PresenterRoute><PresentacionHomePage /></PresenterRoute>} />
           </Route>
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
