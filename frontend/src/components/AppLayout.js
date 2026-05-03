@@ -7,7 +7,8 @@ import { Separator } from './ui/separator';
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 import {
   LayoutDashboard, Users2, KeyRound, BookOpen, Map, Presentation, LogOut,
-  Menu, ChevronRight, UserCircle
+  Menu, ChevronRight, UserCircle, ListChecks, NotebookPen, BarChart3,
+  UserPlus, Sparkles, Network,
 } from 'lucide-react';
 import { LOGO_IGLESIA } from '../data/presentationData';
 import DisplayScaleToggle from './DisplayScaleToggle';
@@ -17,42 +18,62 @@ const LOGO_URL = LOGO_IGLESIA;
 
 /**
  * Items del sidebar segun el rol del usuario en la jerarquia de 5 niveles.
- * - Maestro/Supervisor/Lider/Obrero: gestionan equipo + ven el manual
- * - Discipulo: solo ve el manual y sus tareas (Phase 7)
+ *
+ * - Maestro / Supervisor / Lider / Obrero: ven todo (dashboard pastoral, equipo, manual,
+ *   bitacora, estadisticas, registro de personas)
+ * - Discipulo: solo ve su progreso personal y el manual
  */
 function getNavItems(rol) {
-  const base = [
-    { to: '/', icon: LayoutDashboard, label: 'Dashboard', end: true },
-  ];
+  const isDiscipulo = rol === 'discipulo';
 
-  if (rol !== 'discipulo') {
-    base.push(
-      { to: '/equipo', icon: Users2, label: 'Mi Equipo' },
-      { to: '/equipo/codigos', icon: KeyRound, label: 'Códigos de Invitación' },
-    );
+  const items = [];
+
+  // Dashboard
+  items.push({ to: '/', icon: LayoutDashboard, label: 'Dashboard', end: true });
+
+  if (!isDiscipulo) {
+    items.push({ to: '/jerarquia', icon: Network, label: 'Jerarquía' });
   }
 
-  base.push(
-    { type: 'separator', label: 'Manual' },
-    { to: '/introduccion', icon: BookOpen, label: 'Introducción' },
-    { to: '/mapa', icon: Map, label: 'Mapa 7 Semanas' },
-  );
+  // Mi progreso (todos)
+  items.push({ to: '/mi-progreso', icon: Sparkles, label: 'Mi Progreso' });
 
-  if (rol !== 'discipulo') {
-    base.push({ to: '/presentacion', icon: Presentation, label: 'Presentar Manual' });
+  // Pastoral (Maestro/Supervisor/Lider/Obrero)
+  if (!isDiscipulo) {
+    items.push({ type: 'separator', label: 'Equipo' });
+    items.push({ to: '/equipo', icon: Users2, label: 'Mi Equipo' });
+    items.push({ to: '/equipo/codigos', icon: KeyRound, label: 'Códigos' });
+    items.push({ to: '/registro', icon: UserPlus, label: 'Registrar Persona' });
+
+    items.push({ type: 'separator', label: 'Bitácora' });
+    items.push({ to: '/bitacora', icon: NotebookPen, label: 'Bitácora' });
+    items.push({ to: '/estadisticas', icon: BarChart3, label: 'Estadísticas' });
   }
 
-  return base;
+  // Manual (todos)
+  items.push({ type: 'separator', label: 'Manual' });
+  items.push({ to: '/introduccion', icon: BookOpen, label: 'Introducción' });
+  items.push({ to: '/mapa', icon: Map, label: 'Mapa 7 Semanas' });
+
+  if (!isDiscipulo) {
+    items.push({ to: '/presentacion', icon: Presentation, label: 'Presentar Manual' });
+  }
+
+  return items;
 }
 
 const breadcrumbMap = {
   '/': 'Dashboard',
+  '/jerarquia': 'Vista de Jerarquía',
   '/equipo': 'Mi Equipo',
   '/equipo/codigos': 'Códigos de Invitación',
+  '/registro': 'Registrar Persona',
+  '/bitacora': 'Bitácora',
+  '/estadisticas': 'Estadísticas',
+  '/mi-progreso': 'Mi Progreso',
   '/introduccion': 'Introducción',
   '/mapa': 'Mapa de las 7 Semanas',
   '/presentacion': 'Manual 7 Semanas',
-  '/cuenta': 'Mi Cuenta',
 };
 
 function SidebarContent({ onClose }) {
@@ -82,7 +103,6 @@ function SidebarContent({ onClose }) {
           </div>
         </div>
 
-        {/* Identidad del usuario */}
         {user && (
           <div className="bg-white/5 border border-white/10 rounded-lg p-3" data-testid="sidebar-user-card">
             <div className="flex items-center gap-2 mb-2">
@@ -148,7 +168,12 @@ export default function AppLayout() {
   const [open, setOpen] = useState(false);
   const { user } = useAuth();
   const location = useLocation();
-  const breadcrumb = breadcrumbMap[location.pathname] || ' ';
+  // Calculo manual del breadcrumb (acepta paths con :params)
+  const breadcrumb = breadcrumbMap[location.pathname]
+    || (location.pathname.startsWith('/semana/') ? 'Semana del Manual'
+        : location.pathname.startsWith('/personas/') ? 'Detalle Persona'
+        : location.pathname.startsWith('/dashboard/') ? 'Vista de Líder'
+        : '\u00a0');
 
   return (
     <div className="min-h-screen bg-[#FAFAF8] flex">
@@ -178,7 +203,6 @@ export default function AppLayout() {
 
       {/* Content area */}
       <main className="flex-1 lg:ml-72 pt-14 lg:pt-0">
-        {/* Top bar */}
         <div className="sticky top-14 lg:top-0 z-20 bg-white/95 backdrop-blur border-b border-[#E7E2D6] px-4 sm:px-8 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <span>Inicio</span>

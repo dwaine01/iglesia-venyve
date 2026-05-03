@@ -23,7 +23,7 @@ export default function DashboardPage() {
   const [nota, setNota] = useState('');
   const [sendingNote, setSendingNote] = useState(false);
 
-  const isPastorView = user?.rol === 'pastor' && liderId;
+  const isPastorView = user?.rol === 'maestro' && liderId;
   const isLeader = user?.rol === 'lider';
 
   useEffect(() => {
@@ -81,7 +81,8 @@ export default function DashboardPage() {
   if (loading) return <div className="p-8 text-center">Cargando...</div>;
   if (!data) return <div className="p-8 text-center">Error al cargar datos</div>;
 
-  const { total_personas, por_estado, personas_meta_baja, personas, estado_agregado, pastor_notes, lider } = data;
+  const { total_personas, por_estado: por_estado_raw, personas_meta_baja, personas, estado_agregado, pastor_notes, lider } = data;
+  const por_estado = por_estado_raw || {};
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#F5F0E8] via-[#FAFAF8] to-[#EDE8DD]">

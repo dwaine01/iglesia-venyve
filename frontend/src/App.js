@@ -7,6 +7,13 @@ import RegistroConCodigoPage from './pages/RegistroConCodigoPage';
 import DashboardJerarquicoPage from './pages/DashboardJerarquicoPage';
 import MiEquipoPage from './pages/MiEquipoPage';
 import CodigosInvitacionPage from './pages/CodigosInvitacionPage';
+import DashboardPage from './pages/DashboardPage';
+import DashboardGeneralPage from './pages/DashboardGeneralPage';
+import MiProgresoPage from './pages/MiProgresoPage';
+import RegistroPage from './pages/RegistroPage';
+import BitacoraPage from './pages/BitacoraPage';
+import EstadisticasPage from './pages/EstadisticasPage';
+import SemanaPage from './pages/SemanaPage';
 import IntroduccionPage from './pages/IntroduccionPage';
 import MapaPage from './pages/MapaPage';
 import PresentacionHomePage from './pages/PresentacionHomePage';
@@ -33,7 +40,7 @@ function ProtectedRoute({ children }) {
   return children;
 }
 
-/** Bloquea rutas para Discipulo (los que solo consumen contenido). */
+/** Bloquea rutas para Discípulo (solo consume contenido). */
 function PresenterRoute({ children }) {
   const { user, loading } = useAuth();
   if (loading) return <Loading />;
@@ -47,12 +54,12 @@ function App() {
     <AuthProvider>
       <Router>
         <Routes>
-          {/* Publicas */}
+          {/* Públicas */}
           <Route path="/login" element={<LoginPage />} />
           <Route path="/registro" element={<RegistroConCodigoPage />} />
           <Route path="/registro/:code" element={<RegistroConCodigoPage />} />
 
-          {/* Presentacion full-screen (fuera del AppLayout) */}
+          {/* Presentación full-screen (fuera del AppLayout) */}
           <Route path="/presentacion/presenter" element={<PresenterRoute><PresentacionPresenterPage /></PresenterRoute>} />
           <Route path="/presentacion/audiencia/:code" element={<PresentacionAudiencePage />} />
           <Route path="/presentacion/notas/:code" element={<PresentacionNotasPage />} />
@@ -61,13 +68,30 @@ function App() {
 
           {/* App protegida */}
           <Route path="/" element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
-            <Route index element={<DashboardJerarquicoPage />} />
+            {/* Dashboard adaptativo: Maestro/Supervisor/Lider/Obrero ven Dashboard pastoral, Discipulo ve jerarquico */}
+            <Route index element={<DashboardPage />} />
+            <Route path="jerarquia" element={<DashboardJerarquicoPage />} />
+            <Route path="vista-general" element={<PresenterRoute><DashboardGeneralPage /></PresenterRoute>} />
+            <Route path="dashboard/:liderId" element={<PresenterRoute><DashboardPage /></PresenterRoute>} />
+
+            {/* Gestión de equipo (jerarquía nueva) */}
             <Route path="equipo" element={<PresenterRoute><MiEquipoPage /></PresenterRoute>} />
             <Route path="equipo/codigos" element={<PresenterRoute><CodigosInvitacionPage /></PresenterRoute>} />
+
+            {/* Personas y discipulado */}
+            <Route path="mi-progreso" element={<MiProgresoPage />} />
+            <Route path="personas/:personId" element={<MiProgresoPage />} />
+            <Route path="registro" element={<PresenterRoute><RegistroPage /></PresenterRoute>} />
+            <Route path="bitacora" element={<PresenterRoute><BitacoraPage /></PresenterRoute>} />
+            <Route path="estadisticas" element={<PresenterRoute><EstadisticasPage /></PresenterRoute>} />
+
+            {/* Manual */}
             <Route path="introduccion" element={<IntroduccionPage />} />
             <Route path="mapa" element={<MapaPage />} />
+            <Route path="semana/:numero" element={<SemanaPage />} />
             <Route path="presentacion" element={<PresenterRoute><PresentacionHomePage /></PresenterRoute>} />
           </Route>
+
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
         <Toaster position="top-right" richColors />
