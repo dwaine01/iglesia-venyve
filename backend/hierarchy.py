@@ -679,7 +679,8 @@ async def back_to_legacy(body: dict):
     }
 
     converted = 0
-    async for u in db.users.find({}).to_list(length=10000):
+    users_list = await db.users.find({}).to_list(length=10000)
+    for u in users_list:
         old_role = role_map.get(u.get("rol"), "lider")
         new_doc = {
             "_id": ObjectId(),
