@@ -153,7 +153,7 @@ export default function SemanaPage() {
   // Determine if we're in "person mode" or "general mode"
   const isPersonMode = !!personId;
   // Determine if current user is viewing their OWN week (persona role viewing /mi-semana)
-  const isPersonSelfView = user?.rol === 'discipulo' && !personId;
+  const isPersonSelfView = user?.rol === 'persona' && !personId;
 
   const fetchData = useCallback(async () => {
     try {

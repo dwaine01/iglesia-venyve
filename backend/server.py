@@ -7,13 +7,7 @@ import os
 import jwt
 import bcrypt
 from motor.motor_asyncio import AsyncIOMotorClient
-from hierarchy import router as hierarchy_router
-# Fallback: si bson no está disponible, ObjectId queda como tipo imposible para isinstance.
-try:
-    from bson import ObjectId  # noqa: F401
-except ImportError:
-    class ObjectId:  # type: ignore
-        pass
+from bson import ObjectId
 import json
 
 app = FastAPI(title="Manual Ley 7 Semanas API")
@@ -30,10 +24,6 @@ app.add_middleware(
 
 # MongoDB
 MONGO_URL = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
-
-# Mount jerarquía router (Phase 6)
-app.include_router(hierarchy_router)
-
 DB_NAME = os.environ.get("DB_NAME", "ley7semanas_db")
 client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]
@@ -486,10 +476,261 @@ async def compute_leader_aggregate_status(personas: list) -> dict:
 
 
 # --- Auth Routes ---
+@app.post("/api/auth/register")
+async def register(user: UserRegister):
+    """Registro publico OBLIGATORIO con codigo de invitacion.
+    El codigo determina el rol y el leader_id del nuevo usuario:
+    - Codigo generado por pastor master -> nuevo usuario es pastor
+    - Codigo generado por pastor -> nuevo usuario es lider, leader_id=id del pastor
+    - Codigo generado por lider -> nuevo usuario es persona, leader_id=id del lider
+    """
+    existing = await db.users.find_one({"email": user.email})
+    if existing:
+        raise HTTPException(status_code=400, detail="Este correo ya esta registrado")
+
+    # Validar codigo de invitacion
+    code_clean = (user.invite_code or "").strip().upper()
+    if not code_clean:
+        raise HTTPException(status_code=400, detail="El codigo de invitacion es obligatorio")
+
+    invite = await db.invite_codes.find_one({"code": code_clean})
+    if not invite:
+        raise HTTPException(status_code=400, detail="Codigo de invitacion invalido")
+
+    if invite.get("used_at"):
+        raise HTTPException(status_code=400, detail="Este codigo ya fue utilizado")
+
+    expires_at = invite.get("expires_at")
+    if expires_at and datetime.now(timezone.utc) > expires_at.replace(tzinfo=timezone.utc) if expires_at.tzinfo is None else datetime.now(timezone.utc) > expires_at:
+        raise HTTPException(status_code=400, detail="Este codigo ha caducado")
+
+    # Crear usuario con rol y leader_id del codigo
+    assigned_rol = invite["role_to_assign"]
+    assigned_leader_id = invite.get("leader_id_to_assign")
+
+    hashed = bcrypt.hashpw(user.password.encode(), bcrypt.gensalt())
+    user_doc = {
+        "nombre": user.nombre,
+        "email": user.email,
+        "password": hashed.decode(),
+        "rol": assigned_rol,
+        "leader_id": assigned_leader_id,
+        "created_at": datetime.utcnow(),
+        "registered_via_invite": code_clean,
+    }
+    result = await db.users.insert_one(user_doc)
+    user_id = str(result.inserted_id)
+
+    # Marcar codigo como usado
+    await db.invite_codes.update_one(
+        {"_id": invite["_id"]},
+        {"$set": {"used_at": datetime.now(timezone.utc), "used_by_user_id": user_id}},
+    )
+
+    # Si es persona, tambien crearla en la coleccion people (para CRUD del lider)
+    if assigned_rol == "persona" and assigned_leader_id:
+        await db.people.insert_one({
+            "leader_id": assigned_leader_id,
+            "user_id": user_id,
+            "nombre": user.nombre,
+            "email": user.email,
+            "telefono": "",
+            "edad": None,
+            "estado": "contactado",
+            "current_semana": 1,
+            "created_at": datetime.utcnow(),
+            "registered_via_invite": True,
+        })
+
+    # Initialize checklists for all 7 weeks
+    for semana, tareas in DEFAULT_CHECKLISTS.items():
+        await db.checklists.insert_one({
+            "user_id": user_id,
+            "semana": semana,
+            "tareas": tareas,
+            "updated_at": datetime.utcnow(),
+        })
+
+    # Initialize progress for all 7 weeks
+    for semana in range(1, 8):
+        await db.progress.insert_one({
+            "user_id": user_id,
+            "semana": semana,
+            "casas_visitadas": 0,
+            "personas_contactadas": 0,
+            "personas_ganadas": 0,
+            "oraciones_realizadas": 0,
+            "updated_at": datetime.utcnow(),
+        })
+
+    token = create_token(user_id, user.email, assigned_rol)
+    return {
+        "token": token,
+        "user": {"id": user_id, "nombre": user.nombre, "email": user.email, "rol": assigned_rol},
+    }
+
+
+# =============================================================================
+# INVITE CODES - Sistema de codigos de invitacion
+# =============================================================================
+import secrets
+import string as _string
+
+INVITE_CODE_TTL_DAYS = 30  # Caducidad de codigos no usados
+
+
+def _generate_code(length: int = 8) -> str:
+    """Genera un codigo alfanumerico (sin caracteres ambiguos)."""
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # sin I, O, 0, 1
+    return "".join(secrets.choice(alphabet) for _ in range(length))
+
+
+async def _create_unique_code(length: int = 8, max_attempts: int = 10) -> str:
+    for _ in range(max_attempts):
+        code = _generate_code(length)
+        existing = await db.invite_codes.find_one({"code": code})
+        if not existing:
+            return code
+    raise HTTPException(status_code=500, detail="No fue posible generar un codigo unico, intenta de nuevo")
+
+
+@app.post("/api/invite-codes")
+async def create_invite_code(body: InviteCodeCreate, authorization: Optional[str] = Header(None)):
+    """Genera un codigo de invitacion.
+    - Pastor master / pastor  -> genera codigos para LIDER (nuevo lider no queda vinculado a nadie)
+    - Lider                   -> genera codigos para PERSONA (queda vinculada a este lider)
+    """
+    payload = await get_current_user(authorization)
+    rol = payload.get("rol")
+    creator_id = payload["user_id"]
+
+    if rol not in ("pastor", "lider"):
+        raise HTTPException(status_code=403, detail="Solo pastores y lideres pueden generar codigos")
+
+    # Determinar rol a asignar segun quien crea
+    if rol == "pastor":
+        role_to_assign = "lider"
+        leader_id_to_assign = None  # lider raiz, no queda bajo otro lider
+    else:
+        role_to_assign = "persona"
+        leader_id_to_assign = creator_id  # persona queda bajo este lider
+
+    code = await _create_unique_code()
+    expires_at = datetime.now(timezone.utc) + timedelta(days=INVITE_CODE_TTL_DAYS)
+
+    doc = {
+        "code": code,
+        "created_by_user_id": creator_id,
+        "created_by_rol": rol,
+        "role_to_assign": role_to_assign,
+        "leader_id_to_assign": leader_id_to_assign,
+        "destinatario_nombre": (body.destinatario_nombre or "").strip(),
+        "destinatario_email": (body.destinatario_email or "").strip().lower(),
+        "created_at": datetime.now(timezone.utc),
+        "expires_at": expires_at,
+        "used_at": None,
+        "used_by_user_id": None,
+    }
+    result = await db.invite_codes.insert_one(doc)
+    doc["_id"] = str(result.inserted_id)
+    # Normalizar dates a isoformat
+    for k in ("created_at", "expires_at"):
+        if doc.get(k):
+            doc[k] = doc[k].isoformat()
+    return doc
+
+
+@app.get("/api/invite-codes")
+async def list_invite_codes(authorization: Optional[str] = Header(None)):
+    """Lista los codigos que el usuario actual genero."""
+    payload = await get_current_user(authorization)
+    rol = payload.get("rol")
+    creator_id = payload["user_id"]
+    if rol not in ("pastor", "lider"):
+        raise HTTPException(status_code=403, detail="Solo pastores y lideres pueden ver codigos")
+
+    cursor = db.invite_codes.find({"created_by_user_id": creator_id}).sort("created_at", -1)
+    items = []
+    now_utc = datetime.now(timezone.utc)
+    async for doc in cursor:
+        expires_at = doc.get("expires_at")
+        used_at = doc.get("used_at")
+        # Estado: used | expired | active
+        if used_at:
+            estado = "usado"
+        elif expires_at and (expires_at if expires_at.tzinfo else expires_at.replace(tzinfo=timezone.utc)) < now_utc:
+            estado = "vencido"
+        else:
+            estado = "activo"
+
+        items.append({
+            "id": str(doc["_id"]),
+            "code": doc["code"],
+            "role_to_assign": doc.get("role_to_assign"),
+            "destinatario_nombre": doc.get("destinatario_nombre", ""),
+            "destinatario_email": doc.get("destinatario_email", ""),
+            "created_at": doc["created_at"].isoformat() if doc.get("created_at") else None,
+            "expires_at": doc["expires_at"].isoformat() if doc.get("expires_at") else None,
+            "used_at": doc["used_at"].isoformat() if doc.get("used_at") else None,
+            "used_by_user_id": doc.get("used_by_user_id"),
+            "estado": estado,
+        })
+    return items
+
+
+@app.delete("/api/invite-codes/{code_id}")
+async def revoke_invite_code(code_id: str, authorization: Optional[str] = Header(None)):
+    """Revoca un codigo no usado (lo marca como vencido inmediatamente)."""
+    payload = await get_current_user(authorization)
+    creator_id = payload["user_id"]
+    try:
+        doc = await db.invite_codes.find_one({"_id": ObjectId(code_id), "created_by_user_id": creator_id})
+    except Exception:
+        raise HTTPException(status_code=400, detail="ID invalido")
+
+    if not doc:
+        raise HTTPException(status_code=404, detail="Codigo no encontrado")
+
+    if doc.get("used_at"):
+        raise HTTPException(status_code=400, detail="No se puede revocar un codigo ya usado")
+
+    # Marcar como vencido
+    await db.invite_codes.update_one(
+        {"_id": ObjectId(code_id)},
+        {"$set": {"expires_at": datetime.now(timezone.utc) - timedelta(seconds=1)}},
+    )
+    return {"ok": True, "message": "Codigo revocado"}
 
 
 
 
+
+@app.post("/api/auth/login")
+async def login(user: UserLogin):
+    db_user = await db.users.find_one({"email": user.email})
+    if not db_user:
+        raise HTTPException(status_code=401, detail="Credenciales incorrectas")
+    
+    if not bcrypt.checkpw(user.password.encode(), db_user["password"].encode()):
+        raise HTTPException(status_code=401, detail="Credenciales incorrectas")
+    
+    user_id = str(db_user["_id"])
+    token = create_token(user_id, db_user["email"], db_user["rol"])
+    return {"token": token, "user": {"id": user_id, "nombre": db_user["nombre"], "email": db_user["email"], "rol": db_user["rol"]}}
+
+
+@app.get("/api/auth/me")
+async def get_me(authorization: Optional[str] = Header(None)):
+    if not authorization:
+        raise HTTPException(status_code=401, detail="No autorizado")
+    payload = await get_current_user(authorization)
+    user = await db.users.find_one({"_id": ObjectId(payload["user_id"])})
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    return {"id": str(user["_id"]), "nombre": user["nombre"], "email": user["email"], "rol": user["rol"]}
+
+
+# --- Contacts Routes ---
 @app.get("/api/contacts")
 async def get_contacts(authorization: Optional[str] = Header(None)):
     payload = await get_current_user(authorization)
@@ -524,20 +765,20 @@ async def update_contact(contact_id: str, contact: ContactUpdate, authorization:
     update_data["updated_at"] = datetime.utcnow()
     
     result = await db.contacts.update_one(
-        {"_id": contact_id, "user_id": payload["user_id"]},
+        {"_id": ObjectId(contact_id), "user_id": payload["user_id"]},
         {"$set": update_data}
     )
     if result.modified_count == 0:
         raise HTTPException(status_code=404, detail="Contacto no encontrado")
     
-    updated = await db.contacts.find_one({"_id": contact_id})
+    updated = await db.contacts.find_one({"_id": ObjectId(contact_id)})
     return serialize_doc(updated)
 
 
 @app.delete("/api/contacts/{contact_id}")
 async def delete_contact(contact_id: str, authorization: Optional[str] = Header(None)):
     payload = await get_current_user(authorization)
-    result = await db.contacts.delete_one({"_id": contact_id, "user_id": payload["user_id"]})
+    result = await db.contacts.delete_one({"_id": ObjectId(contact_id), "user_id": payload["user_id"]})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Contacto no encontrado")
     return {"message": "Contacto eliminado"}
@@ -750,7 +991,7 @@ async def generate_manual_pdf(request: Request, authorization: Optional[str] = H
     """Genera el PDF del manual usando Chromium headless server-side.
     Fidelidad 100% — mismo motor del navegador que renderiza en pantalla."""
     payload = await get_current_user(authorization)
-    if payload.get("rol") not in ("maestro", "supervisor", "lider", "obrero"):
+    if payload.get("rol") not in ("pastor", "lider"):
         raise HTTPException(status_code=403, detail="Solo líderes y pastores pueden descargar el manual")
 
     # Derivar URL del frontend desde el request actual (same-origin en prod)
@@ -896,7 +1137,7 @@ async def upload_photo(photo_data: dict, authorization: Optional[str] = Header(N
 async def add_pastor_note(note_data: dict, authorization: Optional[str] = Header(None)):
     """Pastor deja nota a un líder"""
     payload = await get_current_user(authorization)
-    if payload.get("rol") != "maestro":
+    if payload.get("rol") != "pastor":
         raise HTTPException(status_code=403, detail="Solo pastores pueden dejar notas")
     
     leader_id = note_data.get("leader_id")
@@ -960,7 +1201,7 @@ import secrets
 async def create_presentation_session(authorization: Optional[str] = Header(None)):
     """Crea una sesión de presentación. Devuelve un código de 4 dígitos."""
     payload = await get_current_user(authorization)
-    if payload.get("rol") not in ["maestro", "supervisor", "lider", "obrero"]:
+    if payload.get("rol") not in ["pastor", "lider"]:
         raise HTTPException(status_code=403, detail="Solo pastores y líderes pueden presentar")
 
     # Generar código único de 4 dígitos
@@ -1033,9 +1274,9 @@ async def close_presentation_session(code: str, authorization: Optional[str] = H
 async def list_pastors(authorization: Optional[str] = Header(None)):
     """Listar todos los pastores. Solo accesible por pastores."""
     payload = await get_current_user(authorization)
-    if payload.get("rol") != "maestro":
+    if payload.get("rol") != "pastor":
         raise HTTPException(status_code=403, detail="Solo pastores pueden ver la lista de pastores")
-    pastors = await db.users.find({"rol": "maestro"}).sort("created_at", 1).to_list(1000)
+    pastors = await db.users.find({"rol": "pastor"}).sort("created_at", 1).to_list(1000)
     return [
         {
             "_id": str(p["_id"]),
@@ -1052,7 +1293,7 @@ async def list_pastors(authorization: Optional[str] = Header(None)):
 async def create_pastor(data: dict, authorization: Optional[str] = Header(None)):
     """Crear nueva cuenta de pastor con acceso maestro. Solo pastores existentes."""
     payload = await get_current_user(authorization)
-    if payload.get("rol") != "maestro":
+    if payload.get("rol") != "pastor":
         raise HTTPException(status_code=403, detail="Solo pastores pueden crear otros pastores")
 
     nombre = (data.get("nombre") or "").strip()
@@ -1073,8 +1314,8 @@ async def create_pastor(data: dict, authorization: Optional[str] = Header(None))
     doc = {
         "nombre": nombre,
         "email": email,
-        "password_hash": hashed,
-        "rol": "maestro",
+        "password": hashed,
+        "rol": "pastor",
         "created_at": datetime.utcnow(),
         "created_by": payload["user_id"],
     }
@@ -1083,7 +1324,7 @@ async def create_pastor(data: dict, authorization: Optional[str] = Header(None))
         "_id": str(result.inserted_id),
         "nombre": nombre,
         "email": email,
-        "rol": "maestro",
+        "rol": "pastor",
         "created_at": doc["created_at"].isoformat(),
     }
 
@@ -1092,22 +1333,22 @@ async def create_pastor(data: dict, authorization: Optional[str] = Header(None))
 async def delete_pastor(pastor_id: str, authorization: Optional[str] = Header(None)):
     """Eliminar una cuenta de pastor. No se puede auto-eliminar."""
     payload = await get_current_user(authorization)
-    if payload.get("rol") != "maestro":
+    if payload.get("rol") != "pastor":
         raise HTTPException(status_code=403, detail="Solo pastores pueden eliminar pastores")
 
     if pastor_id == payload["user_id"]:
         raise HTTPException(status_code=400, detail="No puedes eliminar tu propia cuenta")
 
     # Evitar eliminar si queda 1 solo pastor
-    total = await db.users.count_documents({"rol": "maestro"})
+    total = await db.users.count_documents({"rol": "pastor"})
     if total <= 1:
         raise HTTPException(status_code=400, detail="Debe existir al menos un pastor en el sistema")
 
-    target = await db.users.find_one({"_id": pastor_id, "rol": "maestro"})
+    target = await db.users.find_one({"_id": ObjectId(pastor_id), "rol": "pastor"})
     if not target:
         raise HTTPException(status_code=404, detail="Pastor no encontrado")
 
-    await db.users.delete_one({"_id": pastor_id})
+    await db.users.delete_one({"_id": ObjectId(pastor_id)})
     return {"success": True, "message": f"Pastor {target.get('nombre')} eliminado"}
 
 
@@ -1115,19 +1356,19 @@ async def delete_pastor(pastor_id: str, authorization: Optional[str] = Header(No
 async def reset_pastor_password(pastor_id: str, data: dict, authorization: Optional[str] = Header(None)):
     """Resetear la contraseña de un pastor. Solo otros pastores."""
     payload = await get_current_user(authorization)
-    if payload.get("rol") != "maestro":
+    if payload.get("rol") != "pastor":
         raise HTTPException(status_code=403, detail="Solo pastores pueden resetear contraseñas de pastores")
 
     new_password = data.get("password") or ""
     if len(new_password) < 6:
         raise HTTPException(status_code=400, detail="La contraseña debe tener al menos 6 caracteres")
 
-    target = await db.users.find_one({"_id": pastor_id, "rol": "maestro"})
+    target = await db.users.find_one({"_id": ObjectId(pastor_id), "rol": "pastor"})
     if not target:
         raise HTTPException(status_code=404, detail="Pastor no encontrado")
 
     hashed = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
-    await db.users.update_one({"_id": pastor_id}, {"$set": {"password_hash": hashed}})
+    await db.users.update_one({"_id": ObjectId(pastor_id)}, {"$set": {"password": hashed}})
     return {"success": True, "message": "Contraseña actualizada correctamente"}
 
 
@@ -1141,7 +1382,7 @@ async def reset_person_password(person_id: str, authorization: Optional[str] = H
     leader_id = payload["user_id"]
     
     # Verificar que la persona pertenece a este líder
-    person = await db.people.find_one({"_id": person_id, "leader_id": leader_id})
+    person = await db.people.find_one({"_id": ObjectId(person_id), "leader_id": leader_id})
     if not person:
         raise HTTPException(status_code=404, detail="Persona no encontrada")
     
@@ -1155,13 +1396,13 @@ async def reset_person_password(person_id: str, authorization: Optional[str] = H
     user_id = person.get("user_id")
     if user_id:
         await db.users.update_one(
-            {"_id": user_id},
-            {"$set": {"password_hash": hashed_password}}
+            {"_id": ObjectId(user_id)},
+            {"$set": {"password": hashed_password}}
         )
     
     # Actualizar temp_password en people
     await db.people.update_one(
-        {"_id": person_id},
+        {"_id": ObjectId(person_id)},
         {"$set": {"temp_password": new_password, "updated_at": datetime.utcnow()}}
     )
     
@@ -1180,9 +1421,9 @@ async def get_dashboard_by_role(authorization: Optional[str] = Header(None), lea
     rol = payload.get("rol", "lider")
     
     # Si es pastor y especifica leader_id, muestra dashboard de ese líder
-    if rol == "maestro" and leader_id:
+    if rol == "pastor" and leader_id:
         # Pastor viendo dashboard de un líder específico
-        lider = await db.users.find_one({"_id": leader_id})
+        lider = await db.users.find_one({"_id": ObjectId(leader_id)})
         if not lider:
             raise HTTPException(status_code=404, detail="Líder no encontrado")
         
@@ -1220,7 +1461,7 @@ async def get_dashboard_by_role(authorization: Optional[str] = Header(None), lea
             "pastor_notes": [serialize_doc(n) for n in notes],
         }
     
-    if rol == "maestro":
+    if rol == "pastor":
         # Dashboard General del Pastor - ve todos los líderes
         lideres = await db.users.find({"rol": "lider"}).to_list(1000)
         lideres_data = []
@@ -1259,7 +1500,7 @@ async def get_dashboard_by_role(authorization: Optional[str] = Header(None), lea
             })
         
         return {
-            "rol": "maestro",
+            "rol": "pastor",
             "lideres": lideres_data,
             "total_lideres": len(lideres_data),
             "total_personas_global": sum(l["total_personas"] for l in lideres_data),
@@ -1301,7 +1542,7 @@ async def get_dashboard_by_role(authorization: Optional[str] = Header(None), lea
             "pastor_notes": [serialize_doc(n) for n in notes],
         }
     
-    elif rol == "discipulo":
+    elif rol == "persona":
         # Dashboard Personal - ve solo su progreso
         person = await db.people.find_one({"user_id": user_id})
         if not person:
@@ -1333,7 +1574,7 @@ async def get_dashboard_by_role(authorization: Optional[str] = Header(None), lea
         estado_dinamico = calculate_dynamic_status(start_date, progreso_general)
         
         return {
-            "rol": "discipulo",
+            "rol": "persona",
             "person": serialize_doc(person),
             "semana_actual": semana_actual,
             "estrellas": estrellas,
@@ -1354,7 +1595,7 @@ async def get_dashboard_by_role(authorization: Optional[str] = Header(None), lea
 async def get_people(authorization: Optional[str] = Header(None), estado: Optional[str] = None):
     """Obtener todas las personas bajo el líder actual"""
     payload = await get_current_user(authorization)
-    if payload.get("rol") not in ("maestro", "supervisor", "lider", "obrero"):
+    if payload.get("rol") not in ("lider", "pastor"):
         raise HTTPException(status_code=403, detail="Solo líderes y pastores pueden listar personas")
     leader_id = payload["user_id"]
     
@@ -1370,7 +1611,7 @@ async def get_people(authorization: Optional[str] = Header(None), estado: Option
 async def create_person(person: PersonCreate, authorization: Optional[str] = Header(None)):
     """Crear una nueva persona para consolidar"""
     payload = await get_current_user(authorization)
-    if payload.get("rol") not in ("maestro", "supervisor", "lider", "obrero"):
+    if payload.get("rol") not in ("lider", "pastor"):
         raise HTTPException(status_code=403, detail="Solo líderes y pastores pueden crear personas")
     leader_id = payload["user_id"]
     
@@ -1401,9 +1642,9 @@ async def create_person(person: PersonCreate, authorization: Optional[str] = Hea
     # Create user account for the person
     user_doc = {
         "email": f"{username}@consolidados.app",
-        "password_hash": hashed_password,
+        "password": hashed_password,
         "nombre": person.nombre,
-        "rol": "discipulo",
+        "rol": "persona",
         "created_at": datetime.utcnow(),
     }
     user_result = await db.users.insert_one(user_doc)
@@ -1469,7 +1710,7 @@ async def get_person(person_id: str, authorization: Optional[str] = Header(None)
     payload = await get_current_user(authorization)
     leader_id = payload["user_id"]
     
-    person = await db.people.find_one({"_id": person_id, "leader_id": leader_id})
+    person = await db.people.find_one({"_id": ObjectId(person_id), "leader_id": leader_id})
     if not person:
         raise HTTPException(status_code=404, detail="Persona no encontrada")
     
@@ -1486,13 +1727,13 @@ async def update_person(person_id: str, person: PersonUpdate, authorization: Opt
     update_data["updated_at"] = datetime.utcnow()
     
     result = await db.people.update_one(
-        {"_id": person_id, "leader_id": leader_id},
+        {"_id": ObjectId(person_id), "leader_id": leader_id},
         {"$set": update_data}
     )
     if result.modified_count == 0 and result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Persona no encontrada")
     
-    updated = await db.people.find_one({"_id": person_id})
+    updated = await db.people.find_one({"_id": ObjectId(person_id)})
     return serialize_doc(updated)
 
 
@@ -1500,12 +1741,12 @@ async def update_person(person_id: str, person: PersonUpdate, authorization: Opt
 async def delete_person(person_id: str, authorization: Optional[str] = Header(None)):
     """Eliminar una persona (y todo su progreso asociado)"""
     payload = await get_current_user(authorization)
-    if payload.get("rol") not in ("maestro", "supervisor", "lider", "obrero"):
+    if payload.get("rol") not in ("lider", "pastor"):
         raise HTTPException(status_code=403, detail="Solo líderes y pastores pueden eliminar personas")
     leader_id = payload["user_id"]
     
     # Delete person
-    result = await db.people.delete_one({"_id": person_id, "leader_id": leader_id})
+    result = await db.people.delete_one({"_id": ObjectId(person_id), "leader_id": leader_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Persona no encontrada")
     
@@ -1523,7 +1764,7 @@ async def get_person_progress(person_id: str, authorization: Optional[str] = Hea
     leader_id = payload["user_id"]
     
     # Verify person belongs to leader
-    person = await db.people.find_one({"_id": person_id, "leader_id": leader_id})
+    person = await db.people.find_one({"_id": ObjectId(person_id), "leader_id": leader_id})
     if not person:
         raise HTTPException(status_code=404, detail="Persona no encontrada")
     
@@ -1542,7 +1783,7 @@ async def update_person_progress(person_id: str, update: PersonProgressUpdate, a
     leader_id = payload["user_id"]
     
     # Verify person belongs to leader
-    person = await db.people.find_one({"_id": person_id, "leader_id": leader_id})
+    person = await db.people.find_one({"_id": ObjectId(person_id), "leader_id": leader_id})
     if not person:
         raise HTTPException(status_code=404, detail="Persona no encontrada")
     
@@ -1604,7 +1845,7 @@ async def get_person_checklists(person_id: str, authorization: Optional[str] = H
     leader_id = payload["user_id"]
     
     # Verify person belongs to leader
-    person = await db.people.find_one({"_id": person_id, "leader_id": leader_id})
+    person = await db.people.find_one({"_id": ObjectId(person_id), "leader_id": leader_id})
     if not person:
         raise HTTPException(status_code=404, detail="Persona no encontrada")
     
@@ -1748,7 +1989,7 @@ def _serialize_journal(doc: dict) -> dict:
 async def create_journal_entry(entry: JournalEntryCreate, authorization: Optional[str] = Header(None)):
     """Crear una entrada de bitácora del líder. Solo líderes y pastores."""
     payload = await get_current_user(authorization)
-    if payload.get("rol") not in ("maestro", "supervisor", "lider", "obrero"):
+    if payload.get("rol") not in ("lider", "pastor"):
         raise HTTPException(status_code=403, detail="Solo líderes y pastores pueden registrar bitácora")
 
     doc = {
@@ -1882,14 +2123,14 @@ async def update_journal_entry(entry_id: str, entry: JournalEntryUpdate, authori
     """Editar una entrada. Solo el dueño (o pastor) puede."""
     payload = await get_current_user(authorization)
     try:
-        oid = entry_id
+        oid = ObjectId(entry_id)
     except Exception:
         raise HTTPException(status_code=400, detail="ID inválido")
 
     existing = await db.leader_journal.find_one({"_id": oid})
     if not existing:
         raise HTTPException(status_code=404, detail="Entrada no encontrada")
-    if payload.get("rol") != "maestro" and existing.get("leader_id") != payload["user_id"]:
+    if payload.get("rol") != "pastor" and existing.get("leader_id") != payload["user_id"]:
         raise HTTPException(status_code=403, detail="No autorizado")
 
     update_doc = {k: v for k, v in entry.dict(exclude_unset=True).items() if v is not None}
@@ -1906,14 +2147,14 @@ async def delete_journal_entry(entry_id: str, authorization: Optional[str] = Hea
     """Eliminar una entrada. Solo el dueño (o pastor) puede."""
     payload = await get_current_user(authorization)
     try:
-        oid = entry_id
+        oid = ObjectId(entry_id)
     except Exception:
         raise HTTPException(status_code=400, detail="ID inválido")
 
     existing = await db.leader_journal.find_one({"_id": oid})
     if not existing:
         return {"success": True}
-    if payload.get("rol") != "maestro" and existing.get("leader_id") != payload["user_id"]:
+    if payload.get("rol") != "pastor" and existing.get("leader_id") != payload["user_id"]:
         raise HTTPException(status_code=403, detail="No autorizado")
 
     await db.leader_journal.delete_one({"_id": oid})

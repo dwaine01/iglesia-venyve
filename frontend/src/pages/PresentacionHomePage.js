@@ -44,7 +44,7 @@ export default function PresentacionHomePage() {
     },
   ];
 
-  const backRoute = user?.rol === 'maestro' ? '/dashboard-general' : '/dashboard';
+  const backRoute = user?.rol === 'pastor' ? '/dashboard-general' : '/dashboard';
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#F5F0E8] via-[#FAFAF8] to-[#EDE8DD]">
