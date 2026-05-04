@@ -653,6 +653,57 @@ async def hierarchy_dashboard(authorization: Optional[str] = Header(None)):
 # Endpoints — Admin / Seed
 # ==============================================================================
 
+@router.post("/api/admin/back-to-legacy")
+async def back_to_legacy(body: dict):
+    """One-time: Migra los users actuales al schema viejo (password sin _hash,
+    ObjectId, rol pastor/lider/persona). Borra collection invitations.
+    Despues de llamar este endpoint, se puede hacer revert del codigo al estado
+    anterior y el login seguira funcionando."""
+    if body.get("seed_secret") != SEED_SECRET:
+        raise HTTPException(403, "Invalid secret")
+
+    from bson import ObjectId
+
+    # Drop la collection nueva
+    try:
+        await db.invitations.drop()
+    except Exception:
+        pass
+
+    role_map = {
+        "maestro": "pastor",
+        "supervisor": "lider",
+        "lider": "lider",
+        "obrero": "lider",
+        "discipulo": "persona",
+    }
+
+    converted = 0
+    async for u in db.users.find({}).to_list(length=10000):
+        old_role = role_map.get(u.get("rol"), "lider")
+        new_doc = {
+            "_id": ObjectId(),
+            "email": u["email"],
+            "password": u.get("password_hash") or u.get("password", ""),
+            "nombre": u["nombre"],
+            "rol": old_role,
+            "created_at": u.get("created_at", datetime.now(timezone.utc)),
+        }
+        if old_role == "lider":
+            # Si era supervisor/obrero, ahora es lider sin estructura jerarquica
+            pass
+        if old_role == "persona":
+            # discipulo -> persona necesita leader_id; ponlo None y luego usar pastor
+            new_doc["leader_id"] = None
+            new_doc["estado"] = "contactado"
+
+        await db.users.delete_one({"_id": u["_id"]})
+        await db.users.insert_one(new_doc)
+        converted += 1
+
+    return {"converted": converted, "message": "Schema migrado. Ahora puedes hacer revert del codigo."}
+
+
 @router.post("/api/admin/seed-maestro")
 async def seed_maestro(body: SeedMaestroIn):
     """
