@@ -1,0 +1,36 @@
+# Git / CI
+.git
+.gitignore
+.github
+
+# Node
+node_modules
+frontend/node_modules
+frontend/build
+frontend/.next
+frontend/.cache
+
+# Python
+**/__pycache__
+*.pyc
+*.pyo
+*.pyd
+.venv
+venv
+.env
+*.env.local
+
+# Docs y misc (no necesarios en runtime)
+README.md
+DEPLOYMENT.md
+plan.md
+design_guidelines.md
+memory/
+tests/
+.emergent/
+*.log
+
+# Editor
+.vscode
+.idea
+.DS_Store
