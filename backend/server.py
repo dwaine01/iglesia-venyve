@@ -57,7 +57,8 @@ class UserRegister(BaseModel):
     nombre: str
     email: EmailStr
     password: str
-    invite_code: str  # OBLIGATORIO: codigo que da el lider/pastor
+    invite_code: Optional[str] = None  # OPCIONAL: si se da, asigna rol y leader segun el codigo
+    rol: Optional[str] = "lider"  # usado solo si NO hay invite_code (pastor / lider / persona)
 
 
 class UserLogin(BaseModel):
@@ -478,70 +479,89 @@ async def compute_leader_aggregate_status(personas: list) -> dict:
 # --- Auth Routes ---
 @app.post("/api/auth/register")
 async def register(user: UserRegister):
-    """Registro publico OBLIGATORIO con codigo de invitacion.
-    El codigo determina el rol y el leader_id del nuevo usuario:
-    - Codigo generado por pastor master -> nuevo usuario es pastor
-    - Codigo generado por pastor -> nuevo usuario es lider, leader_id=id del pastor
-    - Codigo generado por lider -> nuevo usuario es persona, leader_id=id del lider
+    """Registro publico.
+    - Si se provee invite_code: el codigo determina rol y leader_id
+        (pastor master -> pastor; pastor -> lider; lider -> persona).
+    - Si NO se provee invite_code: registro libre con el rol indicado en el body
+        (default 'lider'). Esto restaura el comportamiento original simple.
     """
     existing = await db.users.find_one({"email": user.email})
     if existing:
         raise HTTPException(status_code=400, detail="Este correo ya esta registrado")
 
-    # Validar codigo de invitacion
     code_clean = (user.invite_code or "").strip().upper()
-    if not code_clean:
-        raise HTTPException(status_code=400, detail="El codigo de invitacion es obligatorio")
 
-    invite = await db.invite_codes.find_one({"code": code_clean})
-    if not invite:
-        raise HTTPException(status_code=400, detail="Codigo de invitacion invalido")
+    # ---------- Rama A: registro CON codigo de invitacion ----------
+    if code_clean:
+        invite = await db.invite_codes.find_one({"code": code_clean})
+        if not invite:
+            raise HTTPException(status_code=400, detail="Codigo de invitacion invalido")
 
-    if invite.get("used_at"):
-        raise HTTPException(status_code=400, detail="Este codigo ya fue utilizado")
+        if invite.get("used_at"):
+            raise HTTPException(status_code=400, detail="Este codigo ya fue utilizado")
 
-    expires_at = invite.get("expires_at")
-    if expires_at and datetime.now(timezone.utc) > expires_at.replace(tzinfo=timezone.utc) if expires_at.tzinfo is None else datetime.now(timezone.utc) > expires_at:
-        raise HTTPException(status_code=400, detail="Este codigo ha caducado")
+        expires_at = invite.get("expires_at")
+        if expires_at and datetime.now(timezone.utc) > expires_at.replace(tzinfo=timezone.utc) if expires_at.tzinfo is None else datetime.now(timezone.utc) > expires_at:
+            raise HTTPException(status_code=400, detail="Este codigo ha caducado")
 
-    # Crear usuario con rol y leader_id del codigo
-    assigned_rol = invite["role_to_assign"]
-    assigned_leader_id = invite.get("leader_id_to_assign")
+        # Crear usuario con rol y leader_id del codigo
+        assigned_rol = invite["role_to_assign"]
+        assigned_leader_id = invite.get("leader_id_to_assign")
 
-    hashed = bcrypt.hashpw(user.password.encode(), bcrypt.gensalt())
-    user_doc = {
-        "nombre": user.nombre,
-        "email": user.email,
-        "password": hashed.decode(),
-        "rol": assigned_rol,
-        "leader_id": assigned_leader_id,
-        "created_at": datetime.utcnow(),
-        "registered_via_invite": code_clean,
-    }
-    result = await db.users.insert_one(user_doc)
-    user_id = str(result.inserted_id)
-
-    # Marcar codigo como usado
-    await db.invite_codes.update_one(
-        {"_id": invite["_id"]},
-        {"$set": {"used_at": datetime.now(timezone.utc), "used_by_user_id": user_id}},
-    )
-
-    # Si es persona, tambien crearla en la coleccion people (para CRUD del lider)
-    if assigned_rol == "persona" and assigned_leader_id:
-        await db.people.insert_one({
-            "leader_id": assigned_leader_id,
-            "user_id": user_id,
+        hashed = bcrypt.hashpw(user.password.encode(), bcrypt.gensalt())
+        user_doc = {
             "nombre": user.nombre,
             "email": user.email,
-            "telefono": "",
-            "edad": None,
-            "estado": "contactado",
-            "current_semana": 1,
+            "password": hashed.decode(),
+            "rol": assigned_rol,
+            "leader_id": assigned_leader_id,
             "created_at": datetime.utcnow(),
-            "registered_via_invite": True,
-        })
+            "registered_via_invite": code_clean,
+        }
+        result = await db.users.insert_one(user_doc)
+        user_id = str(result.inserted_id)
 
+        # Marcar codigo como usado
+        await db.invite_codes.update_one(
+            {"_id": invite["_id"]},
+            {"$set": {"used_at": datetime.now(timezone.utc), "used_by_user_id": user_id}},
+        )
+
+        # Si es persona, tambien crearla en la coleccion people (para CRUD del lider)
+        if assigned_rol == "persona" and assigned_leader_id:
+            await db.people.insert_one({
+                "leader_id": assigned_leader_id,
+                "user_id": user_id,
+                "nombre": user.nombre,
+                "email": user.email,
+                "telefono": "",
+                "edad": None,
+                "estado": "contactado",
+                "current_semana": 1,
+                "created_at": datetime.utcnow(),
+                "registered_via_invite": True,
+            })
+    # ---------- Rama B: registro LIBRE (sin codigo) ----------
+    else:
+        free_rol = (user.rol or "lider").strip().lower()
+        if free_rol not in ("pastor", "lider", "persona"):
+            free_rol = "lider"
+        assigned_rol = free_rol
+        assigned_leader_id = None
+
+        hashed = bcrypt.hashpw(user.password.encode(), bcrypt.gensalt())
+        user_doc = {
+            "nombre": user.nombre,
+            "email": user.email,
+            "password": hashed.decode(),
+            "rol": assigned_rol,
+            "leader_id": assigned_leader_id,
+            "created_at": datetime.utcnow(),
+        }
+        result = await db.users.insert_one(user_doc)
+        user_id = str(result.inserted_id)
+
+    # ---------- Inicializacion comun (checklists + progress) ----------
     # Initialize checklists for all 7 weeks
     for semana, tareas in DEFAULT_CHECKLISTS.items():
         await db.checklists.insert_one({

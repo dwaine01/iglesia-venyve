@@ -33,6 +33,7 @@ export default function LoginPage() {
   const [nombre, setNombre] = useState('');
   const [inviteCode, setInviteCode] = useState('');
   const [inviteCodeError, setInviteCodeError] = useState('');
+  const [rol, setRol] = useState('lider');
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
   const [quoteIdx, setQuoteIdx] = useState(0);
@@ -56,13 +57,8 @@ export default function LoginPage() {
     try {
       if (isRegister) {
         const codeClean = (inviteCode || '').trim().toUpperCase();
-        if (!codeClean) {
-          setInviteCodeError('El codigo de invitacion es obligatorio.');
-          toast.error('Debes ingresar tu codigo de invitacion');
-          setLoading(false);
-          return;
-        }
-        await register(nombre, email, password, codeClean);
+        // Codigo de invitacion ahora OPCIONAL: si no hay codigo, se usa el rol elegido.
+        await register(nombre, email, password, codeClean || null, codeClean ? null : rol);
         toast.success('Cuenta creada exitosamente');
       } else {
         await login(email, password);
@@ -200,14 +196,13 @@ export default function LoginPage() {
                       <>
                         <div className="space-y-1.5">
                           <Label htmlFor="invite_code" className={`text-[10px] uppercase tracking-wider font-semibold ${inviteCodeError ? 'text-red-400' : 'text-[#C8A951]'}`}>
-                            Codigo de invitacion *
+                            Codigo de invitacion <span className="text-white/40 normal-case tracking-normal">(opcional)</span>
                           </Label>
                           <Input
                             id="invite_code"
                             value={inviteCode}
                             onChange={(e) => { setInviteCode(e.target.value.toUpperCase()); if (inviteCodeError) setInviteCodeError(''); }}
-                            placeholder="Ej: AB3XK7YP"
-                            required
+                            placeholder="Ej: AB3XK7YP (dejar vacio si no tienes)"
                             maxLength={12}
                             aria-invalid={!!inviteCodeError}
                             data-testid="register-invite-code-input"
@@ -223,10 +218,32 @@ export default function LoginPage() {
                             </p>
                           ) : (
                             <p className="text-[10px] text-white/40 leading-tight">
-                              Solicita tu codigo al lider que te dara seguimiento.
+                              Si tienes un codigo, ingresalo. Si no, elige tu rol abajo.
                             </p>
                           )}
                         </div>
+
+                        {/* Selector de rol - solo cuando NO hay codigo */}
+                        {!inviteCode.trim() && (
+                          <div className="space-y-1.5">
+                            <Label htmlFor="rol" className="text-white/75 text-[10px] uppercase tracking-wider font-semibold">
+                              Tu rol
+                            </Label>
+                            <select
+                              id="rol"
+                              value={rol}
+                              onChange={(e) => setRol(e.target.value)}
+                              data-testid="register-rol-select"
+                              className="w-full h-10 px-3 bg-transparent border border-white/20 rounded-md text-white focus-visible:ring-2 focus-visible:ring-[#C8A951]/50 focus-visible:border-[#C8A951]/60 outline-none"
+                              style={{ colorScheme: 'dark' }}
+                            >
+                              <option value="pastor" className="bg-[#0B1428] text-white">Pastor</option>
+                              <option value="lider" className="bg-[#0B1428] text-white">Lider</option>
+                              <option value="persona" className="bg-[#0B1428] text-white">Persona</option>
+                            </select>
+                          </div>
+                        )}
+
                         <div className="space-y-1.5">
                           <Label htmlFor="nombre" className="text-white/75 text-[10px] uppercase tracking-wider font-semibold">
                             Nombre completo

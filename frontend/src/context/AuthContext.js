@@ -39,8 +39,11 @@ export function AuthProvider({ children }) {
     return res.data;
   };
 
-  const register = async (nombre, email, password, invite_code) => {
-    const res = await axios.post(`${API}/api/auth/register`, { nombre, email, password, invite_code });
+  const register = async (nombre, email, password, invite_code, rol) => {
+    const payload = { nombre, email, password };
+    if (invite_code && invite_code.trim()) payload.invite_code = invite_code.trim();
+    if (rol) payload.rol = rol;
+    const res = await axios.post(`${API}/api/auth/register`, payload);
     localStorage.setItem('token', res.data.token);
     setToken(res.data.token);
     setUser(res.data.user);
