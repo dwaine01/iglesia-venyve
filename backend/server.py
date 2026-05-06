@@ -835,6 +835,90 @@ async def update_checklist(update: ChecklistUpdate, authorization: Optional[str]
     return serialize_doc(updated)
 
 
+# --- ADMIN: Diagnóstico y bootstrap de checklists/progress ---
+@app.get("/api/admin/diagnose-users")
+async def admin_diagnose_users(authorization: Optional[str] = Header(None)):
+    """Solo pastor: diagnostica qué users tienen checklists/progress y cuáles no."""
+    payload = await get_current_user(authorization)
+    if payload.get("rol") != "pastor":
+        raise HTTPException(status_code=403, detail="Solo pastores")
+
+    users = await db.users.find({}).to_list(1000)
+    report = []
+    for u in users:
+        uid = str(u["_id"])
+        cl_count = await db.checklists.count_documents({"user_id": uid})
+        pr_count = await db.progress.count_documents({"user_id": uid})
+        ppl_count = await db.people.count_documents({"leader_id": uid})
+        report.append({
+            "user_id": uid,
+            "nombre": u.get("nombre"),
+            "email": u.get("email"),
+            "rol": u.get("rol"),
+            "leader_id": u.get("leader_id"),
+            "checklists": cl_count,
+            "progress": pr_count,
+            "personas_asignadas": ppl_count,
+            "needs_bootstrap": cl_count < 7 or pr_count < 7,
+        })
+    return {
+        "total_users": len(users),
+        "needs_bootstrap": sum(1 for r in report if r["needs_bootstrap"]),
+        "users": report,
+    }
+
+
+@app.post("/api/admin/bootstrap-checklists")
+async def admin_bootstrap_checklists(authorization: Optional[str] = Header(None)):
+    """Solo pastor: para cada usuario que no tenga las 7 semanas de checklists/progress,
+    las crea con los valores DEFAULT_CHECKLISTS. Idempotente: salta los que ya existen."""
+    payload = await get_current_user(authorization)
+    if payload.get("rol") != "pastor":
+        raise HTTPException(status_code=403, detail="Solo pastores")
+
+    users = await db.users.find({}).to_list(1000)
+    fixed = []
+    for u in users:
+        uid = str(u["_id"])
+        nombre = u.get("nombre", "?")
+        cl_added = 0
+        pr_added = 0
+        # Checklists faltantes
+        for semana, tareas in DEFAULT_CHECKLISTS.items():
+            existing = await db.checklists.find_one({"user_id": uid, "semana": semana})
+            if not existing:
+                await db.checklists.insert_one({
+                    "user_id": uid,
+                    "semana": semana,
+                    "tareas": [dict(t) for t in tareas],
+                    "updated_at": datetime.utcnow(),
+                })
+                cl_added += 1
+        # Progress faltantes
+        for semana in range(1, 8):
+            existing = await db.progress.find_one({"user_id": uid, "semana": semana})
+            if not existing:
+                await db.progress.insert_one({
+                    "user_id": uid,
+                    "semana": semana,
+                    "casas_visitadas": 0,
+                    "personas_contactadas": 0,
+                    "personas_ganadas": 0,
+                    "oraciones_realizadas": 0,
+                    "updated_at": datetime.utcnow(),
+                })
+                pr_added += 1
+        if cl_added or pr_added:
+            fixed.append({
+                "user_id": uid,
+                "nombre": nombre,
+                "email": u.get("email"),
+                "checklists_creadas": cl_added,
+                "progress_creados": pr_added,
+            })
+    return {"total_arreglados": len(fixed), "detalle": fixed}
+
+
 # --- Progress Routes ---
 @app.get("/api/progress")
 async def get_progress(authorization: Optional[str] = Header(None)):
