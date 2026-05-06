@@ -919,6 +919,282 @@ async def admin_bootstrap_checklists(authorization: Optional[str] = Header(None)
     return {"total_arreglados": len(fixed), "detalle": fixed}
 
 
+# ----------------------------------------------------------------------------
+# ADMIN: Sembrar datos de DEMO (personas, bitácora, progreso, tareas marcadas)
+# ----------------------------------------------------------------------------
+DEMO_PEOPLE_NAMES = [
+    ("María González", "familiar", "femenino", 42, "casado", "Ama de casa"),
+    ("José Ramírez", "amigo", "masculino", 35, "soltero", "Mecánico"),
+    ("Carla Rodríguez", "vecino", "femenino", 28, "soltero", "Estudiante"),
+    ("Pedro Hernández", "conocido", "masculino", 51, "casado", "Comerciante"),
+    ("Ana Sánchez", "familiar", "femenino", 38, "divorciado", "Enfermera"),
+    ("Luis Martínez", "amigo", "masculino", 29, "soltero", "Conductor"),
+    ("Rosa Díaz", "vecino", "femenino", 47, "casado", "Maestra"),
+    ("Carlos Pérez", "conocido", "masculino", 33, "union_libre", "Técnico"),
+    ("Laura Torres", "familiar", "femenino", 26, "soltero", "Diseñadora"),
+    ("Miguel Castro", "amigo", "masculino", 44, "casado", "Carpintero"),
+    ("Patricia Vega", "vecino", "femenino", 31, "casado", "Contadora"),
+    ("Roberto Silva", "conocido", "masculino", 39, "viudo", "Albañil"),
+]
+
+DEMO_NOTAS_BITACORA = [
+    "Día de oración profética y visita a tres familias del sector.",
+    "Salimos en equipo a tocar puertas. Dios abrió corazones.",
+    "Reunión con personas en proceso. Confesaron las oraciones del libro MCD.",
+    "Cierre del día con resultados. Hubo lágrimas de gratitud.",
+    "Visita pastoral a familia en crisis. Oramos por sanidad.",
+    "Entrega de libros LBS a graduados. Ceremonia simple y poderosa.",
+    "Intercesión contra los 7 espíritus peores. Liberación visible.",
+    "Día de ayuno y oración. Apretamos para que Dios respalde.",
+    "Hicimos seguimiento por WhatsApp y notas de voz.",
+    "Decoración del templo con tema GANAR. Todo el equipo activo.",
+    "Visita a discípulos avanzados. Empiezan a impactar a otros.",
+    "Reunión de obreros para repasar la estrategia 30-60-100.",
+]
+
+
+@app.post("/api/admin/seed-demo")
+async def admin_seed_demo(authorization: Optional[str] = Header(None)):
+    """Solo pastor: crea data de DEMO para los líderes existentes que no tengan personas.
+    - 5-7 personas por líder en distintos estados (contactado, visitado, en_proceso, graduado)
+    - Cada persona con sus 7 semanas de checklists/progress (algunas tareas completas)
+    - 12-14 entradas de bitácora distribuidas en los últimos 21 días por líder
+    - Marca algunas tareas del propio líder como completadas (para ver % de progreso)
+    Idempotente: si un líder ya tiene personas creadas (>0) se salta.
+    Marca todo con demo=True para poder limpiar después con /api/admin/clear-demo.
+    """
+    import random as _r
+    import unicodedata as _ud
+    import re as _re
+    import string as _s
+
+    payload = await get_current_user(authorization)
+    if payload.get("rol") != "pastor":
+        raise HTTPException(status_code=403, detail="Solo pastores")
+
+    leaders = await db.users.find({"rol": "lider"}).to_list(1000)
+    summary = []
+    estados = ["contactado", "visitado", "en_proceso", "en_proceso", "graduado"]
+    horarios = ["manana", "tarde", "noche"]
+
+    name_pool = list(DEMO_PEOPLE_NAMES)
+    _r.shuffle(name_pool)
+    name_idx = 0
+
+    for leader in leaders:
+        leader_id = str(leader["_id"])
+        leader_nombre = leader.get("nombre", "Líder")
+        # ¿ya tiene personas?
+        existing_count = await db.people.count_documents({"leader_id": leader_id})
+        if existing_count > 0:
+            summary.append({
+                "lider": leader_nombre,
+                "estado": "skipped",
+                "razon": f"ya tiene {existing_count} personas",
+            })
+            continue
+
+        n_people = _r.randint(5, 7)
+        people_created = []
+        for _ in range(n_people):
+            if name_idx >= len(name_pool):
+                _r.shuffle(name_pool)
+                name_idx = 0
+            nombre, relacion, genero, edad, estado_civil, ocupacion = name_pool[name_idx]
+            name_idx += 1
+
+            estado = _r.choice(estados)
+            # Semana actual: graduados están en 7, otros distribuidos 1-6
+            if estado == "graduado":
+                semana_actual = 7
+            else:
+                semana_actual = _r.randint(1, 6)
+
+            # Crear cuenta de usuario para la persona
+            slug = _ud.normalize("NFKD", nombre).encode("ascii", "ignore").decode("ascii")
+            slug = _re.sub(r"[^a-zA-Z0-9]+", ".", slug).strip(".").lower() or "persona"
+            username = f"{slug}{_r.randint(100, 999)}"
+            # garantizar único
+            for _try in range(5):
+                if not await db.users.find_one({"email": f"{username}@consolidados.app"}):
+                    break
+                username = f"{slug}{_r.randint(100, 999)}"
+            temp_password = "".join(_r.choices(_s.ascii_letters + _s.digits, k=8))
+            hashed = bcrypt.hashpw(temp_password.encode(), bcrypt.gensalt()).decode()
+            user_doc = {
+                "email": f"{username}@consolidados.app",
+                "password": hashed,
+                "nombre": nombre,
+                "rol": "persona",
+                "created_at": datetime.utcnow(),
+                "demo": True,
+            }
+            user_res = await db.users.insert_one(user_doc)
+            person_user_id = str(user_res.inserted_id)
+
+            person_doc = {
+                "user_id": person_user_id,
+                "leader_id": leader_id,
+                "nombre": nombre,
+                "telefono": f"+1809{_r.randint(1000000, 9999999)}",
+                "direccion": f"Calle {_r.choice(['Duarte','Mella','Sánchez','Independencia','Las Carreras'])} #{_r.randint(1,250)}",
+                "relacion": relacion,
+                "estado": estado,
+                "semana_actual": semana_actual,
+                "notas": _r.choice([
+                    "Muestra mucho interés. Pide oración por su familia.",
+                    "Tiene heridas del pasado, está en proceso de sanidad.",
+                    "Asiste regularmente. Se conecta con el grupo.",
+                    "Necesita seguimiento más cercano esta semana.",
+                    "Avanza bien. Confiesa las oraciones del libro.",
+                ]),
+                "foto_url": "",
+                "edad": edad,
+                "genero": genero,
+                "ocupacion": ocupacion,
+                "estado_civil": estado_civil,
+                "mejor_horario": _r.choice(horarios),
+                "fecha_primer_contacto": (datetime.utcnow() - timedelta(days=_r.randint(7, 60))).isoformat(),
+                "como_conocio_iglesia": _r.choice(["Por un familiar", "Vecino lo invitó", "Visita evangelística", "Redes sociales"]),
+                "username": username,
+                "temp_password": temp_password,
+                "created_at": datetime.utcnow(),
+                "updated_at": datetime.utcnow(),
+                "demo": True,
+            }
+            p_res = await db.people.insert_one(person_doc)
+            person_id = str(p_res.inserted_id)
+
+            # Checklists para las 7 semanas - completar parcialmente según semana_actual
+            for semana, tareas in DEFAULT_CHECKLISTS.items():
+                if semana < semana_actual:
+                    completion_pct = 1.0  # semanas pasadas: completas
+                elif semana == semana_actual:
+                    completion_pct = _r.uniform(0.3, 0.8)  # actual: parcial
+                else:
+                    completion_pct = 0.0  # futuras: vacías
+                tareas_doc = []
+                for t in tareas:
+                    completed = _r.random() < completion_pct
+                    tareas_doc.append({"id": t["id"], "texto": t["texto"], "completada": completed})
+                await db.person_checklists.insert_one({
+                    "person_id": person_id,
+                    "leader_id": leader_id,
+                    "semana": semana,
+                    "tareas": tareas_doc,
+                    "updated_at": datetime.utcnow(),
+                    "demo": True,
+                })
+
+            # Progress para 7 semanas - números realistas
+            for semana in range(1, 8):
+                if semana <= semana_actual:
+                    casas = _r.randint(15, 40)
+                    contactadas = _r.randint(8, casas)
+                    ganadas = _r.randint(0, max(1, contactadas // 3))
+                    oraciones = _r.randint(20, 80)
+                else:
+                    casas = contactadas = ganadas = oraciones = 0
+                await db.person_progress.insert_one({
+                    "person_id": person_id,
+                    "leader_id": leader_id,
+                    "semana": semana,
+                    "casas_visitadas": casas,
+                    "personas_contactadas": contactadas,
+                    "personas_ganadas": ganadas,
+                    "oraciones_realizadas": oraciones,
+                    "notas": "",
+                    "updated_at": datetime.utcnow(),
+                    "demo": True,
+                })
+
+            people_created.append({"id": person_id, "nombre": nombre, "estado": estado, "semana": semana_actual})
+
+        # Bitácora del líder: 12-14 entradas en últimos 21 días
+        n_entries = _r.randint(12, 14)
+        used_dates = set()
+        entries_created = 0
+        for _ in range(n_entries):
+            for _try in range(10):
+                d = datetime.utcnow().date() - timedelta(days=_r.randint(0, 21))
+                if d not in used_dates:
+                    used_dates.add(d)
+                    break
+            casas = _r.randint(5, 25)
+            contactadas = _r.randint(3, casas)
+            ganadas = _r.randint(0, max(1, contactadas // 3))
+            oraciones = _r.randint(10, 60)
+            await db.leader_journal.insert_one({
+                "leader_id": leader_id,
+                "fecha": d.isoformat(),
+                "casas_visitadas": casas,
+                "personas_contactadas": contactadas,
+                "personas_ganadas": ganadas,
+                "oraciones_realizadas": oraciones,
+                "notas": _r.choice(DEMO_NOTAS_BITACORA),
+                "created_at": datetime.combine(d, datetime.min.time()).replace(hour=_r.randint(18, 22)),
+                "updated_at": datetime.utcnow(),
+                "demo": True,
+            })
+            entries_created += 1
+
+        # Marcar tareas del líder como completadas (para ver % progreso)
+        for cl in await db.checklists.find({"user_id": leader_id}).to_list(20):
+            tareas = cl.get("tareas", [])
+            n_complete = _r.randint(2, max(2, len(tareas) - 2))
+            indices = _r.sample(range(len(tareas)), min(n_complete, len(tareas)))
+            for i in indices:
+                tareas[i]["completada"] = True
+            await db.checklists.update_one({"_id": cl["_id"]}, {"$set": {"tareas": tareas, "updated_at": datetime.utcnow()}})
+
+        # Progress propio del líder: poner números
+        for semana in range(1, 8):
+            casas = _r.randint(20, 50)
+            contactadas = _r.randint(10, casas)
+            ganadas = _r.randint(2, max(2, contactadas // 3))
+            oraciones = _r.randint(30, 100)
+            await db.progress.update_one(
+                {"user_id": leader_id, "semana": semana},
+                {"$set": {
+                    "casas_visitadas": casas,
+                    "personas_contactadas": contactadas,
+                    "personas_ganadas": ganadas,
+                    "oraciones_realizadas": oraciones,
+                    "updated_at": datetime.utcnow(),
+                }},
+                upsert=True,
+            )
+
+        summary.append({
+            "lider": leader_nombre,
+            "estado": "creado",
+            "personas_creadas": len(people_created),
+            "personas": people_created,
+            "bitacora_entradas": entries_created,
+        })
+
+    return {"summary": summary}
+
+
+@app.post("/api/admin/clear-demo")
+async def admin_clear_demo(authorization: Optional[str] = Header(None)):
+    """Solo pastor: elimina TODOS los documentos marcados con demo=True.
+    Útil para limpiar la data de prueba cuando ya no se necesite."""
+    payload = await get_current_user(authorization)
+    if payload.get("rol") != "pastor":
+        raise HTTPException(status_code=403, detail="Solo pastores")
+
+    cols = ["users", "people", "person_checklists", "person_progress", "leader_journal", "invite_codes"]
+    deleted = {}
+    for col in cols:
+        try:
+            r = await db[col].delete_many({"demo": True})
+            deleted[col] = r.deleted_count
+        except Exception as e:
+            deleted[col] = f"error: {e}"
+    return {"deleted": deleted}
+
+
 # --- Progress Routes ---
 @app.get("/api/progress")
 async def get_progress(authorization: Optional[str] = Header(None)):
