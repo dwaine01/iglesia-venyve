@@ -1195,6 +1195,24 @@ async def admin_clear_demo(authorization: Optional[str] = Header(None)):
     return {"deleted": deleted}
 
 
+@app.post("/api/admin/reset-leader-passwords")
+async def admin_reset_leader_passwords(authorization: Optional[str] = Header(None)):
+    """Solo pastor: resetea las contraseñas de TODOS los líderes a una conocida ('Lider2026!')
+    para poder hacer login y probar la experiencia del líder. Devuelve email + password de cada uno."""
+    payload = await get_current_user(authorization)
+    if payload.get("rol") != "pastor":
+        raise HTTPException(status_code=403, detail="Solo pastores")
+
+    new_pwd = "Lider2026!"
+    hashed = bcrypt.hashpw(new_pwd.encode(), bcrypt.gensalt()).decode()
+    leaders = await db.users.find({"rol": "lider"}).to_list(1000)
+    out = []
+    for u in leaders:
+        await db.users.update_one({"_id": u["_id"]}, {"$set": {"password": hashed}})
+        out.append({"nombre": u.get("nombre"), "email": u.get("email"), "password": new_pwd})
+    return {"reset": len(out), "credenciales": out}
+
+
 # --- Progress Routes ---
 @app.get("/api/progress")
 async def get_progress(authorization: Optional[str] = Header(None)):
