@@ -90,6 +90,8 @@ async def seed():
         "email": "admin@venyve.com",
         "password": hashed.decode(),
         "rol": "lider",
+        "is_active": True,
+        "token_version": 1,
         "created_at": datetime.utcnow(),
     }
     result = await db.users.insert_one(user_doc)

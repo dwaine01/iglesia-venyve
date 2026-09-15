@@ -9,6 +9,9 @@ import bcrypt
 from motor.motor_asyncio import AsyncIOMotorClient
 from bson import ObjectId
 import json
+from dotenv import load_dotenv
+
+load_dotenv(override=False)
 
 app = FastAPI(title="Manual Ley 7 Semanas API")
 
@@ -34,6 +37,34 @@ if not SECRET_KEY:
     raise RuntimeError("JWT_SECRET environment variable is required but not set.")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE = 24  # hours
+DEFAULT_IS_ACTIVE = True
+DEFAULT_TOKEN_VERSION = 1
+
+
+def utc_now() -> datetime:
+    """Return a timezone-aware UTC datetime for BASE-01 code."""
+    return datetime.now(timezone.utc)
+
+
+def utc_iso_z(value: Optional[datetime] = None) -> str:
+    """Serialize a datetime as ISO-8601 UTC with a trailing Z."""
+    current = value or utc_now()
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone.utc)
+    return current.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def user_is_active(user: dict) -> bool:
+    """Existing users without the physical field remain logically active."""
+    return user.get("is_active", DEFAULT_IS_ACTIVE) is True
+
+
+def user_token_version(user: dict) -> int:
+    """Existing users without the physical field use logical version 1."""
+    version = user.get("token_version", DEFAULT_TOKEN_VERSION)
+    if isinstance(version, bool) or not isinstance(version, int) or version < 1:
+        raise HTTPException(status_code=401, detail="No autorizado")
+    return version
 
 
 def serialize_doc(doc):
@@ -226,13 +257,29 @@ class JournalEntryUpdate(BaseModel):
 
 
 # --- Auth Helpers ---
-def create_token(user_id: str, email: str, rol: str):
+def create_token(
+    user_id: str,
+    email: str,
+    rol: str,
+    token_version: int,
+    expires_delta: Optional[timedelta] = None,
+    extra_claims: Optional[dict] = None,
+):
+    if isinstance(token_version, bool) or not isinstance(token_version, int) or token_version < 1:
+        raise ValueError("token_version must be a positive integer")
+
     payload = {
         "user_id": user_id,
         "email": email,
         "rol": rol,
-        "exp": datetime.utcnow() + timedelta(hours=ACCESS_TOKEN_EXPIRE)
+        "token_version": token_version,
+        "exp": utc_now() + (
+            expires_delta if expires_delta is not None else timedelta(hours=ACCESS_TOKEN_EXPIRE)
+        ),
     }
+    if extra_claims:
+        protected_claims = {"user_id", "email", "rol", "token_version", "exp"}
+        payload.update({key: value for key, value in extra_claims.items() if key not in protected_claims})
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 
@@ -247,10 +294,34 @@ def verify_token(token: str):
 
 
 async def get_current_user(authorization: Optional[str] = Header(None)):
-    if not authorization:
+    if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="No autorizado")
-    token = authorization.replace("Bearer ", "")
-    return verify_token(token)
+
+    token = authorization[len("Bearer "):].strip()
+    if not token:
+        raise HTTPException(status_code=401, detail="No autorizado")
+
+    payload = verify_token(token)
+    token_version = payload.get("token_version")
+    user_id = payload.get("user_id")
+
+    # BASE-01 intentionally invalidates legacy JWTs without token_version.
+    if (
+        isinstance(token_version, bool)
+        or not isinstance(token_version, int)
+        or token_version < 1
+        or not isinstance(user_id, str)
+        or not ObjectId.is_valid(user_id)
+    ):
+        raise HTTPException(status_code=401, detail="No autorizado")
+
+    db_user = await db.users.find_one({"_id": ObjectId(user_id)})
+    if not db_user or not user_is_active(db_user):
+        raise HTTPException(status_code=401, detail="No autorizado")
+    if token_version != user_token_version(db_user):
+        raise HTTPException(status_code=401, detail="No autorizado")
+
+    return payload
 
 
 # --- P-001 Core de Personas (aditivo) ---
@@ -531,6 +602,8 @@ async def register(user: UserRegister):
             "email": user.email,
             "password": hashed.decode(),
             "rol": assigned_rol,
+            "is_active": DEFAULT_IS_ACTIVE,
+            "token_version": DEFAULT_TOKEN_VERSION,
             "leader_id": assigned_leader_id,
             "created_at": datetime.utcnow(),
             "registered_via_invite": code_clean,
@@ -572,6 +645,8 @@ async def register(user: UserRegister):
             "email": user.email,
             "password": hashed.decode(),
             "rol": assigned_rol,
+            "is_active": DEFAULT_IS_ACTIVE,
+            "token_version": DEFAULT_TOKEN_VERSION,
             "leader_id": assigned_leader_id,
             "created_at": datetime.utcnow(),
         }
@@ -600,7 +675,12 @@ async def register(user: UserRegister):
             "updated_at": datetime.utcnow(),
         })
 
-    token = create_token(user_id, user.email, assigned_rol)
+    token = create_token(
+        user_id,
+        user.email,
+        assigned_rol,
+        user_token_version(user_doc),
+    )
     return {
         "token": token,
         "user": {"id": user_id, "nombre": user.nombre, "email": user.email, "rol": assigned_rol},
@@ -747,12 +827,19 @@ async def login(user: UserLogin):
     db_user = await db.users.find_one({"email": user.email})
     if not db_user:
         raise HTTPException(status_code=401, detail="Credenciales incorrectas")
-    
+
     if not bcrypt.checkpw(user.password.encode(), db_user["password"].encode()):
         raise HTTPException(status_code=401, detail="Credenciales incorrectas")
-    
+    if not user_is_active(db_user):
+        raise HTTPException(status_code=401, detail="Credenciales incorrectas")
+
     user_id = str(db_user["_id"])
-    token = create_token(user_id, db_user["email"], db_user["rol"])
+    token = create_token(
+        user_id,
+        db_user["email"],
+        db_user["rol"],
+        user_token_version(db_user),
+    )
     return {"token": token, "user": {"id": user_id, "nombre": db_user["nombre"], "email": db_user["email"], "rol": db_user["rol"]}}
 
 
@@ -1043,6 +1130,8 @@ async def admin_seed_demo(authorization: Optional[str] = Header(None)):
                 "password": hashed,
                 "nombre": nombre,
                 "rol": "persona",
+                "is_active": DEFAULT_IS_ACTIVE,
+                "token_version": DEFAULT_TOKEN_VERSION,
                 "created_at": datetime.utcnow(),
                 "demo": True,
             }
@@ -1415,18 +1504,16 @@ async def generate_manual_pdf(request: Request, authorization: Optional[str] = H
 
     # Emitimos un token efímero que el frontend usa para auto-login en la
     # sesión headless (localStorage) antes de cargar la ruta protegida.
-    from jwt import encode as jwt_encode
-    ephemeral_token = jwt_encode(
-        {
-            "user_id": payload["user_id"],
-            "rol": payload.get("rol"),
+    ephemeral_token = create_token(
+        payload["user_id"],
+        payload.get("email", ""),
+        payload.get("rol", ""),
+        payload["token_version"],
+        expires_delta=timedelta(minutes=3),
+        extra_claims={
             "nombre": payload.get("nombre", ""),
-            "email": payload.get("email", ""),
-            "exp": datetime.utcnow() + timedelta(minutes=3),
             "purpose": "pdf-render",
         },
-        SECRET_KEY,
-        algorithm="HS256",
     )
 
     try:
@@ -1731,6 +1818,8 @@ async def create_pastor(data: dict, authorization: Optional[str] = Header(None))
         "email": email,
         "password": hashed,
         "rol": "pastor",
+        "is_active": DEFAULT_IS_ACTIVE,
+        "token_version": DEFAULT_TOKEN_VERSION,
         "created_at": datetime.utcnow(),
         "created_by": payload["user_id"],
     }
@@ -2060,6 +2149,8 @@ async def create_person(person: PersonCreate, authorization: Optional[str] = Hea
         "password": hashed_password,
         "nombre": person.nombre,
         "rol": "persona",
+        "is_active": DEFAULT_IS_ACTIVE,
+        "token_version": DEFAULT_TOKEN_VERSION,
         "created_at": datetime.utcnow(),
     }
     user_result = await db.users.insert_one(user_doc)
