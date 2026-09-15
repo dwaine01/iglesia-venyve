@@ -110,6 +110,8 @@ frontend/node_modules/.cache/default-development/28.pack
 backend/.env
 frontend/.env
 **/.env
+**/.env.*
+!**/.env.example
 CREDENCIALES.md
 PENDIENTE_MANANA.md
 Manual-VERIFICADO.pdf
@@ -136,6 +138,7 @@ credentials.json
 *.pem
 *.key
 .credentials
+!**/.env.example
 frontend/node_modules/.cache/default-development/37.pack
 frontend/node_modules/.cache/default-development/40.pack
 frontend/node_modules/.cache/default-development/44.pack

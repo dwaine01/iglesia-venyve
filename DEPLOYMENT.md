@@ -6,9 +6,10 @@ Despliegue en Railway: **2 servicios** (backend FastAPI y frontend React) desde 
 
 | Dominio | Servicio | Tipo |
 |---|---|---|
-| `iglesiavenyve.org` | Frontend React | Público |
-| `www.iglesiavenyve.org` | Frontend React | Público |
-| `panel.iglesiavenyve.org` | Backend FastAPI | API |
+| `panel.iglesiavenyve.org` | Frontend React | Público |
+| (URL pública asignada por Railway) | Backend FastAPI | API |
+
+> **Nota (actualizada):** Esta tabla refleja la arquitectura REAL verificada en Railway. El backend se accede actualmente mediante la URL pública que Railway asigna al servicio backend (no tiene dominio personalizado propio). Los dominios `iglesiavenyve.org` y `www.iglesiavenyve.org` NO están enlazados actualmente a ningún servicio activo. El resto de esta guía documenta el procedimiento histórico de configuración DNS en HostGator y puede no reflejar el estado actual del despliegue.
 
 ---
 
@@ -16,7 +17,7 @@ Despliegue en Railway: **2 servicios** (backend FastAPI y frontend React) desde 
 
 - Cuenta en [Railway](https://railway.app) conectada a GitHub (repo `dwaine01/iglesia-venyve`).
 - MongoDB Atlas configurado:
-  - `MONGO_URL`: `mongodb+srv://josuecomunicaciones_db_user:Jtdwaine19831.%40@cluster0.kvxqdtz.mongodb.net`
+    - `MONGO_URL`: configúralo en Railway → Variables del servicio backend (no se documenta el valor real aquí por seguridad).
   - `DB_NAME`: `iglesia_venyve`
   - En **Atlas → Network Access** añade `0.0.0.0/0` (o los rangos IP de Railway).
 - Dominio `iglesiavenyve.org` con DNS gestionado en HostGator (cPanel → Zone Editor).
@@ -31,9 +32,9 @@ Despliegue en Railway: **2 servicios** (backend FastAPI y frontend React) desde 
 4. **Variables** (Settings → Variables → Raw Editor):
 
 ```
-MONGO_URL=mongodb+srv://josuecomunicaciones_db_user:Jtdwaine19831.%40@cluster0.kvxqdtz.mongodb.net/?retryWrites=true&w=majority
+MONGO_URL=<configúralo directamente en Railway → Variables; usa el valor real de MongoDB Atlas, no lo escribas aquí>
 DB_NAME=iglesia_venyve
-CORS_ORIGINS=https://iglesiavenyve.org,https://www.iglesiavenyve.org
+CORS_ORIGINS=https://panel.iglesiavenyve.org
 JWT_SECRET=cambia-esto-por-uno-seguro-openssl-rand-hex-32
 ```
 
@@ -52,7 +53,7 @@ JWT_SECRET=cambia-esto-por-uno-seguro-openssl-rand-hex-32
 4. **Variables**:
 
 ```
-REACT_APP_BACKEND_URL=https://panel.iglesiavenyve.org
+REACT_APP_BACKEND_URL=https://iglesia-venyve-production.up.railway.app
 WDS_SOCKET_PORT=443
 NODE_ENV=production
 CI=false
@@ -65,7 +66,7 @@ GENERATE_SOURCEMAP=false
 6. **Settings → Networking → Generate Domain** → obtienes URL pública del frontend.
 7. Abre esa URL → debe cargar el sitio.
 
-> 💡 **Tip primer test**: temporalmente puedes poner `REACT_APP_BACKEND_URL` igual a la URL pública de Railway del backend (`https://venyve-backend-production-xxxx.up.railway.app`). Luego, cuando configures el DNS, lo cambias a `https://panel.iglesiavenyve.org` y haces redeploy.
+> 💡 **Tip primer test**: temporalmente puedes poner `REACT_APP_BACKEND_URL` igual a la URL pública de Railway del backend (`https://iglesia-venyve-production.up.railway.app`). *(Nota: `panel.iglesiavenyve.org` es hoy el dominio del FRONTEND, no del backend — ver disclaimer al inicio de este documento.)*
 
 ---
 
