@@ -110,6 +110,8 @@ frontend/node_modules/.cache/default-development/28.pack
 backend/.env
 frontend/.env
 **/.env
+**/.env.*
+!**/.env.example
 CREDENCIALES.md
 PENDIENTE_MANANA.md
 Manual-VERIFICADO.pdf
