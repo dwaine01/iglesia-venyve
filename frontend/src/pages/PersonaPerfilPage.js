@@ -7,7 +7,7 @@ import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Skeleton } from '../components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs';
-import { ArrowLeft, IdCard, Phone, Mail, Cake, Clock, MapPin, CheckCircle2, CircleDashed } from 'lucide-react';
+import { ArrowLeft, IdCard, Phone, Mail, Cake, Clock, MapPin, CheckCircle2, CircleDashed, ChevronRight } from 'lucide-react';
 
 // P-001 Slice 2A - Person Profile 360 (shell full-screen).
 // Consume unicamente el read-model /api/core/persons/{id}/profile.
@@ -171,19 +171,33 @@ export default function PersonaPerfilPage() {
                       <div
                         key={s.section_key}
                         data-testid={`resumen-360-card-${s.section_key}`}
+                        role={s.route ? 'button' : undefined}
+                        tabIndex={s.route ? 0 : undefined}
+                        onClick={s.route ? () => navigate(s.route) : undefined}
+                        onKeyDown={
+                          s.route
+                            ? (e) => {
+                                if (e.key === 'Enter' || e.key === ' ') navigate(s.route);
+                              }
+                            : undefined
+                        }
                         className={
-                          s.status_code === 'has_summary'
+                          (s.status_code === 'has_summary'
                             ? 'rounded-lg border border-[#C8A951]/40 bg-[#FBF8F1] p-3'
-                            : 'rounded-lg border border-gray-200 bg-gray-50/60 p-3'
+                            : 'rounded-lg border border-gray-200 bg-gray-50/60 p-3') +
+                          (s.route ? ' cursor-pointer hover:shadow-sm transition-shadow' : '')
                         }
                       >
-                        <div className="flex items-center gap-2 mb-1">
-                          {s.status_code === 'has_summary' ? (
-                            <CheckCircle2 className="w-4 h-4 text-[#8A6D2F]" />
-                          ) : (
-                            <CircleDashed className="w-4 h-4 text-gray-300" />
-                          )}
-                          <span className="text-sm font-medium text-gray-800">{s.status_label}</span>
+                        <div className="flex items-center justify-between gap-2 mb-1">
+                          <div className="flex items-center gap-2">
+                            {s.status_code === 'has_summary' ? (
+                              <CheckCircle2 className="w-4 h-4 text-[#8A6D2F]" />
+                            ) : (
+                              <CircleDashed className="w-4 h-4 text-gray-300" />
+                            )}
+                            <span className="text-sm font-medium text-gray-800">{s.status_label}</span>
+                          </div>
+                          {s.route && <ChevronRight className="w-4 h-4 text-gray-400" />}
                         </div>
                         {s.status_code === 'has_summary' ? (
                           <p className="text-sm text-gray-600">{s.summary}</p>
