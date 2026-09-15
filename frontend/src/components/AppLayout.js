@@ -7,7 +7,7 @@ import { Separator } from './ui/separator';
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 import {
   LayoutDashboard, BookOpen, Map, Calendar, Users, BarChart3, LogOut, Menu, ChevronRight,
-  Crown, Star, Trophy, Presentation, NotebookPen, KeyRound
+  Crown, Star, Trophy, Presentation, NotebookPen, KeyRound, IdCard
 } from 'lucide-react';
 
 import { LOGO_IGLESIA } from '../data/presentationData';
@@ -19,6 +19,7 @@ const getNavItems = (rol) => {
   if (rol === 'pastor') {
     return [
       { to: '/dashboard-general', icon: Crown, label: 'Dashboard General', end: true },
+      { to: '/personas', icon: IdCard, label: 'Personas' },
       { to: '/bitacora', icon: NotebookPen, label: 'Bitácora Evangelística' },
       { to: '/codigos', icon: KeyRound, label: 'Códigos de Invitación' },
       { to: '/presentacion', icon: Presentation, label: 'Manual 7 Semanas' },
@@ -46,6 +47,7 @@ const getNavItems = (rol) => {
     { to: '/', icon: LayoutDashboard, label: 'Dashboard', end: true },
     { to: '/introduccion', icon: BookOpen, label: 'Introducción' },
     { to: '/mapa', icon: Map, label: 'Mapa 7 Semanas' },
+      { to: '/personas', icon: IdCard, label: 'Personas' },
     { type: 'separator', label: 'Semanas' },
     { to: '/semana/1', icon: Calendar, label: 'Semana 1 - Preparación' },
     { to: '/semana/2', icon: Calendar, label: 'Semana 2 - Invasión' },
