@@ -16,7 +16,7 @@ app = FastAPI(title="Manual Ley 7 Semanas API")
 origins = os.environ.get("CORS_ORIGINS", "*").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins, 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -29,7 +29,9 @@ client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]
 
 # JWT Config
-SECRET_KEY = os.environ.get("JWT_SECRET", "ley7semanas_secret_key_2026")
+SECRET_KEY = os.environ.get("JWT_SECRET")
+if not SECRET_KEY:
+    raise RuntimeError("JWT_SECRET environment variable is required but not set.")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE = 24  # hours
 
