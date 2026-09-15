@@ -258,6 +258,11 @@ from core_person import router as core_person_router, ensure_indexes as core_per
 
 app.include_router(core_person_router)
 
+# --- P-001 Slice 2A Core Profile 360 (aditivo, read-model) ---
+from core_profile import router as core_profile_router
+
+app.include_router(core_profile_router)
+
 
 # --- Default Checklists ---
 DEFAULT_CHECKLISTS = {
