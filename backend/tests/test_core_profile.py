@@ -67,10 +67,13 @@ async def test_profile_returns_header_and_sections(client):
     assert header["person_number"].startswith("VV-")
     assert header["nombre_completo"] == "Laura Martinez"
     assert header["initials"] == "LM"
-    # rol pastor -> ve campos sensibles (limitacion interina documentada,
-    # a reemplazar por BASE-01/ACCESS-01)
-    assert header["primary_contact"] == "99998888"
-    assert header["fecha_nacimiento"] == "1990-05-01"
+    # ARCHITECTURE CONFLICT resuelto: hasta que exista capability+scope
+    # (ACCESS-01), estos campos se OMITEN por completo del header -- ni
+    # siquiera como null -- para NINGUN rol, incluyendo roles legacy
+    # privilegiados como pastor. Ver build_header() en core_profile.py.
+    assert "primary_contact" not in header
+    assert "fecha_nacimiento" not in header
+    assert "city" not in header
 
     sections = body["sections"]
     assert len(sections) == 1 + len(PLANNED_DOMAINS)
@@ -91,6 +94,35 @@ async def test_profile_returns_header_and_sections(client):
     assert body["sections_available"] == ["resumen"]
     assert "contacto" in body["sections_planned"]
     assert "direcciones" in body["sections_planned"]
+
+
+@pytest.mark.asyncio
+async def test_profile_header_omits_sensitive_fields_for_legacy_roles(client):
+    """Un rol legacy (pastor) sin capability+scope explicita no debe
+    recibir contacto, fecha de nacimiento ni ciudad -- se omiten del
+    payload, no se devuelven como null. Regresion directa del
+    ARCHITECTURE CONFLICT senalado por Emergent sobre build_header()."""
+    created = await client.post("/api/core/persons", json={
+        "nombre": "Pedro",
+        "apellido": "Ramirez",
+        "telefono": "77776666",
+        "email": "pedro.ramirez@example.com",
+        "fecha_nacimiento": "1985-02-10",
+        "idempotency_key": str(uuid.uuid4()),
+    })
+    assert created.status_code == 201, created.text
+    pid = created.json()["person_id"]
+
+    resp = await client.get(f"/api/core/persons/{pid}/profile")
+    assert resp.status_code == 200, resp.text
+    header = resp.json()["header"]
+
+    for sensitive_key in ("primary_contact", "fecha_nacimiento", "city"):
+        assert sensitive_key not in header, f"{sensitive_key} no debe exponerse sin capability+scope"
+
+    # identidad basica si debe estar presente
+    assert header["nombre_completo"] == "Pedro Ramirez"
+    assert header["person_number"].startswith("VV-")
 
 
 @pytest.mark.asyncio

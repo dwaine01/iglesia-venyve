@@ -69,27 +69,26 @@ def _unavailable_section(key: str, label: str) -> dict:
 
 
 def build_header(person: dict, current_user: dict) -> dict:
-    """Cabecera tipo ficha/pasaporte con proyeccion de campos sensibles
-    segun permiso. Usa hoy el mismo control simple por rol (lider/pastor)
-    que Slice 1, porque BASE-01/ACCESS-01 (capability+scope) todavia no
-    existen en main -- limitacion declarada, no oculta. Esta funcion es el
-    unico punto de proyeccion a actualizar cuando ese modelo exista."""
-    can_see_sensitive = current_user.get("rol") in ("lider", "pastor")
-    header = {
+    """Cabecera tipo ficha/pasaporte -- solo identidad basica.
+
+    ARCHITECTURE CONFLICT resuelto (Emergent, revision de PR #3): la
+    version anterior proyectaba primary_contact/fecha_nacimiento usando
+    unicamente el rol legacy lider/pastor, violando la decision FROZEN de
+    privacidad por campo via capability+scope (un rol generico no otorga
+    acceso automatico a datos sensibles). Mientras BASE-01/ACCESS-01 no
+    existan en main, esos campos (y ciudad/direccion) se OMITEN por
+    completo del payload -- nunca se devuelven, ni siquiera como null --
+    para ningun rol. current_user se mantiene en la firma para cuando el
+    modelo de capability+scope exista y este vuelva a ser el unico punto
+    de proyeccion a actualizar."""
+    return {
         "person_id": person["person_id"],
         "person_number": person["person_number"],
         "nombre_completo": f"{person.get('nombre','')} {person.get('apellido','')}".strip(),
         "initials": _initials(person.get("nombre"), person.get("apellido")),
         "age_category": person.get("age_category"),
         "photo_url": None,
-        "primary_contact": None,
-        "city": None,
-        "fecha_nacimiento": None,
     }
-    if can_see_sensitive:
-        header["primary_contact"] = person.get("telefono") or person.get("email")
-        header["fecha_nacimiento"] = person.get("fecha_nacimiento")
-    return header
 
 
 @router.get("/persons/{person_id}/profile")
