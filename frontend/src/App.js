@@ -11,6 +11,9 @@ import MapaPage from './pages/MapaPage';
 import SemanaPage from './pages/SemanaPage';
 import RegistroPage from './pages/RegistroPage';
 import EstadisticasPage from './pages/EstadisticasPage';
+import PersonasListPage from './pages/PersonasListPage';
+import PersonaNuevaPage from './pages/PersonaNuevaPage';
+import PersonaPerfilPage from './pages/PersonaPerfilPage';
 import BitacoraPage from './pages/BitacoraPage';
 import PresentacionHomePage from './pages/PresentacionHomePage';
 import PresentacionPresenterPage from './pages/PresentacionPresenterPage';
@@ -80,6 +83,9 @@ function App() {
             <Route path="semana/:weekNum" element={<SemanaPage />} />
             <Route path="persona/:personId/semana/:weekNum" element={<SemanaPage />} />
             <Route path="registro" element={<StaffRoute><RegistroPage /></StaffRoute>} />
+          <Route path="personas" element={<StaffRoute><PersonasListPage /></StaffRoute>} />
+          <Route path="personas/nueva" element={<StaffRoute><PersonaNuevaPage /></StaffRoute>} />
+          <Route path="personas/:personId" element={<StaffRoute><PersonaPerfilPage /></StaffRoute>} />
             <Route path="bitacora" element={<StaffRoute><BitacoraPage /></StaffRoute>} />
             <Route path="codigos" element={<StaffRoute><CodigosInvitacionPage /></StaffRoute>} />
             <Route path="estadisticas" element={<EstadisticasPage />} />

@@ -253,6 +253,12 @@ async def get_current_user(authorization: Optional[str] = Header(None)):
     return verify_token(token)
 
 
+# --- P-001 Core de Personas (aditivo) ---
+from core_person import router as core_person_router, ensure_indexes as core_person_ensure_indexes
+
+app.include_router(core_person_router)
+
+
 # --- Default Checklists ---
 DEFAULT_CHECKLISTS = {
     1: [
@@ -333,6 +339,10 @@ async def startup():
     await db.person_progress.create_index([("person_id", 1), ("semana", 1)])
     await db.person_checklists.create_index([("person_id", 1), ("semana", 1)])
     print("Database indexes created")
+
+    # --- P-001 Core de Personas (aditivo) ---
+    await core_person_ensure_indexes()
+    print("Core Person (P-001) indexes created")
 
 
 # --- Helpers para Estado Dinámico ---
