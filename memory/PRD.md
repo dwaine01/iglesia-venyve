@@ -256,6 +256,8 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - Reuniones, asistencia, seguimiento y multiplicación.
 - Tableros por líder, supervisor, red y pastor.
 
+**Estado:** EN PROGRESO. Auditoría confirmó que `person_attendance` será el servicio común y que Procesos ya entrega `ready_for_cellular`. Contrato canónico definido en `/app/memory/CELLULAR_SCHEMA_BLUEPRINT.md`; no existen datos celulares persistidos que impliquen riesgo de migración.
+
 ### P2 — futuro
 
 - **Mega‑Bloque D — 9 Puertas:** respuestas operativas y derivación a Células/procesos.
