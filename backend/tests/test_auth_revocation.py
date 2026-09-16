@@ -202,7 +202,7 @@ async def test_new_registration_persists_auth_defaults():
     email = f"base01.new.{unique}@example.com"
     transport = ASGITransport(app=server.app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        response = await client.post(
+        denied = await client.post(
             "/api/auth/register",
             json={
                 "nombre": "BASE-01 New User",
@@ -211,8 +211,19 @@ async def test_new_registration_persists_auth_defaults():
                 "rol": "lider",
             },
         )
+        assert denied.status_code == 403, denied.text
+        response = await client.post(
+            "/api/auth/register",
+            json={
+                "nombre": "BASE-01 New User",
+                "email": email,
+                "password": "Base01TestPass!",
+                "rol": "persona",
+            },
+        )
         assert response.status_code == 200, response.text
         user = await server.db.users.find_one({"email": email})
+        assert user["rol"] == "persona"
         assert user["is_active"] is True
         assert user["token_version"] == 1
         payload = server.verify_token(response.json()["token"])
@@ -221,6 +232,11 @@ async def test_new_registration_persists_auth_defaults():
         user_id = str(user["_id"])
         await server.db.checklists.delete_many({"user_id": user_id})
         await server.db.progress.delete_many({"user_id": user_id})
+        person_id = user.get("person_id")
+        if person_id:
+            await server.db.person_contacts.delete_many({"person_id": person_id})
+            await server.db.person_activity.delete_many({"person_id": person_id})
+            await server.db.persons.delete_one({"_id": ObjectId(person_id)})
         await server.db.users.delete_one({"_id": user["_id"]})
 
 

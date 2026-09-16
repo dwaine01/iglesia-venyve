@@ -46,6 +46,7 @@ PLANNED_DOMAINS = [
     ("ley7", "Ley7"),
     ("discipulado", "Discipulado"),
     ("mentor_acompanamiento", "Mentor / Acompañamiento"),
+    ("cap", "CAP"),
     ("celula", "Célula"),
     ("familia", "Familia"),
     ("household", "Household"),
@@ -303,6 +304,8 @@ async def get_person_profile(person_id: str, current_user: dict = Depends(requir
         attendance = snapshot["asistencia"]
         history = snapshot["historial"]
         ministries = snapshot["ministerios"]
+        processes = snapshot.get("procesos", [])
+        cell_memberships = snapshot.get("celula", [])
         built_sections = {
             "llegada_origen": (
                 _domain_section(
@@ -356,12 +359,47 @@ async def get_person_profile(person_id: str, current_user: dict = Depends(requir
                 if permissions["historial"]["read"]
                 else _restricted_section("historial", "Historial", "historial")
             ),
+            "celula": (
+                _domain_section(
+                    "celula",
+                    "Célula",
+                    cell_memberships,
+                    f"{cell_memberships[0].get('cell', {}).get('name', 'Célula')} · {'Activa' if cell_memberships[0].get('active') else 'Histórica'}" if cell_memberships else None,
+                )
+                if permissions.get("celula", {}).get("read")
+                else _restricted_section("celula", "Célula", "procesos")
+            ),
         }
         built_sections["llegada_origen"]["tab_key"] = "procesos"
         built_sections["familia"]["tab_key"] = "familia"
         built_sections["household"]["tab_key"] = "household"
         built_sections["asistencia"]["tab_key"] = "asistencia"
         built_sections["historial"]["tab_key"] = "historial"
+        built_sections["celula"]["tab_key"] = "procesos"
+        if cell_memberships:
+            built_sections["celula"]["route"] = cell_memberships[0]["route"]
+        process_domain_map = {
+            "consolidacion": ("consolidation", "Consolidación"),
+            "ley7": ("seven_weeks", "Ley de las 7 Semanas"),
+            "mentor_acompanamiento": ("mentorship", "Mentoría"),
+            "cap": ("cap", "CAP"),
+        }
+        for section_key, (process_key, label) in process_domain_map.items():
+            enrollments = [item for item in processes if item.get("process_key") == process_key]
+            if permissions["procesos"]["read"]:
+                enrollment = enrollments[0] if enrollments else None
+                summary = None
+                if enrollment:
+                    summary = enrollment.get("status_label") or enrollment.get("status")
+                    if enrollment.get("current_stage_name"):
+                        summary = f"{summary} · {enrollment['current_stage_name']}"
+                section = _domain_section(section_key, label, enrollments, summary)
+                if enrollment and enrollment.get("route"):
+                    section["route"] = enrollment["route"]
+            else:
+                section = _restricted_section(section_key, label, "procesos")
+            section["tab_key"] = "procesos"
+            built_sections[section_key] = section
         
         # Ministerio/Servicio is now a real domain, add it separately
         ministries_section = (

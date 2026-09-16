@@ -38,6 +38,29 @@ PROCESSES_WRITE = "processes.write"
 PROCESSES_PARTICIPATE = "processes.participate"
 PROCESSES_MANAGE = "processes.manage"
 PROCESS_ALERTS_MANAGE = "processes.alerts.manage"
+CELLULAR_READ = "cellular.read"
+CELLULAR_WRITE = "cellular.write"
+CELLULAR_MANAGE = "cellular.manage"
+CELLULAR_ATTENDANCE = "cellular.attendance.write"
+CELLULAR_NEEDS = "cellular.needs.write"
+CELLULAR_SENSITIVE_READ = "cellular.sensitive.read"
+CELLULAR_MULTIPLY = "cellular.multiplication.manage"
+DOORS_READ = "doors.read"
+DOORS_WRITE = "doors.write"
+DOORS_MANAGE = "doors.manage"
+BOARD_AUDIO = "board.audio.manage"
+BOARD_AI = "board.ai.generate"
+
+CELLULAR_CAPABILITIES = [
+    CELLULAR_READ,
+    CELLULAR_WRITE,
+    CELLULAR_MANAGE,
+    CELLULAR_ATTENDANCE,
+    CELLULAR_NEEDS,
+    CELLULAR_SENSITIVE_READ,
+    CELLULAR_MULTIPLY,
+]
+DOOR_BOARD_CAPABILITIES = [DOORS_READ, DOORS_WRITE, DOORS_MANAGE, BOARD_AUDIO, BOARD_AI]
 
 PROCESS_CAPABILITIES = [
     PROCESSES_READ,
@@ -65,6 +88,7 @@ PERSON_SELF_CAPABILITIES = [
     PERSON_ADDRESSES_WRITE,
     PROCESSES_READ,
     PROCESSES_PARTICIPATE,
+    CELLULAR_READ,
 ]
 
 PERSON_DOMAIN_CAPABILITIES = [
@@ -95,11 +119,11 @@ PERSON_DOMAIN_CAPABILITIES = [
 
 _ROLE_ACCESS_DEFAULTS = {
     "pastor": {
-        "capabilities": [*PERSON_DOMAIN_CAPABILITIES, *PROCESS_CAPABILITIES, PERSON_PASTORAL_NOTES_READ, CORE_GOVERNANCE_MANAGE],
+        "capabilities": [*PERSON_DOMAIN_CAPABILITIES, *PROCESS_CAPABILITIES, *CELLULAR_CAPABILITIES, *DOOR_BOARD_CAPABILITIES, PERSON_PASTORAL_NOTES_READ, CORE_GOVERNANCE_MANAGE],
         "access_scope": {"persons": "all"},
     },
     "lider": {
-        "capabilities": [*PERSON_DOMAIN_CAPABILITIES, PROCESSES_READ, PROCESSES_WRITE, PROCESSES_PARTICIPATE],
+        "capabilities": [*PERSON_DOMAIN_CAPABILITIES, PROCESSES_READ, PROCESSES_WRITE, PROCESSES_PARTICIPATE, CELLULAR_READ, CELLULAR_WRITE, CELLULAR_ATTENDANCE, CELLULAR_NEEDS, CELLULAR_SENSITIVE_READ, DOORS_READ],
         "access_scope": {"persons": "created_by"},
     },
     "persona": {
@@ -117,7 +141,7 @@ def access_defaults_for_role(role: str) -> dict:
             {"capabilities": [], "access_scope": {"persons": "none"}},
         )
     )
-    defaults["access_policy_version"] = 7
+    defaults["access_policy_version"] = 11
     return defaults
 
 
@@ -139,21 +163,25 @@ def has_capability(user: dict, capability: str) -> bool:
 
 def can_access_person(user: dict, person: dict) -> bool:
     person_scope = normalized_access_scope(user).get("persons", "none")
+    user_id = user.get("user_id")
+    user_person_id = user.get("person_id")
+    target_person_id = person.get("person_id")
+    target_auth_user_id = person.get("auth_user_id")
     if person_scope == "all":
         return True
     if person_scope == "created_by":
-        return bool(user.get("user_id")) and (
-            person.get("created_by") == user.get("user_id")
-            or person.get("auth_user_id") == user.get("user_id")
-            or person.get("person_id") == user.get("person_id")
+        return bool(user_id) and (
+            person.get("created_by") == user_id
+            or (bool(target_auth_user_id) and target_auth_user_id == user_id)
+            or (bool(user_person_id) and bool(target_person_id) and target_person_id == user_person_id)
         )
     if person_scope == "assigned":
         person_ids = normalized_access_scope(user).get("person_ids", [])
         return isinstance(person_ids, list) and person.get("person_id") in person_ids
     if person_scope == "self":
         return (
-            person.get("auth_user_id") == user.get("user_id")
-            or person.get("person_id") == user.get("person_id")
+            (bool(user_id) and bool(target_auth_user_id) and target_auth_user_id == user_id)
+            or (bool(user_person_id) and bool(target_person_id) and target_person_id == user_person_id)
         )
     return False
 
@@ -175,9 +203,9 @@ async def ensure_access_defaults(db) -> None:
             {"$set": {"access_scope": defaults["access_scope"]}},
         )
         await db.users.update_many(
-            {"rol": role, "access_policy_version": {"$ne": 7}},
+            {"rol": role, "$or": [{"access_policy_version": {"$lt": 11}}, {"access_policy_version": {"$exists": False}}]},
             {
                 "$addToSet": {"capabilities": {"$each": defaults["capabilities"]}},
-                "$set": {"access_policy_version": 7},
+                "$set": {"access_policy_version": 11},
             },
         )

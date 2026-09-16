@@ -8,6 +8,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from access_control import (
+    CELLULAR_CAPABILITIES,
+    DOOR_BOARD_CAPABILITIES,
     CORE_GOVERNANCE_MANAGE,
     PROCESS_CAPABILITIES,
     PERSON_DOMAIN_CAPABILITIES,
@@ -144,7 +146,7 @@ async def integrity_snapshot() -> dict:
         "users_without_person": await db.users.count_documents({"$or": [{"person_id": {"$exists": False}}, {"person_id": None}]}),
         "legacy_people_without_person": await db.people.count_documents({"$or": [{"canonical_person_id": {"$exists": False}}, {"canonical_person_id": None}]}),
         "access_policy_outdated": await db.users.count_documents({"$or": [
-            {"access_policy_version": {"$ne": 7}},
+            {"access_policy_version": {"$ne": 11}},
             {"capabilities": {"$exists": False}},
             {"access_scope": {"$exists": False}},
         ]}),
@@ -228,7 +230,7 @@ async def update_user_access(
         if active_pastors <= 1:
             raise HTTPException(status_code=400, detail="Debe existir al menos un pastor activo")
     defaults = access_defaults_for_role(payload.rol)
-    allowed = set(PERSON_DOMAIN_CAPABILITIES + PROCESS_CAPABILITIES + [PERSON_PASTORAL_NOTES_READ, CORE_GOVERNANCE_MANAGE])
+    allowed = set(PERSON_DOMAIN_CAPABILITIES + PROCESS_CAPABILITIES + CELLULAR_CAPABILITIES + DOOR_BOARD_CAPABILITIES + [PERSON_PASTORAL_NOTES_READ, CORE_GOVERNANCE_MANAGE])
     capabilities = defaults["capabilities"]
     if payload.capabilities is not None:
         invalid = sorted(set(payload.capabilities) - allowed)
@@ -248,7 +250,7 @@ async def update_user_access(
         "is_active": payload.is_active,
         "capabilities": capabilities,
         "access_scope": defaults["access_scope"],
-        "access_policy_version": 7,
+        "access_policy_version": 11,
         "updated_at": datetime.now(timezone.utc),
     }
     if changed:

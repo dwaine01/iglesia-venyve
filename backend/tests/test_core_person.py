@@ -15,13 +15,25 @@ os.environ.setdefault("DB_NAME", "ley7semanas_test_db")
 os.environ.setdefault("JWT_SECRET", "test-secret-do-not-use-in-prod")
 
 import server  # noqa: E402
+from access_control import access_defaults_for_role  # noqa: E402
+
+
+async def cleanup_test_principal():
+    users = await server.db.users.find({"email": "pytest.pastor@example.com"}, {"_id": 1}).to_list(100)
+    user_ids = [str(item["_id"]) for item in users]
+    people = await server.db.persons.find({"$or": [{"created_by": {"$in": user_ids}}, {"auth_user_id": {"$in": user_ids}}]}, {"_id": 1}).to_list(1000)
+    person_ids = [str(item["_id"]) for item in people]
+    for collection in ["person_contacts", "person_addresses", "person_activity", "cell_memberships", "cell_followups", "cell_needs", "process_enrollments"]:
+        await server.db[collection].delete_many({"person_id": {"$in": person_ids}})
+    if people:
+        await server.db.persons.delete_many({"_id": {"$in": [item["_id"] for item in people]}})
+    if users:
+        await server.db.users.delete_many({"_id": {"$in": [item["_id"] for item in users]}})
 
 
 @pytest_asyncio.fixture
 async def client():
-    await server.db.users.delete_many({"email": "pytest.pastor@example.com"})
-    await server.db.persons.delete_many({})
-    await server.db.counters.delete_many({"_id": "person_number"})
+    await cleanup_test_principal()
     hashed = bcrypt.hashpw(b"TestPass123!", bcrypt.gensalt()).decode()
     await server.db.users.insert_one({
         "nombre": "Pytest Pastor",
@@ -29,6 +41,7 @@ async def client():
         "password": hashed,
         "rol": "pastor",
         "leader_id": None,
+        **access_defaults_for_role("pastor"),
     })
     transport = ASGITransport(app=server.app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
@@ -40,9 +53,7 @@ async def client():
         token = resp.json()["token"]
         ac.headers.update({"Authorization": f"Bearer {token}"})
         yield ac
-    await server.db.users.delete_many({"email": "pytest.pastor@example.com"})
-    await server.db.persons.delete_many({})
-    await server.db.counters.delete_many({"_id": "person_number"})
+    await cleanup_test_principal()
 
 
 @pytest.mark.asyncio

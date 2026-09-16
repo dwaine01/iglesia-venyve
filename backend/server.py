@@ -28,16 +28,32 @@ app = FastAPI(title="Manual Ley 7 Semanas API")
 
 # CORS
 cors_origins = os.environ.get("CORS_ORIGINS")
-if not cors_origins:
-    raise RuntimeError("CORS_ORIGINS environment variable is required.")
+cors_origin_regex = os.environ.get("CORS_ORIGIN_REGEX")
+if not cors_origins or not cors_origin_regex:
+    raise RuntimeError("CORS_ORIGINS and CORS_ORIGIN_REGEX environment variables are required.")
 origins = [origin.strip() for origin in cors_origins.split(",") if origin.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins, 
+    allow_origins=origins,
+    allow_origin_regex=cors_origin_regex,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-CSRF-Token"],
+    max_age=600,
 )
+
+
+@app.middleware("http")
+async def restore_forwarded_cors_origin(request: Request, call_next):
+    response = await call_next(request)
+    request_origin = request.headers.get("origin")
+    forwarded_host = (request.headers.get("x-forwarded-host") or "").split(",", 1)[0].strip()
+    forwarded_proto = (request.headers.get("x-forwarded-proto") or "").split(",", 1)[0].strip()
+    public_origin = f"{forwarded_proto}://{forwarded_host}" if forwarded_proto and forwarded_host else None
+    if request_origin in origins and public_origin in origins and response.headers.get("access-control-allow-origin") == request_origin:
+        response.headers["access-control-allow-origin"] = public_origin
+    return response
+
 
 # MongoDB
 MONGO_URL = os.environ.get("MONGO_URL")
@@ -86,9 +102,7 @@ def user_token_version(user: dict) -> int:
 
 
 def login_attempt_identifier(request: Request, email: str) -> str:
-    forwarded = request.headers.get("x-forwarded-for", "")
-    client_ip = forwarded.split(",")[0].strip() or (request.client.host if request.client else "unknown")
-    raw = f"{client_ip}:{email.strip().lower()}"
+    raw = email.strip().lower()
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
@@ -438,6 +452,21 @@ from process_routes import router as process_router
 
 app.include_router(process_router)
 
+# --- Mega-Bloque C: Sistema Celular ---
+from cellular_catalog import seed_cellular_catalog
+from cellular_engine import ensure_cellular_indexes, migrate_cellular
+from cellular_routes import router as cellular_router
+from module_guides import router as module_guides_router
+from door_board_catalog import seed_door_board_catalog
+from door_board_engine import ensure_door_board_indexes
+from door_board_routes import router as door_board_router
+from board_recording_routes import router as board_recording_router
+
+app.include_router(cellular_router)
+app.include_router(module_guides_router)
+app.include_router(door_board_router)
+app.include_router(board_recording_router)
+
 
 # --- Default Checklists ---
 DEFAULT_CHECKLISTS = {
@@ -535,6 +564,11 @@ async def startup():
     await ensure_process_indexes(db)
     await migrate_legacy_processes(db, "system:startup")
     await evaluate_alerts(db)
+    await seed_cellular_catalog(db)
+    await ensure_cellular_indexes(db)
+    await migrate_cellular(db, "system:startup")
+    await seed_door_board_catalog(db)
+    await ensure_door_board_indexes(db)
     print("Core Person (P-001) indexes created")
 
 
@@ -684,16 +718,15 @@ async def compute_leader_aggregate_status(personas: list) -> dict:
 # --- Auth Routes ---
 @app.post("/api/auth/register")
 async def register(user: UserRegister):
-    """Registro publico.
+    """Registro público.
     - Si se provee invite_code: el codigo determina rol y leader_id
         (pastor master -> pastor; pastor -> lider; lider -> persona).
-    - Si NO se provee invite_code: registro libre con el rol indicado en el body
-        (default 'lider'). Esto restaura el comportamiento original simple.
+    - Sin invite_code: solo se permite Persona; roles institucionales requieren asignación.
     """
     normalized_email = user.email.strip().lower()
     existing = await db.users.find_one({"email": normalized_email})
     if existing:
-        raise HTTPException(status_code=400, detail="Este correo ya esta registrado")
+        raise HTTPException(status_code=400, detail="No se pudo completar el registro")
 
     code_clean = (user.invite_code or "").strip().upper()
 

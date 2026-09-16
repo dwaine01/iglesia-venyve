@@ -32,6 +32,22 @@ import SevenWeeksDetailPage from './pages/processes/SevenWeeksDetailPage';
 import ConsolidationPage from './pages/processes/ConsolidationPage';
 import MentorshipPage from './pages/processes/MentorshipPage';
 import CapPage from './pages/processes/CapPage';
+import CellularDashboardPage from './pages/cellular/CellularDashboardPage';
+import CellularNetworksPage from './pages/cellular/CellularNetworksPage';
+import CellularListPage from './pages/cellular/CellularListPage';
+import CellularDetailPage from './pages/cellular/CellularDetailPage';
+import CellularMeetingMobilePage from './pages/cellular/CellularMeetingMobilePage';
+import CellularReadyPage from './pages/cellular/CellularReadyPage';
+import CellularNeedsPage from './pages/cellular/CellularNeedsPage';
+import CellularHealthPage from './pages/cellular/CellularHealthPage';
+import DoorsDashboardPage from './pages/doors/DoorsDashboardPage';
+import DoorCasesPage from './pages/doors/DoorCasesPage';
+import DoorDetailPage from './pages/doors/DoorDetailPage';
+import BoardDashboardPage from './pages/board/BoardDashboardPage';
+import BoardMembersPage from './pages/board/BoardMembersPage';
+import BoardMeetingsPage from './pages/board/BoardMeetingsPage';
+import BoardMeetingDetailPage from './pages/board/BoardMeetingDetailPage';
+import BoardMinutesPage from './pages/board/BoardMinutesPage';
 import AppLayout from './components/AppLayout';
 import './App.css';
 
@@ -92,6 +108,24 @@ function App() {
             <Route path="procesos/consolidacion" element={<ConsolidationPage />} />
             <Route path="procesos/mentoria" element={<MentorshipPage />} />
             <Route path="procesos/cap" element={<CapPage />} />
+            <Route path="celulas/dashboard" element={<CellularDashboardPage />} />
+            <Route path="celulas/redes" element={<StaffRoute><CellularNetworksPage /></StaffRoute>} />
+            <Route path="celulas/lista" element={<CellularListPage />} />
+            <Route path="celulas/bandeja-ready" element={<StaffRoute><CellularReadyPage /></StaffRoute>} />
+            <Route path="celulas/necesidades" element={<StaffRoute><CellularNeedsPage /></StaffRoute>} />
+            <Route path="celulas/salud" element={<CellularHealthPage mode="health" />} />
+            <Route path="celulas/multiplicacion" element={<StaffRoute><CellularHealthPage mode="multiplication" /></StaffRoute>} />
+            <Route path="celulas/genealogia" element={<CellularHealthPage mode="genealogy" />} />
+            <Route path="celulas/:id/reunion-movil" element={<StaffRoute><CellularMeetingMobilePage /></StaffRoute>} />
+            <Route path="celulas/:id" element={<CellularDetailPage />} />
+            <Route path="puertas/dashboard" element={<StaffRoute><DoorsDashboardPage /></StaffRoute>} />
+            <Route path="puertas/casos" element={<StaffRoute><DoorCasesPage /></StaffRoute>} />
+            <Route path="puertas/:doorKey" element={<StaffRoute><DoorDetailPage /></StaffRoute>} />
+            <Route path="junta/dashboard" element={<BoardDashboardPage />} />
+            <Route path="junta/miembros" element={<BoardMembersPage />} />
+            <Route path="junta/reuniones" element={<BoardMeetingsPage />} />
+            <Route path="junta/reuniones/:meetingId" element={<BoardMeetingDetailPage />} />
+            <Route path="junta/minutas" element={<BoardMinutesPage />} />
             <Route path="lider/:liderId/dashboard" element={<DashboardPage />} />
             
             {/* Lider routes */}

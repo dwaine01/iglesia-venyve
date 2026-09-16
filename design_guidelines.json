@@ -1,110 +1,150 @@
 {
-  "project_name": "Mega-Bloque B: PROCESOS (7 Semanas, Consolidación, Mentoría, CAP, Embudo & SLA)",
-  "context": "Dashboard & Operations Engine for Church Member Discipleship and Growth Pipelines",
-  "theme": "Institutional Light with Navy and Warm Metallic Accents",
+  "project_name": "Casa de Oración Ven y Ve - Mega-Bloque C (Sistema Celular)",
+  "version": "1.0.0",
+  "archetype": "ORGANIC & SWISS HIGH-CONTRAST (Institutional Sacred & Precision Governance)",
   "typography": {
-    "headings": {
-      "font_family": "Spectral, Georgia, serif",
-      "h1": "text-3xl sm:text-4xl lg:text-5xl font-semibold tracking-tight text-slate-900",
-      "h2": "text-2xl sm:text-3xl font-medium tracking-tight text-slate-900",
-      "h3": "text-xl sm:text-2xl font-medium text-slate-800",
-      "h4": "text-lg font-medium text-slate-800"
+    "font_family_heading": "Spectral, Georgia, serif",
+    "font_family_body": "'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif",
+    "font_family_mono": "'IBM Plex Mono', 'Source Code Pro', monospace",
+    "scale": {
+      "h1": "text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-[#0F1A33]",
+      "h2": "text-2xl sm:text-3xl font-semibold tracking-tight text-[#1B2A4A]",
+      "h3": "text-xl sm:text-2xl font-semibold text-[#1B2A4A]",
+      "h4": "text-lg sm:text-xl font-medium text-[#1B2A4A]",
+      "body": "text-base leading-relaxed text-[#2D3748]",
+      "body_sm": "text-sm leading-normal text-[#4A5568]",
+      "caption": "text-xs font-mono uppercase tracking-widest text-[#718096]"
     },
-    "body": {
-      "font_family": "IBM Plex Sans, Inter, sans-serif",
-      "base": "text-sm sm:text-base leading-relaxed text-slate-700",
-      "small": "text-xs sm:text-sm text-slate-500",
-      "mono": "font-mono text-xs sm:text-sm tracking-wide text-slate-800"
-    }
+    "pairing_archetype": "Institutional Sacred Headings (Spectral Serif) + Technical Operational Body (IBM Plex Sans/Mono)"
   },
   "colors": {
-    "archetype": "ARCHETYPE 5: SWISS & INSTITUTIONAL LUXURY",
-    "primary": {
-      "navy_main": "#1e293b",
-      "navy_deep": "#0f172a",
-      "accent_gold": "#d97706",
-      "gold_hover": "#b45309"
+    "mode": "light_preferred_with_dark_accents",
+    "palette": {
+      "primary_deep_navy": "#0F1A33",
+      "primary_navy": "#1B2A4A",
+      "accent_gold": "#C8A951",
+      "accent_gold_dark": "#9E8232",
+      "accent_gold_light": "#F4ECE1",
+      "background_warm_bone": "#F8F6F0",
+      "card_bg": "#FFFFFF",
+      "card_subtle": "#F5F0E8",
+      "border_subtle": "#E2D9CC",
+      "border_focus": "#C8A951",
+      "text_primary": "#0F1A33",
+      "text_secondary": "#4A5568",
+      "text_muted": "#718096",
+      "status_success": "#15803D",
+      "status_success_bg": "#DCFCE7",
+      "status_warning": "#B45309",
+      "status_warning_bg": "#FEF3C7",
+      "status_danger": "#B91C1C",
+      "status_danger_bg": "#FEE2E2",
+      "status_info": "#1D4ED8",
+      "status_info_bg": "#DBEAFE"
     },
-    "surface": {
-      "bg_main": "#f8fafc",
-      "card_bg": "#ffffff",
-      "card_border": "#e2e8f0",
-      "table_header": "#f1f5f9"
-    },
-    "sla_alerts": {
-      "ok": {
-        "bg": "bg-emerald-50",
-        "border": "border-emerald-200",
-        "text": "text-emerald-800",
-        "badge": "bg-emerald-100 text-emerald-800"
-      },
-      "warning": {
-        "bg": "bg-amber-50",
-        "border": "border-amber-200",
-        "text": "text-amber-800",
-        "badge": "bg-amber-100 text-amber-800"
-      },
-      "critical": {
-        "bg": "bg-rose-50",
-        "border": "border-rose-200",
-        "text": "text-rose-800",
-        "badge": "bg-rose-100 text-rose-800"
-      }
+    "tinted_grey_rule": "Use warm sand/bone (#F8F6F0) and slate tints (#4A5568) instead of flat neutral #808080."
+  },
+  "visual_enhancers": {
+    "glassmorphism": "backdrop-blur-md bg-white/90 border border-[#E2D9CC] shadow-sm",
+    "card_borders": "border border-[#E2D9CC] rounded-xl bg-white shadow-sm hover:border-[#C8A951]/60 transition-all",
+    "active_pill": "bg-[#1B2A4A] text-white shadow-sm rounded-lg px-3 py-1.5 font-medium",
+    "gold_badge": "bg-[#F4ECE1] text-[#9E8232] border border-[#C8A951]/40 rounded-full px-2.5 py-0.5 text-xs font-semibold",
+    "elevation": {
+      "sm": "shadow-[0_2px_4px_rgba(15,26,51,0.04)]",
+      "md": "shadow-[0_4px_12px_rgba(15,26,51,0.08)]",
+      "lg": "shadow-[0_8px_24px_rgba(15,26,51,0.12)]"
     }
   },
-  "layout_and_grids": {
-    "container_padding": "px-4 sm:px-6 lg:px-8 py-6 max-w-7xl mx-auto space-y-8",
-    "bento_grid_mode": "MODE B: High Density Grid (Dashboards & Operational Pipelines)",
-    "grid_structure": "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6",
-    "cards_style": "rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition-all hover:shadow-md"
+  "component_name": {
+    "cellular_dashboard": "CellularDashboardPage",
+    "cellular_networks": "CellularNetworksPage",
+    "cellular_list": "CellularListPage",
+    "cellular_detail_shell": "CellularDetailShell",
+    "cellular_mobile_meeting": "CellularMobileMeetingCommand",
+    "ready_for_cellular_inbox": "ReadyForCellularInbox",
+    "cellular_needs_management": "CellularNeedsManagement",
+    "cellular_health_history": "CellularHealthHistory",
+    "cellular_multiplication_panel": "CellularMultiplicationPanel",
+    "cellular_genealogy_tree": "CellularGenealogyTree"
   },
-  "components_strategy": {
-    "use_javascript_files": true,
-    "file_extension": ".js",
-    "sub_modules": [
-      {
-        "module": "Dashboard de Procesos & Embudo SLA",
-        "route": "/procesos/dashboard",
-        "key_features": ["Embudo operativo", "Metricas de retención y SLA", "Configuración de reglas de retraso", "Panel de Alertas tempranas críticas"]
-      },
-      {
-        "module": "Motor Real 7 Semanas",
-        "route": "/procesos/7-semanas",
-        "key_features": ["Ciclos activos", "Inscripción con person_id canónico", "Matriz semanal (1-7) de tareas, asistencia, evidencias", "Historico y próximo paso"]
-      },
-      {
-        "module": "Pipeline de Consolidación",
-        "route": "/procesos/consolidacion",
-        "key_features": ["Vista Kanban y Tabla de pipeline", "Responsable asignado por persona", "Timeline de interacciones", "Alertas de atraso y proximo contacto"]
-      },
-      {
-        "module": "Mentoría Individual",
-        "route": "/procesos/mentoria",
-        "key_features": ["Vinculacion Mentor ↔ Persona (person_id)", "Bitácora de reuniones y lecciones", "Plan de progreso y proximo encuentro"]
-      },
-      {
-        "module": "CAP - Consolidación y Activación por Puertas",
-        "route": "/procesos/cap",
-        "key_features": ["Evaluación Don = Llave (Dones, Intereses, Habilidades, Disponibilidad)", "Recomendación algorítmica de 9 Puertas", "Puerta seleccionada y activación de servicio"]
-      }
-    ]
+  "grids": {
+    "dashboard_grid": "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6",
+    "cell_profile_grid": "grid grid-cols-1 lg:grid-cols-12 gap-6",
+    "mobile_command_layout": "flex flex-col space-y-4 max-w-lg mx-auto p-3 sm:p-4",
+    "genealogy_grid": "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
   },
-  "instructions_to_main_agent": [
-    "Usar unicamente JavaScript (.js) para todos los componentes de React.",
-    "Utilizar person_id como clave primaria única canónica en todas las tablas y referencias cruzadas.",
-    "Implementar los testids (data-testid) en todos los elementos interactivos, botones de acción y tarjetas de alertas.",
-    "Prohibido usar transparent puro en dropdowns o modales. Utilizar backdrop-blur-md bg-white/95 con borde slate-200.",
-    "Garantizar datos 100% reales en backend con endpoints REST claros para los 5 ejes de Procesos.",
-    "No tomar decisiones pastorales automáticas ni etiquetar a nadie como apartado; emitir únicamente alertas operativas cuantitativas."
+  "layouts": {
+    "cellular_main_layout": "AppLayout wrapper with left sidebar on desktop, sheet on mobile, sticky header with breadcrumbs and scale toggle",
+    "mobile_meeting_layout": "Dedicated high-priority mobile view optimized for 1-hand operation on phone during live cell meetings"
+  },
+  "motion": {
+    "transitions": "transition-colors duration-200 ease-in-out, transition-opacity duration-200 ease-in-out",
+    "accordion_animation": "animate-accordion-down 0.2s ease-out, animate-accordion-up 0.2s ease-out",
+    "hover_lift": "hover:-translate-y-0.5 transition-transform duration-150 ease-out"
+  },
+  "accessibility": {
+    "contrast_ratio": "APCA & WCAG AA compliant. Navy text (#0F1A33) on Bone background (#F8F6F0) > 10:1 ratio.",
+    "testing_attributes": "EVERY interactive button, input, tab, card, menu item, and status badge MUST include data-testid='...' using kebab-case role naming.",
+    "keyboard_nav": "Full support for Tab, Enter, Space, and Esc for modal drawers and sheets."
+  },
+  "media": {
+    "logo_url": "https://images.unsplash.com/photo-1548625149-fc4a29cf7092?auto=format&fit=crop&w=200&q=80",
+    "cell_header_bg": "https://images.unsplash.com/photo-1519817650390-64a93db51149?auto=format&fit=crop&w=1200&q=80",
+    "mobile_meeting_banner": "https://images.unsplash.com/photo-1529070538774-1843cb3265df?auto=format&fit=crop&w=800&q=80"
+  },
+  "3d libraries": {
+    "enabled": false,
+    "note": "Not required for administrative and mobile church cell governance. Keep interface super fast and responsive."
+  },
+  "image_urls": [
+    {
+      "category": "cell_community",
+      "url": "https://images.unsplash.com/photo-1529070538774-1843cb3265df?auto=format&fit=crop&w=800&q=80",
+      "description": "Group of church cell members praying and studying"
+    },
+    {
+      "category": "cell_leadership",
+      "url": "https://images.unsplash.com/photo-1511632765486-a01980e01a18?auto=format&fit=crop&w=800&q=80",
+      "description": "Cell leader mentoring and opening bible with team"
+    }
   ],
-  "UNIVERSAL GUIDELINES FOR MAIN AGENT": {
-    "spacing": "Usar p-5/p-6 en tarjetas y gap-4/gap-6 en grids para evitar amontonamiento.",
-    "contrast": "Garantizar alto contraste entre textos oscuros (slate-800/900) y fondos claros (slate-50/100/white).",
-    "test_attributes": "Todos los botones, pestañas, selects e inputs deben incluir data-testid en formato kebab-case.",
-    "accessibility": "Soportar navegacion por teclado en modales y selectores de persona canónica."
+  "instructions_to_main_agent": {
+    "architecture_rules": [
+      "1. ALL frontend data MUST consume real backend endpoints defined in CELLULAR_SCHEMA_BLUEPRINT.md and Mega-Bloque C routes.",
+      "2. Mobile Meeting Flow MUST be a dedicated mobile command surface (/celulas/reunion-rapida or /celulas/:id/reunion) optimized for 1-hand touch operation: large tap targets (min h-12), auto-calculated metrics, quick visitor and conversion logging, structured needs logging, and task checklists.",
+      "3. Ready-for-cellular (bandeja celular) MUST handle the real operational pipeline: Person ready -> Cellular Inbox -> Select Network/Cell -> Assign Supervisor/Leader -> Register Assignment -> Log First Follow-up -> Activate Historical Membership -> Sync Profile 360/Timeline without duplicating Person.",
+      "4. Structured Needs logging MUST implement the 9 Doors contract: persona_id/family, celula_id, type, description, priority, date, reported_by, assigned_to, status, next_action, puerta_sugerida, puerta_asignada.",
+      "5. Multiplication MUST NOT be automatic. Implement evaluation, candidacy alert, supervisor review, approve/postpone flow. On approval, preserve mother cell, daughter cell, date, transferred leader and members, and update genealogy tree.",
+      "6. Ensure all RBAC scopes are strictly checked based on role (Pastor/Maestro, Coordinador, Supervisor, Líder de Célula, Miembro).",
+      "7. All interactive UI components must have clear data-testid attributes for automated verification.",
+      "8. Maintain clean separation between desktop analytical dashboards and high-speed mobile execution interfaces."
+    ],
+    "route_mapping": {
+      "cellular_dashboard": "/celulas/dashboard",
+      "cellular_networks": "/celulas/redes",
+      "cellular_list": "/celulas/lista",
+      "cellular_detail": "/celulas/:id",
+      "cellular_mobile_meeting": "/celulas/:id/reunion-movil",
+      "ready_for_cellular": "/celulas/bandeja-ready",
+      "cellular_needs": "/celulas/necesidades",
+      "cellular_health": "/celulas/salud",
+      "cellular_multiplication": "/celulas/multiplicacion",
+      "cellular_genealogy": "/celulas/genealogia"
+    }
   },
-  "media_and_images": {
-    "community_group": "https://images.unsplash.com/photo-1569292567777-e5d61a759322?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2Nzd8MHwxfHNlYXJjaHwyfHxjaHVyY2glMjBjb21tdW5pdHklMjBncm91cCUyMGxlYWRlcnNoaXAlMjBtZW50b3J8ZW58MHx8fHwxNzg5NTMzMDgwfDA&ixlib=rb-4.1.0&q=85",
-    "mentorship_session": "https://images.pexels.com/photos/5756759/pexels-photo-5756759.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940"
+  "UNIVERSAL GUIDELINES FOR MAIN AGENT": {
+    "do_not": [
+      "Do NOT create generic centered layouts with no visual contrast.",
+      "Do NOT use transparent backgrounds for floating headers or mobile sheets without backdrop blur and bg opacity.",
+      "Do NOT use AI emoji slop like 🤖🧠💭💡 for UI icons — always use Lucide React icons.",
+      "Do NOT generate persistent demo data that remains in production/QA state.",
+      "Do NOT perform automatic cell multiplication without supervisor manual review & approval."
+    ],
+    "do": [
+      "Use 2-3x more spacing than default for crisp readability.",
+      "Layer cards using subtle borders (#E2D9CC) and soft shadows.",
+      "Use APCA-verified text contrast.",
+      "Ensure all buttons, inputs, tabs, and tables carry data-testid attributes."
+    ]
   }
 }

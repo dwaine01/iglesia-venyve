@@ -1,0 +1,137 @@
+{
+  "schema_version": "1.0",
+  "modules": {
+    "cellular_dashboard": {
+      "version": "1.0.0",
+      "title": "Dashboard celular",
+      "purpose": "Supervisar células, personas, reuniones, necesidades y próximos seguimientos desde datos reales.",
+      "flow": ["Revisa alertas y cifras", "Abre la célula que necesita atención", "Confirma responsable y próxima acción"],
+      "roles": ["Pastor: visión global", "Coordinador/supervisor: redes asignadas", "Líder: sus células", "Miembro: información propia autorizada"],
+      "states": ["Activa", "Planificada", "Pausada", "Cerrada"],
+      "steps": ["Empieza por necesidades urgentes", "Continúa con seguimientos vencidos", "Revisa candidatas a multiplicación"],
+      "good_practices": ["No decidas solo por una métrica", "Registra siempre una próxima acción"],
+      "next": "Las detecciones celulares pasan a seguimiento y, cuando aplique, a una de las 9 Puertas."
+    },
+    "cellular_networks": {
+      "version": "1.0.0",
+      "title": "Redes celulares",
+      "purpose": "Organizar células por red y conservar responsables históricos.",
+      "flow": ["Crea o revisa una red", "Asigna dirección o supervisión", "Crea células dentro de la red"],
+      "roles": ["Pastor/coordinador: configura", "Supervisor: acompaña la red", "Líder: opera su célula"],
+      "states": ["Activa", "Archivada"],
+      "steps": ["Confirma nombre y campus", "Asigna personas canónicas", "Revisa cobertura"],
+      "good_practices": ["No uses nombres libres para responsables", "Finaliza asignaciones sin borrar histórico"],
+      "next": "La red define el alcance de supervisión de sus células."
+    },
+    "cellular_cells": {
+      "version": "1.0.0",
+      "title": "Lista y perfil de células",
+      "purpose": "Administrar ubicación, agenda, liderazgo, miembros e historial de cada célula.",
+      "flow": ["Selecciona una red", "Abre o crea la célula", "Asigna equipo y miembros", "Registra reuniones"],
+      "roles": ["Supervisor: gobierno", "Líder/asistente: operación", "Anfitrión/intercesor: servicio"],
+      "states": ["Planificada", "Activa", "Pausada", "Cerrada"],
+      "steps": ["Verifica código único", "Registra dirección y horario", "Mantén roles y membresías vigentes"],
+      "good_practices": ["Transfiere; no dupliques membresías", "Usa siempre person_id"],
+      "next": "La célula activa queda lista para reuniones, asistencia y detección de necesidades."
+    },
+    "cellular_meeting": {
+      "version": "1.0.0",
+      "title": "Reunión móvil",
+      "purpose": "Registrar una reunión con una sola mano, incluyendo asistencia, visitantes, conversiones y peticiones.",
+      "flow": ["Crea y abre la reunión", "Marca asistencia", "Identifica visitantes y primeras visitas", "Registra peticiones", "Cierra y guarda"],
+      "roles": ["Líder/asistente: registra", "Supervisor: consulta", "Miembro: participa"],
+      "states": ["Programada", "En curso", "Completada"],
+      "steps": ["Confirma líder y tema", "Marca cada Persona", "Revisa el resumen antes de cerrar"],
+      "good_practices": ["No registres visitantes con nombres libres", "Corrige antes de completar"],
+      "next": "La asistencia alimenta el Perfil 360, la salud celular y la revisión de multiplicación."
+    },
+    "cellular_ready": {
+      "version": "1.0.0",
+      "title": "Bandeja ready_for_cellular",
+      "purpose": "Conectar a una Persona que completó CAP con una célula real sin duplicarla.",
+      "flow": ["Revisa la Persona", "Selecciona célula", "Asigna responsable", "Define primer seguimiento", "Confirma"],
+      "roles": ["Pastor/coordinador: visión global", "Supervisor/líder: asignación dentro de alcance"],
+      "states": ["Lista", "Asignada", "En seguimiento"],
+      "steps": ["Valida disponibilidad", "Acuerda fecha de primer contacto", "Confirma membresía"],
+      "good_practices": ["Habla con la Persona antes de asignar", "No cierres sin próximo paso"],
+      "next": "Se crea membresía histórica, evento de asignación y primer seguimiento."
+    },
+    "cellular_needs": {
+      "version": "1.0.0",
+      "title": "Necesidades y seguimientos",
+      "purpose": "Registrar lo que la célula detecta y entregar una respuesta trazable.",
+      "flow": ["Registra necesidad", "Revisa Puerta sugerida", "Asigna responsable/Puerta", "Ejecuta seguimiento", "Documenta resolución"],
+      "roles": ["Líder: detecta", "Puerta: responde", "Liderazgo: supervisa"],
+      "states": ["Abierta", "Asignada", "En proceso", "Resuelta", "Cerrada"],
+      "steps": ["Vincula Persona cuando aplique", "Define prioridad", "Registra próxima acción"],
+      "good_practices": ["No expongas detalles sensibles fuera del scope", "La sugerencia de Puerta siempre es editable"],
+      "next": "Mega‑Bloque D recibe la necesidad sin crear otra Persona ni otro caso."
+    },
+    "cellular_health": {
+      "version": "1.0.0",
+      "title": "Salud y multiplicación",
+      "purpose": "Observar tendencias y preparar una revisión humana de multiplicación.",
+      "flow": ["Revisa snapshots", "Compara hechos con reglas", "Abre revisión", "Aprueba o pospone"],
+      "roles": ["Supervisor: revisa", "Pastor/coordinador: decide", "Líder: aporta evidencia"],
+      "states": ["No elegible", "Candidata", "En revisión", "Pospuesta", "Aprobada"],
+      "steps": ["Verifica miembros y asistencia", "Confirma líder en formación y anfitrión", "Documenta decisión"],
+      "good_practices": ["Nunca multipliques automáticamente", "Preserva genealogía y transferencias"],
+      "next": "Una aprobación crea la célula hija y conserva la célula madre y el histórico."
+    },
+    "doors_dashboard": {
+      "version": "1.0.0",
+      "title": "Sistema de las 9 Puertas",
+      "purpose": "Coordinar la respuesta ministerial a necesidades reales con responsables e histórico.",
+      "flow": ["Células detectan", "El sistema crea un caso único", "La Puerta clasifica y asigna", "El equipo responde", "Liderazgo supervisa y cierra"],
+      "roles": ["Junta: supervisa", "Líder de Puerta: opera", "Asistente: coordina", "Colaboradores/servidores: ejecutan"],
+      "states": ["Triage", "Asignado", "En proceso", "En espera", "Resuelto", "Cerrado"],
+      "steps": ["Prioriza urgentes", "Confirma responsable", "Define próxima acción", "Documenta resolución"],
+      "good_practices": ["No dupliques casos", "No cambies la Persona; cambia la asignación", "Mantén detalles sensibles dentro del scope"],
+      "next": "El cierre vuelve a la necesidad celular y queda en el Perfil 360."
+    },
+    "door_profile": {
+      "version": "1.0.0",
+      "title": "Perfil de Puerta",
+      "purpose": "Gobernar equipo, casos, carga y resultados de una Puerta específica.",
+      "flow": ["Confirma supervisor", "Asigna líder operativo", "Organiza asistentes y servidores", "Responde casos"],
+      "roles": ["Supervisor: gobierno", "Líder: operación", "Asistente: coordinación", "Colaborador/servidor: ejecución"],
+      "states": ["Asignación activa", "Asignación finalizada"],
+      "steps": ["Revisa jerarquía", "Equilibra carga", "Escala bloqueos", "Cierra con evidencia"],
+      "good_practices": ["Supervisor y líder son roles distintos", "Conserva todo relevo histórico"],
+      "next": "Los casos resueltos alimentan indicadores de liderazgo."
+    },
+    "board_dashboard": {
+      "version": "1.0.0",
+      "title": "Junta Directiva",
+      "purpose": "Gobernar la organización mediante miembros, reuniones, acuerdos, tareas y votaciones trazables.",
+      "flow": ["Configura membresías y cargos", "Abre reunión", "Confirma quórum", "Discute y vota", "Revisa minuta", "Da seguimiento"],
+      "roles": ["Presidencia: modera", "Secretaría: notas y minuta", "Tesorería: asuntos financieros", "Miembros: deliberan y votan según permiso"],
+      "states": ["Reunión programada", "Abierta", "Cerrada", "Minuta en borrador", "Oficial"],
+      "steps": ["Revisa pendientes", "Prepara agenda", "Confirma responsables", "Publica solo después de revisión"],
+      "good_practices": ["Cargos configurables", "Toda Persona por person_id", "Ningún borrador IA es oficial"],
+      "next": "Los acuerdos pasan a tareas supervisadas y a la siguiente reunión."
+    },
+    "board_meeting": {
+      "version": "1.0.0",
+      "title": "Reunión de Junta",
+      "purpose": "Conducir una reunión formal con asistencia, agenda, tiempo, notas, propuestas, votos y acta.",
+      "flow": ["Registra información y agenda", "Marca asistencia y consentimiento", "Abre cronómetro", "Discute puntos", "Vota y asigna", "Cierra"],
+      "roles": ["Moderador: dirige", "Secretaría: documenta", "Miembro con voto: decide", "Responsable: ejecuta acuerdos"],
+      "states": ["Programada", "Abierta", "Cerrada"],
+      "steps": ["Calcula quórum", "Inicia cada punto", "Registra decisión", "Asigna fecha y responsable"],
+      "good_practices": ["No votes sin quórum", "No sustituyas notas humanas con IA"],
+      "next": "Se crea borrador de minuta para revisión humana."
+    },
+    "board_recording": {
+      "version": "1.0.0",
+      "title": "Audio, transcript e IA",
+      "purpose": "Conservar audio original, separar speakers y preparar borradores verificables.",
+      "flow": ["Confirma aviso", "Graba visiblemente", "Protege audio original", "Diariza speakers", "Asocia Speaker con Persona", "Revisa y genera borrador"],
+      "roles": ["Secretaría/administración: graba y corrige", "Miembros: reciben aviso", "IA: propone; nunca publica"],
+      "states": ["Grabando", "Procesando", "Transcript original", "Corregido", "Borrador IA", "Revisado"],
+      "steps": ["Verifica consentimiento", "Corrige Speaker → Persona", "Corrige texto", "Regenera derivados", "Revisa minuta"],
+      "good_practices": ["Nunca grabes ocultamente", "Conserva original y versiones", "No uses IA para evaluar carácter"],
+      "next": "Secretaría compara fuentes y presenta la minuta para aprobación."
+    }
+  }
+}

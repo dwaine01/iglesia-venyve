@@ -1,14 +1,18 @@
 """Public preview regression for Mega-Bloque A core governance + auth hardening checks."""
 import os
 import uuid
+import hashlib
 
 import pytest
 import requests
+from bson import ObjectId
 from dotenv import dotenv_values
+from pymongo import MongoClient
 
 
 # Module: env + credentials bootstrap for public endpoint testing
 FRONTEND_ENV = dotenv_values("/app/frontend/.env")
+BACKEND_ENV = dotenv_values("/app/backend/.env")
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL") or FRONTEND_ENV.get("REACT_APP_BACKEND_URL")
 if not BASE_URL:
@@ -261,9 +265,9 @@ def test_canonical_create_rejects_exact_duplicate_with_409_without_new_person(pa
 
 # Module: auth playbook checks requested for this iteration
 def test_cors_credentials_uses_explicit_origin_not_wildcard():
-    # La URL pública es same-origin y el ingress omite ACAO por diseño; se valida
-    # contra el segundo origen explícitamente permitido para probar CORS real.
-    origin = "http://localhost:3000"
+    # El ingress reescribe Origin internamente; el middleware restaura el host
+    # público autorizado antes de devolver la respuesta al navegador.
+    origin = BASE_URL
     login_response = requests.post(
         api_url("/api/auth/login"),
         headers={"Origin": origin},
@@ -287,10 +291,28 @@ def test_login_sets_httponly_cookie():
     assert "httponly" in cookie_header.lower()
 
 
-def test_bruteforce_lockout_after_five_failures(leader_session):
-    for _ in range(5):
-        failed = login(LEADER_EMAIL, "WrongPass!2026")
-        assert failed.status_code == 401
-
-    blocked = login(LEADER_EMAIL, LEADER_PASSWORD)
-    assert blocked.status_code == 401
+def test_bruteforce_lockout_after_five_failures():
+    email = f"qa.lockout.core.{uuid.uuid4().hex[:8]}@example.com"
+    password = "CoreQaLockout2026!"
+    registered = requests.post(api_url("/api/auth/register"), json={"nombre": "QA Lockout Core", "email": email, "password": password, "rol": "persona"}, timeout=20)
+    assert registered.status_code == 200, registered.text
+    try:
+        for _ in range(5):
+            failed = login(email, "WrongPass!2026")
+            assert failed.status_code == 401
+        blocked = login(email, password)
+        assert blocked.status_code == 401
+    finally:
+        client = MongoClient(BACKEND_ENV["MONGO_URL"])
+        database = client[BACKEND_ENV["DB_NAME"]]
+        user = database.users.find_one({"email": email})
+        if user:
+            person_id = user.get("person_id")
+            if person_id:
+                for collection in ["person_contacts", "person_activity", "process_enrollments", "cell_memberships"]:
+                    database[collection].delete_many({"person_id": person_id})
+                if ObjectId.is_valid(person_id):
+                    database.persons.delete_one({"_id": ObjectId(person_id)})
+            database.users.delete_one({"_id": user["_id"]})
+        database.login_attempts.delete_one({"identifier": hashlib.sha256(email.lower().encode()).hexdigest()})
+        client.close()

@@ -6,12 +6,16 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 import requests
+from bson import ObjectId
 from dotenv import dotenv_values
 from pymongo import MongoClient
 
 
 # Module: public URL + fixed QA credentials loaded from memory/test_credentials.md
 FRONTEND_ENV = dotenv_values("/app/frontend/.env")
+BACKEND_ENV = dotenv_values("/app/backend/.env")
+MONGO_URL = BACKEND_ENV["MONGO_URL"]
+DB_NAME = BACKEND_ENV["DB_NAME"]
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL") or FRONTEND_ENV.get("REACT_APP_BACKEND_URL")
 if not BASE_URL:
     raise RuntimeError("REACT_APP_BACKEND_URL is required for public endpoint tests")
@@ -86,7 +90,16 @@ def qa_person_id(pastor_session):
     assert create.status_code == 201, create.text
     data = create.json()
     assert data.get("person_id")
-    return data["person_id"]
+    person_id = data["person_id"]
+    yield person_id
+    client = MongoClient(MONGO_URL); database = client[DB_NAME]
+    mentorship_ids = database.mentorships.distinct("mentorship_id", {"$or": [{"mentor_person_id": person_id}, {"mentee_person_id": person_id}]})
+    if mentorship_ids: database.mentorship_meetings.delete_many({"mentorship_id": {"$in": mentorship_ids}})
+    database.mentorships.delete_many({"mentorship_id": {"$in": mentorship_ids}})
+    for collection in ["process_enrollments", "process_stage_progress", "process_evidence", "process_timeline", "process_alerts", "cap_assessments", "person_contacts", "person_activity", "cell_memberships"]:
+        database[collection].delete_many({"person_id": person_id})
+    if ObjectId.is_valid(person_id): database.persons.delete_one({"_id": ObjectId(person_id)})
+    client.close()
 
 
 @pytest.fixture(scope="module")
@@ -109,20 +122,24 @@ def qa_cycle_id(pastor_session):
     assert response.status_code == 201, response.text
     data = response.json()
     assert data.get("cycle_id")
-    return data["cycle_id"]
+    cycle_id = data["cycle_id"]
+    yield cycle_id
+    client = MongoClient(MONGO_URL); database = client[DB_NAME]
+    database.process_cycles.delete_one({"cycle_id": cycle_id})
+    client.close()
 
 
 # Module: auth hardening checks requested in playbook
 def test_auth_cors_allows_credentials_with_explicit_origin():
     response = requests.post(
         api_url("/api/auth/login"),
-        headers={"Origin": "http://localhost:3000"},
+        headers={"Origin": BASE_URL},
         json={"email": PASTOR_EMAIL, "password": PASTOR_PASSWORD},
         timeout=30,
     )
     assert response.status_code == 200, response.text
     assert response.headers.get("access-control-allow-credentials") == "true"
-    assert response.headers.get("access-control-allow-origin") in {"http://localhost:3000", "http://localhost:3000/"}
+    assert response.headers.get("access-control-allow-origin") == BASE_URL
 
 
 def test_auth_login_sets_httponly_cookie_flag():

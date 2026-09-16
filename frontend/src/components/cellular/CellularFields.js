@@ -1,0 +1,7 @@
+import React from 'react';
+import { Label } from '../ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
+
+export const PersonSelect = ({ id, label, items, value, onChange, placeholder = 'Seleccionar Persona', staffOnly = false }) => <div className="space-y-1.5"><Label>{label}</Label><Select value={value || ''} onValueChange={onChange}><SelectTrigger data-testid={id}><SelectValue placeholder={placeholder} /></SelectTrigger><SelectContent className="max-h-72 bg-white">{items.map((item) => <SelectItem key={item.person_id} value={item.person_id}>{item.name}{item.person_number ? ` · ${item.person_number}` : ''}{staffOnly && item.role ? ` · ${item.role}` : ''}</SelectItem>)}</SelectContent></Select></div>;
+
+export const CellSelect = ({ id, label = 'Célula', items, value, onChange }) => <div className="space-y-1.5"><Label>{label}</Label><Select value={value || ''} onValueChange={onChange}><SelectTrigger data-testid={id}><SelectValue placeholder="Seleccionar célula" /></SelectTrigger><SelectContent className="max-h-72 bg-white">{items.filter((item) => item.status !== 'closed').map((item) => <SelectItem key={item.cell_id} value={item.cell_id}>{item.name} · {item.code}</SelectItem>)}</SelectContent></Select></div>;

@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from access_control import (
+    CELLULAR_READ,
     PERSON_ARRIVAL_READ,
     PERSON_ARRIVAL_WRITE,
     PERSON_ATTENDANCE_READ,
@@ -361,6 +362,10 @@ async def profile_domain_snapshot(person_id: str, current_user: dict) -> dict:
             "read": has_capability(current_user, PERSON_MINISTRIES_READ),
             "write": has_capability(current_user, PERSON_MINISTRIES_WRITE),
         },
+        "celula": {
+            "read": has_capability(current_user, CELLULAR_READ),
+            "write": False,
+        },
     }
     household = (
         await household_snapshot(person_id)
@@ -421,6 +426,12 @@ async def profile_domain_snapshot(person_id: str, current_user: dict) -> dict:
         "completed": "Completado",
         "cancelled": "Cancelado",
     }
+    cell_memberships = []
+    if permissions["celula"]["read"]:
+        membership_docs = await db.cell_memberships.find({"person_id": person_id}, {"_id": 0}).sort("joined_at", -1).to_list(100)
+        for membership in membership_docs:
+            cell = await db.cells.find_one({"cell_id": membership["cell_id"]}, {"_id": 0, "name": 1, "code": 1, "network_id": 1, "status": 1})
+            cell_memberships.append({**membership, "cell": cell, "route": f"/celulas/{membership['cell_id']}"})
     return {
         "permissions": permissions,
         "photo_available": bool(photo),
@@ -445,6 +456,7 @@ async def profile_domain_snapshot(person_id: str, current_user: dict) -> dict:
             }
             for item in process_docs
         ],
+        "celula": cell_memberships,
     }
 
 

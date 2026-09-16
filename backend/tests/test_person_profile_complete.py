@@ -39,6 +39,7 @@ async def test_complete_profile_block_is_modular_visible_and_persistent():
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         login = await client.post("/api/auth/login", json={"email": email, "password": password})
         assert login.status_code == 200
+        auth_person_id = login.json()["user"]["person_id"]
         client.headers.update({"Authorization": f"Bearer {login.json()['token']}"})
         created = await client.post(
             "/api/core/persons",
@@ -156,23 +157,26 @@ async def test_complete_profile_block_is_modular_visible_and_persistent():
             assert body["asistencia"][0]["actividad"] == "Servicio dominical"
             assert body["notas"][0]["categoria"] == "seguimiento"
             assert len(body["historial"]) >= 6
-            assert len(body["procesos"]) == 9
-            assert {item["status_code"] for item in body["procesos"]} == {"module_unavailable"}
+            assert len(body["procesos"]) == 1
+            assert body["procesos"][0]["process_key"] == "consolidation"
+            assert body["procesos"][0]["status"] == "active"
 
             statuses = {item["section_key"]: item["status_code"] for item in body["sections"]}
-            for built in ("llegada_origen", "familia", "household", "asistencia", "historial", "ministerio_servicio"):
-                assert statuses[built] == "has_summary" if built != "ministerio_servicio" else "no_record"
+            for built in ("llegada_origen", "familia", "household", "asistencia", "historial", "ministerio_servicio", "celula"):
+                assert statuses[built] == "has_summary" if built not in {"ministerio_servicio", "celula"} else "no_record"
+            assert statuses["consolidacion"] == "has_summary"
             for unavailable in (
-                "membership", "bautismo", "bienvenida", "consolidacion", "ley7",
-                "discipulado", "mentor_acompanamiento", "celula",
+                "membership", "bautismo", "bienvenida", "discipulado",
             ):
                 assert statuses[unavailable] == "module_unavailable"
+            for integrated_without_record in ("ley7", "mentor_acompanamiento", "cap"):
+                assert statuses[integrated_without_record] == "no_record"
 
             person_doc = await server.db.persons.find_one({"_id": created.json()["_id"]}) if "_id" in created.json() else await server.db.persons.find_one({"person_number": created.json()["person_number"]})
             for forbidden in ("household", "familia", "asistencia", "notas", "procesos"):
                 assert forbidden not in person_doc
         finally:
-            related_ids = [item for item in [related_person_id if 'related_person_id' in locals() else None] if item]
+            related_ids = [item for item in [related_person_id if 'related_person_id' in locals() else None, auth_person_id] if item]
             membership = await server.db.household_memberships.find_one({"person_id": person_id})
             if membership:
                 await server.db.households.delete_one({"_id": membership["household_id"]})
@@ -187,6 +191,10 @@ async def test_complete_profile_block_is_modular_visible_and_persistent():
                 server.db.person_activity,
                 server.db.person_photos,
                 server.db.person_photo_uploads,
+                server.db.process_enrollments,
+                server.db.process_stage_progress,
+                server.db.process_timeline,
+                server.db.process_alerts,
             ):
                 await collection.delete_many({"person_id": {"$in": [person_id, *related_ids]}})
             await server.db.person_contacts.delete_many({"person_id": {"$in": related_ids}})
@@ -195,4 +203,5 @@ async def test_complete_profile_block_is_modular_visible_and_persistent():
             await server.db.persons.delete_many({
                 "_id": {"$in": [ObjectId(item) for item in [person_id, *related_ids]]}
             })
+            await server.db.users.delete_one({"_id": user_result.inserted_id})
     await server.db.users.delete_one({"_id": user_result.inserted_id})

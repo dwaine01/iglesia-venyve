@@ -89,7 +89,7 @@ async def test_mentor_and_pastor_use_same_canonical_profile_with_different_permi
         assert mentor_profile.json()["canonical_profile_path"] == f"/personas/{person_id}"
         assert pastor_profile.json()["header"]["nombre_completo"] == "Juan Pérez"
         assert mentor_profile.json()["header"]["nombre_completo"] == "Juan Pérez"
-        assert len(pastor_profile.json()["sections"]) == len(mentor_profile.json()["sections"]) == 17
+        assert len(pastor_profile.json()["sections"]) == len(mentor_profile.json()["sections"]) == 18
 
         mentor_body = mentor_profile.json()
         assert "asistencia" in mentor_body["sections_available"]

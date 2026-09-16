@@ -8,7 +8,7 @@ import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 import {
   LayoutDashboard, BookOpen, Map, Calendar, Users, BarChart3, LogOut, Menu, ChevronRight,
   Crown, Star, Trophy, Presentation, NotebookPen, KeyRound, IdCard, Church, Search, DatabaseZap,
-  Activity, BookOpenCheck, Compass, HeartHandshake
+  Activity, BookOpenCheck, Compass, HeartHandshake, RadioTower, DoorOpen, Gavel
 } from 'lucide-react';
 
 import { LOGO_IGLESIA } from '../data/presentationData';
@@ -26,6 +26,9 @@ const getNavItems = (rol) => {
       { to: '/procesos/consolidacion', icon: Activity, label: 'Consolidación', testId: 'nav-consolidation' },
       { to: '/procesos/mentoria', icon: HeartHandshake, label: 'Mentoría', testId: 'nav-mentorship' },
       { to: '/procesos/cap', icon: Compass, label: 'CAP', testId: 'nav-cap' },
+      { to: '/celulas/dashboard', icon: RadioTower, label: 'Sistema Celular', testId: 'nav-cellular' },
+      { to: '/puertas/dashboard', icon: DoorOpen, label: '9 Puertas', testId: 'nav-doors' },
+      { to: '/junta/dashboard', icon: Gavel, label: 'Junta Directiva', testId: 'nav-board' },
       { to: '/personas', icon: IdCard, label: 'Personas', testId: 'nav-personas' },
       { to: '/directorio', icon: Search, label: 'Directorio de Talentos', testId: 'nav-directorio-talentos' },
       { to: '/ministerios', icon: Church, label: 'Ministerios', testId: 'nav-ministerios' },
@@ -43,6 +46,7 @@ const getNavItems = (rol) => {
       { to: '/procesos/7-semanas', icon: BookOpenCheck, label: 'Mis 7 Semanas' },
       { to: '/procesos/mentoria', icon: HeartHandshake, label: 'Mi Mentoría' },
       { to: '/procesos/cap', icon: Compass, label: 'Mi CAP' },
+      { to: '/celulas/dashboard', icon: RadioTower, label: 'Mi Célula', testId: 'nav-cellular' },
     ];
   }
   
@@ -54,6 +58,9 @@ const getNavItems = (rol) => {
     { to: '/procesos/consolidacion', icon: Activity, label: 'Consolidación', testId: 'nav-consolidation' },
     { to: '/procesos/mentoria', icon: HeartHandshake, label: 'Mentoría', testId: 'nav-mentorship' },
     { to: '/procesos/cap', icon: Compass, label: 'CAP', testId: 'nav-cap' },
+    { to: '/celulas/dashboard', icon: RadioTower, label: 'Sistema Celular', testId: 'nav-cellular' },
+    { to: '/puertas/dashboard', icon: DoorOpen, label: '9 Puertas', testId: 'nav-doors' },
+    { to: '/junta/dashboard', icon: Gavel, label: 'Junta Directiva', testId: 'nav-board' },
     { to: '/personas', icon: IdCard, label: 'Personas', testId: 'nav-personas' },
     { to: '/directorio', icon: Search, label: 'Directorio de Talentos', testId: 'nav-directorio-talentos' },
     { to: '/ministerios', icon: Church, label: 'Ministerios', testId: 'nav-ministerios' },
@@ -84,9 +91,23 @@ const breadcrumbMap = {
   '/procesos/consolidacion': 'Consolidación',
   '/procesos/mentoria': 'Mentoría',
   '/procesos/cap': 'CAP',
+  '/celulas/dashboard': 'Dashboard Celular',
+  '/celulas/redes': 'Redes Celulares',
+  '/celulas/lista': 'Lista de Células',
+  '/celulas/bandeja-ready': 'Bandeja Celular',
+  '/celulas/necesidades': 'Necesidades Celulares',
+  '/celulas/salud': 'Salud Celular',
+  '/celulas/multiplicacion': 'Multiplicación Celular',
+  '/celulas/genealogia': 'Genealogía Celular',
+  '/puertas/dashboard': 'Sistema de las 9 Puertas',
+  '/puertas/casos': 'Casos de Puertas',
+  '/junta/dashboard': 'Junta Directiva',
+  '/junta/miembros': 'Miembros de Junta',
+  '/junta/reuniones': 'Reuniones de Junta',
+  '/junta/minutas': 'Libro de Minutas',
 };
 
-function SidebarContent({ onClose }) {
+function SidebarContent({ onClose, testIdPrefix = '' }) {
   const { user, logout } = useAuth();
   const navItems = getNavItems(user?.rol);
 
@@ -118,11 +139,11 @@ function SidebarContent({ onClose }) {
       <div className="p-4 border-b border-border bg-gradient-to-r from-[#F5F0E8] to-[#FAFAF8]">
         <div className="flex items-center gap-2 mb-1">
           {getRolIcon()}
-          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider" data-testid="current-user-role">
+          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider" data-testid={`${testIdPrefix}current-user-role`}>
             {getRolLabel()}
           </span>
         </div>
-        <p className="text-sm font-semibold text-foreground truncate" data-testid="current-user-name">{user?.nombre || 'Usuario'}</p>
+        <p className="text-sm font-semibold text-foreground truncate" data-testid={`${testIdPrefix}current-user-name`}>{user?.nombre || 'Usuario'}</p>
       </div>
 
       {/* Navigation */}
@@ -146,7 +167,7 @@ function SidebarContent({ onClose }) {
               to={item.to}
               end={item.end}
               onClick={onClose}
-              data-testid={item.testId || `nav-${item.to.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '')}`}
+              data-testid={`${testIdPrefix}${item.testId || `nav-${item.to.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '')}`}`}
               className={({ isActive }) =>
                 `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
                   isActive
@@ -171,7 +192,7 @@ function SidebarContent({ onClose }) {
             onClose?.();
           }}
           className="w-full justify-start text-destructive hover:text-destructive hover:bg-red-50"
-          data-testid="sidebar-logout-button"
+          data-testid={`${testIdPrefix}sidebar-logout-button`}
         >
           <LogOut className="w-4 h-4 mr-3" />
           Cerrar Sesión
@@ -192,6 +213,9 @@ export default function AppLayout() {
     if (path.startsWith('/mi-semana/')) return `Mi Semana ${path.split('/')[2]}`;
     if (path.startsWith('/persona/')) return 'Gestión de Persona';
     if (path.startsWith('/lider/')) return 'Dashboard del Líder';
+    if (path.startsWith('/celulas/')) return 'Sistema Celular';
+    if (path.startsWith('/puertas/')) return 'Sistema de las 9 Puertas';
+    if (path.startsWith('/junta/reuniones/')) return 'Reunión de Junta';
     return 'Página';
   };
 
@@ -204,12 +228,12 @@ export default function AppLayout() {
 
       {/* Mobile Sidebar (Sheet) */}
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-        <SheetContent side="left" className="p-0 w-[85vw] max-w-xs">
+        <SheetContent side="left" className="p-0 w-[85vw] max-w-xs" data-testid="mobile-navigation-sheet">
           <VisuallyHidden>
             <SheetTitle>Menú de navegación</SheetTitle>
             <SheetDescription>Accesos disponibles según su rol institucional.</SheetDescription>
           </VisuallyHidden>
-          <SidebarContent onClose={() => setMobileOpen(false)} />
+          <SidebarContent onClose={() => setMobileOpen(false)} testIdPrefix="mobile-" />
         </SheetContent>
       </Sheet>
 

@@ -250,29 +250,59 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - Cierres: registro público solo Persona; scopes Person Core; notas pastorales; asignaciones; índice único; throttle SLA; SSRF proxy; herramientas demo/password/photo retiradas.
 - Deuda real documentada en `/app/memory/PROCESS_SCHEMA.md`.
 
-### P1 — siguiente: Mega‑Bloque C — SISTEMA CELULAR
+### Mega‑Bloque C — SISTEMA CELULAR — CERRADO 2026‑09‑16
 
-- Redes, Células, niveles de gobierno y membresías por person_id.
-- Reuniones, asistencia, seguimiento y multiplicación.
-- Tableros por líder, supervisor, red y pastor.
+- Redes, células, gobierno, roles y membresías históricas por `person_id`.
+- `ready_for_cellular` conectado a CAP sin duplicar Persona.
+- Reunión móvil con asistencia idempotente sobre `person_attendance`, visitantes canónicos, conversiones, peticiones, necesidades, tareas y resultados.
+- Necesidades, seguimientos, salud, reglas configurables, revisión humana de multiplicación y genealogía.
+- Dashboard por scope pastor/red/célula/Persona; contenido sensible separado mediante `cellular.sensitive.read`.
+- Manual contextual centralizado y versionado con panel lateral responsive.
+- Security Audit final: PASS sin issues materiales. Build, API, E2E y responsive PASS.
 
-**Estado:** EN PROGRESO. Auditoría confirmó que `person_attendance` será el servicio común y que Procesos ya entrega `ready_for_cellular`. Contrato canónico definido en `/app/memory/CELLULAR_SCHEMA_BLUEPRINT.md`; no existen datos celulares persistidos que impliquen riesgo de migración.
+### Mega‑Bloque D — 9 PUERTAS + JUNTA DIRECTIVA — CERRADO FUNCIONAL 2026‑09‑16
 
-### P2 — futuro
+- Contrato implementado: **CÉLULAS DETECTAN → PUERTAS RESPONDEN → LIDERAZGO SUPERVISA**.
+- Cada necesidad celular crea como máximo un `door_case`; estado, Puerta y responsable se sincronizan con la fuente.
+- Jerarquía real e histórica: miembro de Junta/supervisor → líder → asistente/sublíder → colaborador/servidor.
+- Junta formal con cargos configurables, membresías, voto, permisos, Puertas y Ministerios relacionados.
+- Dashboard, reuniones, apertura/cierre, asistencia, quórum, agenda, temporizador, propuestas, votos derivados, acuerdos y tareas.
+- Notas de Secretaría con autosave/versiones; minuta manual, borrador IA y libro de minutas. IA nunca puede publicar una minuta oficial.
+- Audio visible por chunks, GridFS protegido, SHA‑256, descarga restringida y conservación original.
+- Documentos protegidos, MIME/tamaño controlados y descarga con RBAC.
+- `MeetingTranscriptionProvider` desacopla Junta del proveedor STT; mappings Speaker→`person_id` y transcript versionado preparados.
+- GPT‑5.4‑mini PASS real para análisis, borrador y resumen aun sin transcript; identidad pseudonimizada, fuentes no confiables delimitadas y consentimiento explícito.
+- Auditoría inmutable de mutaciones críticas, voto secreto en audit feed y RBAC específico para audio/auditoría/minutas.
+- Blueprint: `/app/memory/DOORS_BOARD_SCHEMA_BLUEPRINT.md`.
+- Validación: suite global **66 passed, 3 skipped**; test D, GridFS, documentos y GPT PASS; frontend build PASS; E2E agente PASS; security audit PASS.
 
-- **Mega‑Bloque D — 9 Puertas:** respuestas operativas y derivación a Células/procesos.
+#### Dependencia externa abierta
+
+- **STT diarizado: BLOCKED — external credential required.**
+- `OPENAI_STT_API_KEY` permanece vacío y fuera de código/frontend/documentación. Sin esa credencial no se crean speakers ni atribuciones.
+- UI muestra: “Identificación de participantes pendiente de procesamiento STT diarizado.”
+- No se usa `whisper-1` como sustituto.
+
+### P0 — siguiente: Mega‑Bloque G — CONTABILIDAD Y FINANZAS
+
+- Jurisdicción: Columbus, Ohio, Estados Unidos.
+- Contabilidad por fondos, plan de cuentas, fondos restringidos/no restringidos, donaciones, diezmos, ofrendas, promesas, gastos, proveedores, presupuestos, bancos, conciliación, caja, activos, cierres y auditoría inmutable.
+- Pushpay seleccionado para donaciones/pagos. Cuenta aún no creada; solicitar sandbox/OAuth al iniciar la integración.
+- RBAC financiero, segregación de funciones, aprobaciones multinivel y reportes para liderazgo/Junta.
+
+### P1/P2 — backlog
+
 - **Mega‑Bloque E — Operaciones:** eventos, check‑in, asistencia y voluntariado.
 - **Mega‑Bloque F — Cuidado:** casos pastorales, visitación y Operación 72.
-- **Mega‑Bloque G — Finanzas:** diezmos, ofrendas, donaciones, presupuestos, cierres y RBAC financiero.
 - **Mega‑Bloque H — Automatización + IA:** workflows, alertas, dashboards y asistente sobre datos autorizados.
 
 ## 12. Próximas tareas ejecutables
 
-1. Diseñar schema canónico de Redes, Células, membresías y gobierno.
-2. Consumir Personas con `ready_for_cellular` desde CAP/Procesos.
-3. Implementar reuniones, asistencia, seguimiento y multiplicación.
-4. Crear dashboard por célula, red, supervisor y pastor.
-5. Conectar Células detectan → Puertas responden → liderazgo supervisa.
+1. Diseñar y aprobar el schema contable por fondos para Ohio.
+2. Implementar plan de cuentas, períodos, asientos balanceados y cierres.
+3. Construir ingresos/donantes/recibos, gastos/proveedores/aprobaciones y conciliación bancaria.
+4. Preparar adapter Pushpay OAuth/webhooks idempotentes sin activarlo hasta obtener sandbox.
+5. Conectar dashboard financiero con Junta Directiva y permisos segregados.
 
 ## 13. Restricciones vigentes
 

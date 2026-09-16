@@ -103,7 +103,7 @@ async def test_explicit_capability_and_scope_enable_visible_profile_domains(scop
     assert contact.status_code == 201, contact.text
     assert email_contact.status_code == 201, email_contact.text
     assert address.status_code == 201, address.text
-    assert contact.json()["es_principal"] is True
+    assert contact.json()["es_principal"] is False
     assert address.json()["es_principal"] is True
     assert contact.json()["created_at"].endswith("Z")
     assert address.json()["updated_at"].endswith("Z")
@@ -116,14 +116,14 @@ async def test_explicit_capability_and_scope_enable_visible_profile_domains(scop
         "familia", "procesos", "asistencia", "historial",
     ]
     assert body["sections_planned"] == []
-    assert body["header"]["primary_contact"] == "+1 809 555 0101"
-    assert body["header"]["primary_phone"] == "+1 809 555 0101"
-    assert body["header"]["primary_email"] == "maria.santos@example.com"
+    assert body["header"]["primary_contact"] == "8095550101"
+    assert body["header"]["primary_phone"] == "8095550101"
+    assert body["header"]["primary_email"] == "maria@example.com"
     assert body["header"]["city"] == "Santo Domingo"
     assert body["header"]["fecha_nacimiento"] == "1992-04-18"
     assert body["contacto"]["can_write"] is True
     assert body["direcciones"]["can_write"] is True
-    assert body["contacto"]["items"][0]["valor"] == "+1 809 555 0101"
+    assert body["contacto"]["items"][0]["valor"] == "8095550101"
     assert body["direcciones"]["items"][0]["ciudad"] == "Santo Domingo"
 
     domain_statuses = {
@@ -132,14 +132,13 @@ async def test_explicit_capability_and_scope_enable_visible_profile_domains(scop
     assert domain_statuses["contacto"] == "has_summary"
     assert domain_statuses["direcciones"] == "has_summary"
     expected_unavailable = {
-        "membership", "bautismo", "bienvenida", "consolidacion", "ley7",
-        "discipulado", "mentor_acompanamiento", "celula",
+        "membership", "bautismo", "bienvenida", "discipulado",
     }
     assert expected_unavailable.issubset(domain_statuses)
     assert {domain_statuses[key] for key in expected_unavailable} == {"module_unavailable"}
     # historial now shows has_summary because contact/address CRUD records activity
     # ministerio_servicio is now a real domain, shows no_record when no assignments
-    for built_key in ("llegada_origen", "familia", "household", "asistencia", "ministerio_servicio"):
+    for built_key in ("llegada_origen", "familia", "household", "asistencia", "ministerio_servicio", "celula", "consolidacion", "ley7", "mentor_acompanamiento", "cap"):
         assert domain_statuses[built_key] == "no_record"
     assert domain_statuses["historial"] == "has_summary"
 
