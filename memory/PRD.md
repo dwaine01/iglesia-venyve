@@ -43,7 +43,7 @@ El trabajo se ejecuta en **PASOS AGIGANTADOS**: auditoría, diseño, implementac
 ### Backend
 
 - FastAPI modular, MongoDB con Motor y JWT HS256 revocable.
-- Variables obligatorias: `MONGO_URL`, `DB_NAME`, `JWT_SECRET`, `CORS_ORIGINS`.
+- Variables obligatorias: `MONGO_URL`, `DB_NAME`, `JWT_SECRET`, `CORS_ORIGINS`, `CORS_ORIGIN_REGEX`.
 - Rutas backend siempre con prefijo `/api`.
 - Módulos principales:
   - `server.py`: aplicación, auth, CORS, lockout, rutas legacy y rollout.

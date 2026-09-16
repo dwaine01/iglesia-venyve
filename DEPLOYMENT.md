@@ -35,6 +35,7 @@ Despliegue en Railway: **2 servicios** (backend FastAPI y frontend React) desde 
 MONGO_URL=<configúralo directamente en Railway → Variables; usa el valor real de MongoDB Atlas, no lo escribas aquí>
 DB_NAME=iglesia_venyve
 CORS_ORIGINS=https://panel.iglesiavenyve.org
+CORS_ORIGIN_REGEX=^https://panel\.iglesiavenyve\.org$
 JWT_SECRET=cambia-esto-por-uno-seguro-openssl-rand-hex-32
 ```
 
@@ -132,6 +133,8 @@ Reemplaza los `xxxxxxxx`/`yyyyyyyy` por los CNAME targets que te dió Railway.
 | `502 Application failed to respond` | Backend no escucha en `$PORT` | Ya resuelto: `Dockerfile.backend` usa `${PORT}`. Re-deploy. |
 | Frontend carga pero login falla | `REACT_APP_BACKEND_URL` mal configurado | Cambia variable en Railway (frontend) y **Redeploy** completo (build-time). |
 | `Access-Control-Allow-Origin` error | `CORS_ORIGINS` no incluye el dominio | Backend → actualiza `CORS_ORIGINS` y redeploy. |
+| `CORS_ORIGINS and CORS_ORIGIN_REGEX environment variables are required` | Falta configuración runtime porque `.env` no viaja en Git | Backend Production → define ambas variables en Railway; no uses `*`. |
+| `ModuleNotFoundError: emergentintegrations` | Dependencia IA no incluida en la imagen | Confirma `emergentintegrations` en `backend/requirements.txt` y el índice adicional en `Dockerfile.backend`. |
 | `MongoServerSelectionError` | Atlas no permite la IP | Atlas → Network Access → `0.0.0.0/0`. |
 | Build frontend falla por memoria | CRA usa mucha RAM | Añade `NODE_OPTIONS=--max_old_space_size=4096` en variables del frontend. |
 | Build frontend falla por warnings | CRA trata warnings como errores | Ya resuelto: `Dockerfile.frontend` setea `CI=false`. |
