@@ -43,6 +43,7 @@ El trabajo se ejecuta en **PASOS AGIGANTADOS**: auditoría, diseño, implementac
 ### Backend
 
 - FastAPI modular, MongoDB con Motor y JWT HS256 revocable.
+- Transporte de autenticación: JWT Bearer explícito en `Authorization`; la aplicación no emite cookies de sesión. Cookies de Cloudflare/Railway no representan una sesión de Iglesia OS.
 - Variables obligatorias: `MONGO_URL`, `DB_NAME`, `JWT_SECRET`, `CORS_ORIGINS`, `CORS_ORIGIN_REGEX`.
 - Rutas backend siempre con prefijo `/api`.
 - Módulos principales:
@@ -271,10 +272,10 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - Audio visible por chunks, GridFS protegido, SHA‑256, descarga restringida y conservación original.
 - Documentos protegidos, MIME/tamaño controlados y descarga con RBAC.
 - `MeetingTranscriptionProvider` desacopla Junta del proveedor STT; mappings Speaker→`person_id` y transcript versionado preparados.
-- GPT‑5.4‑mini PASS real para análisis, borrador y resumen aun sin transcript; identidad pseudonimizada, fuentes no confiables delimitadas y consentimiento explícito.
+- `BoardAIProvider` portable por HTTPS estándar; identidad pseudonimizada, fuentes no confiables delimitadas y consentimiento explícito. No existen imports, ruedas ni índices privados de Emergent en producción.
 - Auditoría inmutable de mutaciones críticas, voto secreto en audit feed y RBAC específico para audio/auditoría/minutas.
 - Blueprint: `/app/memory/DOORS_BOARD_SCHEMA_BLUEPRINT.md`.
-- Validación: suite global **66 passed, 3 skipped**; test D, GridFS, documentos y GPT PASS; frontend build PASS; E2E agente PASS; security audit PASS.
+- Validación actual: suite global **71 passed, 8 skipped**; regresión focal **16 passed**; test D, GridFS, documentos y modo IA BLOCKED PASS; frontend build PASS; security audit PASS.
 
 #### Dependencia externa abierta
 
@@ -282,15 +283,18 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - `OPENAI_STT_API_KEY` permanece vacío y fuera de código/frontend/documentación. Sin esa credencial no se crean speakers ni atribuciones.
 - UI muestra: “Identificación de participantes pendiente de procesamiento STT diarizado.”
 - No se usa `whisper-1` como sustituto.
+- **Board AI: BLOCKED controlado mientras `BOARD_AI_ENDPOINT_URL`, `BOARD_AI_API_KEY` y `BOARD_AI_MODEL` no estén configurados.** Junta manual, minutas, votos, documentos y audio no dependen del proveedor IA.
 
-### P0 — Arranque y CORS de despliegue — RESUELTO 2026‑09‑16
+### P0 — Restauración Railway — PARCHE VALIDADO, REDEPLOY PENDIENTE 2026‑09‑16
 
 - Corregida la precedencia de configuración: Kubernetes/runtime prevalece sobre `.env` mediante `load_dotenv(..., override=False)`.
 - La carga local de `.env` ahora usa una ruta relativa explícita a `server.py`, sin depender del directorio de ejecución.
-- CORS permite el origen preview configurado explícitamente y el patrón productivo `*.emergent.host`; subdominios preview arbitrarios no forman parte del contrato con credenciales.
-- Backend reiniciado y verificado RUNNING; `/api/health` externo devuelve 200.
-- Regresión dedicada de arranque, precedencia runtime, health y CORS: **6/6 PASS**.
-- Revisión final de preparación de despliegue: **PASS**, sin bloqueadores.
+- Railway Production ya recibió `CORS_ORIGINS=https://panel.iglesiavenyve.org` y un `CORS_ORIGIN_REGEX` exacto/anclado; el crash CORS original desapareció.
+- Eliminados `emergentintegrations`, `litellm`, ruedas directas e índices privados después de confirmar que impedían resolver el build Railway.
+- Instalación limpia pública: PASS; `pip check`: PASS; imports `server.py` y `board_ai_service.py`: PASS sin paquete Emergent.
+- Uvicorn supervisado RUNNING y `/api/health` preview 200; login/auth, Junta manual y CORS de regresión PASS.
+- Revisión de despliegue: PASS; auditoría de seguridad: PASS sin CRITICAL/HIGH/MEDIUM.
+- **No declarar Production restaurada hasta que el nuevo commit esté en GitHub main, Railway complete el redeploy y pasen health, login, frontend→backend, CORS y logs productivos.**
 
 ### P0 — siguiente: Mega‑Bloque G — CONTABILIDAD Y FINANZAS
 
@@ -307,11 +311,12 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 
 ## 12. Próximas tareas ejecutables
 
-1. Diseñar y aprobar el schema contable por fondos para Ohio.
-2. Implementar plan de cuentas, períodos, asientos balanceados y cierres.
-3. Construir ingresos/donantes/recibos, gastos/proveedores/aprobaciones y conciliación bancaria.
-4. Preparar adapter Pushpay OAuth/webhooks idempotentes sin activarlo hasta obtener sandbox.
-5. Conectar dashboard financiero con Junta Directiva y permisos segregados.
+1. Publicar el parche portable en GitHub `main`, completar redeploy Railway y cerrar la matriz Production PASS.
+2. Diseñar y aprobar el schema contable por fondos para Ohio.
+3. Implementar plan de cuentas, períodos, asientos balanceados y cierres.
+4. Construir ingresos/donantes/recibos, gastos/proveedores/aprobaciones y conciliación bancaria.
+5. Preparar adapter Pushpay OAuth/webhooks idempotentes sin activarlo hasta obtener sandbox.
+6. Conectar dashboard financiero con Junta Directiva y permisos segregados.
 
 ## 13. Restricciones vigentes
 

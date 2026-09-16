@@ -136,9 +136,14 @@ def test_doors_board_meeting_case_and_audio_flow(database):
     assert retry_stt.status_code == 503 and "external credential required" in retry_stt.text
     no_ai_consent = requests.post(api(f"/api/board/meetings/{meeting_id}/ai-draft"), headers=auth(pt), json={"external_processing_acknowledged": False}, timeout=30)
     assert no_ai_consent.status_code == 409
+    ai_status = requests.get(api("/api/board/ai/status"), headers=auth(pt), timeout=30)
+    assert ai_status.status_code == 200 and ai_status.json()["status"] in {"READY", "BLOCKED"}
     ai_draft = requests.post(api(f"/api/board/meetings/{meeting_id}/ai-draft"), headers=auth(pt), json={"external_processing_acknowledged": True}, timeout=180)
-    assert ai_draft.status_code == 200, ai_draft.text
-    assert ai_draft.json()["status"] == "ai_draft" and ai_draft.json()["content"].get("executive_summary") is not None
+    if ai_status.json()["status"] == "READY":
+        assert ai_draft.status_code == 200, ai_draft.text
+        assert ai_draft.json()["status"] == "ai_draft" and ai_draft.json()["content"].get("executive_summary") is not None
+    else:
+        assert ai_draft.status_code == 503 and ai_draft.json()["detail"]["status"] == "BLOCKED"
     document_bytes = b"Documento QA de Junta"
     document = requests.post(api(f"/api/board/meetings/{meeting_id}/documents"), headers=auth(pt), files={"file": ("acuerdo-qa.txt", document_bytes, "text/plain")}, timeout=30)
     assert document.status_code == 201, document.text
@@ -148,10 +153,12 @@ def test_doors_board_meeting_case_and_audio_flow(database):
     document_download = requests.get(api(f"/api/board/documents/{document_id}"), headers=auth(mt), timeout=30)
     assert document_download.status_code == 200 and document_download.content == document_bytes
     minutes_book = requests.get(api("/api/board/minutes"), headers=auth(mt), timeout=30)
-    assert minutes_book.status_code == 200 and len([item for item in minutes_book.json()["items"] if item["meeting_id"] == meeting_id]) >= 2
-    ai_minute = next(item for item in minutes_book.json()["items"] if item["meeting_id"] == meeting_id and item["minute_type"] == "ai_draft")
-    ai_official = requests.put(api(f"/api/board/minutes/{ai_minute['minute_id']}/status"), headers=auth(lt), json={"status": "official"}, timeout=30)
-    assert ai_official.status_code == 409
+    expected_minutes = 2 if ai_status.json()["status"] == "READY" else 1
+    assert minutes_book.status_code == 200 and len([item for item in minutes_book.json()["items"] if item["meeting_id"] == meeting_id]) >= expected_minutes
+    if ai_status.json()["status"] == "READY":
+        ai_minute = next(item for item in minutes_book.json()["items"] if item["meeting_id"] == meeting_id and item["minute_type"] == "ai_draft")
+        ai_official = requests.put(api(f"/api/board/minutes/{ai_minute['minute_id']}/status"), headers=auth(lt), json={"status": "official"}, timeout=30)
+        assert ai_official.status_code == 409
     official = requests.put(api(f"/api/board/minutes/{manual_minute.json()['minute_id']}/status"), headers=auth(lt), json={"status": "official", "review_note": "Revisión humana QA"}, timeout=30)
     assert official.status_code == 200 and official.json()["status"] == "official"
     audit = requests.get(api("/api/board/audit?limit=200"), headers=auth(pt), timeout=30)

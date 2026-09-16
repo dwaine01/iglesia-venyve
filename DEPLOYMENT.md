@@ -123,6 +123,7 @@ Reemplaza los `xxxxxxxx`/`yyyyyyyy` por los CNAME targets que te dió Railway.
 - [ ] Login/Registro funciona (DevTools → Network: las requests van a `https://panel.iglesiavenyve.org/api/...`).
 - [ ] Sin errores CORS en consola.
 - [ ] MongoDB conecta correctamente (revisa logs del backend en Railway).
+- [ ] Login devuelve JWT y las llamadas autenticadas usan `Authorization: Bearer`; no se espera una cookie de sesión de la aplicación.
 
 ---
 
@@ -134,7 +135,7 @@ Reemplaza los `xxxxxxxx`/`yyyyyyyy` por los CNAME targets que te dió Railway.
 | Frontend carga pero login falla | `REACT_APP_BACKEND_URL` mal configurado | Cambia variable en Railway (frontend) y **Redeploy** completo (build-time). |
 | `Access-Control-Allow-Origin` error | `CORS_ORIGINS` no incluye el dominio | Backend → actualiza `CORS_ORIGINS` y redeploy. |
 | `CORS_ORIGINS and CORS_ORIGIN_REGEX environment variables are required` | Falta configuración runtime porque `.env` no viaja en Git | Backend Production → define ambas variables en Railway; no uses `*`. |
-| `ModuleNotFoundError: emergentintegrations` | Dependencia IA no incluida en la imagen | Confirma `emergentintegrations` en `backend/requirements.txt` y el índice adicional en `Dockerfile.backend`. |
+| `ModuleNotFoundError: emergentintegrations` | Acoplamiento histórico de IA al runtime | La IA de Junta usa ahora `BoardAIProvider` HTTP opcional; no agregues ruedas ni índices privados. |
 | `MongoServerSelectionError` | Atlas no permite la IP | Atlas → Network Access → `0.0.0.0/0`. |
 | Build frontend falla por memoria | CRA usa mucha RAM | Añade `NODE_OPTIONS=--max_old_space_size=4096` en variables del frontend. |
 | Build frontend falla por warnings | CRA trata warnings como errores | Ya resuelto: `Dockerfile.frontend` setea `CI=false`. |

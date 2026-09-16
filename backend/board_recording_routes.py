@@ -13,6 +13,7 @@ from motor.motor_asyncio import AsyncIOMotorGridFSBucket
 from pydantic import BaseModel, Field
 
 from access_control import DOORS_MANAGE
+from board_ai_provider import BoardAIProviderDegraded, BoardAIProviderUnavailable, get_board_ai_provider
 from board_ai_service import generate_board_artifacts, transcribe_recording
 from door_board_engine import ensure_board_access, person_summary, record_board_audit, serialize
 from meeting_transcription import get_transcription_provider
@@ -54,6 +55,13 @@ class TranscriptSegmentCorrection(BaseModel):
 
 class AiDraftRequest(BaseModel):
     external_processing_acknowledged: bool
+
+
+def queue_ai_regeneration(background: BackgroundTasks, meeting_id: str, user_id: str, reason: str) -> str:
+    if not get_board_ai_provider().is_configured():
+        return "regeneration_blocked"
+    background.add_task(generate_board_artifacts, db, meeting_id, user_id, reason)
+    return "regeneration_queued"
 
 
 async def ensure_recording_access(current_user: dict, permission: str):
@@ -204,9 +212,9 @@ async def update_speaker_mapping(meeting_id: str, payload: SpeakerMappingUpdate,
     now = datetime.now(timezone.utc); mapping_id = f"{meeting_id}:{payload.speaker_label}"
     await db.board_speaker_mappings.update_one({"meeting_id": meeting_id, "speaker_label": payload.speaker_label}, {"$set": {"person_id": payload.person_id, "corrected_by_user_id": current_user["user_id"], "updated_at": now}, "$setOnInsert": {"_id": mapping_id, "mapping_id": mapping_id, "meeting_id": meeting_id, "created_at": now}}, upsert=True)
     version = await create_corrected_transcript(meeting_id, current_user["user_id"])
-    background.add_task(generate_board_artifacts, db, meeting_id, current_user["user_id"], "speaker_mapping_corrected")
+    derived_status = queue_ai_regeneration(background, meeting_id, current_user["user_id"], "speaker_mapping_corrected")
     await record_board_audit(db, current_user["user_id"], "speaker_mapping_corrected", "board_meeting", meeting_id, {"speaker_label": payload.speaker_label, "person_id": payload.person_id})
-    return {"mapping": {"speaker_label": payload.speaker_label, "person_id": payload.person_id}, "transcript_version": version["version"], "derived_status": "regeneration_queued"}
+    return {"mapping": {"speaker_label": payload.speaker_label, "person_id": payload.person_id}, "transcript_version": version["version"], "derived_status": derived_status}
 
 
 @router.put("/meetings/{meeting_id}/transcript-segment", response_model=dict)
@@ -214,9 +222,15 @@ async def correct_transcript_segment(meeting_id: str, payload: TranscriptSegment
     await ensure_recording_access(current_user, "board.notes.write")
     if not payload.external_processing_acknowledged: raise HTTPException(status_code=409, detail="Confirme el procesamiento externo antes de regenerar derivados")
     version = await create_corrected_transcript(meeting_id, current_user["user_id"], payload)
-    background.add_task(generate_board_artifacts, db, meeting_id, current_user["user_id"], "transcript_text_corrected")
+    derived_status = queue_ai_regeneration(background, meeting_id, current_user["user_id"], "transcript_text_corrected")
     await record_board_audit(db, current_user["user_id"], "transcript_text_corrected", "board_meeting", meeting_id, {"source_segment_id": payload.segment_id, "version": version["version"]})
-    return {"transcript_version": version["version"], "derived_status": "regeneration_queued"}
+    return {"transcript_version": version["version"], "derived_status": derived_status}
+
+
+@router.get("/ai/status", response_model=dict)
+async def get_ai_status(current_user: dict = Depends(get_current_user)):
+    await ensure_recording_access(current_user, "board.minutes.review")
+    return get_board_ai_provider().status()
 
 
 @router.post("/meetings/{meeting_id}/ai-draft", response_model=dict)
@@ -228,6 +242,8 @@ async def generate_ai_draft(meeting_id: str, payload: AiDraftRequest, current_us
         result = await generate_board_artifacts(db, meeting_id, current_user["user_id"])
         await record_board_audit(db, current_user["user_id"], "ai_draft_generated", "board_meeting", meeting_id, {"artifact_id": result["artifact_id"], "model": result["model"]})
         return result
+    except BoardAIProviderUnavailable: raise HTTPException(status_code=503, detail={"status": "BLOCKED", "error_code": "board_ai_not_configured"})
+    except BoardAIProviderDegraded: raise HTTPException(status_code=503, detail={"status": "DEGRADED", "error_code": "board_ai_provider_failure"})
     except json.JSONDecodeError: raise HTTPException(status_code=502, detail="La IA no devolvió un borrador estructurado")
     except Exception as exc: raise HTTPException(status_code=502, detail=f"No se pudo generar el borrador: {type(exc).__name__}")
 
