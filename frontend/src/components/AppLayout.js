@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Outlet, NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Button } from './ui/button';
@@ -15,19 +15,20 @@ import { LOGO_IGLESIA } from '../data/presentationData';
 import DisplayScaleToggle from './DisplayScaleToggle';
 import { ContextGuideButton } from './guides/ContextGuideButton';
 import { resolveRouteGuide } from './guides/guideRouteMap';
+import { BRAND } from '../config/brand';
 const LOGO_URL = LOGO_IGLESIA;
 
 // Menu items by role
 const getNavItems = (rol) => {
   if (rol === 'pastor') {
     return [
-      { to: '/dashboard-general', icon: Crown, label: 'Dashboard General', end: true },
+      { to: '/dashboard-general', icon: Crown, label: 'Panel General', end: true },
       { to: '/nucleo', icon: DatabaseZap, label: 'Gobierno del Núcleo', testId: 'nav-core-governance' },
-      { to: '/procesos/dashboard', icon: Activity, label: 'Dashboard de Procesos', testId: 'nav-process-dashboard' },
+      { to: '/procesos/dashboard', icon: Activity, label: 'Panel de Procesos', testId: 'nav-process-dashboard' },
       { to: '/procesos/7-semanas', icon: BookOpenCheck, label: 'Ley de las 7 Semanas', testId: 'nav-seven-weeks' },
       { to: '/procesos/consolidacion', icon: Activity, label: 'Consolidación', testId: 'nav-consolidation' },
       { to: '/procesos/mentoria', icon: HeartHandshake, label: 'Mentoría', testId: 'nav-mentorship' },
-      { to: '/procesos/cap', icon: Compass, label: 'CAP', testId: 'nav-cap' },
+      { to: '/procesos/cap', icon: Compass, label: 'Encuentra tu lugar para servir', testId: 'nav-cap' },
       { to: '/celulas/dashboard', icon: RadioTower, label: 'Sistema Celular', testId: 'nav-cellular' },
       { to: '/puertas/dashboard', icon: DoorOpen, label: '9 Puertas', testId: 'nav-doors' },
       { to: '/junta/dashboard', icon: Gavel, label: 'Junta Directiva', testId: 'nav-board' },
@@ -36,7 +37,7 @@ const getNavItems = (rol) => {
       { to: '/ministerios', icon: Church, label: 'Ministerios', testId: 'nav-ministerios' },
       { to: '/bitacora', icon: NotebookPen, label: 'Bitácora Evangelística' },
       { to: '/codigos', icon: KeyRound, label: 'Códigos de Invitación' },
-      { to: '/presentacion', icon: Presentation, label: 'Manual 7 Semanas' },
+      { to: '/presentacion', icon: Presentation, label: 'Manual de 7 Semanas' },
       { type: 'separator', label: 'Administración' },
       { to: '/estadisticas', icon: BarChart3, label: 'Estadísticas Globales' },
     ];
@@ -47,19 +48,19 @@ const getNavItems = (rol) => {
       { to: '/procesos/dashboard', icon: Trophy, label: 'Mi Progreso', end: true },
       { to: '/procesos/7-semanas', icon: BookOpenCheck, label: 'Mis 7 Semanas' },
       { to: '/procesos/mentoria', icon: HeartHandshake, label: 'Mi Mentoría' },
-      { to: '/procesos/cap', icon: Compass, label: 'Mi CAP' },
+      { to: '/procesos/cap', icon: Compass, label: 'Mi lugar para servir' },
       { to: '/celulas/dashboard', icon: RadioTower, label: 'Mi Célula', testId: 'nav-cellular' },
     ];
   }
   
   // Default: lider
   return [
-    { to: '/', icon: LayoutDashboard, label: 'Dashboard', end: true },
-    { to: '/procesos/dashboard', icon: Activity, label: 'Dashboard de Procesos', testId: 'nav-process-dashboard' },
+    { to: '/', icon: LayoutDashboard, label: 'Panel principal', end: true },
+    { to: '/procesos/dashboard', icon: Activity, label: 'Panel de Procesos', testId: 'nav-process-dashboard' },
     { to: '/procesos/7-semanas', icon: BookOpenCheck, label: 'Ley de las 7 Semanas', testId: 'nav-seven-weeks' },
     { to: '/procesos/consolidacion', icon: Activity, label: 'Consolidación', testId: 'nav-consolidation' },
     { to: '/procesos/mentoria', icon: HeartHandshake, label: 'Mentoría', testId: 'nav-mentorship' },
-    { to: '/procesos/cap', icon: Compass, label: 'CAP', testId: 'nav-cap' },
+    { to: '/procesos/cap', icon: Compass, label: 'Encuentra tu lugar para servir', testId: 'nav-cap' },
     { to: '/celulas/dashboard', icon: RadioTower, label: 'Sistema Celular', testId: 'nav-cellular' },
     { to: '/puertas/dashboard', icon: DoorOpen, label: '9 Puertas', testId: 'nav-doors' },
     { to: '/junta/dashboard', icon: Gavel, label: 'Junta Directiva', testId: 'nav-board' },
@@ -69,17 +70,17 @@ const getNavItems = (rol) => {
     { type: 'separator', label: 'Herramientas' },
     { to: '/codigos', icon: KeyRound, label: 'Códigos de Invitación' },
     { to: '/bitacora', icon: NotebookPen, label: 'Bitácora Evangelística' },
-    { to: '/presentacion', icon: Presentation, label: 'Manual 7 Semanas' },
+    { to: '/presentacion', icon: Presentation, label: 'Manual de 7 Semanas' },
     { to: '/estadisticas', icon: BarChart3, label: 'Estadísticas' },
   ];
 };
 
 const breadcrumbMap = {
-  '/': 'Dashboard',
-  '/dashboard': 'Dashboard',
-  '/dashboard-general': 'Dashboard General',
+  '/': 'Panel principal',
+  '/dashboard': 'Panel principal',
+  '/dashboard-general': 'Panel General',
   '/mi-progreso': 'Mi Progreso',
-  '/presentacion': 'Manual 7 Semanas',
+  '/presentacion': 'Manual de 7 Semanas',
   '/introduccion': 'Introducción del Manual',
   '/mapa': 'Mapa de las 7 Semanas',
   '/registro': 'Registro de Contactos',
@@ -91,12 +92,12 @@ const breadcrumbMap = {
   '/personas': 'Personas',
   '/personas/nueva': 'Nueva Persona',
   '/nucleo': 'Gobierno del Núcleo',
-  '/procesos/dashboard': 'Dashboard de Procesos',
+  '/procesos/dashboard': 'Panel de Procesos',
   '/procesos/7-semanas': 'Ley de las 7 Semanas',
   '/procesos/consolidacion': 'Consolidación',
   '/procesos/mentoria': 'Mentoría',
-  '/procesos/cap': 'CAP',
-  '/celulas/dashboard': 'Dashboard Celular',
+  '/procesos/cap': 'Encuentra tu lugar para servir',
+  '/celulas/dashboard': 'Panel del Sistema Celular',
   '/celulas/redes': 'Redes Celulares',
   '/celulas/lista': 'Lista de Células',
   '/celulas/bandeja-ready': 'Bandeja Celular',
@@ -135,8 +136,9 @@ function SidebarContent({ onClose, testIdPrefix = '' }) {
         <img src={LOGO_URL} alt="Casa de Oración Ven y Ve"
              className="w-11 h-11 object-contain logo-transparent" />
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-white truncate" style={{ fontFamily: 'Spectral, serif' }}>Ven y Ve</p>
-          <p className="text-[10px] text-[#C8A951] truncate uppercase tracking-wider">Casa de Oración</p>
+          <p className="font-['Spectral'] text-base font-semibold text-white" data-testid={`${testIdPrefix}sidebar-brand-name`}>{BRAND.name}</p>
+          <p className="mt-0.5 text-[9px] leading-3 text-[#D8BC61]">{BRAND.subtitle}</p>
+          <p className="mt-1 text-[9px] uppercase tracking-wider text-white/50">{BRAND.church}</p>
         </div>
       </div>
 
@@ -182,7 +184,7 @@ function SidebarContent({ onClose, testIdPrefix = '' }) {
               }
             >
               <Icon className="w-4 h-4 shrink-0" />
-              <span className="truncate">{item.label}</span>
+              <span className="min-w-0 whitespace-normal leading-5">{item.label}</span>
             </NavLink>
           );
         })}
@@ -222,12 +224,17 @@ export default function AppLayout() {
     if (path.startsWith('/personas/')) return 'Perfil 360';
     if (path.startsWith('/ministerios/')) return 'Detalle de Ministerio';
     if (path.startsWith('/procesos/7-semanas/')) return 'Inscripción de 7 Semanas';
-    if (path.startsWith('/lider/')) return 'Dashboard del Líder';
+    if (path.startsWith('/lider/')) return 'Panel del Líder';
     if (path.startsWith('/celulas/')) return 'Sistema Celular';
     if (path.startsWith('/puertas/')) return 'Sistema de las 9 Puertas';
     if (path.startsWith('/junta/reuniones/')) return 'Reunión de Junta';
     return 'Página';
   };
+  const currentBreadcrumb = getBreadcrumb();
+
+  useEffect(() => {
+    document.title = `${BRAND.name} | ${currentBreadcrumb}`;
+  }, [currentBreadcrumb]);
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
@@ -269,20 +276,20 @@ export default function AppLayout() {
               <div className="w-9 h-9 rounded-md bg-[#0F1A33] flex items-center justify-center p-0.5">
                 <img
                   src={LOGO_URL}
-                  alt="Ven y Ve"
+                  alt={BRAND.name}
                   className="w-full h-full object-contain logo-transparent"
                 />
               </div>
               <span className="font-semibold text-sm text-foreground" style={{ fontFamily: 'Spectral, serif' }}>
-                Ven y Ve
+                {BRAND.name}
               </span>
             </div>
 
             {/* Breadcrumb - desktop ve completo, mobile oculto hasta sm */}
             <div className="hidden sm:flex items-center gap-2 text-sm text-muted-foreground min-w-0 flex-1 lg:flex-initial">
-              <span className="hidden lg:inline">Inicio</span>
+              <span className="hidden lg:inline">{BRAND.name}</span>
               <ChevronRight className="w-4 h-4 hidden lg:inline" />
-              <span className="text-foreground font-medium truncate" data-testid="current-breadcrumb">{getBreadcrumb()}</span>
+              <span className="text-foreground font-medium truncate" data-testid="current-breadcrumb">{currentBreadcrumb}</span>
             </div>
 
             {/* Spacer + acciones a la derecha */}

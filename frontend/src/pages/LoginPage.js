@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ArrowRight, Cross, Eye, EyeOff, Quote } from 'lucide-react';
+import { Eye, EyeOff } from 'lucide-react';
 
 import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/ui/button';
@@ -9,22 +9,9 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 
 import { LOGO_IGLESIA } from '../data/presentationData';
+import { BRAND, SPIRITUAL_QUOTES } from '../config/brand';
 
 const LOGO_URL = LOGO_IGLESIA;
-
-const loginQuotes = [
-  '"La vision no es abstracta, es concreta; y lo concreto produce resultados."',
-  '"Si cuidas la planta, le echas agua y la proteges, va a dar fruto."',
-  '"La hormiga sabe lo que quiere, cuando lo quiere y donde lo quiere."',
-  '"De Persona a Discipulo, de Discipulo a Obrero, de Obrero a Ministro."',
-];
-
-const journeySteps = [
-  { label: 'Persona', color: '#C8A951', glow: true },
-  { label: 'Discipulo', color: '#D4B871', glow: false },
-  { label: 'Obrero', color: '#1FA6A0', glow: false },
-  { label: 'Ministro', color: '#FFFFFF', glow: false },
-];
 
 export default function LoginPage() {
   const [isRegister, setIsRegister] = useState(false);
@@ -43,12 +30,16 @@ export default function LoginPage() {
 
   useEffect(() => {
     const interval = setInterval(() => {
-      setQuoteIdx((prev) => (prev + 1) % loginQuotes.length);
-    }, 5500);
+      setQuoteIdx((prev) => (prev + 1) % SPIRITUAL_QUOTES.length);
+    }, 6500);
     return () => clearInterval(interval);
   }, []);
 
-  const activeQuote = useMemo(() => loginQuotes[quoteIdx], [quoteIdx]);
+  useEffect(() => {
+    document.title = `${BRAND.name} | Acceso`;
+  }, []);
+
+  const activeQuote = useMemo(() => SPIRITUAL_QUOTES[quoteIdx], [quoteIdx]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -67,7 +58,7 @@ export default function LoginPage() {
       navigate('/');
     } catch (err) {
       const detail = err.response?.data?.detail;
-      const msg = typeof detail === 'string' ? detail : 'Error al iniciar sesion';
+      const msg = typeof detail === 'string' ? detail : 'No se pudo iniciar sesión';
       // Si el error viene del codigo, resaltar el campo
       if (isRegister && typeof detail === 'string' && detail.toLowerCase().includes('codigo')) {
         setInviteCodeError(detail);
@@ -79,16 +70,13 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="h-screen w-full relative bg-[#0B1428] overflow-hidden">
+    <div className="relative min-h-screen w-full overflow-x-hidden bg-[#0B1428] lg:h-screen lg:overflow-hidden" data-testid="ven-y-ve-360-login-page">
       {/* ========================================================= */}
       {/*            FONDO: NAVY UNIFORME + AMBIENTE SUTIL           */}
       {/* ========================================================= */}
       <div className="absolute inset-0 pointer-events-none" aria-hidden="true">
         <div className="absolute inset-0 animated-dots opacity-[0.05]"></div>
         <div className="absolute inset-0 bg-gradient-to-b from-[#0B1428] via-[#0F1A33]/60 to-[#0B1428]"></div>
-        {/* Orbes sutiles para atmósfera (no agregan encuadre) */}
-        <div className="absolute top-[20%] right-[-8%] w-[600px] h-[600px] bg-gradient-radial from-[#C8A951]/12 to-transparent rounded-full blur-3xl"></div>
-        <div className="absolute bottom-[10%] left-[-10%] w-[550px] h-[550px] bg-gradient-radial from-[#1FA6A0]/10 to-transparent rounded-full blur-3xl"></div>
       </div>
 
       {/* ========================================================= */}
@@ -106,14 +94,14 @@ export default function LoginPage() {
               <div className="absolute inset-0 bg-[#C8A951]/25 blur-3xl rounded-full scale-110"></div>
               <img
                 src={LOGO_URL}
-                alt="Casa de Oracion Ven y Ve"
+                alt="Casa de Oración Ven y Ve"
                 className="relative w-[72px] h-[72px] md:w-[88px] md:h-[88px] object-contain logo-transparent"
                 data-testid="login-logo"
               />
             </div>
             <div className="hidden sm:block">
               <p className="text-[#C8A951]/90 text-[10px] md:text-[11px] tracking-[0.35em] uppercase font-semibold" style={{ fontFamily: 'Spectral, serif' }}>
-                Casa de Oracion
+                Casa de Oración
               </p>
               <p className="text-white text-base md:text-lg font-semibold mt-0.5" style={{ fontFamily: 'Spectral, serif' }}>
                 Ven y Ve
@@ -125,47 +113,40 @@ export default function LoginPage() {
         {/* ========================================================= */}
         {/*   SECCIÓN CENTRAL: HERO + LOGIN + CITA (en el medio)       */}
         {/* ========================================================= */}
-        <main className="flex-1 w-full px-6 sm:px-10 lg:px-16 xl:px-24 flex flex-col justify-center py-4 md:py-6">
+        <main className="flex-1 w-full px-6 sm:px-10 lg:px-16 xl:px-24 flex flex-col justify-center py-5 md:py-6">
           <div className="max-w-[1400px] mx-auto w-full">
 
             {/* --- Hero + Login lado a lado --- */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-stretch">
               {/* Hero text (izquierda) - con cita rotatoria integrada debajo */}
-              <div className="lg:col-span-7 xl:col-span-8 flex flex-col gap-4 justify-center" data-testid="login-hero-text">
+              <div className="lg:col-span-7 xl:col-span-8 flex flex-col justify-center" data-testid="login-hero-text">
+                <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.24em] text-[#D7BC65]" data-testid="login-platform-kicker">Plataforma ministerial</p>
                 <h1
-                  className="text-4xl sm:text-5xl md:text-6xl lg:text-[72px] xl:text-[88px] font-bold text-white leading-[0.95] tracking-tight"
+                  className="mt-3 text-4xl sm:text-5xl md:text-6xl lg:text-[72px] xl:text-[82px] font-bold text-white leading-[0.95]"
                   style={{ fontFamily: 'Spectral, serif' }}
+                  data-testid="login-brand-title"
                 >
-                  La Ley de las<br />
-                  <span className="shimmer-text">7 Semanas</span>
+                  VEN Y VE <span className="shimmer-text">360</span>
                 </h1>
-                <p
-                  className="text-base md:text-lg lg:text-xl text-white/70 leading-relaxed font-light max-w-2xl"
-                  style={{ fontFamily: 'Spectral, serif' }}
-                >
-                  Un proceso de discipulado y consolidacion ministerial que transforma vidas para el Reino de Dios.
-                </p>
+                <p className="mt-3 text-base font-semibold text-[#E7D28D] md:text-lg" data-testid="login-brand-subtitle">{BRAND.subtitle}</p>
+                <p className="mt-2 font-['Spectral'] text-base text-white md:text-lg" data-testid="login-brand-slogan">{BRAND.slogan}</p>
+                <p className="mt-3 max-w-2xl text-sm leading-6 text-white/65 md:text-base" data-testid="login-brand-description">{BRAND.description}</p>
 
-                {/* --- Cita rotatoria - a la izquierda, sutilmente debajo del subtitulo --- */}
-                <div className="mt-6 md:mt-8 max-w-xl" data-testid="login-rotating-quote">
+                {/* --- Identidad espiritual permanente --- */}
+                <div className="mt-6 max-w-2xl border-l border-[#C8A951]/65 pl-4 md:mt-8" data-testid="login-rotating-quote" aria-live="polite">
+                  <div className="flex items-center justify-between gap-4">
+                    <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-[#D8BC61]" data-testid="login-quote-category">{activeQuote.category}</p>
+                    <span className="font-mono text-[10px] text-white/35" data-testid="login-quote-position">{String(quoteIdx + 1).padStart(2, '0')} / {SPIRITUAL_QUOTES.length}</span>
+                  </div>
                   <p
                     key={quoteIdx}
-                    className="text-white/70 text-sm md:text-base italic leading-[1.5] fade-in-quote font-light"
+                    className="mt-2 text-white/75 text-sm md:text-base italic leading-[1.6] fade-in-quote font-light"
                     style={{ fontFamily: 'Spectral, serif' }}
                     data-testid="login-quote-text"
                   >
-                    {activeQuote}
+                    “{activeQuote.text}”
                   </p>
-                  <div className="flex gap-1.5 mt-3" data-testid="login-quote-indicators">
-                    {loginQuotes.map((_, i) => (
-                      <div
-                        key={i}
-                        className={`h-[2px] rounded-full transition-[width,background-color] duration-500 ${
-                          i === quoteIdx ? 'w-8 bg-[#C8A951]' : 'w-3 bg-white/15'
-                        }`}
-                      />
-                    ))}
-                  </div>
+                  <div className="mt-3 h-px overflow-hidden bg-white/10" data-testid="login-quote-progress"><div key={`progress-${quoteIdx}`} className="h-full origin-left animate-[quoteProgress_6.5s_linear] bg-[#C8A951]" /></div>
                 </div>
               </div>
 
@@ -182,12 +163,12 @@ export default function LoginPage() {
                       className="text-2xl md:text-3xl font-bold text-white mb-1 leading-tight"
                       style={{ fontFamily: 'Spectral, serif' }}
                     >
-                      {isRegister ? 'Crear cuenta' : 'Iniciar sesion'}
+                      {isRegister ? 'Crear cuenta' : 'Iniciar sesión'}
                     </h2>
                     <p className="text-white/55 text-xs md:text-sm">
                       {isRegister
-                        ? 'Registrate para acceder al manual'
-                        : 'Ingresa tus credenciales institucionales'}
+                        ? `Regístrate para acceder a ${BRAND.name}`
+                        : `Ingresa a ${BRAND.name} con tus credenciales institucionales`}
                     </p>
                   </div>
 
@@ -196,7 +177,7 @@ export default function LoginPage() {
                       <>
                         <div className="space-y-1.5">
                           <Label htmlFor="invite_code" className={`text-[10px] uppercase tracking-wider font-semibold ${inviteCodeError ? 'text-red-400' : 'text-[#C8A951]'}`}>
-                            Codigo de invitacion <span className="text-white/40 normal-case tracking-normal">(opcional)</span>
+                            Código de invitación <span className="text-white/40 normal-case tracking-normal">(opcional)</span>
                           </Label>
                           <Input
                             id="invite_code"
@@ -243,7 +224,7 @@ export default function LoginPage() {
                     )}
                     <div className="space-y-1.5">
                       <Label htmlFor="email" className="text-white/75 text-[10px] uppercase tracking-wider font-semibold">
-                        Correo electronico
+                        Correo electrónico
                       </Label>
                       <Input
                         id="email"
@@ -258,7 +239,7 @@ export default function LoginPage() {
                     </div>
                     <div className="space-y-1.5">
                       <Label htmlFor="password" className="text-white/75 text-[10px] uppercase tracking-wider font-semibold">
-                        Contrasena
+                        Contraseña
                       </Label>
                       <div className="relative">
                         <Input
@@ -266,7 +247,7 @@ export default function LoginPage() {
                           type={showPass ? 'text' : 'password'}
                           value={password}
                           onChange={(e) => setPassword(e.target.value)}
-                          placeholder="Tu contrasena"
+                          placeholder="Tu contraseña"
                           required
                           data-testid="login-password-input"
                           className="bg-transparent border-white/20 text-white placeholder:text-white/30 focus-visible:ring-[#C8A951]/50 focus-visible:border-[#C8A951]/60 h-10 pr-10"
@@ -275,7 +256,7 @@ export default function LoginPage() {
                           type="button"
                           onClick={() => setShowPass(!showPass)}
                           className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-[#C8A951] transition-colors"
-                          aria-label={showPass ? 'Ocultar contrasena' : 'Mostrar contrasena'}
+                          aria-label={showPass ? 'Ocultar contraseña' : 'Mostrar contraseña'}
                           data-testid="toggle-password-visibility-button"
                         >
                           {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -290,7 +271,7 @@ export default function LoginPage() {
                       data-testid="login-submit-button"
                       style={{ fontFamily: 'Spectral, serif' }}
                     >
-                      {loading ? 'Procesando...' : isRegister ? 'Crear cuenta' : 'Iniciar sesion'}
+                      {loading ? 'Procesando...' : isRegister ? 'Crear cuenta' : 'Iniciar sesión'}
                     </Button>
                   </form>
 
@@ -300,7 +281,7 @@ export default function LoginPage() {
                       className="text-xs md:text-sm text-white/45 hover:text-[#C8A951] transition-colors"
                       data-testid="toggle-auth-mode"
                     >
-                      {isRegister ? 'Ya tengo cuenta. Iniciar sesion' : 'No tengo cuenta. Registrarme'}
+                      {isRegister ? 'Ya tengo cuenta. Iniciar sesión' : 'No tengo cuenta. Registrarme'}
                     </button>
                   </div>
                 </div>
@@ -309,69 +290,13 @@ export default function LoginPage() {
           </div>
         </main>
 
-        {/* ========================================================= */}
-        {/*   FOOTER: CAMINO DEL DISCIPULADO + INFO DE LA IGLESIA      */}
-        {/* ========================================================= */}
         <footer
-          className="w-full px-6 sm:px-10 lg:px-16 xl:px-24 pt-4 md:pt-6 pb-4 md:pb-6 shrink-0"
+          className="w-full shrink-0 px-6 pb-5 pt-3 sm:px-10 lg:px-16 xl:px-24"
           data-testid="login-footer"
         >
-          <div className="max-w-[1400px] mx-auto">
-            {/* Etiqueta "El Camino del Discipulado" */}
-            <div className="flex items-center gap-4 mb-3 md:mb-4">
-              <div className="h-px flex-1 bg-gradient-to-r from-transparent via-[#C8A951]/25 to-transparent"></div>
-              <span
-                className="text-[#C8A951]/90 text-[10px] md:text-xs tracking-[0.4em] uppercase font-semibold whitespace-nowrap shrink-0"
-                style={{ fontFamily: 'Spectral, serif' }}
-              >
-                El Camino del Discipulado
-              </span>
-              <div className="h-px flex-1 bg-gradient-to-r from-transparent via-[#C8A951]/25 to-transparent"></div>
-            </div>
-
-            {/* Journey horizontal a lo largo */}
-            <div
-              className="flex items-center justify-between gap-3 md:gap-6 flex-wrap md:flex-nowrap mb-3"
-              data-testid="login-journey-path"
-            >
-              {journeySteps.map((step, i) => (
-                <React.Fragment key={i}>
-                  <div className="flex items-center gap-2.5 md:gap-3 group shrink-0">
-                    <div className="relative">
-                      {step.glow && (
-                        <div
-                          className="absolute inset-0 rounded-full blur-lg animate-pulse"
-                          style={{ backgroundColor: step.color, opacity: 0.65 }}
-                        />
-                      )}
-                      <div
-                        className="relative w-3.5 h-3.5 md:w-4 md:h-4 rounded-full"
-                        style={{
-                          backgroundColor: step.color,
-                          boxShadow: `0 0 18px ${step.color}90`,
-                        }}
-                      />
-                    </div>
-                    <span
-                      className="text-white text-base md:text-lg lg:text-xl font-semibold tracking-wide"
-                      style={{ fontFamily: 'Spectral, serif' }}
-                    >
-                      {step.label}
-                    </span>
-                  </div>
-                  {i < journeySteps.length - 1 && (
-                    <ArrowRight className="w-4 h-4 md:w-5 md:h-5 text-[#C8A951]/55 shrink-0" strokeWidth={2} />
-                  )}
-                </React.Fragment>
-              ))}
-            </div>
-
-            {/* Linea divisoria minimal + Hechos 1:8 */}
-            <div className="pt-4 border-t border-white/10 flex items-center justify-end">
-              <p className="text-white/30 text-[10px] md:text-xs tracking-[0.25em] uppercase">
-                Hechos 1:8
-              </p>
-            </div>
+          <div className="mx-auto flex max-w-[1400px] items-center justify-between gap-4 border-t border-white/10 pt-4 text-[10px] uppercase text-white/35">
+            <span className="tracking-[0.18em]">{BRAND.church}</span>
+            <span className="tracking-[0.25em]">Hechos 1:8</span>
           </div>
         </footer>
       </div>

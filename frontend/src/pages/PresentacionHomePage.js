@@ -51,7 +51,7 @@ export default function PresentacionHomePage() {
       <div className="px-4 sm:px-6 lg:px-8 py-6 sm:py-10 max-w-5xl mx-auto space-y-6">
         <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
           <div className="rounded-2xl bg-gradient-to-r from-[#1B2A4A] to-[#2A3D63] p-5 sm:p-8 text-white relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-48 h-48 bg-[#C8A951]/10 rounded-full blur-2xl -translate-y-16 translate-x-16" />
+            <div className="absolute right-4 top-0 h-28 w-28 -translate-y-12 rounded-full bg-[#C8A951]/10 blur-2xl" />
             <div className="relative z-10 flex items-center gap-4">
               <div className="w-16 h-16 sm:w-20 sm:h-20 bg-[#0F1A33] rounded-xl p-1.5 flex items-center justify-center shrink-0 border border-[#C8A951]/30">
                 <img src={LOGO_IGLESIA} alt="Ven y Ve" className="w-full h-full object-contain logo-transparent" />
@@ -65,7 +65,7 @@ export default function PresentacionHomePage() {
                   La Ley de las 7 Semanas
                 </h1>
                 <p className="text-white/70 mt-0.5 text-xs sm:text-sm">
-                  Sistema Celular · 9 Puertas · Modelo CAP · Operación 72
+                  Sistema Celular · 9 Puertas · Encuentra tu lugar para servir · Operación 72
                 </p>
               </div>
             </div>
@@ -106,7 +106,7 @@ export default function PresentacionHomePage() {
         </div>
 
         <Button variant="outline" onClick={() => navigate(backRoute)} className="gap-2" data-testid="presentation-back-dashboard-button">
-          <Home className="w-4 h-4" /> Volver al Dashboard
+          <Home className="w-4 h-4" /> Volver al Panel principal
         </Button>
       </div>
     </div>

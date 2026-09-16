@@ -7,8 +7,8 @@ from pymongo import MongoClient
 
 
 BACKEND_ENV = dotenv_values("/app/backend/.env")
-MONGO_URL = (os.environ.get("MONGO_URL") or BACKEND_ENV.get("MONGO_URL") or "").strip('"')
-DB_NAME = (os.environ.get("DB_NAME") or BACKEND_ENV.get("DB_NAME") or "").strip('"')
+MONGO_URL = (BACKEND_ENV.get("MONGO_URL") or os.environ.get("MONGO_URL") or "").strip('"')
+DB_NAME = (BACKEND_ENV.get("DB_NAME") or os.environ.get("DB_NAME") or "").strip('"')
 
 
 def test_cleanup_qa_artifacts_created_by_t1_run():
@@ -22,15 +22,17 @@ def test_cleanup_qa_artifacts_created_by_t1_run():
         qa_users = list(db.users.find({"email": {"$regex": r"^qa\.lockout\.", "$options": "i"}}, {"_id": 1, "person_id": 1}))
         qa_person_ids_from_users = [item.get("person_id") for item in qa_users if item.get("person_id")]
 
-        network_ids = db.cell_networks.distinct("network_id", {"name": {"$regex": r"^QA UI Red T1", "$options": "i"}})
+        network_ids = db.cell_networks.distinct("network_id", {"name": {"$regex": r"^QA (UI Red T1|MegaC )", "$options": "i"}})
         cell_ids = db.cells.distinct("cell_id", {
             "$or": [
                 {"network_id": {"$in": network_ids}},
-                {"name": {"$regex": r"^QA UI C[ée]lula", "$options": "i"}},
-                {"code": {"$regex": r"^QAT1U", "$options": "i"}},
+                {"name": {"$regex": r"^QA (UI C[ée]lula|MegaC )", "$options": "i"}},
+                {"code": {"$regex": r"^(QAT1U|QAC)", "$options": "i"}},
             ]
         })
         meeting_ids = db.cell_meetings.distinct("meeting_id", {"cell_id": {"$in": cell_ids}})
+        need_ids = db.cell_needs.distinct("need_id", {"cell_id": {"$in": cell_ids}})
+        case_ids = db.door_cases.distinct("case_id", {"source_type": "cell_need", "source_id": {"$in": need_ids}})
         qa_person_ids = db.persons.distinct("_id", {"$or": [{"nombre": "QA Lockout"}, {"apellido": {"$regex": r"MegaC", "$options": "i"}}]})
         qa_person_ids = [str(item) for item in qa_person_ids] + qa_person_ids_from_users
 
@@ -53,6 +55,11 @@ def test_cleanup_qa_artifacts_created_by_t1_run():
             db.person_attendance.delete_many({"activity_type": "cell_meeting", "source_id": {"$in": meeting_ids}})
             db.cell_meetings.delete_many({"meeting_id": {"$in": meeting_ids}})
 
+        if case_ids:
+            db.door_case_events.delete_many({"case_id": {"$in": case_ids}})
+            db.board_audit_events.delete_many({"entity_id": {"$in": case_ids}})
+            db.door_cases.delete_many({"case_id": {"$in": case_ids}})
+
         if qa_person_ids:
             db.cell_assignment_events.delete_many({"person_id": {"$in": qa_person_ids}})
             db.person_contacts.delete_many({"person_id": {"$in": qa_person_ids}})
@@ -66,8 +73,8 @@ def test_cleanup_qa_artifacts_created_by_t1_run():
         if qa_users:
             db.users.delete_many({"_id": {"$in": [item["_id"] for item in qa_users]}})
 
-        remaining_networks = db.cell_networks.count_documents({"name": {"$regex": r"^QA UI Red T1", "$options": "i"}})
-        remaining_cells = db.cells.count_documents({"$or": [{"name": {"$regex": r"^QA UI C[ée]lula", "$options": "i"}}, {"code": {"$regex": r"^QAT1U", "$options": "i"}}]})
+        remaining_networks = db.cell_networks.count_documents({"name": {"$regex": r"^QA (UI Red T1|MegaC )", "$options": "i"}})
+        remaining_cells = db.cells.count_documents({"$or": [{"name": {"$regex": r"^QA (UI C[ée]lula|MegaC )", "$options": "i"}}, {"code": {"$regex": r"^(QAT1U|QAC)", "$options": "i"}}]})
         remaining_users = db.users.count_documents({"email": {"$regex": r"^qa\.lockout\.", "$options": "i"}})
 
         assert remaining_networks == 0

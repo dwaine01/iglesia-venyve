@@ -17,6 +17,7 @@ import {
 import { Button } from '../components/ui/button';
 import { Skeleton } from '../components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs';
+import { displayLabel } from '../lib/displayLabels';
 
 // P-001 Slice 2A - Person Profile 360 (shell full-screen).
 // Consume unicamente el read-model /api/core/persons/{id}/profile.
@@ -26,7 +27,7 @@ const SECTION_LABELS = {
   resumen: 'Resumen',
   contacto: 'Contacto',
   direcciones: 'Direcciones',
-  household: 'Household',
+  household: 'Hogar',
   familia: 'Familia',
   procesos: 'Procesos',
   asistencia: 'Asistencia',
@@ -167,7 +168,7 @@ export default function PersonaPerfilPage() {
                   disabled={!available.includes(section)}
                   className="min-h-9 rounded-lg px-2 text-xs font-medium text-gray-600 data-[state=active]:bg-white data-[state=active]:text-[#101D36] data-[state=active]:shadow-sm sm:text-sm"
                 >
-                  {SECTION_LABELS[section] || section}
+                  {SECTION_LABELS[section] || displayLabel(section, 'Sección')}
                 </TabsTrigger>
               ))}
             </TabsList>
@@ -237,7 +238,7 @@ export default function PersonaPerfilPage() {
 
           {planned.map((section) => (
             <TabsContent key={section} value={section} className="mt-0 rounded-xl border border-[#E8E5DE] bg-white px-6 py-16 text-center shadow-sm">
-              <p className="font-medium text-[#101D36]">{SECTION_LABELS[section] || section}</p>
+              <p className="font-medium text-[#101D36]">{SECTION_LABELS[section] || displayLabel(section, 'Sección')}</p>
               <p className="mt-1 text-sm text-gray-500">Módulo aún no disponible.</p>
             </TabsContent>
           ))}

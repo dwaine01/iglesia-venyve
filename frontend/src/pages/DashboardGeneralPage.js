@@ -20,6 +20,7 @@ import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import { StatusBadge, ProgressVsExpected } from '../components/StatusBadge';
 import { LOGO_IGLESIA } from '../data/presentationData';
+import { BRAND } from '../config/brand';
 
 export default function DashboardGeneralPage() {
   const { API, getAuthHeaders, user } = useAuth();
@@ -117,18 +118,18 @@ export default function DashboardGeneralPage() {
       <div className="px-3 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8 space-y-4 sm:space-y-6">
         {/* Header */}
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
-          <div className="relative rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-700 p-5 sm:p-8 overflow-hidden">
+          <div className="relative rounded-2xl bg-gradient-to-r from-[#14213D] via-[#1B2A4A] to-[#0E5B5A] p-5 sm:p-8 overflow-hidden">
             <div className="absolute inset-0 opacity-10">
               <div className="absolute inset-0" style={{
                 backgroundImage: 'radial-gradient(circle at 2px 2px, rgba(255,255,255,0.15) 1px, transparent 0)',
                 backgroundSize: '32px 32px'
               }}></div>
             </div>
-            <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -translate-y-12 translate-x-12"></div>
+            <div className="absolute right-4 top-0 h-20 w-20 -translate-y-8 rounded-full bg-white/5"></div>
             <div className="relative z-10">
               <div className="flex items-center gap-3 sm:gap-4 mb-3">
                 <div className="w-12 h-12 sm:w-14 sm:h-14 bg-[#0F1A33] rounded-lg p-1 flex items-center justify-center shrink-0 border border-[#C8A951]/30">
-                  <img src={LOGO_IGLESIA} alt="Ven y Ve"
+                  <img src={LOGO_IGLESIA} alt={BRAND.church}
                     className="w-full h-full object-contain logo-transparent" />
                 </div>
                 <div>
@@ -137,12 +138,13 @@ export default function DashboardGeneralPage() {
                     <span className="text-yellow-300 text-[10px] sm:text-xs font-semibold uppercase tracking-widest">Acceso Maestro</span>
                   </div>
                   <h1 className="text-xl sm:text-3xl font-bold text-white leading-tight" style={{ fontFamily: 'Spectral, serif' }}>
-                    Dashboard General de Pastores
+                    {BRAND.name}
                   </h1>
+                  <p className="mt-1 text-xs font-semibold text-[#E7D28D] sm:text-sm">Panel General de Pastores · {BRAND.subtitle}</p>
                 </div>
               </div>
               <p className="text-white/60 text-xs sm:text-sm">
-                Supervisión completa de todos los líderes y procesos de consolidación
+                {BRAND.slogan} Supervisión ministerial para cuidar personas, líderes y procesos.
               </p>
             </div>
           </div>
@@ -164,7 +166,7 @@ export default function DashboardGeneralPage() {
               backgroundImage: 'radial-gradient(circle at 2px 2px, rgba(200,169,81,0.4) 1px, transparent 0)',
               backgroundSize: '24px 24px'
             }} />
-            <div className="absolute top-0 right-0 w-32 h-32 bg-[#C8A951]/10 rounded-full blur-2xl -translate-y-12 translate-x-12 group-hover:bg-[#C8A951]/20 transition-colors" />
+            <div className="absolute right-4 top-0 h-20 w-20 -translate-y-8 rounded-full bg-[#C8A951]/10 blur-2xl transition-colors group-hover:bg-[#C8A951]/20" />
 
             <div className="relative z-10 flex items-center gap-4 p-4 sm:p-5 text-left">
               <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl bg-gradient-to-br from-[#C8A951] to-[#E2CF8A] flex items-center justify-center shrink-0 shadow-lg group-hover:scale-105 transition-transform">
@@ -557,7 +559,7 @@ export default function DashboardGeneralPage() {
                 className="w-full"
                 onClick={() => {
                   navigator.clipboard.writeText(
-                    `Acceso al Manual 7 Semanas (Acceso Maestro)\nEmail: ${createdCreds.email}\nContraseña: ${createdCreds.password}`
+                    `Acceso a ${BRAND.name} (Acceso Maestro)\nEmail: ${createdCreds.email}\nContraseña: ${createdCreds.password}`
                   );
                   toast.success('Credenciales copiadas');
                 }}

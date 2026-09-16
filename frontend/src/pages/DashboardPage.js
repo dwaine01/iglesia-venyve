@@ -104,7 +104,7 @@ export default function DashboardPage() {
                 onClick={() => navigate('/dashboard-general')}
               >
                 <ArrowLeft className="w-4 h-4 mr-1" />
-                Volver a Dashboard General
+                Volver al Panel General
               </Button>
             </div>
           </motion.div>
@@ -131,7 +131,7 @@ export default function DashboardPage() {
                   </div>
                   <div>
                     <h1 className="text-xl sm:text-3xl font-bold leading-tight" style={{ fontFamily: 'Spectral, serif' }}>
-                      Dashboard del Líder
+                      Panel del Líder
                     </h1>
                     <p className="text-white/60 mt-0.5 text-xs sm:text-base">Resumen de tus personas en consolidación</p>
                   </div>
@@ -193,7 +193,7 @@ export default function DashboardPage() {
               backgroundImage: 'radial-gradient(circle at 2px 2px, rgba(200,169,81,0.6) 1px, transparent 0)',
               backgroundSize: '24px 24px'
             }} />
-            <div className="absolute -top-20 -right-20 w-64 h-64 bg-[#C8A951]/10 rounded-full blur-3xl pointer-events-none" />
+            <div className="pointer-events-none absolute right-0 top-0 h-40 w-40 -translate-y-16 rounded-full bg-[#C8A951]/10 blur-3xl" />
 
             <div className="relative z-10 p-5 sm:p-6 grid grid-cols-1 lg:grid-cols-3 gap-5 items-center">
               {/* Columna 1: Identidad + CTA */}

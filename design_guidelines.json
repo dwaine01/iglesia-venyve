@@ -1,123 +1,156 @@
 {
-  "project_name": "Sistema Operativo Institucional de Iglesia - Guías e Instructivos de Módulo",
-  "design_philosophy": {
-    "identity": "E1 Anti-AI Designer - Fusion, Emotion First, Precision & Pedagogy",
-    "theme_archetype": "ORGANIC & LUXURY NAVY-DORADO (Trust, Honor, Sacred Order & Modern Clarity)",
-    "context_type": "hybrid_fullstack",
-    "app_type": "hybrid_fullstack"
+  "brand_identity": {
+    "app_name": "VEN Y VE 360",
+    "subtitle": "Sistema Integral de Gestión Ministerial",
+    "slogan": "Una iglesia. Una visión. Un solo sistema.",
+    "logo_text": "Casa de Oración Ven y Ve",
+    "description": "Personas, procesos, células, puertas, ministerios y liderazgo conectados en un mismo lugar.",
+    "module_brand_prefix": "VEN Y VE 360 | ",
+    "modules_eyebrows": {
+      "dashboard": "VEN Y VE 360 | Visión General",
+      "personas": "VEN Y VE 360 | Directorio & Personas",
+      "procesos": "VEN Y VE 360 | Procesos & Discipulado",
+      "seven_weeks": "VEN Y VE 360 | Ley de las 7 Semanas",
+      "celular": "VEN Y VE 360 | Sistema Celular",
+      "puertas": "VEN Y VE 360 | 9 Puertas de Atención",
+      "cap": "VEN Y VE 360 | Centro de Activación y Misión (CAP)",
+      "junta": "VEN Y VE 360 | Junta Directiva & Gobernanza",
+      "ministerios": "VEN Y VE 360 | Ministerios & Voluntariado",
+      "finanzas": "VEN Y VE 360 | Administración & Finanzas"
+    }
   },
   "typography": {
-    "font_family_heading": "Spectral, serif",
-    "font_family_body": "'IBM Plex Sans', sans-serif",
-    "font_family_mono": "'IBM Plex Mono', monospace",
-    "scale": {
-      "h1": "text-3xl sm:text-4xl lg:text-5xl font-serif tracking-tight font-bold",
-      "h2": "text-2xl sm:text-3xl lg:text-4xl font-serif tracking-tight font-semibold",
-      "h3": "text-xl sm:text-2xl font-serif font-medium",
-      "h4": "text-lg sm:text-xl font-sans font-semibold",
-      "body": "text-base leading-relaxed font-sans",
-      "body_small": "text-sm leading-normal font-sans",
-      "caption": "text-xs font-mono uppercase tracking-wider"
-    },
-    "anti_default_rules": "Never use Inter or Roboto for headings. Headings must use Spectral (Serif) with warm luxury weight contrast. Overlines must be IBM Plex Mono with wide tracking [0.2em]."
+    "font_family_display": "Playfair Display, Cormorant Garamond, serif",
+    "font_family_sans": "Inter, Manrope, system-ui, sans-serif",
+    "font_family_mono": "JetBrains Mono, Roboto Mono, monospace",
+    "hierarchy": {
+      "h1": "text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight font-display",
+      "h2": "text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight font-display",
+      "h3": "text-xl sm:text-2xl font-semibold tracking-tight",
+      "h4": "text-lg sm:text-xl font-medium",
+      "body": "text-sm sm:text-base font-normal leading-relaxed font-sans",
+      "caption": "text-xs font-medium uppercase tracking-widest text-slate-400 font-mono"
+    }
   },
   "colors": {
-    "palette_name": "Navy & Gold Imperial Sacred",
-    "primary_navy": "#0B192C",
-    "secondary_navy": "#1E3E62",
-    "accent_gold": "#D4AF37",
-    "light_gold": "#F3E5AB",
-    "dark_gold": "#996515",
-    "bg_light": "#F8FAFC",
-    "bg_dark": "#0B192C",
-    "card_bg": "#FFFFFF",
-    "card_dark": "#162436",
-    "text_primary": "#0F172A",
-    "text_muted": "#475569",
-    "border_light": "rgba(212, 175, 55, 0.25)",
-    "border_dark": "rgba(212, 175, 55, 0.35)",
-    "status": {
-      "success": "#15803D",
-      "warning": "#B45309",
-      "error": "#B91C1C",
-      "info": "#1E3E62"
-    },
-    "tinted_grey_rule": "Tint all neutral greys with 5% warm navy or soft gold hue (#0F172A / #F8FAFC) to maintain alive depth."
+    "primary_navy": "#0F172A",
+    "navy_light": "#1E293B",
+    "gold": "#D97706",
+    "gold_accent": "#F59E0B",
+    "gold_muted": "#B45309",
+    "gold_light": "#FEF3C7",
+    "background_dark": "#0B1120",
+    "card_dark": "#111827",
+    "border_gold": "rgba(217, 119, 6, 0.25)",
+    "text_dark_bg": "#F8FAFC",
+    "text_muted_dark": "#94A3B8"
   },
-  "layout_and_spacing": {
-    "spacing_scale": "Tailwind standard p-4, p-6, p-8, p-12, p-16",
-    "container_padding": "Internal padding of p-6 or p-8 inside bordered cards is MANDATORY to prevent text collision.",
-    "mobile_breakpoint": "390px responsive view with zero horizontal overflow, bottom drawer sticky CTAs, touch-friendly tap targets (min 44px).",
-    "grid_modes": {
-      "dashboard_grid": "High density grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6",
-      "guide_drawer": "Sheet / Drawer overlay on right with w-full sm:max-w-xl max-h-screen overflow-y-auto p-6"
-    }
+  "login_page_blueprint": {
+    "header_brand": "Casa de Oración Ven y Ve",
+    "app_title": "VEN Y VE 360",
+    "subtitle": "Sistema Integral de Gestión Ministerial",
+    "motto": "Una iglesia. Una visión. Un solo sistema.",
+    "description": "Personas, procesos, células, puertas, ministerios y liderazgo conectados en un mismo lugar.",
+    "theme": "Navy & Gold Glassmorphism Premium",
+    "card_style": "backdrop-blur-xl bg-slate-900/85 border border-amber-500/20 shadow-2xl rounded-2xl p-8"
   },
-  "guide_button_and_panel_system": {
-    "button_component": "ContextGuideButton.js",
-    "button_style": "Floating or inline action bar button with icon, gold hover glow, border-amber-500/40, data-testid='context-guide-trigger-[module_key]'.",
-    "drawer_panel": "ModuleGuideDrawer.js",
-    "drawer_features": [
-      "Propósito general del módulo",
-      "Resultado esperado tras su uso",
-      "Flujo operacional recomendado",
-      "Permisos y Roles (Pastor, Líder, Persona)",
-      "Estados del módulo y su lógica",
-      "Paso a Paso interactivo guiado por controles reales",
-      "Entradas y Salidas de datos",
-      "Impactos y Conexiones entre módulos (ej: Persona -> Célula -> Proceso)",
-      "Errores frecuentes y Buenas Prácticas",
-      "Ejemplo práctico con contexto real institucional sin datos ficticios"
+  "spiritual_carousel": {
+    "categories": [
+      "PERSONAS",
+      "CONSOLIDACIÓN",
+      "SERVICIO",
+      "CUIDADO MUTUO",
+      "MULTIPLICACIÓN",
+      "LIDERAZGO",
+      "UNIDAD",
+      "FRUTO",
+      "VISIÓN VEN Y VE 360"
     ],
-    "interactive_tour": "TourOverlay.js con resalte por data-testid, controles anterior/siguiente/salir, tooltip posicionado y animación suave."
-  },
-  "covered_modules": [
-    "dashboard",
-    "core",
-    "personas",
-    "directorio",
-    "ministerios",
-    "procesos_dashboard",
-    "procesos_7semanas",
-    "procesos_consolidacion",
-    "procesos_mentoria",
-    "procesos_cap",
-    "celular",
-    "puertas",
-    "junta",
-    "bitacora",
-    "codigos",
-    "estadisticas",
-    "presentacion"
-  ],
-  "image_urls": [
-    {
-      "category": "church_leadership",
-      "url": "https://images.unsplash.com/photo-1642307063044-b47294fbfe87?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA0MTJ8MHwxfHNlYXJjaHwyfHxjaHVyY2glMjBsZWFkZXJzaGlwJTIwY29tbXVuaXR5JTIwc29mdHdhcmUlMjB0cmFpbmluZ3xlbnwwfHx8fDE3ODk1NzQ1NDV8MA&ixlib=rb-4.1.0&q=85",
-      "description": "Equipo pastoral y líderes participando en sesión interactiva de entrenamiento."
-    },
-    {
-      "category": "community_collaboration",
-      "url": "https://images.pexels.com/photos/1181372/pexels-photo-1181372.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
-      "description": "Líderes de la iglesia operando la plataforma digital en equipo."
-    }
-  ],
-  "component_path": "/app/frontend/src/components/guides/",
-  "testing_attributes": {
-    "rule": "All buttons, inputs, modals, tabs, and interactive tour targets MUST have unique data-testid in kebab-case format.",
-    "examples": [
-      "data-testid='context-guide-trigger-dashboard'",
-      "data-testid='guide-drawer-step-next'",
-      "data-testid='guide-drawer-tour-start'",
-      "data-testid='guide-role-filter-pastor'"
+    "quotes": [
+      {
+        "category": "PERSONAS",
+        "text": "Cada persona importa en el Reino; ninguna vida queda fuera del cuidado pastoral."
+      },
+      {
+        "category": "CONSOLIDACIÓN",
+        "text": "Consolidar es afirmar los pasos de quien llega para que eche raíces en la fe."
+      },
+      {
+        "category": "SERVICIO",
+        "text": "Sirviendo con amor y excelencia reflejamos el corazón de Cristo en la comunidad."
+      },
+      {
+        "category": "CUIDADO MUTUO",
+        "text": "Unidos en oración y mentoría, cuidamos el alma y fortalecemos la familia."
+      },
+      {
+        "category": "MULTIPLICACIÓN",
+        "text": "Cada célula es una semilla de avivamiento destinada a multiplicarse con fruto."
+      },
+      {
+        "category": "LIDERAZGO",
+        "text": "Formar líderes siervos es asegurar el legado del evangelio para las futuras generaciones."
+      },
+      {
+        "category": "UNIDAD",
+        "text": "Una sola visión nos une, un solo Espíritu nos impulsa a la meta."
+      },
+      {
+        "category": "FRUTO",
+        "text": "El verdadero fruto permanece cuando caminamos en obediencia y discipulado constante."
+      },
+      {
+        "category": "VISIÓN VEN Y VE 360",
+        "text": "Una iglesia. Una visión. Un solo sistema para conectar, cuidar y multiplicar."
+      }
     ]
   },
-  "instructions_to_main_agent": "Implement complete frontend and backend guide engine. Backend serves /api/guides/{module_key} from backend/docs/module_guides.json and module_guides.py. Frontend renders ContextGuideButton across all pages without duplicate buttons, opening ModuleGuideDrawer with full tabbed breakdown (Visión, Paso a Paso, Impacto en Sistema, Roles, Tour Interactivo). Ensure 100% test coverage compliance and zero mobile overflow.",
-  "UNIVERSAL GUIDELINES FOR MAIN AGENT": [
-    "Never use generic centered layouts or plain gradients without depth.",
-    "Do not use AI assistant emoji characters (🤖, 🧠, 💡) for standard UI icons; use Lucide or Phosphor icons.",
-    "Ensure all interactive elements have explicit hover, focus, and active states with proper APCA contrast.",
-    "Strictly follow JavaScript .js React file naming conventions for frontend components.",
-    "Ensure data-testid attributes are preserved and applied to all interactive controls."
-  ]
+  "cap_module": {
+    "title": "Encuentra tu lugar para servir",
+    "subtitle": "Descubre tus dones, talentos e intereses para integrarte activamente en la misión.",
+    "pedagogical_flow": [
+      "Identificar dones",
+      "Recomendar Puerta",
+      "Confirmar con líder",
+      "Activar en servicio",
+      "Dar seguimiento",
+      "Desarrollar liderazgo"
+    ],
+    "rule": "La asignación final de servicio es siempre una decisión humana y pastoral guiada por el discernimiento."
+  },
+  "seven_weeks_module": {
+    "hero_title": "La Ley de las 7 Semanas",
+    "hero_subtitle": "Acompañamiento Intensivo de Consolidación y Discipulado Inicial",
+    "progression_steps": [
+      "Persona",
+      "Discípulo",
+      "Obrero",
+      "Ministro"
+    ]
+  },
+  "label_dictionary": {
+    "SLA": "SEGUIMIENTOS A TIEMPO",
+    "SLA_EXPIRED": "SEGUIMIENTO FUERA DE TIEMPO",
+    "SLA_CRITICAL": "SEGUIMIENTO URGENTE",
+    "DASHBOARD_DESCRIPTION": "Seguimiento de cada persona y alertas tempranas para que nadie se quede sin atención durante su proceso.",
+    "new_visitor": "Nuevo Visitante",
+    "consolidation": "Consolidación",
+    "ready_for_cellular": "Listo para Célula",
+    "follow_up_required": "Requiere Seguimiento",
+    "overdue": "Atrasado",
+    "week_1": "Semana 1",
+    "week_2": "Semana 2",
+    "week_3": "Semana 3",
+    "week_4": "Semana 4",
+    "week_5": "Semana 5",
+    "week_6": "Semana 6",
+    "week_7": "Semana 7"
+  },
+  "general_ui_ux_guidelines": {
+    "testing_attribute": "Every interactive and key informational element MUST include data-testid with kebab-case identifiers (e.g. data-testid=\"login-submit-button\").",
+    "responsive_breakpoints": "Full compatibility required across desktop (1920x800), tablet (768px-1024px), and mobile (390x844).",
+    "contrast_and_accessibility": "Ensure 4.5:1 minimum contrast ratio for normal text on dark backgrounds with gold accents.",
+    "component_files": "This project uses JS/JSX component files (.js). Ensure guidelines target standard React Javascript structures.",
+    "no_transparent_overlays": "Never use fully transparent header backgrounds; use backdrop-blur-md with dark translucent fills to maintain legibility."
+  }
 }

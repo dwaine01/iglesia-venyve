@@ -14,6 +14,7 @@ import { TranscriptMinutesPanel } from '../../components/board/TranscriptMinutes
 import { DoorError, DoorLoading, DoorShell } from '../../components/doors/DoorShell';
 import { Button } from '../../components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
+import { statusLabel } from '../../lib/displayLabels';
 
 export default function BoardMeetingDetailPage() {
   const { meetingId } = useParams();
@@ -36,7 +37,7 @@ export default function BoardMeetingDetailPage() {
       <section className="grid gap-3 sm:grid-cols-3">
         <div className="border bg-white p-4"><Timer className="h-4 w-4 text-[#9E8232]" /><b className="mt-2 block font-mono text-2xl" data-testid="board-meeting-live-timer">{clock}</b><span className="text-xs text-slate-500">Duración real</span></div>
         <div className="border bg-white p-4"><Clock3 className="h-4 w-4 text-[#9E8232]" /><b className="mt-2 block text-2xl">{meeting.planned_duration_minutes} min</b><span className="text-xs text-slate-500">Duración prevista</span></div>
-        <div className="border bg-white p-4"><b className="block text-2xl uppercase" data-testid="board-meeting-status">{meeting.status}</b><span className="text-xs text-slate-500">Estado formal</span></div>
+        <div className="border bg-white p-4"><b className="block text-2xl uppercase" data-testid="board-meeting-status">{statusLabel(meeting.status)}</b><span className="text-xs text-slate-500">Estado formal</span></div>
       </section>
       <Tabs defaultValue="attendance">
         <TabsList className="grid h-auto w-full grid-cols-3 bg-white p-1 sm:grid-cols-5"><TabsTrigger value="attendance" data-testid="meeting-tab-attendance">Asistencia</TabsTrigger><TabsTrigger value="agenda" data-testid="meeting-tab-agenda">Agenda</TabsTrigger><TabsTrigger value="notes" data-testid="meeting-tab-notes">Notas</TabsTrigger><TabsTrigger value="governance" data-testid="meeting-tab-governance">Votos/Tareas</TabsTrigger><TabsTrigger value="recording" data-testid="meeting-tab-recording">Audio/Minuta</TabsTrigger></TabsList>

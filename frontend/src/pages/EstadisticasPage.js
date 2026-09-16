@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { displayLabel, statusLabel } from '../lib/displayLabels';
 import axios from 'axios';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
@@ -42,9 +43,9 @@ export default function EstadisticasPage() {
     name: weekNames[parseInt(week) - 1], completado: d.completed, pendiente: d.total - d.completed, porcentaje: d.percentage,
   }));
 
-  const statusPieData = Object.entries(data.contacts_by_status || {}).map(([status, count]) => ({ name: status.replace('_', ' '), value: count }));
+  const statusPieData = Object.entries(data.contacts_by_status || {}).map(([status, count]) => ({ name: statusLabel(status), value: count }));
   const relationData = contacts.reduce((acc, c) => { const rel = c.relacion || 'otro'; acc[rel] = (acc[rel] || 0) + 1; return acc; }, {});
-  const relationPieData = Object.entries(relationData).map(([name, value]) => ({ name, value }));
+  const relationPieData = Object.entries(relationData).map(([name, value]) => ({ name: displayLabel(name), value }));
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#F5F0E8] via-[#FAFAF8] to-[#EDE8DD]" data-testid="statistics-page">
@@ -53,13 +54,13 @@ export default function EstadisticasPage() {
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
           <div className="relative rounded-2xl bg-gradient-to-r from-[#C8A951] to-[#A8893E] p-6 sm:p-8 overflow-hidden shadow-lg">
             <div className="absolute inset-0 animated-dots opacity-10"></div>
-            <div className="absolute top-0 right-0 w-40 h-40 bg-white/5 rounded-full -translate-y-16 translate-x-16"></div>
+            <div className="absolute right-4 top-0 h-24 w-24 -translate-y-10 rounded-full bg-white/5"></div>
             <div className="relative z-10">
               <div className="flex items-center gap-2 mb-2">
                 <BarChart3 className="w-5 h-5 text-white" />
-                <span className="text-white/80 text-xs font-semibold uppercase tracking-widest">Metricas</span>
+                <span className="text-white/80 text-xs font-semibold uppercase tracking-widest">Métricas</span>
               </div>
-              <h1 className="text-2xl sm:text-3xl font-bold text-white" style={{ fontFamily: 'Spectral, serif' }}>Estadisticas del Proceso</h1>
+              <h1 className="text-2xl sm:text-3xl font-bold text-white" style={{ fontFamily: 'Spectral, serif' }}>Estadísticas del Proceso</h1>
               <p className="text-white/60 mt-1 text-sm">Resumen general de progreso, impacto y resultados</p>
             </div>
           </div>
@@ -75,7 +76,7 @@ export default function EstadisticasPage() {
           ].map((kpi, i) => (
             <motion.div key={i} initial={{ opacity: 0, y: 16, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ duration: 0.35, delay: 0.1 + i * 0.08 }} whileHover={{ y: -4 }}>
               <div className={`${kpi.bg} rounded-xl p-5 text-white shadow-lg relative overflow-hidden`}>
-                <div className="absolute top-0 right-0 w-20 h-20 bg-white/5 rounded-full -translate-y-8 translate-x-8"></div>
+                <div className="absolute right-2 top-0 h-14 w-14 -translate-y-6 rounded-full bg-white/5"></div>
                 <div className="flex items-center justify-between mb-2 relative z-10">
                   <span className="text-sm text-white/80">{kpi.label}</span>
                   <div className="w-8 h-8 bg-white/15 rounded-lg flex items-center justify-center"><kpi.icon className="w-4 h-4" /></div>
@@ -110,7 +111,7 @@ export default function EstadisticasPage() {
                 ) : (
                   <div className="h-[280px] flex flex-col items-center justify-center">
                     <div className="w-14 h-14 rounded-full bg-[#F5F0E8] flex items-center justify-center mb-3"><TrendingUp className="w-6 h-6 text-[#C8A951]" /></div>
-                    <p className="text-muted-foreground text-sm">Registra tu progreso para ver estadisticas</p>
+                    <p className="text-muted-foreground text-sm">Registra tu progreso para ver estadísticas</p>
                   </div>
                 )}
               </div>
@@ -172,7 +173,7 @@ export default function EstadisticasPage() {
                 ) : (
                   <div className="h-[250px] flex flex-col items-center justify-center">
                     <div className="w-14 h-14 rounded-full bg-[#F5F0E8] flex items-center justify-center mb-3"><Users className="w-6 h-6 text-[#1FA6A0]" /></div>
-                    <p className="text-muted-foreground text-sm">Registra contactos para ver distribucion</p>
+                    <p className="text-muted-foreground text-sm">Registra contactos para ver distribución</p>
                   </div>
                 )}
               </div>
@@ -183,7 +184,7 @@ export default function EstadisticasPage() {
             <div className="bg-white rounded-xl shadow-sm border border-[#E7E2D6] overflow-hidden">
               <div className="bg-gradient-to-r from-purple-500 to-purple-700 px-5 py-3 flex items-center gap-2">
                 <Heart className="w-4 h-4 text-white" />
-                <h2 className="text-white font-semibold text-sm" style={{ fontFamily: 'Spectral, serif' }}>Contactos por Relacion</h2>
+                <h2 className="text-white font-semibold text-sm" style={{ fontFamily: 'Spectral, serif' }}>Contactos por relación</h2>
               </div>
               <div className="p-4">
                 {relationPieData.length > 0 ? (

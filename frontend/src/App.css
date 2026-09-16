@@ -70,6 +70,11 @@
   0% { opacity: 0; transform: translateY(8px); }
   100% { opacity: 1; transform: translateY(0); }
 }
+
+@keyframes quoteProgress {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
 .fade-in-quote {
   animation: fade-in-quote 0.8s ease-out;
 }

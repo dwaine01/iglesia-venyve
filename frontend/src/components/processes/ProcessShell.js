@@ -2,13 +2,15 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { Activity, BookOpenCheck, ChevronRight, Compass, HeartHandshake, LayoutDashboard } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { moduleBrand, MODULE_BRANDS } from '../../config/brand';
+import { translateTechnicalText } from '../../lib/displayLabels';
 
 const links = [
-  { to: '/procesos/dashboard', label: 'Dashboard', mobileLabel: 'Panel', icon: LayoutDashboard },
+  { to: '/procesos/dashboard', label: 'Panel', mobileLabel: 'Panel', icon: LayoutDashboard },
   { to: '/procesos/7-semanas', label: '7 Semanas', mobileLabel: '7 Sem.', icon: BookOpenCheck },
   { to: '/procesos/consolidacion', label: 'Consolidación', mobileLabel: 'Consol.', icon: Activity },
   { to: '/procesos/mentoria', label: 'Mentoría', mobileLabel: 'Mentoría', icon: HeartHandshake },
-  { to: '/procesos/cap', label: 'CAP', mobileLabel: 'CAP', icon: Compass },
+  { to: '/procesos/cap', label: 'Encuentra tu lugar para servir', mobileLabel: 'Servicio', icon: Compass },
 ];
 
 export const ProcessShell = ({ title, eyebrow, description, actions, children }) => {
@@ -18,7 +20,7 @@ export const ProcessShell = ({ title, eyebrow, description, actions, children })
       <header className="border-b border-slate-800 bg-slate-900 px-4 py-7 text-white sm:px-6 lg:px-8">
         <div className="mx-auto flex max-w-7xl flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase text-amber-400">{eyebrow || 'Mega‑Bloque B · Procesos'}</p>
+            <p className="font-mono text-xs font-semibold uppercase text-amber-400">{moduleBrand(eyebrow || MODULE_BRANDS.processes)}</p>
             <h1 className="mt-1 font-['Spectral'] text-3xl font-semibold sm:text-4xl" data-testid="process-page-title">{title}</h1>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">{description}</p>
           </div>
@@ -36,4 +38,4 @@ export const ProcessShell = ({ title, eyebrow, description, actions, children })
 };
 
 export const ProcessLoading = ({ testId = 'process-loading-state' }) => <div className="flex min-h-52 items-center justify-center" data-testid={testId}><div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-300 border-t-amber-600" /></div>;
-export const ProcessError = ({ message }) => <div className="rounded-md border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800" data-testid="process-error-alert">{message}</div>;
+export const ProcessError = ({ message }) => <div className="rounded-md border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800" data-testid="process-error-alert">{translateTechnicalText(message)}</div>;

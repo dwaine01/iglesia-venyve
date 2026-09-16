@@ -43,7 +43,7 @@ const StatCard = ({ label, value, tone = 'default', icon: Icon, hint }) => (
     className="relative overflow-hidden rounded-2xl border border-[#C8A951]/20 bg-gradient-to-br from-[#0F1A33] to-[#1B2A4A] p-5 shadow-lg"
     data-testid={`stat-${tone}`}
   >
-    <div className="absolute -top-8 -right-8 w-28 h-28 bg-[#C8A951]/10 rounded-full blur-2xl pointer-events-none" />
+    <div className="pointer-events-none absolute right-2 top-0 h-20 w-20 -translate-y-8 rounded-full bg-[#C8A951]/10 blur-2xl" />
     <div className="flex items-start justify-between relative z-10">
       <div>
         <p className="text-[10px] uppercase tracking-[0.25em] text-[#C8A951] font-bold">{label}</p>
@@ -219,7 +219,7 @@ export default function BitacoraPage() {
             backgroundImage: 'radial-gradient(circle at 2px 2px, rgba(200,169,81,0.6) 1px, transparent 0)',
             backgroundSize: '28px 28px'
           }} />
-          <div className="absolute -top-32 -right-32 w-96 h-96 bg-[#C8A951]/10 rounded-full blur-3xl pointer-events-none" />
+          <div className="pointer-events-none absolute right-0 top-0 h-56 w-56 -translate-y-24 rounded-full bg-[#C8A951]/10 blur-3xl" />
           <div className="relative z-10 flex items-start gap-4">
             <div className="p-3 rounded-2xl bg-[#C8A951]/15 border border-[#C8A951]/40 shrink-0">
               <NotebookPen className="w-6 h-6 text-[#C8A951]" />

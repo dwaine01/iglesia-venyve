@@ -1,6 +1,7 @@
 import React from 'react';
 import { Badge } from './ui/badge';
 import { Rocket, CheckCircle2, Trophy, AlertCircle, Users } from 'lucide-react';
+import { statusLabel } from '../lib/displayLabels';
 
 /**
  * StatusBadge - Renderiza un badge dinámico basado en el estado calculado por el backend.
@@ -58,7 +59,7 @@ export const StatusBadge = ({ status, showPct = false, size = 'default' }) => {
       className={`${cfg.bg} ${cfg.text} ${sizeClasses} font-semibold border-0 shadow-sm inline-flex items-center gap-1`}
     >
       <Icon className={size === 'lg' ? 'w-4 h-4' : 'w-3 h-3'} />
-      {status.label}
+      {statusLabel(status.key)}
       {showPct && status.actual_pct !== undefined && (
         <span className="ml-1 opacity-90">({status.actual_pct}%)</span>
       )}

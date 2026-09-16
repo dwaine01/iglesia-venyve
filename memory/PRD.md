@@ -311,6 +311,25 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - Validación: API 32/32 PASS, variantes de rol PASS, contrato backend PASS, build frontend PASS, Mega‑Bloques C/D PASS, Testing Agent iteration 9 confirmó guías/UI; regresión posterior **11 passed** y breadcrumb Personas corregido.
 - Autenticación permanece en el contrato aprobado JWT Bearer sin cookie de sesión; no existe `seed_admin` automático ni público.
 
+### P0 — Renovación integral VEN Y VE 360 — CERRADA Y CERTIFICADA 2026‑09‑16
+
+- Branding **VEN Y VE 360**, carrusel espiritual y lenguaje pastoral aplicados sin cambiar contratos backend, schemas, enums, APIs, RBAC ni datos.
+- Capa central `/frontend/src/lib/displayLabels.js` cubre Procesos, Sistema Celular, 9 Puertas, Junta, roles, prioridades, estados, minutas, errores estructurados y claves técnicas.
+- Eliminados de la presentación términos como `ready_for_cellular`, `new_visitor`, `seven_weeks`, `in_progress`, `due_soon`, `on_sla`, `follow_up_required`, `ai_draft`, SLA, Household, Dashboard y Pipeline.
+- Los formularios conservan los valores internos originales en `value`/payload; únicamente sus etiquetas visibles se traducen.
+- Corregido bloqueo de compilación del servidor visual en `BoardMinutesPage`; la vista quedó modularizada sin cambiar endpoints.
+- Corregida recuperación de la última minuta manual en `TranscriptMinutesPanel`: guardar → recargar → volver a Audio/Minuta repuebla el editor.
+- Corregidos desbordes decorativos, navegación con etiquetas truncadas, textos sin acentos y mensajes de error no humanizados.
+- React Build: **PASS**. Solo permanecen warnings no bloqueantes de sourcemaps de `dompurify` y base Browserslist desactualizada.
+- Frontend Jest: **17/17 PASS**. Backend pytest: **107/107 PASS**, 2 skips previstos por condiciones opcionales.
+- Testing Agent iteration 10: backend público **27/27 PASS**; rutas, auth, sesión, logout, RBAC/scopes, desktop, tablet, móvil y barrido de lenguaje PASS.
+- Testing Agent iteration 11: detalles reales de 7 Semanas, Célula y Junta por clic **100% PASS**; persistencia de formularios, asistencia/quórum, agenda, notas, propuesta, tarea y minuta manual PASS.
+- Persona/Perfil 360, Procesos, Sistema Celular, 9 Puertas, Junta Directiva y 32 guías contextuales: **PASS**.
+- Desktop 1920×800, tablet y móvil 390×844: **PASS**, sin overflow horizontal en vistas verificadas.
+- Auth JWT Bearer, navegación protegida y permisos pastor/líder/persona: **PASS**.
+- Datos efímeros de certificación eliminados y verificados: **0 residuos QA temporales**.
+- Regresiones críticas: **0**. Reportes: `/app/test_reports/iteration_10.json` y `/app/test_reports/iteration_11.json`.
+
 ### P0 — siguiente: Mega‑Bloque G — CONTABILIDAD Y FINANZAS
 
 - Jurisdicción: Columbus, Ohio, Estados Unidos.
