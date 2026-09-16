@@ -37,6 +37,9 @@ DB_NAME=iglesia_venyve
 CORS_ORIGINS=https://panel.iglesiavenyve.org
 CORS_ORIGIN_REGEX=^https://panel\.iglesiavenyve\.org$
 JWT_SECRET=cambia-esto-por-uno-seguro-openssl-rand-hex-32
+MAX_AUDIO_BYTES=25165824
+MAX_AUDIO_SECONDS=14400
+MAX_BOARD_DOCUMENT_BYTES=10485760
 ```
 
 5. **Deploy** → espera el build (~3–5 min).
@@ -136,6 +139,7 @@ Reemplaza los `xxxxxxxx`/`yyyyyyyy` por los CNAME targets que te dió Railway.
 | `Access-Control-Allow-Origin` error | `CORS_ORIGINS` no incluye el dominio | Backend → actualiza `CORS_ORIGINS` y redeploy. |
 | `CORS_ORIGINS and CORS_ORIGIN_REGEX environment variables are required` | Falta configuración runtime porque `.env` no viaja en Git | Backend Production → define ambas variables en Railway; no uses `*`. |
 | `ModuleNotFoundError: emergentintegrations` | Acoplamiento histórico de IA al runtime | La IA de Junta usa ahora `BoardAIProvider` HTTP opcional; no agregues ruedas ni índices privados. |
+| `KeyError: MAX_AUDIO_BYTES` | Variables de límites no presentes en un environment antiguo | El backend usa políticas seguras de 24 MiB/4 horas/10 MiB y permite override con las tres variables documentadas. |
 | `MongoServerSelectionError` | Atlas no permite la IP | Atlas → Network Access → `0.0.0.0/0`. |
 | Build frontend falla por memoria | CRA usa mucha RAM | Añade `NODE_OPTIONS=--max_old_space_size=4096` en variables del frontend. |
 | Build frontend falla por warnings | CRA trata warnings como errores | Ya resuelto: `Dockerfile.frontend` setea `CI=false`. |

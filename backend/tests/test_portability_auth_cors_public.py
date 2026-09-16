@@ -74,6 +74,20 @@ def test_portable_modules_import_without_emergent_package_dependency():
         importlib.import_module("server")
 
 
+def test_board_upload_limits_have_safe_defaults_and_validate_overrides(monkeypatch):
+    from board_recording_routes import positive_int_setting
+
+    for name in ["MAX_AUDIO_BYTES", "MAX_AUDIO_SECONDS", "MAX_BOARD_DOCUMENT_BYTES"]:
+        monkeypatch.delenv(name, raising=False)
+    assert positive_int_setting("MAX_AUDIO_BYTES", 24 * 1024 * 1024) == 25165824
+    assert positive_int_setting("MAX_AUDIO_SECONDS", 4 * 60 * 60) == 14400
+    assert positive_int_setting("MAX_BOARD_DOCUMENT_BYTES", 10 * 1024 * 1024) == 10485760
+
+    monkeypatch.setenv("MAX_AUDIO_BYTES", "0")
+    with pytest.raises(RuntimeError, match="positive integer"):
+        positive_int_setting("MAX_AUDIO_BYTES", 25165824)
+
+
 # Feature: health/auth/cors/public security behavior
 def test_health_returns_200_and_expected_payload():
     response = requests.get(f"{require_base_url()}/api/health", timeout=20)

@@ -291,6 +291,7 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - La carga local de `.env` ahora usa una ruta relativa explícita a `server.py`, sin depender del directorio de ejecución.
 - Railway Production ya recibió `CORS_ORIGINS=https://panel.iglesiavenyve.org` y un `CORS_ORIGIN_REGEX` exacto/anclado; el crash CORS original desapareció.
 - Eliminados `emergentintegrations`, `litellm`, ruedas directas e índices privados después de confirmar que impedían resolver el build Railway.
+- Límites no secretos de Junta ya no bloquean el boot si faltan variables: audio 24 MiB/4 horas y documentos 10 MiB, con overrides `MAX_AUDIO_BYTES`, `MAX_AUDIO_SECONDS` y `MAX_BOARD_DOCUMENT_BYTES` documentados.
 - Instalación limpia pública: PASS; `pip check`: PASS; imports `server.py` y `board_ai_service.py`: PASS sin paquete Emergent.
 - Uvicorn supervisado RUNNING y `/api/health` preview 200; login/auth, Junta manual y CORS de regresión PASS.
 - Revisión de despliegue: PASS; auditoría de seguridad: PASS sin CRITICAL/HIGH/MEDIUM.

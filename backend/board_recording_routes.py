@@ -20,9 +20,24 @@ from meeting_transcription import get_transcription_provider
 from server import db, get_current_user
 
 router = APIRouter(prefix="/api/board", tags=["board-recordings-ai"])
-MAX_AUDIO_BYTES = int(os.environ["MAX_AUDIO_BYTES"])
-MAX_AUDIO_SECONDS = int(os.environ["MAX_AUDIO_SECONDS"])
-MAX_DOCUMENT_BYTES = int(os.environ["MAX_BOARD_DOCUMENT_BYTES"])
+
+
+def positive_int_setting(name: str, fallback: int) -> int:
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return fallback
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise RuntimeError(f"{name} must be a positive integer") from exc
+    if value <= 0:
+        raise RuntimeError(f"{name} must be a positive integer")
+    return value
+
+
+MAX_AUDIO_BYTES = positive_int_setting("MAX_AUDIO_BYTES", 24 * 1024 * 1024)
+MAX_AUDIO_SECONDS = positive_int_setting("MAX_AUDIO_SECONDS", 4 * 60 * 60)
+MAX_DOCUMENT_BYTES = positive_int_setting("MAX_BOARD_DOCUMENT_BYTES", 10 * 1024 * 1024)
 CHUNK_SIZE = 1024 * 1024
 ALLOWED_DOCUMENT_TYPES = {"application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.openxmlformats-officedocument.presentationml.presentation", "text/plain", "image/png", "image/jpeg"}
 
