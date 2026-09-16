@@ -25,6 +25,7 @@ import PresentacionJoinPage from './pages/PresentacionJoinPage';
 import PresentacionImprimirPage from './pages/PresentacionImprimirPage';
 import PresentacionNotasPage from './pages/PresentacionNotasPage';
 import CodigosInvitacionPage from './pages/CodigosInvitacionPage';
+import CoreGovernancePage from './pages/CoreGovernancePage';
 import AppLayout from './components/AppLayout';
 import './App.css';
 
@@ -78,6 +79,7 @@ function App() {
             
             {/* Pastor routes */}
             <Route path="dashboard-general" element={<DashboardGeneralPage />} />
+            <Route path="nucleo" element={<PastorOnlyRoute><CoreGovernancePage /></PastorOnlyRoute>} />
             <Route path="lider/:liderId/dashboard" element={<DashboardPage />} />
             
             {/* Lider routes */}

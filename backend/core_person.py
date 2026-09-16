@@ -130,9 +130,15 @@ async def list_persons(
 @router.post("/persons/check-duplicates")
 async def check_duplicates(payload: DuplicateCheck, current_user: dict = Depends(require_lider_o_pastor)):
     norm = _normalize(f"{payload.nombre} {payload.apellido}")
-    ors = [{"search_key": norm}]
+    contact_ids = []
     if payload.telefono:
-        ors.append({"telefono": payload.telefono})
+        contact_ids = await db.person_contacts.distinct(
+            "person_id", {"tipo": {"$in": ["telefono", "whatsapp"]}, "valor": payload.telefono}
+        )
+    ors = [{"search_key": norm}]
+    valid_contact_ids = [ObjectId(item) for item in contact_ids if ObjectId.is_valid(item)]
+    if valid_contact_ids:
+        ors.append({"_id": {"$in": valid_contact_ids}})
     cursor = db.persons.find({"$or": ors}).limit(10)
     candidates = [serialize_person(doc) async for doc in cursor]
     return {"possible_duplicates": candidates, "count": len(candidates)}
@@ -144,14 +150,27 @@ async def create_person(payload: PersonCreate, current_user: dict = Depends(requ
     if existing:
         return serialize_person(existing)
 
+    duplicate_payload = DuplicateCheck(
+        nombre=payload.nombre,
+        apellido=payload.apellido,
+        telefono=payload.telefono,
+    )
+    duplicate_result = await check_duplicates(duplicate_payload, current_user)
+    if duplicate_result["count"]:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "Posible Persona existente; use el perfil canónico encontrado",
+                "candidates": duplicate_result["possible_duplicates"],
+            },
+        )
+
     search_key = _normalize(f"{payload.nombre} {payload.apellido}")
     person_number = await next_person_number()
     now = now_utc()
     doc = {
         "nombre": payload.nombre.strip(),
         "apellido": payload.apellido.strip(),
-        "telefono": payload.telefono,
-        "email": payload.email,
         "fecha_nacimiento": payload.fecha_nacimiento,
         "age_category": _age_category(payload.fecha_nacimiento),
         "person_number": person_number,
@@ -167,6 +186,21 @@ async def create_person(payload: PersonCreate, current_user: dict = Depends(requ
     except Exception as e:
         raise HTTPException(status_code=409, detail=f"Conflicto de creacion: {e}")
     doc["_id"] = result.inserted_id
+    person_id = str(result.inserted_id)
+    contact_docs = []
+    for kind, value in (("telefono", payload.telefono), ("email", payload.email)):
+        if value:
+            contact_docs.append({
+                "person_id": person_id,
+                "tipo": kind,
+                "valor": value,
+                "es_principal": not contact_docs,
+                "created_by": current_user.get("user_id"),
+                "created_at": now,
+                "updated_at": now,
+            })
+    if contact_docs:
+        await db.person_contacts.insert_many(contact_docs)
     return serialize_person(doc)
 
 

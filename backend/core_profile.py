@@ -245,6 +245,16 @@ async def get_person_profile(person_id: str, current_user: dict = Depends(requir
     available = ["resumen"]
     planned = []
     response = {"profile_can_write": can_write_profile}
+    linked_user = await db.users.find_one(
+        {"person_id": person_id},
+        {"_id": 1, "rol": 1, "is_active": 1},
+    )
+    response["identity"] = {
+        "canonical": True,
+        "account_linked": bool(linked_user),
+        "account_active": linked_user.get("is_active", True) if linked_user else None,
+        "account_role": linked_user.get("rol") if linked_user else None,
+    }
 
     if can_read_contacts:
         available.append("contacto")

@@ -8,7 +8,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Badge } from '../components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '../components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '../components/ui/dialog';
 import { Textarea } from '../components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { toast } from 'sonner';
@@ -278,6 +278,7 @@ export default function RegistroPage() {
                     <DialogTitle style={{ fontFamily: 'Spectral, serif' }}>
                       {editingPerson ? 'Editar Persona' : 'Registrar Nueva Persona'}
                     </DialogTitle>
+                    <DialogDescription>Datos del proceso enlazados con el Perfil 360 canónico.</DialogDescription>
                   </DialogHeader>
                   <div className="space-y-5 mt-2">
                     {/* Photo */}
@@ -483,6 +484,7 @@ export default function RegistroPage() {
                         <span className="text-xl">¡Persona Creada Exitosamente!</span>
                       </div>
                     </DialogTitle>
+                    <DialogDescription className="text-center">Entregue estas credenciales únicamente a la Persona registrada.</DialogDescription>
                   </DialogHeader>
                   {nuevasCredenciales && (
                     <div className="space-y-4">
@@ -863,6 +865,7 @@ export default function RegistroPage() {
               <DialogTitle style={{ fontFamily: 'Spectral, serif' }}>
                 Contraseña Reseteada
               </DialogTitle>
+              <DialogDescription>La sesión anterior fue revocada al generar esta nueva contraseña.</DialogDescription>
             </DialogHeader>
             {resetCredenciales && (
               <div className="space-y-4">

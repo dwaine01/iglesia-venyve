@@ -47,7 +47,7 @@ export default function PersonaNuevaPage() {
       setIdempotencyKey(genKey());
       setStep('review');
     } catch (err) {
-      setError(err?.response?.data?.detail || 'No se pudo verificar duplicados.');
+      setError(formatError(err?.response?.data?.detail));
     } finally {
       setChecking(false);
     }
@@ -68,7 +68,7 @@ export default function PersonaNuevaPage() {
       const res = await axios.post(`${API}/api/core/persons`, payload, getAuthHeaders());
       navigate(`/personas/${res.data.person_id}`);
     } catch (err) {
-      setError(err?.response?.data?.detail || 'No se pudo crear la persona.');
+      setError(formatError(err?.response?.data?.detail));
     } finally {
       setCreating(false);
     }
@@ -76,12 +76,20 @@ export default function PersonaNuevaPage() {
 
   const nombreCompleto = (p) => `${p.nombre || ''} ${p.apellido || ''}`.trim();
 
+  const formatError = (detail) => {
+    if (typeof detail === 'string') return detail;
+    if (detail?.message) return detail.message;
+    if (Array.isArray(detail)) return detail.map((item) => item?.msg).filter(Boolean).join(' ');
+    return 'No se pudo crear la persona.';
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#F5F0E8] via-[#FAFAF8] to-[#EDE8DD] p-4 md:p-8">
       <div className="max-w-2xl mx-auto space-y-6">
         <button
           onClick={() => navigate('/personas')}
           className="flex items-center gap-1 text-sm text-gray-600 hover:text-gray-900"
+          data-testid="new-person-back-button"
         >
           <ArrowLeft className="w-4 h-4" />
           Volver a Personas
@@ -106,19 +114,19 @@ export default function PersonaNuevaPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <Label htmlFor="nombre">Nombre *</Label>
-                    <Input id="nombre" value={form.nombre} onChange={update('nombre')} />
+                    <Input id="nombre" value={form.nombre} onChange={update('nombre')} data-testid="new-person-first-name-input" />
                   </div>
                   <div className="space-y-1.5">
                     <Label htmlFor="apellido">Apellido *</Label>
-                    <Input id="apellido" value={form.apellido} onChange={update('apellido')} />
+                    <Input id="apellido" value={form.apellido} onChange={update('apellido')} data-testid="new-person-last-name-input" />
                   </div>
                   <div className="space-y-1.5">
                     <Label htmlFor="telefono">Teléfono</Label>
-                    <Input id="telefono" value={form.telefono} onChange={update('telefono')} />
+                    <Input id="telefono" value={form.telefono} onChange={update('telefono')} data-testid="new-person-phone-input" />
                   </div>
                   <div className="space-y-1.5">
                     <Label htmlFor="email">Email</Label>
-                    <Input id="email" type="email" value={form.email} onChange={update('email')} />
+                    <Input id="email" type="email" value={form.email} onChange={update('email')} data-testid="new-person-email-input" />
                   </div>
                   <div className="space-y-1.5">
                     <Label htmlFor="fecha_nacimiento">Fecha de nacimiento</Label>
@@ -127,6 +135,7 @@ export default function PersonaNuevaPage() {
                       type="date"
                       value={form.fecha_nacimiento}
                       onChange={update('fecha_nacimiento')}
+                      data-testid="new-person-birth-date-input"
                     />
                   </div>
                 </div>
@@ -134,6 +143,7 @@ export default function PersonaNuevaPage() {
                   onClick={handleCheckDuplicates}
                   disabled={!isValid || checking}
                   className="w-full bg-[#C8A951] hover:bg-[#B8964A] text-white"
+                  data-testid="new-person-check-duplicates-button"
                 >
                   {checking ? (
                     <Loader2 className="w-4 h-4 animate-spin mr-2" />
@@ -191,14 +201,7 @@ export default function PersonaNuevaPage() {
                   <Button variant="outline" onClick={() => setStep('form')} className="sm:w-auto w-full">
                     Editar datos
                   </Button>
-                  <Button
-                    onClick={handleCreate}
-                    disabled={creating}
-                    className="flex-1 bg-[#C8A951] hover:bg-[#B8964A] text-white"
-                  >
-                    {creating ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-                    {duplicates.length > 0 ? 'Crear de todas formas (nueva persona)' : 'Crear Persona'}
-                  </Button>
+                  {duplicates.length === 0 && <Button onClick={handleCreate} disabled={creating} className="flex-1 bg-[#C8A951] hover:bg-[#B8964A] text-white" data-testid="new-person-create-button">{creating ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}Crear Persona</Button>}
                 </div>
               </div>
             )}

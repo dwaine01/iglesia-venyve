@@ -2,12 +2,12 @@ import React, { useState } from 'react';
 import { Outlet, NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Button } from './ui/button';
-import { Sheet, SheetContent, SheetTrigger } from './ui/sheet';
+import { Sheet, SheetContent, SheetDescription, SheetTitle, SheetTrigger } from './ui/sheet';
 import { Separator } from './ui/separator';
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 import {
   LayoutDashboard, BookOpen, Map, Calendar, Users, BarChart3, LogOut, Menu, ChevronRight,
-  Crown, Star, Trophy, Presentation, NotebookPen, KeyRound, IdCard, Church, Search
+  Crown, Star, Trophy, Presentation, NotebookPen, KeyRound, IdCard, Church, Search, DatabaseZap
 } from 'lucide-react';
 
 import { LOGO_IGLESIA } from '../data/presentationData';
@@ -19,6 +19,7 @@ const getNavItems = (rol) => {
   if (rol === 'pastor') {
     return [
       { to: '/dashboard-general', icon: Crown, label: 'Dashboard General', end: true },
+      { to: '/nucleo', icon: DatabaseZap, label: 'Gobierno del Núcleo', testId: 'nav-core-governance' },
       { to: '/personas', icon: IdCard, label: 'Personas', testId: 'nav-personas' },
       { to: '/directorio', icon: Search, label: 'Directorio de Talentos', testId: 'nav-directorio-talentos' },
       { to: '/ministerios', icon: Church, label: 'Ministerios', testId: 'nav-ministerios' },
@@ -82,6 +83,7 @@ const breadcrumbMap = {
   '/estadisticas': 'Estadísticas',
   '/directorio': 'Directorio de Talentos',
   '/ministerios': 'Ministerios',
+  '/nucleo': 'Gobierno del Núcleo',
 };
 
 function SidebarContent({ onClose }) {
@@ -204,7 +206,8 @@ export default function AppLayout() {
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
         <SheetContent side="left" className="p-0 w-[85vw] max-w-xs">
           <VisuallyHidden>
-            <h2>Menu de navegación</h2>
+            <SheetTitle>Menú de navegación</SheetTitle>
+            <SheetDescription>Accesos disponibles según su rol institucional.</SheetDescription>
           </VisuallyHidden>
           <SidebarContent onClose={() => setMobileOpen(false)} />
         </SheetContent>

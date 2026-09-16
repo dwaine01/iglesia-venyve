@@ -32,6 +32,25 @@ PERSON_CONTACTS_WRITE = "person.contacts.write"
 PERSON_ADDRESSES_READ = "person.addresses.read"
 PERSON_ADDRESSES_WRITE = "person.addresses.write"
 PERSON_PASTORAL_NOTES_READ = "person.notes.pastoral.read"
+CORE_GOVERNANCE_MANAGE = "core.governance.manage"
+
+PERSON_SELF_CAPABILITIES = [
+    PERSON_PROFILE_SENSITIVE_READ,
+    PERSON_PROFILE_WRITE,
+    PERSON_HOUSEHOLD_READ,
+    PERSON_FAMILY_READ,
+    PERSON_ARRIVAL_READ,
+    PERSON_ATTENDANCE_READ,
+    PERSON_NOTES_READ,
+    PERSON_HISTORY_READ,
+    PERSON_TALENTS_READ,
+    PERSON_TALENTS_WRITE,
+    PERSON_MINISTRIES_READ,
+    PERSON_CONTACTS_READ,
+    PERSON_CONTACTS_WRITE,
+    PERSON_ADDRESSES_READ,
+    PERSON_ADDRESSES_WRITE,
+]
 
 PERSON_DOMAIN_CAPABILITIES = [
     PERSON_PROFILE_SENSITIVE_READ,
@@ -61,7 +80,7 @@ PERSON_DOMAIN_CAPABILITIES = [
 
 _ROLE_ACCESS_DEFAULTS = {
     "pastor": {
-        "capabilities": [*PERSON_DOMAIN_CAPABILITIES, PERSON_PASTORAL_NOTES_READ],
+        "capabilities": [*PERSON_DOMAIN_CAPABILITIES, PERSON_PASTORAL_NOTES_READ, CORE_GOVERNANCE_MANAGE],
         "access_scope": {"persons": "all"},
     },
     "lider": {
@@ -69,8 +88,8 @@ _ROLE_ACCESS_DEFAULTS = {
         "access_scope": {"persons": "created_by"},
     },
     "persona": {
-        "capabilities": [],
-        "access_scope": {"persons": "none"},
+        "capabilities": PERSON_SELF_CAPABILITIES,
+        "access_scope": {"persons": "self"},
     },
 }
 
@@ -83,7 +102,7 @@ def access_defaults_for_role(role: str) -> dict:
             {"capabilities": [], "access_scope": {"persons": "none"}},
         )
     )
-    defaults["access_policy_version"] = 5
+    defaults["access_policy_version"] = 6
     return defaults
 
 
@@ -112,6 +131,11 @@ def can_access_person(user: dict, person: dict) -> bool:
     if person_scope == "assigned":
         person_ids = normalized_access_scope(user).get("person_ids", [])
         return isinstance(person_ids, list) and person.get("person_id") in person_ids
+    if person_scope == "self":
+        return (
+            person.get("auth_user_id") == user.get("user_id")
+            or person.get("person_id") == user.get("person_id")
+        )
     return False
 
 
@@ -132,9 +156,9 @@ async def ensure_access_defaults(db) -> None:
             {"$set": {"access_scope": defaults["access_scope"]}},
         )
         await db.users.update_many(
-            {"rol": role, "access_policy_version": {"$ne": 5}},
+            {"rol": role, "access_policy_version": {"$ne": 6}},
             {
                 "$addToSet": {"capabilities": {"$each": defaults["capabilities"]}},
-                "$set": {"access_policy_version": 5},
+                "$set": {"access_policy_version": 6},
             },
         )

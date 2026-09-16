@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field, EmailStr, field_validator
 from typing import Optional, List
 from datetime import datetime, timedelta, timezone
 import os
+import hashlib
 import jwt
 import bcrypt
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -16,8 +17,9 @@ from access_control import (
     normalized_access_scope,
     normalized_capabilities,
 )
+from canonical_identity import ensure_user_person_link, migrate_core_identity, sync_legacy_person_to_canonical
 
-load_dotenv(override=False)
+load_dotenv(override=True)
 
 app = FastAPI(title="Manual Ley 7 Semanas API")
 
@@ -25,7 +27,7 @@ app = FastAPI(title="Manual Ley 7 Semanas API")
 cors_origins = os.environ.get("CORS_ORIGINS")
 if not cors_origins:
     raise RuntimeError("CORS_ORIGINS environment variable is required.")
-origins = cors_origins.split(",")
+origins = [origin.strip() for origin in cors_origins.split(",") if origin.strip()]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins, 
@@ -50,6 +52,8 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE = 24  # hours
 DEFAULT_IS_ACTIVE = True
 DEFAULT_TOKEN_VERSION = 1
+MAX_FAILED_LOGINS = 5
+LOGIN_LOCK_MINUTES = 15
 
 
 def utc_now() -> datetime:
@@ -76,6 +80,49 @@ def user_token_version(user: dict) -> int:
     if isinstance(version, bool) or not isinstance(version, int) or version < 1:
         raise HTTPException(status_code=401, detail="No autorizado")
     return version
+
+
+def login_attempt_identifier(request: Request, email: str) -> str:
+    forwarded = request.headers.get("x-forwarded-for", "")
+    client_ip = forwarded.split(",")[0].strip() or (request.client.host if request.client else "unknown")
+    raw = f"{client_ip}:{email.strip().lower()}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def aware_utc(value: Optional[datetime]) -> Optional[datetime]:
+    if value is None:
+        return None
+    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+
+
+async def assert_login_not_locked(identifier: str) -> None:
+    attempt = await db.login_attempts.find_one({"identifier": identifier}, {"_id": 0})
+    if not attempt:
+        return
+    locked_until = aware_utc(attempt.get("locked_until"))
+    if locked_until and locked_until > utc_now():
+        raise HTTPException(status_code=401, detail="Credenciales incorrectas")
+    if locked_until:
+        await db.login_attempts.delete_one({"identifier": identifier})
+
+
+async def record_failed_login(identifier: str) -> None:
+    now = utc_now()
+    attempt = await db.login_attempts.find_one_and_update(
+        {"identifier": identifier},
+        {
+            "$inc": {"failed_attempts": 1},
+            "$set": {"last_attempt_at": now, "expires_at": now + timedelta(hours=1)},
+            "$setOnInsert": {"created_at": now},
+        },
+        upsert=True,
+        return_document=True,
+    )
+    if attempt.get("failed_attempts", 0) >= MAX_FAILED_LOGINS:
+        await db.login_attempts.update_one(
+            {"identifier": identifier},
+            {"$set": {"locked_until": now + timedelta(minutes=LOGIN_LOCK_MINUTES)}},
+        )
 
 
 def serialize_doc(doc):
@@ -374,6 +421,11 @@ from ministries import router as ministries_router, ensure_indexes_and_seed as m
 
 app.include_router(ministries_router)
 
+# --- Mega-Bloque A: gobierno, integridad y migración del núcleo ---
+from core_governance import router as core_governance_router, ensure_indexes as core_governance_ensure
+
+app.include_router(core_governance_router)
+
 
 # --- Default Checklists ---
 DEFAULT_CHECKLISTS = {
@@ -453,6 +505,8 @@ async def startup():
     await db.checklists.create_index([("user_id", 1), ("semana", 1)])
     await db.people.create_index("leader_id")
     await db.people.create_index([("leader_id", 1), ("estado", 1)])
+    await db.login_attempts.create_index("identifier", unique=True)
+    await db.login_attempts.create_index("expires_at", expireAfterSeconds=0)
     await db.person_progress.create_index([("person_id", 1), ("semana", 1)])
     await db.person_checklists.create_index([("person_id", 1), ("semana", 1)])
     print("Database indexes created")
@@ -463,6 +517,8 @@ async def startup():
     await person_profile_domains_ensure_indexes()
     await person_core_expansion_ensure()
     await ministries_ensure()
+    await core_governance_ensure()
+    await migrate_core_identity(db, "system:startup")
     print("Core Person (P-001) indexes created")
 
 
@@ -618,7 +674,8 @@ async def register(user: UserRegister):
     - Si NO se provee invite_code: registro libre con el rol indicado en el body
         (default 'lider'). Esto restaura el comportamiento original simple.
     """
-    existing = await db.users.find_one({"email": user.email})
+    normalized_email = user.email.strip().lower()
+    existing = await db.users.find_one({"email": normalized_email})
     if existing:
         raise HTTPException(status_code=400, detail="Este correo ya esta registrado")
 
@@ -644,7 +701,7 @@ async def register(user: UserRegister):
         hashed = bcrypt.hashpw(user.password.encode(), bcrypt.gensalt())
         user_doc = {
             "nombre": user.nombre,
-            "email": user.email,
+            "email": normalized_email,
             "password": hashed.decode(),
             "rol": assigned_rol,
             **access_defaults_for_role(assigned_rol),
@@ -680,7 +737,9 @@ async def register(user: UserRegister):
     # ---------- Rama B: registro LIBRE (sin codigo) ----------
     else:
         free_rol = (user.rol or "lider").strip().lower()
-        if free_rol not in ("pastor", "lider", "persona"):
+        if free_rol == "pastor":
+            raise HTTPException(status_code=403, detail="El rol pastor requiere invitación o asignación institucional")
+        if free_rol not in ("lider", "persona"):
             free_rol = "lider"
         assigned_rol = free_rol
         assigned_leader_id = None
@@ -688,7 +747,7 @@ async def register(user: UserRegister):
         hashed = bcrypt.hashpw(user.password.encode(), bcrypt.gensalt())
         user_doc = {
             "nombre": user.nombre,
-            "email": user.email,
+            "email": normalized_email,
             "password": hashed.decode(),
             "rol": assigned_rol,
             **access_defaults_for_role(assigned_rol),
@@ -701,6 +760,11 @@ async def register(user: UserRegister):
         user_id = str(result.inserted_id)
 
     # ---------- Inicializacion comun (checklists + progress) ----------
+    canonical_person_id, _ = await ensure_user_person_link(db, user_id, user_id)
+    await db.people.update_many(
+        {"user_id": user_id},
+        {"$set": {"canonical_person_id": canonical_person_id, "identity_policy_version": 1}},
+    )
     # Initialize checklists for all 7 weeks
     for semana, tareas in DEFAULT_CHECKLISTS.items():
         await db.checklists.insert_one({
@@ -724,13 +788,13 @@ async def register(user: UserRegister):
 
     token = create_token(
         user_id,
-        user.email,
+        normalized_email,
         assigned_rol,
         user_token_version(user_doc),
     )
     return {
         "token": token,
-        "user": {"id": user_id, "nombre": user.nombre, "email": user.email, "rol": assigned_rol},
+        "user": {"id": user_id, "nombre": user.nombre, "email": normalized_email, "rol": assigned_rol, "person_id": canonical_person_id, "canonical_profile_path": f"/personas/{canonical_person_id}"},
     }
 
 
@@ -870,13 +934,19 @@ async def revoke_invite_code(code_id: str, authorization: Optional[str] = Header
 
 
 @app.post("/api/auth/login")
-async def login(user: UserLogin):
-    db_user = await db.users.find_one({"email": user.email})
+async def login(user: UserLogin, request: Request):
+    normalized_email = user.email.strip().lower()
+    attempt_id = login_attempt_identifier(request, normalized_email)
+    await assert_login_not_locked(attempt_id)
+    db_user = await db.users.find_one({"email": normalized_email})
     if not db_user:
+        await record_failed_login(attempt_id)
         raise HTTPException(status_code=401, detail="Credenciales incorrectas")
 
     if not bcrypt.checkpw(user.password.encode(), db_user["password"].encode()):
+        await record_failed_login(attempt_id)
         raise HTTPException(status_code=401, detail="Credenciales incorrectas")
+    await db.login_attempts.delete_one({"identifier": attempt_id})
     if not user_is_active(db_user):
         raise HTTPException(status_code=401, detail="Credenciales incorrectas")
 
@@ -887,7 +957,8 @@ async def login(user: UserLogin):
         db_user["rol"],
         user_token_version(db_user),
     )
-    return {"token": token, "user": {"id": user_id, "nombre": db_user["nombre"], "email": db_user["email"], "rol": db_user["rol"]}}
+    person_id = db_user.get("person_id")
+    return {"token": token, "user": {"id": user_id, "nombre": db_user["nombre"], "email": db_user["email"], "rol": db_user["rol"], "person_id": person_id, "canonical_profile_path": f"/personas/{person_id}" if person_id else None}}
 
 
 @app.get("/api/auth/me")
@@ -898,7 +969,8 @@ async def get_me(authorization: Optional[str] = Header(None)):
     user = await db.users.find_one({"_id": ObjectId(payload["user_id"])})
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
-    return {"id": str(user["_id"]), "nombre": user["nombre"], "email": user["email"], "rol": user["rol"]}
+    person_id = user.get("person_id")
+    return {"id": str(user["_id"]), "nombre": user["nombre"], "email": user["email"], "rol": user["rol"], "person_id": person_id, "canonical_profile_path": f"/personas/{person_id}" if person_id else None}
 
 
 # --- Contacts Routes ---
@@ -1362,7 +1434,10 @@ async def admin_reset_leader_passwords(authorization: Optional[str] = Header(Non
     leaders = await db.users.find({"rol": "lider"}).to_list(1000)
     out = []
     for u in leaders:
-        await db.users.update_one({"_id": u["_id"]}, {"$set": {"password": hashed}})
+        await db.users.update_one(
+            {"_id": u["_id"]},
+            {"$set": {"password": hashed, "token_version": user_token_version(u) + 1, "updated_at": utc_now()}},
+        )
         out.append({"nombre": u.get("nombre"), "email": u.get("email"), "password": new_pwd})
     return {"reset": len(out), "credenciales": out}
 
@@ -1872,12 +1947,15 @@ async def create_pastor(data: dict, authorization: Optional[str] = Header(None))
         "created_by": payload["user_id"],
     }
     result = await db.users.insert_one(doc)
+    person_id, _ = await ensure_user_person_link(db, str(result.inserted_id), payload["user_id"])
     return {
         "_id": str(result.inserted_id),
         "nombre": nombre,
         "email": email,
         "rol": "pastor",
         "created_at": doc["created_at"].isoformat(),
+        "person_id": person_id,
+        "canonical_profile_path": f"/personas/{person_id}",
     }
 
 
@@ -1900,8 +1978,11 @@ async def delete_pastor(pastor_id: str, authorization: Optional[str] = Header(No
     if not target:
         raise HTTPException(status_code=404, detail="Pastor no encontrado")
 
-    await db.users.delete_one({"_id": ObjectId(pastor_id)})
-    return {"success": True, "message": f"Pastor {target.get('nombre')} eliminado"}
+    await db.users.update_one(
+        {"_id": ObjectId(pastor_id)},
+        {"$set": {"is_active": False, "updated_at": utc_now(), "token_version": user_token_version(target) + 1}},
+    )
+    return {"success": True, "message": f"Pastor {target.get('nombre')} desactivado"}
 
 
 @app.post("/api/pastor/pastors/{pastor_id}/reset-password")
@@ -1920,7 +2001,10 @@ async def reset_pastor_password(pastor_id: str, data: dict, authorization: Optio
         raise HTTPException(status_code=404, detail="Pastor no encontrado")
 
     hashed = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
-    await db.users.update_one({"_id": ObjectId(pastor_id)}, {"$set": {"password": hashed}})
+    await db.users.update_one(
+        {"_id": ObjectId(pastor_id)},
+        {"$set": {"password": hashed, "token_version": user_token_version(target) + 1, "updated_at": utc_now()}},
+    )
     return {"success": True, "message": "Contraseña actualizada correctamente"}
 
 
@@ -1947,9 +2031,10 @@ async def reset_person_password(person_id: str, authorization: Optional[str] = H
     # Actualizar en users
     user_id = person.get("user_id")
     if user_id:
+        account = await db.users.find_one({"_id": ObjectId(user_id)})
         await db.users.update_one(
             {"_id": ObjectId(user_id)},
-            {"$set": {"password": hashed_password}}
+            {"$set": {"password": hashed_password, "token_version": user_token_version(account or {}) + 1, "updated_at": utc_now()}}
         )
     
     # Actualizar temp_password en people
@@ -2055,7 +2140,8 @@ async def get_dashboard_by_role(authorization: Optional[str] = Header(None), lea
             "rol": "pastor",
             "lideres": lideres_data,
             "total_lideres": len(lideres_data),
-            "total_personas_global": sum(l["total_personas"] for l in lideres_data),
+        "total_personas_global": await db.persons.count_documents({}),
+        "total_personas_en_proceso": sum(l["total_personas"] for l in lideres_data),
         }
     
     elif rol == "lider":
@@ -2166,6 +2252,44 @@ async def create_person(person: PersonCreate, authorization: Optional[str] = Hea
     if payload.get("rol") not in ("lider", "pastor"):
         raise HTTPException(status_code=403, detail="Solo líderes y pastores pueden crear personas")
     leader_id = payload["user_id"]
+
+    candidate_person = None
+    if person.telefono:
+        candidate_ids = await db.person_contacts.distinct(
+            "person_id",
+            {"tipo": {"$in": ["telefono", "whatsapp"]}, "valor": person.telefono.strip()},
+        )
+        if len(candidate_ids) > 1:
+            raise HTTPException(status_code=409, detail="El teléfono coincide con varias Personas; revise Gobierno del Núcleo")
+        if candidate_ids and ObjectId.is_valid(candidate_ids[0]):
+            candidate_person = await db.persons.find_one({"_id": ObjectId(candidate_ids[0])})
+    if not candidate_person:
+        from canonical_identity import normalize, split_name
+        first_name, last_name = split_name(person.nombre)
+        same_name = await db.persons.find({
+            "search_key": normalize(f"{first_name} {last_name}")
+        }).limit(2).to_list(2)
+        if len(same_name) > 1:
+            raise HTTPException(status_code=409, detail="Existen varias Personas con ese nombre; agregue un teléfono o seleccione un Perfil 360")
+        if len(same_name) == 1:
+            candidate_person = same_name[0]
+
+    reused_account = None
+    if candidate_person:
+        canonical_person_id = str(candidate_person["_id"])
+        existing_process = await db.people.find_one({"canonical_person_id": canonical_person_id})
+        if existing_process:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "message": "Esta Persona ya participa en Consolidación",
+                    "person_id": canonical_person_id,
+                    "canonical_profile_path": f"/personas/{canonical_person_id}",
+                },
+            )
+        reused_account = await db.users.find_one({
+            "$or": [{"person_id": canonical_person_id}, {"_id": ObjectId(candidate_person["auth_user_id"])}]
+        }) if candidate_person.get("auth_user_id") and ObjectId.is_valid(candidate_person["auth_user_id"]) else await db.users.find_one({"person_id": canonical_person_id})
     
     # Generate unique username and password for the person.
     # Normalizamos acentos y caracteres no-ASCII para que el email resultante
@@ -2191,7 +2315,7 @@ async def create_person(person: PersonCreate, authorization: Optional[str] = Hea
     temp_password = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
     hashed_password = bcrypt.hashpw(temp_password.encode(), bcrypt.gensalt()).decode()
     
-    # Create user account for the person
+    # Crear o reutilizar una cuenta enlazada al Perfil 360.
     user_doc = {
         "email": f"{username}@consolidados.app",
         "password": hashed_password,
@@ -2202,11 +2326,21 @@ async def create_person(person: PersonCreate, authorization: Optional[str] = Hea
         "token_version": DEFAULT_TOKEN_VERSION,
         "created_at": datetime.utcnow(),
     }
-    user_result = await db.users.insert_one(user_doc)
-    person_user_id = str(user_result.inserted_id)
+    if reused_account:
+        person_user_id = str(reused_account["_id"])
+        username = reused_account.get("email", "").split("@")[0]
+        temp_password = None
+        canonical_person_id = str(candidate_person["_id"])
+    else:
+        if candidate_person:
+            user_doc["person_id"] = str(candidate_person["_id"])
+        user_result = await db.users.insert_one(user_doc)
+        person_user_id = str(user_result.inserted_id)
+        canonical_person_id, _ = await ensure_user_person_link(db, person_user_id, leader_id)
     
     doc = {
         "user_id": person_user_id,  # Link to user account
+        "canonical_person_id": canonical_person_id,
         "leader_id": leader_id,
         "nombre": person.nombre,
         "telefono": person.telefono,
@@ -2225,6 +2359,7 @@ async def create_person(person: PersonCreate, authorization: Optional[str] = Hea
         "como_conocio_iglesia": person.como_conocio_iglesia,
         "username": username,
         "temp_password": temp_password,  # Store temporarily to show to leader
+        "account_reused": bool(reused_account),
         "created_at": datetime.utcnow(),
         "updated_at": datetime.utcnow(),
     }
@@ -2256,6 +2391,8 @@ async def create_person(person: PersonCreate, authorization: Optional[str] = Hea
         })
     
     doc["_id"] = result.inserted_id
+    doc["canonical_profile_path"] = f"/personas/{canonical_person_id}"
+    await sync_legacy_person_to_canonical(db, doc, leader_id)
     return serialize_doc(doc)
 
 
@@ -2289,6 +2426,10 @@ async def update_person(person_id: str, person: PersonUpdate, authorization: Opt
         raise HTTPException(status_code=404, detail="Persona no encontrada")
     
     updated = await db.people.find_one({"_id": ObjectId(person_id)})
+    await sync_legacy_person_to_canonical(db, updated, leader_id)
+    updated["canonical_profile_path"] = (
+        f"/personas/{updated['canonical_person_id']}" if updated.get("canonical_person_id") else None
+    )
     return serialize_doc(updated)
 
 

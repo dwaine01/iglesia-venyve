@@ -223,7 +223,7 @@ export default function LoginPage() {
                           )}
                         </div>
 
-                        {/* Selector de rol - solo cuando NO hay codigo */}
+                        {/* Selector operativo - el rol pastor siempre requiere autorización institucional. */}
                         {!inviteCode.trim() && (
                           <div className="space-y-1.5">
                             <Label htmlFor="rol" className="text-white/75 text-[10px] uppercase tracking-wider font-semibold">
@@ -237,7 +237,6 @@ export default function LoginPage() {
                               className="w-full h-10 px-3 bg-transparent border border-white/20 rounded-md text-white focus-visible:ring-2 focus-visible:ring-[#C8A951]/50 focus-visible:border-[#C8A951]/60 outline-none"
                               style={{ colorScheme: 'dark' }}
                             >
-                              <option value="pastor" className="bg-[#0B1428] text-white">Pastor</option>
                               <option value="lider" className="bg-[#0B1428] text-white">Lider</option>
                               <option value="persona" className="bg-[#0B1428] text-white">Persona</option>
                             </select>
@@ -295,6 +294,7 @@ export default function LoginPage() {
                           onClick={() => setShowPass(!showPass)}
                           className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-[#C8A951] transition-colors"
                           aria-label={showPass ? 'Ocultar contrasena' : 'Mostrar contrasena'}
+                          data-testid="toggle-password-visibility-button"
                         >
                           {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                         </button>
