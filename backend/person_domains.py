@@ -14,7 +14,8 @@ from access_control import (
     PERSON_CONTACTS_WRITE,
     authorize_person,
 )
-from core_person import db, now_utc, require_lider_o_pastor
+from core_person import db, now_utc, require_person_profile_user
+from person_profile_domains import record_activity
 
 router = APIRouter(prefix="/api/core/persons", tags=["person-contact-address"])
 
@@ -195,7 +196,7 @@ async def _promote_address_if_needed(person_id: str) -> None:
 
 
 @router.get("/{person_id}/contacts")
-async def list_contacts(person_id: str, current_user: dict = Depends(require_lider_o_pastor)):
+async def list_contacts(person_id: str, current_user: dict = Depends(require_person_profile_user)):
     person = await load_person(person_id)
     authorize_person(current_user, person, PERSON_CONTACTS_READ)
     return {"items": await contact_items(person_id)}
@@ -205,7 +206,7 @@ async def list_contacts(person_id: str, current_user: dict = Depends(require_lid
 async def create_contact(
     person_id: str,
     payload: ContactPayload,
-    current_user: dict = Depends(require_lider_o_pastor),
+    current_user: dict = Depends(require_person_profile_user),
 ):
     person = await load_person(person_id)
     authorize_person(current_user, person, PERSON_CONTACTS_WRITE)
@@ -225,6 +226,7 @@ async def create_contact(
     }
     result = await db.person_contacts.insert_one(doc)
     doc["_id"] = result.inserted_id
+    await record_activity(person_id, current_user, "contacto", "created", "Contacto agregado")
     return serialize_contact(doc)
 
 
@@ -233,7 +235,7 @@ async def update_contact(
     person_id: str,
     contact_id: str,
     payload: ContactUpdate,
-    current_user: dict = Depends(require_lider_o_pastor),
+    current_user: dict = Depends(require_person_profile_user),
 ):
     person = await load_person(person_id)
     authorize_person(current_user, person, PERSON_CONTACTS_WRITE)
@@ -253,6 +255,7 @@ async def update_contact(
     update["updated_at"] = now_utc()
     await db.person_contacts.update_one({"_id": contact_oid}, {"$set": update})
     await _promote_contact_if_needed(person_id)
+    await record_activity(person_id, current_user, "contacto", "updated", "Contacto actualizado")
     return serialize_contact(await db.person_contacts.find_one({"_id": contact_oid}))
 
 
@@ -260,7 +263,7 @@ async def update_contact(
 async def delete_contact(
     person_id: str,
     contact_id: str,
-    current_user: dict = Depends(require_lider_o_pastor),
+    current_user: dict = Depends(require_person_profile_user),
 ):
     person = await load_person(person_id)
     authorize_person(current_user, person, PERSON_CONTACTS_WRITE)
@@ -272,11 +275,12 @@ async def delete_contact(
     if not result.deleted_count:
         raise HTTPException(status_code=404, detail="Contacto no encontrado")
     await _promote_contact_if_needed(person_id)
+    await record_activity(person_id, current_user, "contacto", "deleted", "Contacto eliminado")
     return {"message": "Contacto eliminado"}
 
 
 @router.get("/{person_id}/addresses")
-async def list_addresses(person_id: str, current_user: dict = Depends(require_lider_o_pastor)):
+async def list_addresses(person_id: str, current_user: dict = Depends(require_person_profile_user)):
     person = await load_person(person_id)
     authorize_person(current_user, person, PERSON_ADDRESSES_READ)
     return {"items": await address_items(person_id)}
@@ -286,7 +290,7 @@ async def list_addresses(person_id: str, current_user: dict = Depends(require_li
 async def create_address(
     person_id: str,
     payload: AddressPayload,
-    current_user: dict = Depends(require_lider_o_pastor),
+    current_user: dict = Depends(require_person_profile_user),
 ):
     person = await load_person(person_id)
     authorize_person(current_user, person, PERSON_ADDRESSES_WRITE)
@@ -306,6 +310,7 @@ async def create_address(
     }
     result = await db.person_addresses.insert_one(doc)
     doc["_id"] = result.inserted_id
+    await record_activity(person_id, current_user, "direcciones", "created", "Dirección agregada")
     return serialize_address(doc)
 
 
@@ -314,7 +319,7 @@ async def update_address(
     person_id: str,
     address_id: str,
     payload: AddressUpdate,
-    current_user: dict = Depends(require_lider_o_pastor),
+    current_user: dict = Depends(require_person_profile_user),
 ):
     person = await load_person(person_id)
     authorize_person(current_user, person, PERSON_ADDRESSES_WRITE)
@@ -334,6 +339,7 @@ async def update_address(
     update["updated_at"] = now_utc()
     await db.person_addresses.update_one({"_id": address_oid}, {"$set": update})
     await _promote_address_if_needed(person_id)
+    await record_activity(person_id, current_user, "direcciones", "updated", "Dirección actualizada")
     return serialize_address(await db.person_addresses.find_one({"_id": address_oid}))
 
 
@@ -341,7 +347,7 @@ async def update_address(
 async def delete_address(
     person_id: str,
     address_id: str,
-    current_user: dict = Depends(require_lider_o_pastor),
+    current_user: dict = Depends(require_person_profile_user),
 ):
     person = await load_person(person_id)
     authorize_person(current_user, person, PERSON_ADDRESSES_WRITE)
@@ -353,6 +359,7 @@ async def delete_address(
     if not result.deleted_count:
         raise HTTPException(status_code=404, detail="Direccion no encontrada")
     await _promote_address_if_needed(person_id)
+    await record_activity(person_id, current_user, "direcciones", "deleted", "Dirección eliminada")
     return {"message": "Direccion eliminada"}
 
 

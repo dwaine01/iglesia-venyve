@@ -30,6 +30,8 @@ async def client():
         "password": hashed,
         "rol": "pastor",
         "leader_id": None,
+        "capabilities": ["person.profile.open"],
+        "access_scope": {"persons": "created_by"},
     })
     transport = ASGITransport(app=server.app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
@@ -67,16 +69,14 @@ async def test_profile_returns_header_and_sections(client):
     assert header["person_number"].startswith("VV-")
     assert header["nombre_completo"] == "Laura Martinez"
     assert header["initials"] == "LM"
-    # ARCHITECTURE CONFLICT resuelto: hasta que exista capability+scope
-    # (ACCESS-01), estos campos se OMITEN por completo del header -- ni
-    # siquiera como null -- para NINGUN rol, incluyendo roles legacy
-    # privilegiados como pastor. Ver build_header() en core_profile.py.
+    # Con acceso canónico a la ficha pero sin capabilities sensibles,
+    # estos campos se omiten para cualquier rol.
     assert "primary_contact" not in header
     assert "fecha_nacimiento" not in header
     assert "city" not in header
 
     sections = body["sections"]
-    assert len(sections) == 1 + len(PLANNED_DOMAINS)
+    assert len(sections) == 3 + len(PLANNED_DOMAINS)
 
     core_section = sections[0]
     assert core_section["section_key"] == "core"
@@ -84,24 +84,32 @@ async def test_profile_returns_header_and_sections(client):
     assert core_section["summary"] == "Laura Martinez"
 
     domain_sections = sections[1:]
-    assert [s["section_key"] for s in domain_sections] == [k for k, _ in PLANNED_DOMAINS]
-    assert {s["status_code"] for s in domain_sections} == {"module_unavailable"}
-    # ningun estado falso tipo "pendiente"/"no completado"/"no miembro"
-    for s in domain_sections:
-        assert s["summary"] is None
-        assert s["status_label"] not in ("Pendiente", "No completado", "No miembro")
+    expected_keys = ["contacto", "direcciones", *[key for key, _ in PLANNED_DOMAINS]]
+    assert [section["section_key"] for section in domain_sections] == expected_keys
+    restricted_keys = {
+        "contacto", "direcciones", "llegada_origen", "familia",
+        "household", "asistencia", "historial",
+    }
+    for section in domain_sections:
+        expected_status = (
+            "access_restricted" if section["section_key"] in restricted_keys else "module_unavailable"
+        )
+        assert section["status_code"] == expected_status
+        assert section["summary"] is None
+        assert section["status_label"] not in ("Pendiente", "No completado", "No miembro")
 
+    assert body["canonical_profile_path"] == f"/personas/{pid}"
     assert body["sections_available"] == ["resumen"]
-    assert "contacto" in body["sections_planned"]
-    assert "direcciones" in body["sections_planned"]
+    assert body["sections_planned"] == [
+        "contacto", "direcciones", "household", "familia",
+        "procesos", "asistencia", "historial",
+    ]
 
 
 @pytest.mark.asyncio
-async def test_profile_header_omits_sensitive_fields_for_legacy_roles(client):
-    """Un rol legacy (pastor) sin capability+scope explicita no debe
-    recibir contacto, fecha de nacimiento ni ciudad -- se omiten del
-    payload, no se devuelven como null. Regresion directa del
-    ARCHITECTURE CONFLICT senalado por Emergent sobre build_header()."""
+async def test_profile_header_omits_sensitive_fields_without_sensitive_capability(client):
+    """La ficha canónica mantiene el mismo diseño, pero omite campos sensibles
+    cuando el usuario solo tiene permiso para abrir la Persona."""
     created = await client.post("/api/core/persons", json={
         "nombre": "Pedro",
         "apellido": "Ramirez",

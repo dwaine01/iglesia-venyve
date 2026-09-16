@@ -85,7 +85,7 @@ function App() {
             <Route path="registro" element={<StaffRoute><RegistroPage /></StaffRoute>} />
           <Route path="personas" element={<StaffRoute><PersonasListPage /></StaffRoute>} />
           <Route path="personas/nueva" element={<StaffRoute><PersonaNuevaPage /></StaffRoute>} />
-          <Route path="personas/:personId" element={<StaffRoute><PersonaPerfilPage /></StaffRoute>} />
+            <Route path="personas/:personId" element={<PersonaPerfilPage />} />
             <Route path="bitacora" element={<StaffRoute><BitacoraPage /></StaffRoute>} />
             <Route path="codigos" element={<StaffRoute><CodigosInvitacionPage /></StaffRoute>} />
             <Route path="estadisticas" element={<EstadisticasPage />} />

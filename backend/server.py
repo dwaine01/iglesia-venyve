@@ -348,6 +348,14 @@ from person_domains import router as person_domains_router, ensure_indexes as pe
 
 app.include_router(person_domains_router)
 
+# --- Person Profile 360 expanded modular domains ---
+from person_profile_domains import (
+    router as person_profile_domains_router,
+    ensure_indexes as person_profile_domains_ensure_indexes,
+)
+
+app.include_router(person_profile_domains_router)
+
 
 # --- Default Checklists ---
 DEFAULT_CHECKLISTS = {
@@ -434,6 +442,7 @@ async def startup():
     # --- P-001 Core de Personas (aditivo) ---
     await core_person_ensure_indexes()
     await person_domains_ensure_indexes()
+    await person_profile_domains_ensure_indexes()
     print("Core Person (P-001) indexes created")
 
 

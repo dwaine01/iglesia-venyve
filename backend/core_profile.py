@@ -10,37 +10,45 @@ from bson import ObjectId
 from bson.errors import InvalidId
 from fastapi import APIRouter, HTTPException, Depends
 
-from core_person import db, require_lider_o_pastor, serialize_person
+from core_person import db, require_person_profile_user, serialize_person
 from access_control import (
     PERSON_ADDRESSES_READ,
     PERSON_ADDRESSES_WRITE,
+    PERSON_ARRIVAL_READ,
+    PERSON_ATTENDANCE_READ,
     PERSON_CONTACTS_READ,
     PERSON_CONTACTS_WRITE,
+    PERSON_FAMILY_READ,
+    PERSON_HISTORY_READ,
+    PERSON_HOUSEHOLD_READ,
+    PERSON_NOTES_READ,
     PERSON_PROFILE_SENSITIVE_READ,
+    PERSON_PROFILE_WRITE,
     can_access_person,
     has_capability,
 )
 from person_domains import address_items, contact_items
+from person_profile_domains import profile_domain_snapshot
 
 router = APIRouter(prefix="/api/core", tags=["core-profile"])
 
-# Dominios previstos por el Blueprint. En Slice 2A ninguno tiene datos
-# reales todavia -- se declaran explicitamente como module_unavailable en
-# vez de fabricar estados falsos (no 'pendiente', no 'no completado').
+# Catalogo del agregador 360. Cada dominio conserva su fuente de verdad;
+# mientras no exista integracion real se declara module_unavailable.
 PLANNED_DOMAINS = [
     ("llegada_origen", "Llegada y origen"),
-    ("membership", "Membresia"),
+    ("membership", "Membresía"),
     ("bautismo", "Bautismo"),
     ("bienvenida", "Bienvenida"),
-    ("consolidacion", "Consolidacion"),
+    ("consolidacion", "Consolidación"),
     ("ley7", "Ley7"),
     ("discipulado", "Discipulado"),
-    ("mentoria", "Mentoria"),
-    ("celulas", "Celulas"),
-    ("ministerios", "Ministerios / Servicio"),
-    ("household_familia", "Household / Familia"),
-    ("eventos", "Eventos / Asistencia"),
-    ("historial", "Trayectoria / Historial"),
+    ("mentor_acompanamiento", "Mentor / Acompañamiento"),
+    ("celula", "Célula"),
+    ("ministerio_servicio", "Ministerio / Servicio"),
+    ("familia", "Familia"),
+    ("household", "Household"),
+    ("asistencia", "Asistencia"),
+    ("historial", "Historial"),
 ]
 
 
@@ -78,8 +86,24 @@ def _unavailable_section(key: str, label: str) -> dict:
     }
 
 
+def _restricted_section(key: str, label: str, tab_key: str) -> dict:
+    return {
+        "section_key": key,
+        "status_code": "access_restricted",
+        "status_label": label,
+        "summary": None,
+        "primary_date": None,
+        "route": None,
+        "tab_key": tab_key,
+        "source_domain": key,
+        "updated_at": None,
+    }
+
+
 def _domain_section(key: str, label: str, items: list[dict], summary: str | None) -> dict:
-    latest = max((item.get("updated_at") for item in items), default=None)
+    # Filter out None values before finding max to avoid TypeError
+    updated_ats = [item.get("updated_at") for item in items if item.get("updated_at") is not None]
+    latest = max(updated_ats, default=None) if updated_ats else None
     return {
         "section_key": key,
         "status_code": "has_summary" if items else "no_record",
@@ -113,34 +137,62 @@ def build_header(
     contacts: list[dict],
     addresses: list[dict],
 ) -> dict:
-    """Project sensitive header fields only through capability + person scope."""
+    """Project identity and authorized sensitive fields for the 360 header."""
     header = {
         "person_id": person["person_id"],
         "person_number": person["person_number"],
+        "nombre": person.get("nombre"),
+        "apellido": person.get("apellido"),
         "nombre_completo": f"{person.get('nombre','')} {person.get('apellido','')}".strip(),
         "initials": _initials(person.get("nombre"), person.get("apellido")),
         "age_category": person.get("age_category"),
-        "photo_url": None,
+        "photo_url": person.get("photo_url"),
     }
     if not can_access_person(current_user, person):
         return header
+
     if has_capability(current_user, PERSON_PROFILE_SENSITIVE_READ):
-        header["fecha_nacimiento"] = person.get("fecha_nacimiento")
+        for field in ("fecha_nacimiento", "genero", "estado_civil", "ocupacion"):
+            if person.get(field):
+                header[field] = person[field]
+
     if has_capability(current_user, PERSON_CONTACTS_READ) and contacts:
         primary_contact = next(
             (item for item in contacts if item.get("es_principal")), contacts[0]
         )
         header["primary_contact"] = primary_contact.get("valor")
+        phone = next(
+            (
+                item
+                for item in contacts
+                if item.get("tipo") in {"telefono", "whatsapp"}
+                and item.get("es_principal")
+            ),
+            next(
+                (item for item in contacts if item.get("tipo") in {"telefono", "whatsapp"}),
+                None,
+            ),
+        )
+        email = next(
+            (item for item in contacts if item.get("tipo") == "email" and item.get("es_principal")),
+            next((item for item in contacts if item.get("tipo") == "email"), None),
+        )
+        if phone:
+            header["primary_phone"] = phone.get("valor")
+        if email:
+            header["primary_email"] = email.get("valor")
+
     if has_capability(current_user, PERSON_ADDRESSES_READ) and addresses:
         primary_address = next(
             (item for item in addresses if item.get("es_principal")), addresses[0]
         )
-        header["city"] = primary_address.get("ciudad")
+        if primary_address.get("ciudad"):
+            header["city"] = primary_address["ciudad"]
     return header
 
 
 @router.get("/persons/{person_id}/profile")
-async def get_person_profile(person_id: str, current_user: dict = Depends(require_lider_o_pastor)):
+async def get_person_profile(person_id: str, current_user: dict = Depends(require_person_profile_user)):
     try:
         oid = ObjectId(person_id)
     except InvalidId:
@@ -149,49 +201,165 @@ async def get_person_profile(person_id: str, current_user: dict = Depends(requir
     if not doc:
         raise HTTPException(status_code=404, detail="Persona no encontrada")
     person = serialize_person(doc)
+    for optional_field in ("photo_url", "genero", "estado_civil", "ocupacion"):
+        if doc.get(optional_field):
+            person[optional_field] = doc[optional_field]
 
     in_scope = can_access_person(current_user, person)
     can_read_contacts = in_scope and has_capability(current_user, PERSON_CONTACTS_READ)
     can_read_addresses = in_scope and has_capability(current_user, PERSON_ADDRESSES_READ)
+    can_read_profile = in_scope and has_capability(current_user, PERSON_PROFILE_SENSITIVE_READ)
+    can_write_profile = in_scope and has_capability(current_user, PERSON_PROFILE_WRITE)
     contacts = await contact_items(person_id) if can_read_contacts else []
     addresses = await address_items(person_id) if can_read_addresses else []
+    domain_read_capabilities = (
+        PERSON_PROFILE_SENSITIVE_READ,
+        PERSON_HOUSEHOLD_READ,
+        PERSON_FAMILY_READ,
+        PERSON_ARRIVAL_READ,
+        PERSON_ATTENDANCE_READ,
+        PERSON_NOTES_READ,
+        PERSON_HISTORY_READ,
+    )
+    can_read_any_domain = in_scope and any(
+        has_capability(current_user, capability) for capability in domain_read_capabilities
+    )
+    snapshot = (
+        await profile_domain_snapshot(person_id, current_user) if can_read_any_domain else None
+    )
     header = build_header(person, current_user, contacts, addresses)
+    if snapshot:
+        header["photo_available"] = snapshot["photo_available"]
 
     domain_sections = []
     available = ["resumen"]
-    planned = ["household", "familia", "procesos", "historial"]
-    response = {}
+    planned = []
+    response = {"profile_can_write": can_write_profile}
 
     if can_read_contacts:
         available.append("contacto")
-        domain_sections.append(
-            _domain_section("contacto", "Contacto", contacts, _contact_summary(contacts))
-        )
+        contact_section = _domain_section("contacto", "Contacto", contacts, _contact_summary(contacts))
+        contact_section["tab_key"] = "contacto"
+        domain_sections.append(contact_section)
         response["contacto"] = {
             "items": contacts,
             "can_write": has_capability(current_user, PERSON_CONTACTS_WRITE),
         }
     else:
-        planned.insert(0, "contacto")
+        planned.append("contacto")
+        domain_sections.append(_restricted_section("contacto", "Contacto", "contacto"))
 
     if can_read_addresses:
         available.append("direcciones")
-        domain_sections.append(
-            _domain_section("direcciones", "Direcciones", addresses, _address_summary(addresses))
+        address_section = _domain_section(
+            "direcciones", "Direcciones", addresses, _address_summary(addresses)
         )
+        address_section["tab_key"] = "direcciones"
+        domain_sections.append(address_section)
         response["direcciones"] = {
             "items": addresses,
             "can_write": has_capability(current_user, PERSON_ADDRESSES_WRITE),
         }
     else:
-        planned.insert(1 if planned and planned[0] == "contacto" else 0, "direcciones")
+        planned.append("direcciones")
+        domain_sections.append(_restricted_section("direcciones", "Direcciones", "direcciones"))
 
-    sections = (
-        [_core_section(person)]
-        + domain_sections
-        + [_unavailable_section(key, label) for key, label in PLANNED_DOMAINS]
-    )
+    built_sections = {}
+    if snapshot:
+        permissions = snapshot["permissions"]
+        tab_access = {
+            "household": permissions["household"]["read"],
+            "familia": permissions["familia"]["read"],
+            "procesos": permissions["procesos"]["read"],
+            "asistencia": permissions["asistencia"]["read"],
+            "historial": permissions["historial"]["read"] or permissions["notas"]["read"],
+        }
+        for tab_key in ("household", "familia", "procesos", "asistencia", "historial"):
+            (available if tab_access[tab_key] else planned).append(tab_key)
+
+        household = snapshot["household"]
+        family = snapshot["familia"]
+        arrival = snapshot["llegada_origen"]
+        attendance = snapshot["asistencia"]
+        history = snapshot["historial"]
+        built_sections = {
+            "llegada_origen": (
+                _domain_section(
+                    "llegada_origen",
+                    "Llegada y origen",
+                    [arrival] if arrival else [],
+                    f"{arrival['tipo'].capitalize()} · {arrival['fecha_llegada']}" if arrival else None,
+                )
+                if permissions["procesos"]["read"]
+                else _restricted_section("llegada_origen", "Llegada y origen", "procesos")
+            ),
+            "familia": (
+                _domain_section(
+                    "familia",
+                    "Familia",
+                    family,
+                    f"{len(family)} relación(es) registrada(s)" if family else None,
+                )
+                if permissions["familia"]["read"]
+                else _restricted_section("familia", "Familia", "familia")
+            ),
+            "household": (
+                _domain_section(
+                    "household",
+                    "Household",
+                    [household] if household else [],
+                    household.get("nombre_hogar") if household else None,
+                )
+                if permissions["household"]["read"]
+                else _restricted_section("household", "Household", "household")
+            ),
+            "asistencia": (
+                _domain_section(
+                    "asistencia",
+                    "Asistencia",
+                    attendance,
+                    f"Última: {attendance[0]['actividad']} · {attendance[0]['fecha']}"
+                    if attendance
+                    else None,
+                )
+                if permissions["asistencia"]["read"]
+                else _restricted_section("asistencia", "Asistencia", "asistencia")
+            ),
+            "historial": (
+                _domain_section(
+                    "historial",
+                    "Historial",
+                    history,
+                    f"{len(history)} actividad(es) registrada(s)" if history else None,
+                )
+                if permissions["historial"]["read"]
+                else _restricted_section("historial", "Historial", "historial")
+            ),
+        }
+        built_sections["llegada_origen"]["tab_key"] = "procesos"
+        built_sections["familia"]["tab_key"] = "familia"
+        built_sections["household"]["tab_key"] = "household"
+        built_sections["asistencia"]["tab_key"] = "asistencia"
+        built_sections["historial"]["tab_key"] = "historial"
+        response.update(snapshot)
+    else:
+        planned.extend(["household", "familia", "procesos", "asistencia", "historial"])
+        built_sections = {
+            "llegada_origen": _restricted_section(
+                "llegada_origen", "Llegada y origen", "procesos"
+            ),
+            "familia": _restricted_section("familia", "Familia", "familia"),
+            "household": _restricted_section("household", "Household", "household"),
+            "asistencia": _restricted_section("asistencia", "Asistencia", "asistencia"),
+            "historial": _restricted_section("historial", "Historial", "historial"),
+        }
+
+    for key, label in PLANNED_DOMAINS:
+        domain_sections.append(built_sections.get(key) or _unavailable_section(key, label))
+
+    sections = [_core_section(person)] + domain_sections
     return {
+        "canonical_profile_path": f"/personas/{person_id}",
         "header": header,
         "sections": sections,
         "sections_available": available,

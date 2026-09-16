@@ -9,6 +9,7 @@ import { Badge } from '../components/ui/badge';
 import { Skeleton } from '../components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Search, UserPlus, IdCard } from 'lucide-react';
+import PersonCanonicalLink from '../components/PersonCanonicalLink';
 
 export default function PersonasListPage() {
   const { API, getAuthHeaders } = useAuth();
@@ -113,9 +114,11 @@ export default function PersonasListPage() {
                     {persons.map((p) => (
                       <TableRow key={p.person_id} className="cursor-pointer hover:bg-gray-50">
                         <TableCell className="font-mono text-sm text-[#8A6D2F]">
-                          {p.person_number}
+                          <PersonCanonicalLink personId={p.person_id}>{p.person_number}</PersonCanonicalLink>
                         </TableCell>
-                        <TableCell className="font-medium">{nombreCompleto(p)}</TableCell>
+                        <TableCell className="font-medium">
+                          <PersonCanonicalLink personId={p.person_id}>{nombreCompleto(p)}</PersonCanonicalLink>
+                        </TableCell>
                         <TableCell>{p.telefono || '—'}</TableCell>
                         <TableCell>
                           {p.age_category ? (

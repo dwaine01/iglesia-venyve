@@ -18,6 +18,7 @@ from bson import ObjectId
 from bson.errors import InvalidId
 
 from server import get_current_user
+from access_control import normalized_access_scope, normalized_capabilities
 
 MONGO_URL = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
 DB_NAME = os.environ.get("DB_NAME", "ley7semanas_db")
@@ -42,6 +43,15 @@ def _normalize(text: Optional[str]) -> str:
 def require_lider_o_pastor(current_user: dict = Depends(get_current_user)) -> dict:
     if current_user.get("rol") not in ("lider", "pastor"):
         raise HTTPException(status_code=403, detail="No autorizado")
+    return current_user
+
+
+def require_person_profile_user(current_user: dict = Depends(get_current_user)) -> dict:
+    """Allow any role with explicit Person capabilities and a Person scope."""
+    capabilities = normalized_capabilities(current_user)
+    scope = normalized_access_scope(current_user).get("persons", "none")
+    if not any(item.startswith("person.") for item in capabilities) or scope == "none":
+        raise HTTPException(status_code=403, detail="No autorizado para Person Profile 360")
     return current_user
 
 

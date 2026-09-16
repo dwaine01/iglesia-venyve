@@ -80,6 +80,14 @@ async def test_explicit_capability_and_scope_enable_visible_profile_domains(scop
             "notas": "Prefiere mensajes",
         },
     )
+    email_contact = await client.post(
+        f"/api/core/persons/{person_id}/contacts",
+        json={
+            "tipo": "email",
+            "valor": "maria.santos@example.com",
+            "etiqueta": "Personal",
+        },
+    )
     address = await client.post(
         f"/api/core/persons/{person_id}/addresses",
         json={
@@ -93,6 +101,7 @@ async def test_explicit_capability_and_scope_enable_visible_profile_domains(scop
     )
 
     assert contact.status_code == 201, contact.text
+    assert email_contact.status_code == 201, email_contact.text
     assert address.status_code == 201, address.text
     assert contact.json()["es_principal"] is True
     assert address.json()["es_principal"] is True
@@ -102,10 +111,14 @@ async def test_explicit_capability_and_scope_enable_visible_profile_domains(scop
     profile = await client.get(f"/api/core/persons/{person_id}/profile")
     assert profile.status_code == 200, profile.text
     body = profile.json()
-    assert body["sections_available"] == ["resumen", "contacto", "direcciones"]
-    assert "contacto" not in body["sections_planned"]
-    assert "direcciones" not in body["sections_planned"]
+    assert body["sections_available"] == [
+        "resumen", "contacto", "direcciones", "household",
+        "familia", "procesos", "asistencia", "historial",
+    ]
+    assert body["sections_planned"] == []
     assert body["header"]["primary_contact"] == "+1 809 555 0101"
+    assert body["header"]["primary_phone"] == "+1 809 555 0101"
+    assert body["header"]["primary_email"] == "maria.santos@example.com"
     assert body["header"]["city"] == "Santo Domingo"
     assert body["header"]["fecha_nacimiento"] == "1992-04-18"
     assert body["contacto"]["can_write"] is True
@@ -118,6 +131,16 @@ async def test_explicit_capability_and_scope_enable_visible_profile_domains(scop
     }
     assert domain_statuses["contacto"] == "has_summary"
     assert domain_statuses["direcciones"] == "has_summary"
+    expected_unavailable = {
+        "membership", "bautismo", "bienvenida", "consolidacion", "ley7",
+        "discipulado", "mentor_acompanamiento", "celula", "ministerio_servicio",
+    }
+    assert expected_unavailable.issubset(domain_statuses)
+    assert {domain_statuses[key] for key in expected_unavailable} == {"module_unavailable"}
+    # historial now shows has_summary because contact/address CRUD records activity
+    for built_key in ("llegada_origen", "familia", "household", "asistencia"):
+        assert domain_statuses[built_key] == "no_record"
+    assert domain_statuses["historial"] == "has_summary"
 
 
 @pytest.mark.asyncio
@@ -186,10 +209,7 @@ async def test_role_without_explicit_grant_cannot_read_sensitive_domains():
     try:
         profile = await client.get(f"/api/core/persons/{person_id}/profile")
         contacts = await client.get(f"/api/core/persons/{person_id}/contacts")
-        assert profile.status_code == 200
-        assert profile.json()["sections_available"] == ["resumen"]
-        for field in ("primary_contact", "fecha_nacimiento", "city"):
-            assert field not in profile.json()["header"]
+        assert profile.status_code == 403
         assert contacts.status_code == 403
     finally:
         await client.aclose()
