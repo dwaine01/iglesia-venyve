@@ -7,7 +7,8 @@ import { Separator } from './ui/separator';
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 import {
   LayoutDashboard, BookOpen, Map, Calendar, Users, BarChart3, LogOut, Menu, ChevronRight,
-  Crown, Star, Trophy, Presentation, NotebookPen, KeyRound, IdCard, Church, Search, DatabaseZap
+  Crown, Star, Trophy, Presentation, NotebookPen, KeyRound, IdCard, Church, Search, DatabaseZap,
+  Activity, BookOpenCheck, Compass, HeartHandshake
 } from 'lucide-react';
 
 import { LOGO_IGLESIA } from '../data/presentationData';
@@ -20,6 +21,11 @@ const getNavItems = (rol) => {
     return [
       { to: '/dashboard-general', icon: Crown, label: 'Dashboard General', end: true },
       { to: '/nucleo', icon: DatabaseZap, label: 'Gobierno del Núcleo', testId: 'nav-core-governance' },
+      { to: '/procesos/dashboard', icon: Activity, label: 'Dashboard de Procesos', testId: 'nav-process-dashboard' },
+      { to: '/procesos/7-semanas', icon: BookOpenCheck, label: 'Ley de las 7 Semanas', testId: 'nav-seven-weeks' },
+      { to: '/procesos/consolidacion', icon: Activity, label: 'Consolidación', testId: 'nav-consolidation' },
+      { to: '/procesos/mentoria', icon: HeartHandshake, label: 'Mentoría', testId: 'nav-mentorship' },
+      { to: '/procesos/cap', icon: Compass, label: 'CAP', testId: 'nav-cap' },
       { to: '/personas', icon: IdCard, label: 'Personas', testId: 'nav-personas' },
       { to: '/directorio', icon: Search, label: 'Directorio de Talentos', testId: 'nav-directorio-talentos' },
       { to: '/ministerios', icon: Church, label: 'Ministerios', testId: 'nav-ministerios' },
@@ -33,36 +39,25 @@ const getNavItems = (rol) => {
   
   if (rol === 'persona') {
     return [
-      { to: '/mi-progreso', icon: Trophy, label: 'Mi Progreso', end: true },
-      { type: 'separator', label: 'Mis Semanas' },
-      { to: '/mi-semana/1', icon: Calendar, label: 'Semana 1 - Preparación' },
-      { to: '/mi-semana/2', icon: Calendar, label: 'Semana 2 - Invasión' },
-      { to: '/mi-semana/3', icon: Calendar, label: 'Semana 3 - MCD' },
-      { to: '/mi-semana/4', icon: Calendar, label: 'Semana 4 - NPT' },
-      { to: '/mi-semana/5', icon: Calendar, label: 'Semana 5 - Liberación' },
-      { to: '/mi-semana/6', icon: Calendar, label: 'Semana 6 - Bendición' },
-      { to: '/mi-semana/7', icon: Calendar, label: 'Semana 7 - Sanidad' },
+      { to: '/procesos/dashboard', icon: Trophy, label: 'Mi Progreso', end: true },
+      { to: '/procesos/7-semanas', icon: BookOpenCheck, label: 'Mis 7 Semanas' },
+      { to: '/procesos/mentoria', icon: HeartHandshake, label: 'Mi Mentoría' },
+      { to: '/procesos/cap', icon: Compass, label: 'Mi CAP' },
     ];
   }
   
   // Default: lider
   return [
     { to: '/', icon: LayoutDashboard, label: 'Dashboard', end: true },
-    { to: '/introduccion', icon: BookOpen, label: 'Introducción' },
-    { to: '/mapa', icon: Map, label: 'Mapa 7 Semanas' },
+    { to: '/procesos/dashboard', icon: Activity, label: 'Dashboard de Procesos', testId: 'nav-process-dashboard' },
+    { to: '/procesos/7-semanas', icon: BookOpenCheck, label: 'Ley de las 7 Semanas', testId: 'nav-seven-weeks' },
+    { to: '/procesos/consolidacion', icon: Activity, label: 'Consolidación', testId: 'nav-consolidation' },
+    { to: '/procesos/mentoria', icon: HeartHandshake, label: 'Mentoría', testId: 'nav-mentorship' },
+    { to: '/procesos/cap', icon: Compass, label: 'CAP', testId: 'nav-cap' },
     { to: '/personas', icon: IdCard, label: 'Personas', testId: 'nav-personas' },
     { to: '/directorio', icon: Search, label: 'Directorio de Talentos', testId: 'nav-directorio-talentos' },
     { to: '/ministerios', icon: Church, label: 'Ministerios', testId: 'nav-ministerios' },
-    { type: 'separator', label: 'Semanas' },
-    { to: '/semana/1', icon: Calendar, label: 'Semana 1 - Preparación' },
-    { to: '/semana/2', icon: Calendar, label: 'Semana 2 - Invasión' },
-    { to: '/semana/3', icon: Calendar, label: 'Semana 3 - MCD' },
-    { to: '/semana/4', icon: Calendar, label: 'Semana 4 - NPT' },
-    { to: '/semana/5', icon: Calendar, label: 'Semana 5 - Liberación' },
-    { to: '/semana/6', icon: Calendar, label: 'Semana 6 - Bendición' },
-    { to: '/semana/7', icon: Calendar, label: 'Semana 7 - Sanidad' },
     { type: 'separator', label: 'Herramientas' },
-    { to: '/registro', icon: Users, label: 'Registro de Contactos' },
     { to: '/codigos', icon: KeyRound, label: 'Códigos de Invitación' },
     { to: '/bitacora', icon: NotebookPen, label: 'Bitácora Evangelística' },
     { to: '/presentacion', icon: Presentation, label: 'Manual 7 Semanas' },
@@ -84,6 +79,11 @@ const breadcrumbMap = {
   '/directorio': 'Directorio de Talentos',
   '/ministerios': 'Ministerios',
   '/nucleo': 'Gobierno del Núcleo',
+  '/procesos/dashboard': 'Dashboard de Procesos',
+  '/procesos/7-semanas': 'Ley de las 7 Semanas',
+  '/procesos/consolidacion': 'Consolidación',
+  '/procesos/mentoria': 'Mentoría',
+  '/procesos/cap': 'CAP',
 };
 
 function SidebarContent({ onClose }) {

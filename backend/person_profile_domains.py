@@ -3,7 +3,7 @@
 Household, family, arrival, attendance, notes, activity and photo data remain
 outside the persons collection. The profile read-model aggregates them.
 """
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Literal, Optional
 from uuid import uuid4
 
@@ -32,30 +32,20 @@ from access_control import (
     PERSON_TALENTS_WRITE,
     PERSON_PROFILE_SENSITIVE_READ,
     PERSON_PROFILE_WRITE,
+    PROCESSES_READ,
+    PROCESSES_WRITE,
     authorize_person,
     has_capability,
 )
 from core_person import _age_category, db, now_utc, require_person_profile_user
 from person_core_expansion import age_info, household_snapshot, relationship_items, talent_snapshot
 from ministries import assignment_items
+from process_engine import create_enrollment, evaluate_alerts
 
 router = APIRouter(prefix="/api/core/persons", tags=["person-profile-domains"])
 MAX_PHOTO_BYTES = 5 * 1024 * 1024
 PHOTO_CHUNK_BYTES = 512 * 1024
 ALLOWED_PHOTO_TYPES = {"image/jpeg", "image/png", "image/webp"}
-
-PROCESS_CONNECTORS = [
-    {"key": "membership", "label": "Membresía"},
-    {"key": "bautismo", "label": "Bautismo"},
-    {"key": "bienvenida", "label": "Bienvenida"},
-    {"key": "consolidacion", "label": "Consolidación"},
-    {"key": "ley7", "label": "Ley7"},
-    {"key": "discipulado", "label": "Discipulado"},
-    {"key": "mentor_acompanamiento", "label": "Mentor / Acompañamiento"},
-    {"key": "celula", "label": "Célula"},
-    {"key": "ministerio_servicio", "label": "Ministerio / Servicio"},
-]
-
 
 def iso_z(value: Optional[datetime]) -> Optional[str]:
     if value is None:
@@ -347,8 +337,8 @@ async def profile_domain_snapshot(person_id: str, current_user: dict) -> dict:
             "write": has_capability(current_user, PERSON_FAMILY_WRITE),
         },
         "procesos": {
-            "read": has_capability(current_user, PERSON_ARRIVAL_READ),
-            "write": has_capability(current_user, PERSON_ARRIVAL_WRITE),
+            "read": has_capability(current_user, PROCESSES_READ),
+            "write": has_capability(current_user, PROCESSES_WRITE),
         },
         "asistencia": {
             "read": has_capability(current_user, PERSON_ATTENDANCE_READ),
@@ -410,6 +400,27 @@ async def profile_domain_snapshot(person_id: str, current_user: dict) -> dict:
         if has_capability(current_user, PERSON_PROFILE_SENSITIVE_READ)
         else None
     )
+    process_docs = (
+        await db.process_enrollments.find(
+            {"person_id": person_id},
+            {"_id": 0, "enrollment_id": 1, "process_key": 1, "status": 1, "current_stage_key": 1, "progress_pct": 1, "next_action": 1, "next_action_at": 1, "responsible_person_id": 1, "ready_for_cellular": 1},
+        ).sort("updated_at", -1).to_list(100)
+        if permissions["procesos"]["read"]
+        else []
+    )
+    process_names = {
+        "seven_weeks": "Ley de las 7 Semanas",
+        "consolidation": "Consolidación",
+        "mentorship": "Mentoría",
+        "cap": "CAP",
+    }
+    process_status_labels = {
+        "planned": "Planificado",
+        "active": "Activo",
+        "paused": "Pausado",
+        "completed": "Completado",
+        "cancelled": "Cancelado",
+    }
     return {
         "permissions": permissions,
         "photo_available": bool(photo),
@@ -424,8 +435,15 @@ async def profile_domain_snapshot(person_id: str, current_user: dict) -> dict:
         "notas": [serialize_note(item) for item in note_docs],
         "historial": [serialize_activity(item) for item in activity_docs],
         "procesos": [
-            {**item, "status_code": "module_unavailable", "status_label": "Módulo aún no disponible"}
-            for item in PROCESS_CONNECTORS
+            {
+                **item,
+                "key": item["process_key"],
+                "label": process_names.get(item["process_key"], item["process_key"]),
+                "status_code": item.get("status"),
+                "status_label": process_status_labels.get(item.get("status"), item.get("status", "")),
+                "route": f"/procesos/{'7-semanas' if item['process_key'] == 'seven_weeks' else item['process_key']}",
+            }
+            for item in process_docs
         ],
     }
 
@@ -664,6 +682,21 @@ async def upsert_arrival(
         upsert=True,
     )
     await record_activity(person_id, current_user, "llegada_origen", "updated", "Llegada y origen actualizados")
+    enrollment, created = await create_enrollment(
+        db,
+        "consolidation",
+        person_id,
+        current_user.get("person_id") if current_user.get("rol") in {"pastor", "lider"} else None,
+        current_user["user_id"],
+        status="active",
+        next_action="Realizar primer contacto",
+        next_action_at=now + timedelta(hours=24),
+        source="arrival_automation",
+        source_id=person_id,
+    )
+    if created:
+        await record_activity(person_id, current_user, "procesos", "created", f"Seguimiento de Consolidación creado: {enrollment['enrollment_id']}")
+    await evaluate_alerts(db)
     return serialize_arrival(await db.person_arrivals.find_one({"_id": person_id}))
 
 
@@ -817,13 +850,12 @@ async def list_history(person_id: str, current_user: dict = Depends(require_pers
 
 @router.get("/{person_id}/processes")
 async def list_process_connectors(person_id: str, current_user: dict = Depends(require_person_profile_user)):
-    await authorize_domain(person_id, current_user, PERSON_PROFILE_SENSITIVE_READ)
-    return {
-        "items": [
-            {**item, "status_code": "module_unavailable", "status_label": "Módulo aún no disponible"}
-            for item in PROCESS_CONNECTORS
-        ]
-    }
+    await authorize_domain(person_id, current_user, PROCESSES_READ)
+    docs = await db.process_enrollments.find(
+        {"person_id": person_id},
+        {"_id": 0, "enrollment_id": 1, "process_key": 1, "status": 1, "current_stage_key": 1, "progress_pct": 1, "next_action": 1, "next_action_at": 1, "ready_for_cellular": 1},
+    ).sort("updated_at", -1).to_list(100)
+    return {"items": [{**doc, "canonical_profile_path": f"/personas/{person_id}"} for doc in docs]}
 
 
 async def ensure_indexes() -> None:

@@ -1,121 +1,110 @@
 {
-  "project_name": "Directorio de Talentos / Busqueda Global - Canonical 360",
-  "language": "es",
-  "architecture_principle": "FROZEN ARCHITECTURE: ONE PERSON -> ONE CANONICAL PROFILE 360 -> MANY MODULES. Every person search result or ministry assignment card links to /personas/{person_id}. No alternative or shadow profiles permitted.",
-  "tech_stack": {
-    "framework": "React (JavaScript .js)",
-    "styling": "Tailwind CSS + Custom CSS Variables",
-    "components": "Shadcn UI (JavaScript adapted)",
-    "icons": "lucide-react"
-  },
-  "visual_identity": {
-    "theme": "Institutional Warm Light / Navy & Gold Accent",
-    "fonts": {
-      "headings": "Spectral, serif",
-      "body": "IBM Plex Sans, sans-serif",
-      "mono": "JetBrains Mono, monospace"
+  "project_name": "Mega-Bloque B: PROCESOS (7 Semanas, Consolidación, Mentoría, CAP, Embudo & SLA)",
+  "context": "Dashboard & Operations Engine for Church Member Discipleship and Growth Pipelines",
+  "theme": "Institutional Light with Navy and Warm Metallic Accents",
+  "typography": {
+    "headings": {
+      "font_family": "Spectral, Georgia, serif",
+      "h1": "text-3xl sm:text-4xl lg:text-5xl font-semibold tracking-tight text-slate-900",
+      "h2": "text-2xl sm:text-3xl font-medium tracking-tight text-slate-900",
+      "h3": "text-xl sm:text-2xl font-medium text-slate-800",
+      "h4": "text-lg font-medium text-slate-800"
     },
-    "colors": {
-      "navy_primary": "#0F172A",
-      "navy_secondary": "#1E293B",
-      "navy_dark": "#0B132B",
-      "gold_accent": "#D97706",
-      "gold_hover": "#B45309",
-      "gold_light": "#FEF3C7",
-      "background_light": "#FAFAFA",
-      "surface_card": "#FFFFFF",
-      "surface_subtle": "#F8FAFC",
-      "border_light": "#E2E8F0",
-      "text_primary": "#0F172A",
-      "text_muted": "#64748B",
-      "text_subtle": "#94A3B8"
+    "body": {
+      "font_family": "IBM Plex Sans, Inter, sans-serif",
+      "base": "text-sm sm:text-base leading-relaxed text-slate-700",
+      "small": "text-xs sm:text-sm text-slate-500",
+      "mono": "font-mono text-xs sm:text-sm tracking-wide text-slate-800"
     }
   },
-  "layout_and_spacing": {
-    "container": "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8",
-    "header_nav": "bg-slate-900/95 backdrop-blur-md text-white sticky top-0 z-50 border-b border-slate-800",
-    "grid_results": "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6",
-    "filters_panel": "bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-6"
-  },
-  "key_features_blueprint": {
-    "1_global_search_and_filters": {
-      "description": "Directorio Global de Personas con busqueda libre en tiempo real y chips combinables (ocupacion, habilidad, ministerio, estado de membresia, grupo etario, genero, funcion).",
-      "filter_chips": [
-        "Ocupación (ej. Mecánico, Ingeniero, Medico)",
-        "Habilidad (ej. Electricidad, Canto, Sonido)",
-        "Estado Membresía (ej. Miembro Activo, En Preparación, Visitante)",
-        "Ministerio (ej. Alabanza, Jóvenes, Misiones)",
-        "Función/Rol (ej. Líder, Integrante, Servidor)",
-        "Grupo Etario (ej. Niños, Jóvenes, Adultos, Adulto Mayor)",
-        "Género (Masculino, Femenino)"
-      ],
-      "active_filters_display": "Banda de chips removibles con opcion 'Limpiar filtros' y contador de resultados."
+  "colors": {
+    "archetype": "ARCHETYPE 5: SWISS & INSTITUTIONAL LUXURY",
+    "primary": {
+      "navy_main": "#1e293b",
+      "navy_deep": "#0f172a",
+      "accent_gold": "#d97706",
+      "gold_hover": "#b45309"
     },
-    "2_person_results_card": {
-      "description": "Tarjeta de Persona que resalta talentos, ministerios asignados y estado de membresia, con enlace directo al Perfil 360 Canónico.",
-      "canonical_link": "/personas/{person_id}",
-      "data_testids": {
-        "search_input": "global-search-input",
-        "filter_occupation": "filter-occupation-select",
-        "filter_skill": "filter-skill-select",
-        "filter_membership": "filter-membership-select",
-        "filter_ministry": "filter-ministry-select",
-        "filter_role": "filter-role-select",
-        "filter_age": "filter-age-select",
-        "filter_gender": "filter-gender-select",
-        "results_container": "person-results-grid",
-        "person_card": "person-card-{person_id}",
-        "person_canonical_link": "person-canonical-link-{person_id}"
-      }
+    "surface": {
+      "bg_main": "#f8fafc",
+      "card_bg": "#ffffff",
+      "card_border": "#e2e8f0",
+      "table_header": "#f1f5f9"
     },
-    "3_empty_loading_error_states": {
-      "loading": "Skeleton grid de 6 tarjetas con pulso sutil.",
-      "empty": "Ilustración sutil con texto en español: 'No se encontraron personas con los criterios seleccionados' y botón para resetear filtros.",
-      "error": "Banner de alerta con icono de advertencia, mensaje en español y botón de reintento."
-    },
-    "4_ministries_catalog_and_detail": {
-      "catalog_view": "Grilla de tarjetas de ministerios con contadores de asignaciones, líder principal y badge de estado.",
-      "detail_view": "Detalle del ministerio con lista de integrantes asignados, asignación rápida de personas existentes a través del Perfil 360.",
-      "data_testids": {
-        "ministries_grid": "ministries-catalog-grid",
-        "ministry_card": "ministry-card-{ministry_id}",
-        "assign_person_btn": "ministry-assign-person-button",
-        "ministry_member_row": "ministry-member-row-{person_id}"
-      }
-    },
-    "5_quick_family_creation": {
-      "description": "Modal/pantalla de creación rápida de grupo familiar con asignación de rol familiar (cabeza, cónyuge, hijo) y asignación ministerial opcional.",
-      "data_testids": {
-        "open_family_modal": "open-quick-family-modal",
-        "family_name_input": "family-name-input",
-        "add_member_btn": "add-family-member-button",
-        "save_family_btn": "save-family-button"
+    "sla_alerts": {
+      "ok": {
+        "bg": "bg-emerald-50",
+        "border": "border-emerald-200",
+        "text": "text-emerald-800",
+        "badge": "bg-emerald-100 text-emerald-800"
+      },
+      "warning": {
+        "bg": "bg-amber-50",
+        "border": "border-amber-200",
+        "text": "text-amber-800",
+        "badge": "bg-amber-100 text-amber-800"
+      },
+      "critical": {
+        "bg": "bg-rose-50",
+        "border": "border-rose-200",
+        "text": "text-rose-800",
+        "badge": "bg-rose-100 text-rose-800"
       }
     }
   },
-  "media_and_assets": {
-    "avatar_fallback": "Abreviatura de iniciales sobre fondo dorado o navy",
-    "default_portraits": [
+  "layout_and_grids": {
+    "container_padding": "px-4 sm:px-6 lg:px-8 py-6 max-w-7xl mx-auto space-y-8",
+    "bento_grid_mode": "MODE B: High Density Grid (Dashboards & Operational Pipelines)",
+    "grid_structure": "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6",
+    "cards_style": "rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition-all hover:shadow-md"
+  },
+  "components_strategy": {
+    "use_javascript_files": true,
+    "file_extension": ".js",
+    "sub_modules": [
       {
-        "category": "Hombre profesional",
-        "url": "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1Nzh8MHwxfHNlYXJjaHxffHByb2Zlc3Npb25hbCUyMHBvcnRyYWl0JTIwbWFufGVufDB8fHx8MTc4OTUyOTU4NHww&ixlib=rb-4.1.0&q=85"
+        "module": "Dashboard de Procesos & Embudo SLA",
+        "route": "/procesos/dashboard",
+        "key_features": ["Embudo operativo", "Metricas de retención y SLA", "Configuración de reglas de retraso", "Panel de Alertas tempranas críticas"]
       },
       {
-        "category": "Mujer profesional",
-        "url": "https://images.unsplash.com/photo-1607503873903-c5e95f80d7b9?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1Nzh8MHwxfHNlYXJjaHxffHByb2Zlc3Npb25hbCUyMHBvcnRyYWl0JTIwd29tYW58ZW58MHx8fHwxNzg5NTI5NTg0fDA&ixlib=rb-4.1.0&q=85"
+        "module": "Motor Real 7 Semanas",
+        "route": "/procesos/7-semanas",
+        "key_features": ["Ciclos activos", "Inscripción con person_id canónico", "Matriz semanal (1-7) de tareas, asistencia, evidencias", "Historico y próximo paso"]
       },
       {
-        "category": "Artesano / Técnico",
-        "url": "https://images.pexels.com/photos/28513049/pexels-photo-28513049.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940"
+        "module": "Pipeline de Consolidación",
+        "route": "/procesos/consolidacion",
+        "key_features": ["Vista Kanban y Tabla de pipeline", "Responsable asignado por persona", "Timeline de interacciones", "Alertas de atraso y proximo contacto"]
+      },
+      {
+        "module": "Mentoría Individual",
+        "route": "/procesos/mentoria",
+        "key_features": ["Vinculacion Mentor ↔ Persona (person_id)", "Bitácora de reuniones y lecciones", "Plan de progreso y proximo encuentro"]
+      },
+      {
+        "module": "CAP - Consolidación y Activación por Puertas",
+        "route": "/procesos/cap",
+        "key_features": ["Evaluación Don = Llave (Dones, Intereses, Habilidades, Disponibilidad)", "Recomendación algorítmica de 9 Puertas", "Puerta seleccionada y activación de servicio"]
       }
     ]
   },
   "instructions_to_main_agent": [
-    "Mantener el idioma 100% Español en todos los textos de la interfaz.",
-    "Asegurar que todas las interacciones de búsqueda y filtrado sean inmediatas y reactivas.",
-    "Proporcionar data-testid en minusculas con guiones en todos los botones, inputs, cards y selectores.",
-    "Garantizar que al hacer clic en cualquier avatar o nombre de persona se navegue a /personas/{person_id}.",
-    "Aplicar la tipografía Spectral para títulos principales de módulo y IBM Plex Sans para el resto del texto.",
-    "No crear perfiles de persona duplicados para ministerios o familias."
-  ]
+    "Usar unicamente JavaScript (.js) para todos los componentes de React.",
+    "Utilizar person_id como clave primaria única canónica en todas las tablas y referencias cruzadas.",
+    "Implementar los testids (data-testid) en todos los elementos interactivos, botones de acción y tarjetas de alertas.",
+    "Prohibido usar transparent puro en dropdowns o modales. Utilizar backdrop-blur-md bg-white/95 con borde slate-200.",
+    "Garantizar datos 100% reales en backend con endpoints REST claros para los 5 ejes de Procesos.",
+    "No tomar decisiones pastorales automáticas ni etiquetar a nadie como apartado; emitir únicamente alertas operativas cuantitativas."
+  ],
+  "UNIVERSAL GUIDELINES FOR MAIN AGENT": {
+    "spacing": "Usar p-5/p-6 en tarjetas y gap-4/gap-6 en grids para evitar amontonamiento.",
+    "contrast": "Garantizar alto contraste entre textos oscuros (slate-800/900) y fondos claros (slate-50/100/white).",
+    "test_attributes": "Todos los botones, pestañas, selects e inputs deben incluir data-testid en formato kebab-case.",
+    "accessibility": "Soportar navegacion por teclado en modales y selectores de persona canónica."
+  },
+  "media_and_images": {
+    "community_group": "https://images.unsplash.com/photo-1569292567777-e5d61a759322?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2Nzd8MHwxfHNlYXJjaHwyfHxjaHVyY2glMjBjb21tdW5pdHklMjBncm91cCUyMGxlYWRlcnNoaXAlMjBtZW50b3J8ZW58MHx8fHwxNzg5NTMzMDgwfDA&ixlib=rb-4.1.0&q=85",
+    "mentorship_session": "https://images.pexels.com/photos/5756759/pexels-photo-5756759.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940"
+  }
 }

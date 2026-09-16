@@ -33,7 +33,7 @@ export default function LoginPage() {
   const [nombre, setNombre] = useState('');
   const [inviteCode, setInviteCode] = useState('');
   const [inviteCodeError, setInviteCodeError] = useState('');
-  const [rol, setRol] = useState('lider');
+  const rol = 'persona';
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
   const [quoteIdx, setQuoteIdx] = useState(0);
@@ -57,7 +57,7 @@ export default function LoginPage() {
     try {
       if (isRegister) {
         const codeClean = (inviteCode || '').trim().toUpperCase();
-        // Codigo de invitacion ahora OPCIONAL: si no hay codigo, se usa el rol elegido.
+        // Sin código, el alta siempre crea una cuenta Persona de autoservicio.
         await register(nombre, email, password, codeClean || null, codeClean ? null : rol);
         toast.success('Cuenta creada exitosamente');
       } else {
@@ -218,30 +218,12 @@ export default function LoginPage() {
                             </p>
                           ) : (
                             <p className="text-[10px] text-white/40 leading-tight">
-                              Si tienes un codigo, ingresalo. Si no, elige tu rol abajo.
+                              Sin código se crea una cuenta Persona. Los roles institucionales requieren invitación.
                             </p>
                           )}
                         </div>
 
-                        {/* Selector operativo - el rol pastor siempre requiere autorización institucional. */}
-                        {!inviteCode.trim() && (
-                          <div className="space-y-1.5">
-                            <Label htmlFor="rol" className="text-white/75 text-[10px] uppercase tracking-wider font-semibold">
-                              Tu rol
-                            </Label>
-                            <select
-                              id="rol"
-                              value={rol}
-                              onChange={(e) => setRol(e.target.value)}
-                              data-testid="register-rol-select"
-                              className="w-full h-10 px-3 bg-transparent border border-white/20 rounded-md text-white focus-visible:ring-2 focus-visible:ring-[#C8A951]/50 focus-visible:border-[#C8A951]/60 outline-none"
-                              style={{ colorScheme: 'dark' }}
-                            >
-                              <option value="lider" className="bg-[#0B1428] text-white">Lider</option>
-                              <option value="persona" className="bg-[#0B1428] text-white">Persona</option>
-                            </select>
-                          </div>
-                        )}
+                        {!inviteCode.trim() && <p className="rounded-md border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/60" data-testid="register-persona-role-notice">Cuenta de autoservicio: Persona</p>}
 
                         <div className="space-y-1.5">
                           <Label htmlFor="nombre" className="text-white/75 text-[10px] uppercase tracking-wider font-semibold">

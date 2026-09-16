@@ -217,7 +217,7 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 
 - Mega‑Bloque A — CORE: Personas, cuentas, Perfil 360, Familias, Household, RBAC, Directorio y Ministerios unificados.
 
-### P1 — siguiente: Mega‑Bloque B — PROCESOS
+### P1 — Mega‑Bloque B — PROCESOS — completado el 2026-09-16
 
 - Crear `process_definitions`, `process_stages`, `process_enrollments`, `process_tasks` y `process_events`.
 - Implementar Ley de las 7 Semanas como motor versionado, no como página textual.
@@ -227,7 +227,30 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - Añadir responsables, SLA, evidencias, alertas, historial y estados auditables.
 - Integrar resúmenes de proceso en Perfil 360.
 
-### P1 — después: Mega‑Bloque C — SISTEMA CELULAR
+#### Resultado entregado
+
+- Motor versionado común con cuatro procesos y etapas persistidas.
+- 7 Semanas: ciclos, inscripciones, semanas, tareas, asistencia, evidencia, resultado, histórico y próximo paso.
+- Consolidación: pipeline, responsable, contactos, timeline, SLA y relación con 7 Semanas.
+- Mentoría: mentor/persona canónicos, reuniones, lecciones, compromisos, progreso y próximo encuentro.
+- CAP: dones, intereses, disponibilidad, talentos, sugerencias explicables, selección humana, cobertura, activación, evidencia y formación continua.
+- 11 reglas configurables de hechos operativos y alertas por scope.
+- Dashboard por etapa, SLA, vencimiento, responsables, acciones, promedio, retención y alertas.
+- Automatizaciones de llegada, avance semanal, preparación de procesos y handoff celular.
+- Migración de `people`, checklists y progreso; escrituras legacy retiradas.
+- Perfil 360 y navegación completamente conectados al motor real.
+- Datos QA eliminados después de verificar; cero datos demo/MOCK persistidos.
+
+#### Verificación y seguridad
+
+- Testing agent: 22/22 checks backend/E2E PASS; selector 7 Semanas corregido y revalidado por click real.
+- Build frontend PASS; backend compile/health PASS.
+- Desktop 1920x800 y mobile 390x844 sin overflow.
+- Auditoría de seguridad final: PASS, sin CRITICAL/HIGH/MEDIUM confirmados.
+- Cierres: registro público solo Persona; scopes Person Core; notas pastorales; asignaciones; índice único; throttle SLA; SSRF proxy; herramientas demo/password/photo retiradas.
+- Deuda real documentada en `/app/memory/PROCESS_SCHEMA.md`.
+
+### P1 — siguiente: Mega‑Bloque C — SISTEMA CELULAR
 
 - Redes, Células, niveles de gobierno y membresías por person_id.
 - Reuniones, asistencia, seguimiento y multiplicación.
@@ -243,11 +266,11 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 
 ## 12. Próximas tareas ejecutables
 
-1. Auditar en detalle colecciones y vistas legacy de Ley7/Consolidación.
-2. Diseñar contrato canónico del motor de procesos.
-3. Crear migración idempotente desde `people` hacia `process_enrollments`.
-4. Implementar backend CRUD/workflows y frontend operativo completo del Mega‑Bloque B.
-5. Probar migración, permisos, dashboards, flujos multiusuario y responsive.
+1. Diseñar schema canónico de Redes, Células, membresías y gobierno.
+2. Consumir Personas con `ready_for_cellular` desde CAP/Procesos.
+3. Implementar reuniones, asistencia, seguimiento y multiplicación.
+4. Crear dashboard por célula, red, supervisor y pastor.
+5. Conectar Células detectan → Puertas responden → liderazgo supervisa.
 
 ## 13. Restricciones vigentes
 

@@ -26,6 +26,12 @@ import PresentacionImprimirPage from './pages/PresentacionImprimirPage';
 import PresentacionNotasPage from './pages/PresentacionNotasPage';
 import CodigosInvitacionPage from './pages/CodigosInvitacionPage';
 import CoreGovernancePage from './pages/CoreGovernancePage';
+import ProcessesDashboardPage from './pages/processes/ProcessesDashboardPage';
+import SevenWeeksPage from './pages/processes/SevenWeeksPage';
+import SevenWeeksDetailPage from './pages/processes/SevenWeeksDetailPage';
+import ConsolidationPage from './pages/processes/ConsolidationPage';
+import MentorshipPage from './pages/processes/MentorshipPage';
+import CapPage from './pages/processes/CapPage';
 import AppLayout from './components/AppLayout';
 import './App.css';
 
@@ -58,8 +64,8 @@ function StaffRoute({ children }) {
 function RoleDashboard() {
   const { user } = useAuth();
   if (user?.rol === 'pastor') return <Navigate to="/dashboard-general" />;
-  if (user?.rol === 'persona') return <Navigate to="/mi-progreso" />;
-  return <DashboardPage />;
+  if (user?.rol === 'persona') return <Navigate to="/procesos/dashboard" />;
+  return <ProcessesDashboardPage />;
 }
 
 function App() {
@@ -80,14 +86,20 @@ function App() {
             {/* Pastor routes */}
             <Route path="dashboard-general" element={<DashboardGeneralPage />} />
             <Route path="nucleo" element={<PastorOnlyRoute><CoreGovernancePage /></PastorOnlyRoute>} />
+            <Route path="procesos/dashboard" element={<ProcessesDashboardPage />} />
+            <Route path="procesos/7-semanas" element={<SevenWeeksPage />} />
+            <Route path="procesos/7-semanas/:enrollmentId" element={<SevenWeeksDetailPage />} />
+            <Route path="procesos/consolidacion" element={<ConsolidationPage />} />
+            <Route path="procesos/mentoria" element={<MentorshipPage />} />
+            <Route path="procesos/cap" element={<CapPage />} />
             <Route path="lider/:liderId/dashboard" element={<DashboardPage />} />
             
             {/* Lider routes */}
             <Route path="introduccion" element={<IntroduccionPage />} />
             <Route path="mapa" element={<MapaPage />} />
-            <Route path="semana/:weekNum" element={<SemanaPage />} />
-            <Route path="persona/:personId/semana/:weekNum" element={<SemanaPage />} />
-            <Route path="registro" element={<StaffRoute><RegistroPage /></StaffRoute>} />
+            <Route path="semana/:weekNum" element={<Navigate to="/procesos/7-semanas" replace />} />
+            <Route path="persona/:personId/semana/:weekNum" element={<Navigate to="/procesos/7-semanas" replace />} />
+            <Route path="registro" element={<Navigate to="/procesos/consolidacion" replace />} />
             <Route path="personas" element={<StaffRoute><PersonasListPage /></StaffRoute>} />
             <Route path="personas/nueva" element={<StaffRoute><PersonaNuevaPage /></StaffRoute>} />
             <Route path="personas/:personId" element={<PersonaPerfilPage />} />
@@ -100,8 +112,8 @@ function App() {
             <Route path="presentacion" element={<PresentacionHomePage />} />
             
             {/* Persona routes */}
-            <Route path="mi-progreso" element={<MiProgresoPage />} />
-            <Route path="mi-semana/:weekNum" element={<SemanaPage />} />
+            <Route path="mi-progreso" element={<Navigate to="/procesos/dashboard" replace />} />
+            <Route path="mi-semana/:weekNum" element={<Navigate to="/procesos/7-semanas" replace />} />
           </Route>
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>

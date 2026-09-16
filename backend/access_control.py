@@ -33,6 +33,19 @@ PERSON_ADDRESSES_READ = "person.addresses.read"
 PERSON_ADDRESSES_WRITE = "person.addresses.write"
 PERSON_PASTORAL_NOTES_READ = "person.notes.pastoral.read"
 CORE_GOVERNANCE_MANAGE = "core.governance.manage"
+PROCESSES_READ = "processes.read"
+PROCESSES_WRITE = "processes.write"
+PROCESSES_PARTICIPATE = "processes.participate"
+PROCESSES_MANAGE = "processes.manage"
+PROCESS_ALERTS_MANAGE = "processes.alerts.manage"
+
+PROCESS_CAPABILITIES = [
+    PROCESSES_READ,
+    PROCESSES_WRITE,
+    PROCESSES_PARTICIPATE,
+    PROCESSES_MANAGE,
+    PROCESS_ALERTS_MANAGE,
+]
 
 PERSON_SELF_CAPABILITIES = [
     PERSON_PROFILE_SENSITIVE_READ,
@@ -50,6 +63,8 @@ PERSON_SELF_CAPABILITIES = [
     PERSON_CONTACTS_WRITE,
     PERSON_ADDRESSES_READ,
     PERSON_ADDRESSES_WRITE,
+    PROCESSES_READ,
+    PROCESSES_PARTICIPATE,
 ]
 
 PERSON_DOMAIN_CAPABILITIES = [
@@ -80,11 +95,11 @@ PERSON_DOMAIN_CAPABILITIES = [
 
 _ROLE_ACCESS_DEFAULTS = {
     "pastor": {
-        "capabilities": [*PERSON_DOMAIN_CAPABILITIES, PERSON_PASTORAL_NOTES_READ, CORE_GOVERNANCE_MANAGE],
+        "capabilities": [*PERSON_DOMAIN_CAPABILITIES, *PROCESS_CAPABILITIES, PERSON_PASTORAL_NOTES_READ, CORE_GOVERNANCE_MANAGE],
         "access_scope": {"persons": "all"},
     },
     "lider": {
-        "capabilities": PERSON_DOMAIN_CAPABILITIES,
+        "capabilities": [*PERSON_DOMAIN_CAPABILITIES, PROCESSES_READ, PROCESSES_WRITE, PROCESSES_PARTICIPATE],
         "access_scope": {"persons": "created_by"},
     },
     "persona": {
@@ -102,7 +117,7 @@ def access_defaults_for_role(role: str) -> dict:
             {"capabilities": [], "access_scope": {"persons": "none"}},
         )
     )
-    defaults["access_policy_version"] = 6
+    defaults["access_policy_version"] = 7
     return defaults
 
 
@@ -127,7 +142,11 @@ def can_access_person(user: dict, person: dict) -> bool:
     if person_scope == "all":
         return True
     if person_scope == "created_by":
-        return bool(user.get("user_id")) and person.get("created_by") == user.get("user_id")
+        return bool(user.get("user_id")) and (
+            person.get("created_by") == user.get("user_id")
+            or person.get("auth_user_id") == user.get("user_id")
+            or person.get("person_id") == user.get("person_id")
+        )
     if person_scope == "assigned":
         person_ids = normalized_access_scope(user).get("person_ids", [])
         return isinstance(person_ids, list) and person.get("person_id") in person_ids
@@ -156,9 +175,9 @@ async def ensure_access_defaults(db) -> None:
             {"$set": {"access_scope": defaults["access_scope"]}},
         )
         await db.users.update_many(
-            {"rol": role, "access_policy_version": {"$ne": 6}},
+            {"rol": role, "access_policy_version": {"$ne": 7}},
             {
                 "$addToSet": {"capabilities": {"$each": defaults["capabilities"]}},
-                "$set": {"access_policy_version": 6},
+                "$set": {"access_policy_version": 7},
             },
         )

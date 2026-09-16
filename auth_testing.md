@@ -22,3 +22,12 @@
 - Abrir `/nucleo` como pastor y verificar indicadores, migración y tabla de accesos.
 - Cambiar el rol de una cuenta de prueba, guardar y comprobar la actualización.
 - Verificar que la pantalla no tenga overflow en 1920x800 ni 390x844.
+
+## Mega‑Bloque B — Procesos
+
+- Registro público con rol líder/pastor debe retornar 403; sin invitación solo crea Persona.
+- Líder no puede leer Personas fuera de scope ni asignar otro responsable/mentor/cobertura.
+- Persona solo consulta/actualiza sus propias tareas y evidencias.
+- Solo pastor administra reglas SLA y ejecuta migración.
+- Duplicar una inscripción activa equivalente debe retornar 409.
+- Proxy de imágenes requiere JWT, rechaza hosts no permitidos y no sigue redirecciones.

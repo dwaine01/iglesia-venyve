@@ -18,7 +18,13 @@ from bson import ObjectId
 from bson.errors import InvalidId
 
 from server import get_current_user
-from access_control import normalized_access_scope, normalized_capabilities
+from access_control import (
+    PERSON_PROFILE_SENSITIVE_READ,
+    authorize_person,
+    can_access_person,
+    normalized_access_scope,
+    normalized_capabilities,
+)
 
 MONGO_URL = os.environ.get("MONGO_URL")
 DB_NAME = os.environ.get("DB_NAME")
@@ -121,6 +127,25 @@ async def list_persons(
         if search.upper().startswith("VV"):
             ors.append({"person_number": search.upper()})
         query = {"$or": ors}
+    if current_user.get("access_scope", {}).get("persons") != "all":
+        assigned_ids = []
+        if current_user.get("person_id"):
+            assigned_ids = await db.process_enrollments.distinct(
+                "person_id",
+                {"$or": [
+                    {"responsible_person_id": current_user["person_id"]},
+                    {"mentor_person_id": current_user["person_id"]},
+                ]},
+            )
+        scoped_or = [
+            {"created_by": current_user.get("user_id")},
+            {"auth_user_id": current_user.get("user_id")},
+        ]
+        valid_ids = [ObjectId(item) for item in assigned_ids if ObjectId.is_valid(item)]
+        if valid_ids:
+            scoped_or.append({"_id": {"$in": valid_ids}})
+        scope_query = {"$or": scoped_or}
+        query = {"$and": [query, scope_query]} if query else scope_query
     cursor = db.persons.find(query).skip(skip).limit(limit).sort("created_at", -1)
     items = [serialize_person(doc) async for doc in cursor]
     total = await db.persons.count_documents(query)
@@ -140,8 +165,13 @@ async def check_duplicates(payload: DuplicateCheck, current_user: dict = Depends
     if valid_contact_ids:
         ors.append({"_id": {"$in": valid_contact_ids}})
     cursor = db.persons.find({"$or": ors}).limit(10)
-    candidates = [serialize_person(doc) async for doc in cursor]
-    return {"possible_duplicates": candidates, "count": len(candidates)}
+    all_candidates = [doc async for doc in cursor]
+    candidates = []
+    for doc in all_candidates:
+        doc["person_id"] = str(doc["_id"])
+        if can_access_person(current_user, doc):
+            candidates.append(serialize_person(doc))
+    return {"possible_duplicates": candidates, "count": len(all_candidates), "match_found": bool(all_candidates)}
 
 
 @router.post("/persons", status_code=201)
@@ -156,7 +186,7 @@ async def create_person(payload: PersonCreate, current_user: dict = Depends(requ
         telefono=payload.telefono,
     )
     duplicate_result = await check_duplicates(duplicate_payload, current_user)
-    if duplicate_result["count"]:
+    if duplicate_result["match_found"]:
         raise HTTPException(
             status_code=409,
             detail={
@@ -213,6 +243,8 @@ async def get_person(person_id: str, current_user: dict = Depends(require_lider_
     doc = await db.persons.find_one({"_id": oid})
     if not doc:
         raise HTTPException(status_code=404, detail="Persona no encontrada")
+    doc["person_id"] = person_id
+    authorize_person(current_user, doc, PERSON_PROFILE_SENSITIVE_READ)
     person = serialize_person(doc)
     person["sections_available"] = ["resumen"]
     person["sections_planned"] = ["contacto", "direcciones", "household", "familia", "procesos", "historial"]

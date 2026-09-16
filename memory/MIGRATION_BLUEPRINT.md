@@ -34,10 +34,14 @@
 - Migrar `person_checklists` y `person_progress` a inscripciones canónicas.
 - Convertir `SemanaPage`, `RegistroPage` y dashboards en vistas del motor de procesos.
 
+**Estado 2026-09-16: COMPLETADO.** Motor común, 7 Semanas, Consolidación, Mentoría, CAP, SLA, alertas, dashboard, automatizaciones y Perfil 360 conectados. Las rutas legacy de escritura retornan 410 y la migración canónica es idempotente.
+
 ### Mega‑Bloque C — SISTEMA CELULAR
 
 - Crear Redes, Células, gobierno, membresías de célula, reuniones, asistencia y multiplicación.
 - Toda membresía utiliza `person_id`; líderes y supervisores son asignaciones, no perfiles.
+
+**Siguiente bloque autorizado:** implementar Redes, Células, gobierno, reuniones, asistencia, seguimiento y multiplicación conectando `ready_for_cellular` sin duplicar Personas.
 
 ### Mega‑Bloques D–H
 

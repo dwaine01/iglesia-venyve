@@ -5,6 +5,9 @@ from typing import Optional, List
 from datetime import datetime, timedelta, timezone
 import os
 import hashlib
+import asyncio
+import ipaddress
+import socket
 import jwt
 import bcrypt
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -149,7 +152,7 @@ class UserRegister(BaseModel):
     email: EmailStr
     password: str
     invite_code: Optional[str] = None  # OPCIONAL: si se da, asigna rol y leader segun el codigo
-    rol: Optional[str] = "lider"  # usado solo si NO hay invite_code (pastor / lider / persona)
+    rol: Optional[str] = "persona"
 
 
 class UserLogin(BaseModel):
@@ -382,6 +385,8 @@ async def get_current_user(authorization: Optional[str] = Header(None)):
     # ACCESS-01 is resolved from the current Mongo user, never trusted from JWT.
     payload["capabilities"] = normalized_capabilities(db_user)
     payload["access_scope"] = normalized_access_scope(db_user)
+    payload["person_id"] = db_user.get("person_id")
+    payload["rol"] = db_user.get("rol")
     return payload
 
 
@@ -425,6 +430,13 @@ app.include_router(ministries_router)
 from core_governance import router as core_governance_router, ensure_indexes as core_governance_ensure
 
 app.include_router(core_governance_router)
+
+# --- Mega-Bloque B: motor operativo de procesos ---
+from process_catalog import seed_process_catalog
+from process_engine import ensure_process_indexes, evaluate_alerts, migrate_legacy_processes
+from process_routes import router as process_router
+
+app.include_router(process_router)
 
 
 # --- Default Checklists ---
@@ -519,6 +531,10 @@ async def startup():
     await ministries_ensure()
     await core_governance_ensure()
     await migrate_core_identity(db, "system:startup")
+    await seed_process_catalog(db)
+    await ensure_process_indexes(db)
+    await migrate_legacy_processes(db, "system:startup")
+    await evaluate_alerts(db)
     print("Core Person (P-001) indexes created")
 
 
@@ -720,28 +736,12 @@ async def register(user: UserRegister):
             {"$set": {"used_at": datetime.now(timezone.utc), "used_by_user_id": user_id}},
         )
 
-        # Si es persona, tambien crearla en la coleccion people (para CRUD del lider)
-        if assigned_rol == "persona" and assigned_leader_id:
-            await db.people.insert_one({
-                "leader_id": assigned_leader_id,
-                "user_id": user_id,
-                "nombre": user.nombre,
-                "email": user.email,
-                "telefono": "",
-                "edad": None,
-                "estado": "contactado",
-                "current_semana": 1,
-                "created_at": datetime.utcnow(),
-                "registered_via_invite": True,
-            })
     # ---------- Rama B: registro LIBRE (sin codigo) ----------
     else:
-        free_rol = (user.rol or "lider").strip().lower()
-        if free_rol == "pastor":
-            raise HTTPException(status_code=403, detail="El rol pastor requiere invitación o asignación institucional")
-        if free_rol not in ("lider", "persona"):
-            free_rol = "lider"
-        assigned_rol = free_rol
+        free_rol = (user.rol or "persona").strip().lower()
+        if free_rol != "persona":
+            raise HTTPException(status_code=403, detail="Los roles pastor o líder requieren invitación o asignación institucional")
+        assigned_rol = "persona"
         assigned_leader_id = None
 
         hashed = bcrypt.hashpw(user.password.encode(), bcrypt.gensalt())
@@ -759,32 +759,23 @@ async def register(user: UserRegister):
         result = await db.users.insert_one(user_doc)
         user_id = str(result.inserted_id)
 
-    # ---------- Inicializacion comun (checklists + progress) ----------
+    # ---------- Inicialización canónica común ----------
     canonical_person_id, _ = await ensure_user_person_link(db, user_id, user_id)
-    await db.people.update_many(
-        {"user_id": user_id},
-        {"$set": {"canonical_person_id": canonical_person_id, "identity_policy_version": 1}},
-    )
-    # Initialize checklists for all 7 weeks
-    for semana, tareas in DEFAULT_CHECKLISTS.items():
-        await db.checklists.insert_one({
-            "user_id": user_id,
-            "semana": semana,
-            "tareas": tareas,
-            "updated_at": datetime.utcnow(),
-        })
-
-    # Initialize progress for all 7 weeks
-    for semana in range(1, 8):
-        await db.progress.insert_one({
-            "user_id": user_id,
-            "semana": semana,
-            "casas_visitadas": 0,
-            "personas_contactadas": 0,
-            "personas_ganadas": 0,
-            "oraciones_realizadas": 0,
-            "updated_at": datetime.utcnow(),
-        })
+    if assigned_rol == "persona" and assigned_leader_id:
+        leader = await db.users.find_one({"_id": ObjectId(assigned_leader_id)}, {"_id": 0, "person_id": 1})
+        from process_engine import create_enrollment
+        await create_enrollment(
+            db,
+            "consolidation",
+            canonical_person_id,
+            leader.get("person_id") if leader else None,
+            user_id,
+            status="active",
+            next_action="Realizar primer contacto",
+            next_action_at=utc_now() + timedelta(hours=24),
+            source="invite_registration",
+            source_id=code_clean,
+        )
 
     token = create_token(
         user_id,
@@ -1037,6 +1028,7 @@ async def get_checklists(authorization: Optional[str] = Header(None)):
 
 @app.put("/api/checklists")
 async def update_checklist(update: ChecklistUpdate, authorization: Optional[str] = Header(None)):
+    raise HTTPException(status_code=410, detail="Checklist legacy en solo lectura; use /api/processes/enrollments/{id}/stages")
     payload = await get_current_user(authorization)
     checklist = await db.checklists.find_one({"user_id": payload["user_id"], "semana": update.semana})
     
@@ -1186,6 +1178,7 @@ async def admin_seed_demo(authorization: Optional[str] = Header(None)):
     Idempotente: si un líder ya tiene personas creadas (>0) se salta.
     Marca todo con demo=True para poder limpiar después con /api/admin/clear-demo.
     """
+    raise HTTPException(status_code=410, detail="La carga demo fue retirada; Procesos solo utiliza datos reales")
     import random as _r
     import unicodedata as _ud
     import re as _re
@@ -1283,7 +1276,7 @@ async def admin_seed_demo(authorization: Optional[str] = Header(None)):
                 "fecha_primer_contacto": (datetime.utcnow() - timedelta(days=_r.randint(7, 60))).isoformat(),
                 "como_conocio_iglesia": _r.choice(["Por un familiar", "Vecino lo invitó", "Visita evangelística", "Redes sociales"]),
                 "username": username,
-                "temp_password": temp_password,
+                "credential_delivery_required": True,
                 "created_at": datetime.utcnow(),
                 "updated_at": datetime.utcnow(),
                 "demo": True,
@@ -1404,42 +1397,14 @@ async def admin_seed_demo(authorization: Optional[str] = Header(None)):
 
 @app.post("/api/admin/clear-demo")
 async def admin_clear_demo(authorization: Optional[str] = Header(None)):
-    """Solo pastor: elimina TODOS los documentos marcados con demo=True.
-    Útil para limpiar la data de prueba cuando ya no se necesite."""
-    payload = await get_current_user(authorization)
-    if payload.get("rol") != "pastor":
-        raise HTTPException(status_code=403, detail="Solo pastores")
-
-    cols = ["users", "people", "person_checklists", "person_progress", "leader_journal", "invite_codes"]
-    deleted = {}
-    for col in cols:
-        try:
-            r = await db[col].delete_many({"demo": True})
-            deleted[col] = r.deleted_count
-        except Exception as e:
-            deleted[col] = f"error: {e}"
-    return {"deleted": deleted}
+    await get_current_user(authorization)
+    raise HTTPException(status_code=410, detail="Herramienta demo retirada")
 
 
 @app.post("/api/admin/reset-leader-passwords")
 async def admin_reset_leader_passwords(authorization: Optional[str] = Header(None)):
-    """Solo pastor: resetea las contraseñas de TODOS los líderes a una conocida ('Lider2026!')
-    para poder hacer login y probar la experiencia del líder. Devuelve email + password de cada uno."""
-    payload = await get_current_user(authorization)
-    if payload.get("rol") != "pastor":
-        raise HTTPException(status_code=403, detail="Solo pastores")
-
-    new_pwd = "Lider2026!"
-    hashed = bcrypt.hashpw(new_pwd.encode(), bcrypt.gensalt()).decode()
-    leaders = await db.users.find({"rol": "lider"}).to_list(1000)
-    out = []
-    for u in leaders:
-        await db.users.update_one(
-            {"_id": u["_id"]},
-            {"$set": {"password": hashed, "token_version": user_token_version(u) + 1, "updated_at": utc_now()}},
-        )
-        out.append({"nombre": u.get("nombre"), "email": u.get("email"), "password": new_pwd})
-    return {"reset": len(out), "credenciales": out}
+    await get_current_user(authorization)
+    raise HTTPException(status_code=410, detail="Restablecimiento masivo retirado por seguridad")
 
 
 # --- Progress Routes ---
@@ -1452,6 +1417,7 @@ async def get_progress(authorization: Optional[str] = Header(None)):
 
 @app.put("/api/progress")
 async def update_progress(update: ProgressUpdate, authorization: Optional[str] = Header(None)):
+    raise HTTPException(status_code=410, detail="Progreso legacy en solo lectura; use el motor canónico de Procesos")
     payload = await get_current_user(authorization)
     
     update_data = {
@@ -1555,7 +1521,7 @@ _ALLOWED_IMAGE_HOSTS = {
 }
 
 @app.get("/api/proxy/image")
-async def proxy_image(url: str):
+async def proxy_image(url: str, current_user: dict = Depends(get_current_user)):
     """Proxy para imágenes externas: las sirve desde la misma origen del backend
     evitando bloqueos CORS durante la generación del PDF (html2canvas)."""
     try:
@@ -1565,25 +1531,35 @@ async def proxy_image(url: str):
             raise HTTPException(status_code=400, detail="Esquema no soportado")
         if parsed.hostname not in _ALLOWED_IMAGE_HOSTS:
             raise HTTPException(status_code=403, detail=f"Dominio no permitido: {parsed.hostname}")
+        if parsed.username or parsed.password or (parsed.port and parsed.port not in {80, 443}):
+            raise HTTPException(status_code=400, detail="URL de imagen inválida")
+        addresses = await asyncio.to_thread(socket.getaddrinfo, parsed.hostname, parsed.port or 443, type=socket.SOCK_STREAM)
+        for address in {item[4][0] for item in addresses}:
+            ip = ipaddress.ip_address(address)
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast or ip.is_unspecified:
+                raise HTTPException(status_code=403, detail="Destino de red no permitido")
 
         import httpx
-        async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
+        async with httpx.AsyncClient(timeout=8.0, follow_redirects=False) as client:
             resp = await client.get(url)
+            if 300 <= resp.status_code < 400:
+                raise HTTPException(status_code=400, detail="Redirecciones de imagen no permitidas")
             resp.raise_for_status()
             content_type = resp.headers.get("content-type", "image/png")
+            if not content_type.lower().startswith("image/"):
+                raise HTTPException(status_code=400, detail="El recurso no es una imagen")
+            if len(resp.content) > 5 * 1024 * 1024:
+                raise HTTPException(status_code=413, detail="Imagen excede el límite de 5 MB")
             from fastapi.responses import Response
             return Response(
                 content=resp.content,
                 media_type=content_type,
-                headers={
-                    "Cache-Control": "public, max-age=86400",
-                    "Access-Control-Allow-Origin": "*",
-                },
+                headers={"Cache-Control": "private, max-age=86400"},
             )
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"No se pudo obtener la imagen: {e}")
+    except Exception:
+        raise HTTPException(status_code=502, detail="No se pudo obtener la imagen")
 
 
 # --- Server-side PDF Generation via Playwright (Chromium headless) ---
@@ -1738,23 +1714,14 @@ async def generate_manual_pdf(request: Request, authorization: Optional[str] = H
     except Exception as e:
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Error generando PDF: {e}")
+        raise HTTPException(status_code=500, detail="Error generando PDF")
 
 
 # --- Photo Upload ---
 @app.post("/api/upload/photo")
 async def upload_photo(photo_data: dict, authorization: Optional[str] = Header(None)):
-    """Upload photo as base64 and return URL"""
-    await get_current_user(authorization)  # Verify authenticated
-    
-    # In a real app, you'd upload to S3, Cloudinary, etc.
-    # For now, we'll store base64 directly (not recommended for production)
-    base64_data = photo_data.get("base64")
-    if not base64_data:
-        raise HTTPException(status_code=400, detail="No photo data provided")
-    
-    # Return the base64 data URL
-    return {"url": base64_data}
+    await get_current_user(authorization)
+    raise HTTPException(status_code=410, detail="Carga legacy retirada; use la foto canónica del Perfil 360")
 
 
 # --- Pastor Notes ---
@@ -1786,7 +1753,9 @@ async def add_pastor_note(note_data: dict, authorization: Optional[str] = Header
 @app.get("/api/pastor/notes/{leader_id}")
 async def get_pastor_notes(leader_id: str, authorization: Optional[str] = Header(None)):
     """Obtener notas del pastor para un líder"""
-    await get_current_user(authorization)
+    payload = await get_current_user(authorization)
+    if payload.get("rol") != "pastor" and payload.get("user_id") != leader_id:
+        raise HTTPException(status_code=403, detail="Notas pastorales restringidas")
     notes = await db.pastor_notes.find({"leader_id": leader_id}).sort("created_at", -1).to_list(100)
     return [serialize_doc(n) for n in notes]
 
@@ -2013,40 +1982,8 @@ async def reset_pastor_password(pastor_id: str, data: dict, authorization: Optio
 # --- Password Reset for Persons ---
 @app.post("/api/people/{person_id}/reset-password")
 async def reset_person_password(person_id: str, authorization: Optional[str] = Header(None)):
-    """Resetear contraseña de una persona (solo líder de esa persona)"""
-    payload = await get_current_user(authorization)
-    leader_id = payload["user_id"]
-    
-    # Verificar que la persona pertenece a este líder
-    person = await db.people.find_one({"_id": ObjectId(person_id), "leader_id": leader_id})
-    if not person:
-        raise HTTPException(status_code=404, detail="Persona no encontrada")
-    
-    # Generar nueva contraseña
-    import random
-    import string
-    new_password = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
-    hashed_password = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
-    
-    # Actualizar en users
-    user_id = person.get("user_id")
-    if user_id:
-        account = await db.users.find_one({"_id": ObjectId(user_id)})
-        await db.users.update_one(
-            {"_id": ObjectId(user_id)},
-            {"$set": {"password": hashed_password, "token_version": user_token_version(account or {}) + 1, "updated_at": utc_now()}}
-        )
-    
-    # Actualizar temp_password en people
-    await db.people.update_one(
-        {"_id": ObjectId(person_id)},
-        {"$set": {"temp_password": new_password, "updated_at": datetime.utcnow()}}
-    )
-    
-    return {
-        "username": person.get("username"),
-        "new_password": new_password
-    }
+    await get_current_user(authorization)
+    raise HTTPException(status_code=410, detail="Reset legacy retirado; use el flujo institucional de cuentas")
 
 
 # --- Dashboard según Rol ---
@@ -2247,6 +2184,7 @@ async def get_people(authorization: Optional[str] = Header(None), estado: Option
 
 @app.post("/api/people")
 async def create_person(person: PersonCreate, authorization: Optional[str] = Header(None)):
+    raise HTTPException(status_code=410, detail="Alta legacy retirada; cree o seleccione una Persona canónica y use /api/processes/enrollments")
     """Crear una nueva persona para consolidar"""
     payload = await get_current_user(authorization)
     if payload.get("rol") not in ("lider", "pastor"):
@@ -2358,7 +2296,6 @@ async def create_person(person: PersonCreate, authorization: Optional[str] = Hea
         "fecha_primer_contacto": person.fecha_primer_contacto or datetime.utcnow().isoformat(),
         "como_conocio_iglesia": person.como_conocio_iglesia,
         "username": username,
-        "temp_password": temp_password,  # Store temporarily to show to leader
         "account_reused": bool(reused_account),
         "created_at": datetime.utcnow(),
         "updated_at": datetime.utcnow(),
@@ -2411,6 +2348,7 @@ async def get_person(person_id: str, authorization: Optional[str] = Header(None)
 
 @app.put("/api/people/{person_id}")
 async def update_person(person_id: str, person: PersonUpdate, authorization: Optional[str] = Header(None)):
+    raise HTTPException(status_code=410, detail="Edición legacy retirada; use Perfil 360 y Procesos")
     """Actualizar información de una persona"""
     payload = await get_current_user(authorization)
     leader_id = payload["user_id"]
@@ -2435,6 +2373,7 @@ async def update_person(person_id: str, person: PersonUpdate, authorization: Opt
 
 @app.delete("/api/people/{person_id}")
 async def delete_person(person_id: str, authorization: Optional[str] = Header(None)):
+    raise HTTPException(status_code=410, detail="Eliminación legacy retirada; pause o cancele la inscripción canónica")
     """Eliminar una persona (y todo su progreso asociado)"""
     payload = await get_current_user(authorization)
     if payload.get("rol") not in ("lider", "pastor"):
@@ -2474,6 +2413,7 @@ async def get_person_progress(person_id: str, authorization: Optional[str] = Hea
 
 @app.put("/api/people/{person_id}/progress")
 async def update_person_progress(person_id: str, update: PersonProgressUpdate, authorization: Optional[str] = Header(None)):
+    raise HTTPException(status_code=410, detail="Progreso legacy en solo lectura; use el motor canónico de Procesos")
     """Actualizar progreso de una persona en una semana específica"""
     payload = await get_current_user(authorization)
     leader_id = payload["user_id"]

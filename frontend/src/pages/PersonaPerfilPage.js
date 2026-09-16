@@ -163,6 +163,7 @@ export default function PersonaPerfilPage() {
                 <TabsTrigger
                   key={section}
                   value={section}
+                  data-testid={`profile-tab-${section}`}
                   disabled={!available.includes(section)}
                   className="min-h-9 rounded-lg px-2 text-xs font-medium text-gray-600 data-[state=active]:bg-white data-[state=active]:text-[#101D36] data-[state=active]:shadow-sm sm:text-sm"
                 >
