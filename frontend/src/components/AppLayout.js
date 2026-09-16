@@ -13,6 +13,8 @@ import {
 
 import { LOGO_IGLESIA } from '../data/presentationData';
 import DisplayScaleToggle from './DisplayScaleToggle';
+import { ContextGuideButton } from './guides/ContextGuideButton';
+import { resolveRouteGuide } from './guides/guideRouteMap';
 const LOGO_URL = LOGO_IGLESIA;
 
 // Menu items by role
@@ -74,6 +76,7 @@ const getNavItems = (rol) => {
 
 const breadcrumbMap = {
   '/': 'Dashboard',
+  '/dashboard': 'Dashboard',
   '/dashboard-general': 'Dashboard General',
   '/mi-progreso': 'Mi Progreso',
   '/presentacion': 'Manual 7 Semanas',
@@ -85,6 +88,8 @@ const breadcrumbMap = {
   '/estadisticas': 'Estadísticas',
   '/directorio': 'Directorio de Talentos',
   '/ministerios': 'Ministerios',
+  '/personas': 'Personas',
+  '/personas/nueva': 'Nueva Persona',
   '/nucleo': 'Gobierno del Núcleo',
   '/procesos/dashboard': 'Dashboard de Procesos',
   '/procesos/7-semanas': 'Ley de las 7 Semanas',
@@ -203,8 +208,10 @@ function SidebarContent({ onClose, testIdPrefix = '' }) {
 }
 
 export default function AppLayout() {
+  const { user } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
   const location = useLocation();
+  const routeGuideKey = resolveRouteGuide(location.pathname, user?.rol);
 
   const getBreadcrumb = () => {
     const path = location.pathname;
@@ -212,6 +219,9 @@ export default function AppLayout() {
     if (path.startsWith('/semana/')) return `Semana ${path.split('/')[2]}`;
     if (path.startsWith('/mi-semana/')) return `Mi Semana ${path.split('/')[2]}`;
     if (path.startsWith('/persona/')) return 'Gestión de Persona';
+    if (path.startsWith('/personas/')) return 'Perfil 360';
+    if (path.startsWith('/ministerios/')) return 'Detalle de Ministerio';
+    if (path.startsWith('/procesos/7-semanas/')) return 'Inscripción de 7 Semanas';
     if (path.startsWith('/lider/')) return 'Dashboard del Líder';
     if (path.startsWith('/celulas/')) return 'Sistema Celular';
     if (path.startsWith('/puertas/')) return 'Sistema de las 9 Puertas';
@@ -277,6 +287,7 @@ export default function AppLayout() {
 
             {/* Spacer + acciones a la derecha */}
             <div className="flex-1 sm:flex-initial sm:ml-auto flex items-center justify-end gap-1">
+              {routeGuideKey && <ContextGuideButton moduleKey={routeGuideKey} compact />}
               <DisplayScaleToggle />
             </div>
           </div>

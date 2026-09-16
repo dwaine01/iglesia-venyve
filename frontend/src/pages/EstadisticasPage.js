@@ -47,7 +47,7 @@ export default function EstadisticasPage() {
   const relationPieData = Object.entries(relationData).map(([name, value]) => ({ name, value }));
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#F5F0E8] via-[#FAFAF8] to-[#EDE8DD]">
+    <div className="min-h-screen bg-gradient-to-br from-[#F5F0E8] via-[#FAFAF8] to-[#EDE8DD]" data-testid="statistics-page">
       <div className="px-3 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8 space-y-4 sm:space-y-6">
         {/* Header */}
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
@@ -66,7 +66,7 @@ export default function EstadisticasPage() {
         </motion.div>
 
         {/* KPIs */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" data-testid="statistics-kpis">
           {[
             { label: 'Casas Visitadas', value: data.totals.casas_visitadas || 0, icon: Home, bg: 'bg-gradient-to-br from-[#1FA6A0] to-[#178A85]' },
             { label: 'Personas Contactadas', value: data.totals.personas_contactadas || 0, icon: Users, bg: 'bg-gradient-to-br from-[#1B2A4A] to-[#2A3D63]' },

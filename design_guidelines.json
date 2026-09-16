@@ -1,150 +1,123 @@
 {
-  "project_name": "Casa de Oración Ven y Ve - Mega-Bloque C (Sistema Celular)",
-  "version": "1.0.0",
-  "archetype": "ORGANIC & SWISS HIGH-CONTRAST (Institutional Sacred & Precision Governance)",
+  "project_name": "Sistema Operativo Institucional de Iglesia - Guías e Instructivos de Módulo",
+  "design_philosophy": {
+    "identity": "E1 Anti-AI Designer - Fusion, Emotion First, Precision & Pedagogy",
+    "theme_archetype": "ORGANIC & LUXURY NAVY-DORADO (Trust, Honor, Sacred Order & Modern Clarity)",
+    "context_type": "hybrid_fullstack",
+    "app_type": "hybrid_fullstack"
+  },
   "typography": {
-    "font_family_heading": "Spectral, Georgia, serif",
-    "font_family_body": "'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif",
-    "font_family_mono": "'IBM Plex Mono', 'Source Code Pro', monospace",
+    "font_family_heading": "Spectral, serif",
+    "font_family_body": "'IBM Plex Sans', sans-serif",
+    "font_family_mono": "'IBM Plex Mono', monospace",
     "scale": {
-      "h1": "text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-[#0F1A33]",
-      "h2": "text-2xl sm:text-3xl font-semibold tracking-tight text-[#1B2A4A]",
-      "h3": "text-xl sm:text-2xl font-semibold text-[#1B2A4A]",
-      "h4": "text-lg sm:text-xl font-medium text-[#1B2A4A]",
-      "body": "text-base leading-relaxed text-[#2D3748]",
-      "body_sm": "text-sm leading-normal text-[#4A5568]",
-      "caption": "text-xs font-mono uppercase tracking-widest text-[#718096]"
+      "h1": "text-3xl sm:text-4xl lg:text-5xl font-serif tracking-tight font-bold",
+      "h2": "text-2xl sm:text-3xl lg:text-4xl font-serif tracking-tight font-semibold",
+      "h3": "text-xl sm:text-2xl font-serif font-medium",
+      "h4": "text-lg sm:text-xl font-sans font-semibold",
+      "body": "text-base leading-relaxed font-sans",
+      "body_small": "text-sm leading-normal font-sans",
+      "caption": "text-xs font-mono uppercase tracking-wider"
     },
-    "pairing_archetype": "Institutional Sacred Headings (Spectral Serif) + Technical Operational Body (IBM Plex Sans/Mono)"
+    "anti_default_rules": "Never use Inter or Roboto for headings. Headings must use Spectral (Serif) with warm luxury weight contrast. Overlines must be IBM Plex Mono with wide tracking [0.2em]."
   },
   "colors": {
-    "mode": "light_preferred_with_dark_accents",
-    "palette": {
-      "primary_deep_navy": "#0F1A33",
-      "primary_navy": "#1B2A4A",
-      "accent_gold": "#C8A951",
-      "accent_gold_dark": "#9E8232",
-      "accent_gold_light": "#F4ECE1",
-      "background_warm_bone": "#F8F6F0",
-      "card_bg": "#FFFFFF",
-      "card_subtle": "#F5F0E8",
-      "border_subtle": "#E2D9CC",
-      "border_focus": "#C8A951",
-      "text_primary": "#0F1A33",
-      "text_secondary": "#4A5568",
-      "text_muted": "#718096",
-      "status_success": "#15803D",
-      "status_success_bg": "#DCFCE7",
-      "status_warning": "#B45309",
-      "status_warning_bg": "#FEF3C7",
-      "status_danger": "#B91C1C",
-      "status_danger_bg": "#FEE2E2",
-      "status_info": "#1D4ED8",
-      "status_info_bg": "#DBEAFE"
+    "palette_name": "Navy & Gold Imperial Sacred",
+    "primary_navy": "#0B192C",
+    "secondary_navy": "#1E3E62",
+    "accent_gold": "#D4AF37",
+    "light_gold": "#F3E5AB",
+    "dark_gold": "#996515",
+    "bg_light": "#F8FAFC",
+    "bg_dark": "#0B192C",
+    "card_bg": "#FFFFFF",
+    "card_dark": "#162436",
+    "text_primary": "#0F172A",
+    "text_muted": "#475569",
+    "border_light": "rgba(212, 175, 55, 0.25)",
+    "border_dark": "rgba(212, 175, 55, 0.35)",
+    "status": {
+      "success": "#15803D",
+      "warning": "#B45309",
+      "error": "#B91C1C",
+      "info": "#1E3E62"
     },
-    "tinted_grey_rule": "Use warm sand/bone (#F8F6F0) and slate tints (#4A5568) instead of flat neutral #808080."
+    "tinted_grey_rule": "Tint all neutral greys with 5% warm navy or soft gold hue (#0F172A / #F8FAFC) to maintain alive depth."
   },
-  "visual_enhancers": {
-    "glassmorphism": "backdrop-blur-md bg-white/90 border border-[#E2D9CC] shadow-sm",
-    "card_borders": "border border-[#E2D9CC] rounded-xl bg-white shadow-sm hover:border-[#C8A951]/60 transition-all",
-    "active_pill": "bg-[#1B2A4A] text-white shadow-sm rounded-lg px-3 py-1.5 font-medium",
-    "gold_badge": "bg-[#F4ECE1] text-[#9E8232] border border-[#C8A951]/40 rounded-full px-2.5 py-0.5 text-xs font-semibold",
-    "elevation": {
-      "sm": "shadow-[0_2px_4px_rgba(15,26,51,0.04)]",
-      "md": "shadow-[0_4px_12px_rgba(15,26,51,0.08)]",
-      "lg": "shadow-[0_8px_24px_rgba(15,26,51,0.12)]"
+  "layout_and_spacing": {
+    "spacing_scale": "Tailwind standard p-4, p-6, p-8, p-12, p-16",
+    "container_padding": "Internal padding of p-6 or p-8 inside bordered cards is MANDATORY to prevent text collision.",
+    "mobile_breakpoint": "390px responsive view with zero horizontal overflow, bottom drawer sticky CTAs, touch-friendly tap targets (min 44px).",
+    "grid_modes": {
+      "dashboard_grid": "High density grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6",
+      "guide_drawer": "Sheet / Drawer overlay on right with w-full sm:max-w-xl max-h-screen overflow-y-auto p-6"
     }
   },
-  "component_name": {
-    "cellular_dashboard": "CellularDashboardPage",
-    "cellular_networks": "CellularNetworksPage",
-    "cellular_list": "CellularListPage",
-    "cellular_detail_shell": "CellularDetailShell",
-    "cellular_mobile_meeting": "CellularMobileMeetingCommand",
-    "ready_for_cellular_inbox": "ReadyForCellularInbox",
-    "cellular_needs_management": "CellularNeedsManagement",
-    "cellular_health_history": "CellularHealthHistory",
-    "cellular_multiplication_panel": "CellularMultiplicationPanel",
-    "cellular_genealogy_tree": "CellularGenealogyTree"
+  "guide_button_and_panel_system": {
+    "button_component": "ContextGuideButton.js",
+    "button_style": "Floating or inline action bar button with icon, gold hover glow, border-amber-500/40, data-testid='context-guide-trigger-[module_key]'.",
+    "drawer_panel": "ModuleGuideDrawer.js",
+    "drawer_features": [
+      "Propósito general del módulo",
+      "Resultado esperado tras su uso",
+      "Flujo operacional recomendado",
+      "Permisos y Roles (Pastor, Líder, Persona)",
+      "Estados del módulo y su lógica",
+      "Paso a Paso interactivo guiado por controles reales",
+      "Entradas y Salidas de datos",
+      "Impactos y Conexiones entre módulos (ej: Persona -> Célula -> Proceso)",
+      "Errores frecuentes y Buenas Prácticas",
+      "Ejemplo práctico con contexto real institucional sin datos ficticios"
+    ],
+    "interactive_tour": "TourOverlay.js con resalte por data-testid, controles anterior/siguiente/salir, tooltip posicionado y animación suave."
   },
-  "grids": {
-    "dashboard_grid": "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6",
-    "cell_profile_grid": "grid grid-cols-1 lg:grid-cols-12 gap-6",
-    "mobile_command_layout": "flex flex-col space-y-4 max-w-lg mx-auto p-3 sm:p-4",
-    "genealogy_grid": "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
-  },
-  "layouts": {
-    "cellular_main_layout": "AppLayout wrapper with left sidebar on desktop, sheet on mobile, sticky header with breadcrumbs and scale toggle",
-    "mobile_meeting_layout": "Dedicated high-priority mobile view optimized for 1-hand operation on phone during live cell meetings"
-  },
-  "motion": {
-    "transitions": "transition-colors duration-200 ease-in-out, transition-opacity duration-200 ease-in-out",
-    "accordion_animation": "animate-accordion-down 0.2s ease-out, animate-accordion-up 0.2s ease-out",
-    "hover_lift": "hover:-translate-y-0.5 transition-transform duration-150 ease-out"
-  },
-  "accessibility": {
-    "contrast_ratio": "APCA & WCAG AA compliant. Navy text (#0F1A33) on Bone background (#F8F6F0) > 10:1 ratio.",
-    "testing_attributes": "EVERY interactive button, input, tab, card, menu item, and status badge MUST include data-testid='...' using kebab-case role naming.",
-    "keyboard_nav": "Full support for Tab, Enter, Space, and Esc for modal drawers and sheets."
-  },
-  "media": {
-    "logo_url": "https://images.unsplash.com/photo-1548625149-fc4a29cf7092?auto=format&fit=crop&w=200&q=80",
-    "cell_header_bg": "https://images.unsplash.com/photo-1519817650390-64a93db51149?auto=format&fit=crop&w=1200&q=80",
-    "mobile_meeting_banner": "https://images.unsplash.com/photo-1529070538774-1843cb3265df?auto=format&fit=crop&w=800&q=80"
-  },
-  "3d libraries": {
-    "enabled": false,
-    "note": "Not required for administrative and mobile church cell governance. Keep interface super fast and responsive."
-  },
+  "covered_modules": [
+    "dashboard",
+    "core",
+    "personas",
+    "directorio",
+    "ministerios",
+    "procesos_dashboard",
+    "procesos_7semanas",
+    "procesos_consolidacion",
+    "procesos_mentoria",
+    "procesos_cap",
+    "celular",
+    "puertas",
+    "junta",
+    "bitacora",
+    "codigos",
+    "estadisticas",
+    "presentacion"
+  ],
   "image_urls": [
     {
-      "category": "cell_community",
-      "url": "https://images.unsplash.com/photo-1529070538774-1843cb3265df?auto=format&fit=crop&w=800&q=80",
-      "description": "Group of church cell members praying and studying"
+      "category": "church_leadership",
+      "url": "https://images.unsplash.com/photo-1642307063044-b47294fbfe87?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA0MTJ8MHwxfHNlYXJjaHwyfHxjaHVyY2glMjBsZWFkZXJzaGlwJTIwY29tbXVuaXR5JTIwc29mdHdhcmUlMjB0cmFpbmluZ3xlbnwwfHx8fDE3ODk1NzQ1NDV8MA&ixlib=rb-4.1.0&q=85",
+      "description": "Equipo pastoral y líderes participando en sesión interactiva de entrenamiento."
     },
     {
-      "category": "cell_leadership",
-      "url": "https://images.unsplash.com/photo-1511632765486-a01980e01a18?auto=format&fit=crop&w=800&q=80",
-      "description": "Cell leader mentoring and opening bible with team"
+      "category": "community_collaboration",
+      "url": "https://images.pexels.com/photos/1181372/pexels-photo-1181372.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "description": "Líderes de la iglesia operando la plataforma digital en equipo."
     }
   ],
-  "instructions_to_main_agent": {
-    "architecture_rules": [
-      "1. ALL frontend data MUST consume real backend endpoints defined in CELLULAR_SCHEMA_BLUEPRINT.md and Mega-Bloque C routes.",
-      "2. Mobile Meeting Flow MUST be a dedicated mobile command surface (/celulas/reunion-rapida or /celulas/:id/reunion) optimized for 1-hand touch operation: large tap targets (min h-12), auto-calculated metrics, quick visitor and conversion logging, structured needs logging, and task checklists.",
-      "3. Ready-for-cellular (bandeja celular) MUST handle the real operational pipeline: Person ready -> Cellular Inbox -> Select Network/Cell -> Assign Supervisor/Leader -> Register Assignment -> Log First Follow-up -> Activate Historical Membership -> Sync Profile 360/Timeline without duplicating Person.",
-      "4. Structured Needs logging MUST implement the 9 Doors contract: persona_id/family, celula_id, type, description, priority, date, reported_by, assigned_to, status, next_action, puerta_sugerida, puerta_asignada.",
-      "5. Multiplication MUST NOT be automatic. Implement evaluation, candidacy alert, supervisor review, approve/postpone flow. On approval, preserve mother cell, daughter cell, date, transferred leader and members, and update genealogy tree.",
-      "6. Ensure all RBAC scopes are strictly checked based on role (Pastor/Maestro, Coordinador, Supervisor, Líder de Célula, Miembro).",
-      "7. All interactive UI components must have clear data-testid attributes for automated verification.",
-      "8. Maintain clean separation between desktop analytical dashboards and high-speed mobile execution interfaces."
-    ],
-    "route_mapping": {
-      "cellular_dashboard": "/celulas/dashboard",
-      "cellular_networks": "/celulas/redes",
-      "cellular_list": "/celulas/lista",
-      "cellular_detail": "/celulas/:id",
-      "cellular_mobile_meeting": "/celulas/:id/reunion-movil",
-      "ready_for_cellular": "/celulas/bandeja-ready",
-      "cellular_needs": "/celulas/necesidades",
-      "cellular_health": "/celulas/salud",
-      "cellular_multiplication": "/celulas/multiplicacion",
-      "cellular_genealogy": "/celulas/genealogia"
-    }
-  },
-  "UNIVERSAL GUIDELINES FOR MAIN AGENT": {
-    "do_not": [
-      "Do NOT create generic centered layouts with no visual contrast.",
-      "Do NOT use transparent backgrounds for floating headers or mobile sheets without backdrop blur and bg opacity.",
-      "Do NOT use AI emoji slop like 🤖🧠💭💡 for UI icons — always use Lucide React icons.",
-      "Do NOT generate persistent demo data that remains in production/QA state.",
-      "Do NOT perform automatic cell multiplication without supervisor manual review & approval."
-    ],
-    "do": [
-      "Use 2-3x more spacing than default for crisp readability.",
-      "Layer cards using subtle borders (#E2D9CC) and soft shadows.",
-      "Use APCA-verified text contrast.",
-      "Ensure all buttons, inputs, tabs, and tables carry data-testid attributes."
+  "component_path": "/app/frontend/src/components/guides/",
+  "testing_attributes": {
+    "rule": "All buttons, inputs, modals, tabs, and interactive tour targets MUST have unique data-testid in kebab-case format.",
+    "examples": [
+      "data-testid='context-guide-trigger-dashboard'",
+      "data-testid='guide-drawer-step-next'",
+      "data-testid='guide-drawer-tour-start'",
+      "data-testid='guide-role-filter-pastor'"
     ]
-  }
+  },
+  "instructions_to_main_agent": "Implement complete frontend and backend guide engine. Backend serves /api/guides/{module_key} from backend/docs/module_guides.json and module_guides.py. Frontend renders ContextGuideButton across all pages without duplicate buttons, opening ModuleGuideDrawer with full tabbed breakdown (Visión, Paso a Paso, Impacto en Sistema, Roles, Tour Interactivo). Ensure 100% test coverage compliance and zero mobile overflow.",
+  "UNIVERSAL GUIDELINES FOR MAIN AGENT": [
+    "Never use generic centered layouts or plain gradients without depth.",
+    "Do not use AI assistant emoji characters (🤖, 🧠, 💡) for standard UI icons; use Lucide or Phosphor icons.",
+    "Ensure all interactive elements have explicit hover, focus, and active states with proper APCA contrast.",
+    "Strictly follow JavaScript .js React file naming conventions for frontend components.",
+    "Ensure data-testid attributes are preserved and applied to all interactive controls."
+  ]
 }

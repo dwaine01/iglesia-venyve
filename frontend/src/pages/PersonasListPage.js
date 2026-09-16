@@ -77,7 +77,7 @@ export default function PersonasListPage() {
   const nombreCompleto = (p) => `${p.nombre || ''} ${p.apellido || ''}`.trim();
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#F5F0E8] via-[#FAFAF8] to-[#EDE8DD] p-4 md:p-8">
+    <div className="min-h-screen bg-gradient-to-br from-[#F5F0E8] via-[#FAFAF8] to-[#EDE8DD] p-4 md:p-8" data-testid="persons-directory-page">
       <div className="max-w-7xl mx-auto space-y-6">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
@@ -92,6 +92,7 @@ export default function PersonasListPage() {
           <Button
             onClick={() => navigate('/personas/nueva')}
             className="bg-[#C8A951] hover:bg-[#B8964A] text-white gap-2"
+            data-testid="person-create-button"
           >
             <UserPlus className="w-4 h-4" />
             Nueva Persona
@@ -113,22 +114,23 @@ export default function PersonasListPage() {
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="Nombre, VV, Pintor, Mecánico..."
                   className="pl-9"
+                  data-testid="persons-search-input"
                 />
               </div>
-              <select value={talentId} onChange={(e) => setTalentId(e.target.value)} className="h-9 rounded-md border bg-white px-3 text-sm">
+              <select value={talentId} onChange={(e) => setTalentId(e.target.value)} className="h-9 rounded-md border bg-white px-3 text-sm" data-testid="persons-talent-filter">
                 <option value="">Toda ocupación/habilidad</option>
                 {catalog.map((item) => <option key={item.talent_id} value={item.talent_id}>{item.nombre}</option>)}
               </select>
-              <select value={gender} onChange={(e) => setGender(e.target.value)} className="h-9 rounded-md border bg-white px-3 text-sm">
+              <select value={gender} onChange={(e) => setGender(e.target.value)} className="h-9 rounded-md border bg-white px-3 text-sm" data-testid="persons-gender-filter">
                 <option value="">Todo género</option><option value="masculino">Masculino</option><option value="femenino">Femenino</option><option value="no_especificado">No especificado</option>
               </select>
-              <select value={ageGroup} onChange={(e) => setAgeGroup(e.target.value)} className="h-9 rounded-md border bg-white px-3 text-sm">
+              <select value={ageGroup} onChange={(e) => setAgeGroup(e.target.value)} className="h-9 rounded-md border bg-white px-3 text-sm" data-testid="persons-age-filter">
                 <option value="">Todo grupo de edad</option><option value="ninez">Niñez</option><option value="adolescencia">Adolescencia</option><option value="adulto">Adulto</option>
               </select>
-              <select value={ministryId} onChange={(e) => setMinistryId(e.target.value)} className="h-9 rounded-md border bg-white px-3 text-sm">
+              <select value={ministryId} onChange={(e) => setMinistryId(e.target.value)} className="h-9 rounded-md border bg-white px-3 text-sm" data-testid="persons-ministry-filter">
                 <option value="">Todo Ministerio</option>{ministries.map((item) => <option key={item.ministry_id} value={item.ministry_id}>{item.nombre}</option>)}
               </select>
-              <select value={ministryRoleId} onChange={(e) => setMinistryRoleId(e.target.value)} className="h-9 rounded-md border bg-white px-3 text-sm">
+              <select value={ministryRoleId} onChange={(e) => setMinistryRoleId(e.target.value)} className="h-9 rounded-md border bg-white px-3 text-sm" data-testid="persons-ministry-role-filter">
                 <option value="">Toda función ministerial</option>{ministryRoles.map((item) => <option key={item.role_id} value={item.role_id}>{item.nombre}</option>)}
               </select>
             </div>
@@ -136,7 +138,7 @@ export default function PersonasListPage() {
               Estado de Membresía: filtro preparado, disponible cuando el módulo Membresía sea fuente de verdad.
             </div>
             {error && (
-              <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-md p-3 mb-4">
+              <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-md p-3 mb-4" data-testid="persons-error-alert">
                 {error}
               </div>
             )}
@@ -148,11 +150,26 @@ export default function PersonasListPage() {
                 ))}
               </div>
             ) : persons.length === 0 ? (
-              <div className="text-center text-gray-500 py-10">
+              <div className="text-center text-gray-500 py-10" data-testid="persons-empty-state">
                 No se encontraron personas{query ? ` para "${query}"` : ''}.
               </div>
             ) : (
-              <div className="overflow-x-auto">
+              <>
+              <div className="space-y-3 md:hidden" data-testid="persons-mobile-list">
+                {persons.map((p) => (
+                  <article key={p.person_id} className="rounded-md border border-gray-200 bg-white p-4 shadow-sm" data-testid={`person-mobile-card-${p.person_id}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0"><PersonCanonicalLink personId={p.person_id}><span className="font-semibold text-gray-900">{nombreCompleto(p)}</span></PersonCanonicalLink><p className="mt-1 font-mono text-xs text-[#8A6D2F]">{p.person_number}</p></div>
+                      {p.age_group_label && <Badge variant="secondary" className="shrink-0">{p.age_group_label}</Badge>}
+                    </div>
+                    <p className="mt-3 text-sm font-medium text-gray-700">{p.talents?.ocupacion_principal?.nombre || 'Sin ocupación registrada'}</p>
+                    {p.talents?.habilidades?.length > 0 && <p className="mt-1 break-words text-xs leading-5 text-gray-500">{p.talents.habilidades.map((item) => item.nombre).join(', ')}</p>}
+                    <Button variant="outline" size="sm" onClick={() => navigate(`/personas/${p.person_id}`)} className="mt-4 w-full" data-testid={`person-open-mobile-${p.person_id}`}>Ver perfil</Button>
+                  </article>
+                ))}
+                <p className="text-xs text-gray-400">Mostrando {persons.length} de {total} persona(s).</p>
+              </div>
+              <div className="hidden overflow-x-auto md:block" data-testid="persons-table">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -190,6 +207,7 @@ export default function PersonasListPage() {
                             variant="outline"
                             size="sm"
                             onClick={() => navigate(`/personas/${p.person_id}`)}
+                            data-testid={`person-open-${p.person_id}`}
                           >
                             Ver perfil
                           </Button>
@@ -202,6 +220,7 @@ export default function PersonasListPage() {
                   Mostrando {persons.length} de {total} persona(s).
                 </p>
               </div>
+              </>
             )}
           </CardContent>
         </Card>

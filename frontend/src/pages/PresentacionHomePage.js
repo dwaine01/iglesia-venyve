@@ -105,7 +105,7 @@ export default function PresentacionHomePage() {
           })}
         </div>
 
-        <Button variant="outline" onClick={() => navigate(backRoute)} className="gap-2">
+        <Button variant="outline" onClick={() => navigate(backRoute)} className="gap-2" data-testid="presentation-back-dashboard-button">
           <Home className="w-4 h-4" /> Volver al Dashboard
         </Button>
       </div>

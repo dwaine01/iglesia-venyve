@@ -44,6 +44,7 @@ El trabajo se ejecuta en **PASOS AGIGANTADOS**: auditoría, diseño, implementac
 
 - FastAPI modular, MongoDB con Motor y JWT HS256 revocable.
 - Transporte de autenticación: JWT Bearer explícito en `Authorization`; la aplicación no emite cookies de sesión. Cookies de Cloudflare/Railway no representan una sesión de Iglesia OS.
+- No existe `seed_admin` automático ni endpoint público de siembra; los accesos pastorales se administran mediante flujos autenticados y credenciales de operación controladas.
 - Variables obligatorias: `MONGO_URL`, `DB_NAME`, `JWT_SECRET`, `CORS_ORIGINS`, `CORS_ORIGIN_REGEX`.
 - Rutas backend siempre con prefijo `/api`.
 - Módulos principales:
@@ -297,6 +298,18 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - Revisión de despliegue: PASS; auditoría de seguridad: PASS sin CRITICAL/HIGH/MEDIUM.
 - Railway Production confirmado **Active** por el usuario: boot limpio, índices creados, `/api/health` 200, frontend sin errores, login pastor end‑to‑end PASS, APIs reales 200 y CORS PASS.
 - `backend/.env.example` quedó rastreado con `CORS_ORIGIN_REGEX` y los tres límites `MAX_*`; validación de parseo/regex PASS y sin secretos reales.
+
+### Sistema global de aprendizaje contextual — COMPLETADO 2026‑09‑16
+
+- Catálogo versionado **2.0** con **32 guías** para módulos actuales A–D y herramientas: dashboards por rol, Núcleo, Personas/Perfil 360, Directorio, Ministerios, Procesos, Células, Puertas, Junta, Bitácora, Códigos, Estadísticas y Manual.
+- Cada guía explica propósito, resultado, flujo, paso a paso, entradas, salidas, roles, estados, conexiones entre módulos, errores frecuentes, buenas prácticas, ejemplo y siguiente acción.
+- Contenido adaptado a `pastor`, `lider` y `persona`; los pasos del recorrido también respetan rol.
+- Botón único `¿Cómo funciona?`: global en AppLayout y embebido donde Células/Puertas/Junta ya tenían shell propio, sin duplicaciones.
+- Panel lateral responsive con tabs Visión/Pasos/Impacto/Roles y recorrido visual que resalta controles reales; Escape, anterior, siguiente y terminar.
+- Personas usa tarjetas en móvil y tabla en desktop; panel y recorrido verificados en 1920×800 y 390×844 con overflow vacío.
+- Sin seguimiento persistente de progreso en esta fase y sin crear datos ficticios.
+- Validación: API 32/32 PASS, variantes de rol PASS, contrato backend PASS, build frontend PASS, Mega‑Bloques C/D PASS, Testing Agent iteration 9 confirmó guías/UI; regresión posterior **11 passed** y breadcrumb Personas corregido.
+- Autenticación permanece en el contrato aprobado JWT Bearer sin cookie de sesión; no existe `seed_admin` automático ni público.
 
 ### P0 — siguiente: Mega‑Bloque G — CONTABILIDAD Y FINANZAS
 

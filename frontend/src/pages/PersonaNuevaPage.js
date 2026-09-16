@@ -104,7 +104,7 @@ export default function PersonaNuevaPage() {
           </CardHeader>
           <CardContent className="space-y-5">
             {error && (
-              <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-md p-3">
+              <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-md p-3" data-testid="new-person-error-alert">
                 {error}
               </div>
             )}
@@ -184,6 +184,7 @@ export default function PersonaNuevaPage() {
                             variant="outline"
                             size="sm"
                             onClick={() => navigate(`/personas/${d.person_id}`)}
+                            data-testid={`new-person-open-duplicate-${d.person_id}`}
                           >
                             Ver este perfil
                           </Button>
@@ -198,7 +199,7 @@ export default function PersonaNuevaPage() {
                 )}
 
                 <div className="flex flex-col sm:flex-row gap-3">
-                  <Button variant="outline" onClick={() => setStep('form')} className="sm:w-auto w-full">
+                  <Button variant="outline" onClick={() => setStep('form')} className="sm:w-auto w-full" data-testid="new-person-edit-data-button">
                     Editar datos
                   </Button>
                   {duplicates.length === 0 && <Button onClick={handleCreate} disabled={creating} className="flex-1 bg-[#C8A951] hover:bg-[#B8964A] text-white" data-testid="new-person-create-button">{creating ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}Crear Persona</Button>}
