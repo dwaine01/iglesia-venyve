@@ -22,7 +22,7 @@ from access_control import (
 )
 from canonical_identity import ensure_user_person_link, migrate_core_identity, sync_legacy_person_to_canonical
 
-load_dotenv(override=True)
+load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), ".env"), override=False)
 
 app = FastAPI(title="Manual Ley 7 Semanas API")
 

@@ -283,6 +283,15 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - UI muestra: “Identificación de participantes pendiente de procesamiento STT diarizado.”
 - No se usa `whisper-1` como sustituto.
 
+### P0 — Arranque y CORS de despliegue — RESUELTO 2026‑09‑16
+
+- Corregida la precedencia de configuración: Kubernetes/runtime prevalece sobre `.env` mediante `load_dotenv(..., override=False)`.
+- La carga local de `.env` ahora usa una ruta relativa explícita a `server.py`, sin depender del directorio de ejecución.
+- CORS permite el origen preview configurado explícitamente y el patrón productivo `*.emergent.host`; subdominios preview arbitrarios no forman parte del contrato con credenciales.
+- Backend reiniciado y verificado RUNNING; `/api/health` externo devuelve 200.
+- Regresión dedicada de arranque, precedencia runtime, health y CORS: **6/6 PASS**.
+- Revisión final de preparación de despliegue: **PASS**, sin bloqueadores.
+
 ### P0 — siguiente: Mega‑Bloque G — CONTABILIDAD Y FINANZAS
 
 - Jurisdicción: Columbus, Ohio, Estados Unidos.
