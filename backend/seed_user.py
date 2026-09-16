@@ -4,6 +4,7 @@ import os
 import bcrypt
 from motor.motor_asyncio import AsyncIOMotorClient
 from datetime import datetime
+from access_control import access_defaults_for_role
 
 MONGO_URL = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
 DB_NAME = os.environ.get("DB_NAME", "ley7semanas_db")
@@ -90,6 +91,7 @@ async def seed():
         "email": "admin@venyve.com",
         "password": hashed.decode(),
         "rol": "lider",
+        **access_defaults_for_role("lider"),
         "is_active": True,
         "token_version": 1,
         "created_at": datetime.utcnow(),

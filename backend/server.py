@@ -10,6 +10,12 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from bson import ObjectId
 import json
 from dotenv import load_dotenv
+from access_control import (
+    access_defaults_for_role,
+    ensure_access_defaults,
+    normalized_access_scope,
+    normalized_capabilities,
+)
 
 load_dotenv(override=False)
 
@@ -321,6 +327,9 @@ async def get_current_user(authorization: Optional[str] = Header(None)):
     if token_version != user_token_version(db_user):
         raise HTTPException(status_code=401, detail="No autorizado")
 
+    # ACCESS-01 is resolved from the current Mongo user, never trusted from JWT.
+    payload["capabilities"] = normalized_capabilities(db_user)
+    payload["access_scope"] = normalized_access_scope(db_user)
     return payload
 
 
@@ -333,6 +342,11 @@ app.include_router(core_person_router)
 from core_profile import router as core_profile_router
 
 app.include_router(core_profile_router)
+
+# --- ACCESS-01 + P-001 Slice 2B Contactos/Direcciones (modular) ---
+from person_domains import router as person_domains_router, ensure_indexes as person_domains_ensure_indexes
+
+app.include_router(person_domains_router)
 
 
 # --- Default Checklists ---
@@ -407,6 +421,7 @@ DEFAULT_CHECKLISTS = {
 async def startup():
     # Create indexes
     await db.users.create_index("email", unique=True)
+    await ensure_access_defaults(db)
     await db.contacts.create_index("user_id")
     await db.progress.create_index([("user_id", 1), ("semana", 1)])
     await db.checklists.create_index([("user_id", 1), ("semana", 1)])
@@ -418,6 +433,7 @@ async def startup():
 
     # --- P-001 Core de Personas (aditivo) ---
     await core_person_ensure_indexes()
+    await person_domains_ensure_indexes()
     print("Core Person (P-001) indexes created")
 
 
@@ -602,6 +618,7 @@ async def register(user: UserRegister):
             "email": user.email,
             "password": hashed.decode(),
             "rol": assigned_rol,
+            **access_defaults_for_role(assigned_rol),
             "is_active": DEFAULT_IS_ACTIVE,
             "token_version": DEFAULT_TOKEN_VERSION,
             "leader_id": assigned_leader_id,
@@ -645,6 +662,7 @@ async def register(user: UserRegister):
             "email": user.email,
             "password": hashed.decode(),
             "rol": assigned_rol,
+            **access_defaults_for_role(assigned_rol),
             "is_active": DEFAULT_IS_ACTIVE,
             "token_version": DEFAULT_TOKEN_VERSION,
             "leader_id": assigned_leader_id,
@@ -1130,6 +1148,7 @@ async def admin_seed_demo(authorization: Optional[str] = Header(None)):
                 "password": hashed,
                 "nombre": nombre,
                 "rol": "persona",
+                **access_defaults_for_role("persona"),
                 "is_active": DEFAULT_IS_ACTIVE,
                 "token_version": DEFAULT_TOKEN_VERSION,
                 "created_at": datetime.utcnow(),
@@ -1818,6 +1837,7 @@ async def create_pastor(data: dict, authorization: Optional[str] = Header(None))
         "email": email,
         "password": hashed,
         "rol": "pastor",
+        **access_defaults_for_role("pastor"),
         "is_active": DEFAULT_IS_ACTIVE,
         "token_version": DEFAULT_TOKEN_VERSION,
         "created_at": datetime.utcnow(),
@@ -2149,6 +2169,7 @@ async def create_person(person: PersonCreate, authorization: Optional[str] = Hea
         "password": hashed_password,
         "nombre": person.nombre,
         "rol": "persona",
+        **access_defaults_for_role("persona"),
         "is_active": DEFAULT_IS_ACTIVE,
         "token_version": DEFAULT_TOKEN_VERSION,
         "created_at": datetime.utcnow(),

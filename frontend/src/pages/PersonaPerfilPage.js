@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
+import PersonAddressSection from '../components/PersonAddressSection';
+import PersonContactSection from '../components/PersonContactSection';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
@@ -30,6 +32,15 @@ export default function PersonaPerfilPage() {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [activeTab, setActiveTab] = useState('resumen');
+
+  const refreshProfile = async () => {
+    const response = await axios.get(
+      `${API}/api/core/persons/${personId}/profile`,
+      getAuthHeaders()
+    );
+    setProfile(response.data);
+  };
 
   useEffect(() => {
     let active = true;
@@ -154,7 +165,7 @@ export default function PersonaPerfilPage() {
           </CardHeader>
 
           <CardContent>
-            <Tabs defaultValue="resumen">
+            <Tabs value={activeTab} onValueChange={setActiveTab}>
               <TabsList className="flex-wrap h-auto">
                 {allSections.map((s) => (
                   <TabsTrigger key={s} value={s} disabled={!available.includes(s)}>
@@ -171,13 +182,17 @@ export default function PersonaPerfilPage() {
                       <div
                         key={s.section_key}
                         data-testid={`resumen-360-card-${s.section_key}`}
-                        role={s.route ? 'button' : undefined}
-                        tabIndex={s.route ? 0 : undefined}
-                        onClick={s.route ? () => navigate(s.route) : undefined}
+                        role={available.includes(s.section_key) ? 'button' : undefined}
+                        tabIndex={available.includes(s.section_key) ? 0 : undefined}
+                        onClick={
+                          available.includes(s.section_key)
+                            ? () => setActiveTab(s.section_key)
+                            : undefined
+                        }
                         onKeyDown={
-                          s.route
+                          available.includes(s.section_key)
                             ? (e) => {
-                                if (e.key === 'Enter' || e.key === ' ') navigate(s.route);
+                                if (e.key === 'Enter' || e.key === ' ') setActiveTab(s.section_key);
                               }
                             : undefined
                         }
@@ -185,7 +200,7 @@ export default function PersonaPerfilPage() {
                           (s.status_code === 'has_summary'
                             ? 'rounded-lg border border-[#C8A951]/40 bg-[#FBF8F1] p-3'
                             : 'rounded-lg border border-gray-200 bg-gray-50/60 p-3') +
-                          (s.route ? ' cursor-pointer hover:shadow-sm transition-shadow' : '')
+                          (available.includes(s.section_key) ? ' cursor-pointer hover:shadow-sm transition-shadow' : '')
                         }
                       >
                         <div className="flex items-center justify-between gap-2 mb-1">
@@ -197,7 +212,7 @@ export default function PersonaPerfilPage() {
                             )}
                             <span className="text-sm font-medium text-gray-800">{s.status_label}</span>
                           </div>
-                          {s.route && <ChevronRight className="w-4 h-4 text-gray-400" />}
+                          {available.includes(s.section_key) && <ChevronRight className="w-4 h-4 text-gray-400" />}
                         </div>
                         {s.status_code === 'has_summary' ? (
                           <p className="text-sm text-gray-600">{s.summary}</p>
@@ -221,6 +236,30 @@ export default function PersonaPerfilPage() {
                   </div>
                 )}
               </TabsContent>
+
+              {profile.contacto && (
+                <TabsContent value="contacto" className="pt-5">
+                  <PersonContactSection
+                    personId={personId}
+                    domain={profile.contacto}
+                    API={API}
+                    getAuthHeaders={getAuthHeaders}
+                    onChanged={refreshProfile}
+                  />
+                </TabsContent>
+              )}
+
+              {profile.direcciones && (
+                <TabsContent value="direcciones" className="pt-5">
+                  <PersonAddressSection
+                    personId={personId}
+                    domain={profile.direcciones}
+                    API={API}
+                    getAuthHeaders={getAuthHeaders}
+                    onChanged={refreshProfile}
+                  />
+                </TabsContent>
+              )}
 
               {planned.map((s) => (
                 <TabsContent key={s} value={s} className="pt-4">
