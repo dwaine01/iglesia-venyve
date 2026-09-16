@@ -59,12 +59,18 @@ export function AuthProvider({ children }) {
     return res.data;
   };
 
+  const refreshUser = async () => {
+    const res = await axios.get(`${API}/api/auth/me`, getAuthHeaders());
+    setUser(res.data);
+    return res.data;
+  };
+
   const getAuthHeaders = () => ({
     headers: { Authorization: `Bearer ${token}` }
   });
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, login, register, changePassword, logout, getAuthHeaders, API }}>
+    <AuthContext.Provider value={{ user, token, loading, login, register, changePassword, refreshUser, logout, getAuthHeaders, API }}>
       {children}
     </AuthContext.Provider>
   );

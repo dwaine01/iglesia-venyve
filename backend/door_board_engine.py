@@ -6,7 +6,7 @@ from uuid import uuid4
 from bson import ObjectId
 from fastapi import HTTPException
 
-from access_control import DOORS_MANAGE
+from access_control import BOARD_CONFIDENTIAL_ACCESS, DOORS_MANAGE
 from door_board_catalog import BOARD_ID
 
 
@@ -42,6 +42,8 @@ async def active_board_membership(db, person_id: str, board_id: str = BOARD_ID) 
 
 async def ensure_board_access(db, current_user: dict, permission: str = "board.read", board_id: str = BOARD_ID) -> dict | None:
     if DOORS_MANAGE in current_user.get("capabilities", []): return None
+    if BOARD_CONFIDENTIAL_ACCESS not in current_user.get("capabilities", []):
+        raise HTTPException(status_code=403, detail="El pastor no ha concedido acceso a datos confidenciales de Junta")
     membership = await active_board_membership(db, current_user.get("person_id"), board_id)
     if not membership or permission not in membership.get("permissions", []):
         raise HTTPException(status_code=403, detail="Permiso de Junta insuficiente")

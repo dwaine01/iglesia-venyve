@@ -6,7 +6,7 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from access_control import DOORS_MANAGE
+from access_control import BOARD_CONFIDENTIAL_ACCESS, DOORS_MANAGE
 from door_board_catalog import BOARD_ID
 from door_board_engine import (
     active_board_membership, door_scope, ensure_board_access, ensure_door_access,
@@ -316,6 +316,7 @@ async def add_board_member(payload: BoardMemberCreate, current_user: dict = Depe
     membership_id = str(uuid4()); now = now_utc()
     doc = {"_id": membership_id, "membership_id": membership_id, "board_id": BOARD_ID, **payload.model_dump(), "started_at": payload.started_at.isoformat(), "active": True, "ended_at": None, "end_reason": None, "created_by_user_id": current_user["user_id"], "created_at": now, "updated_at": now}
     await db.board_memberships.insert_one(doc)
+    await db.users.update_one({"person_id": payload.person_id}, {"$addToSet": {"capabilities": BOARD_CONFIDENTIAL_ACCESS, "privilege_groups": "board"}})
     for door_key in payload.supervised_door_keys:
         assignment_id = str(uuid4())
         await db.door_assignments.update_one(
@@ -333,6 +334,9 @@ async def end_board_member(membership_id: str, payload: BoardMemberEnd, current_
     result = await db.board_memberships.update_one({"membership_id": membership_id, "active": True}, {"$set": {"active": False, "ended_at": payload.ended_at.isoformat(), "end_reason": payload.reason, "updated_at": now_utc()}})
     if not result.matched_count: raise HTTPException(status_code=404, detail="Membresía activa no encontrada")
     await db.door_assignments.update_many({"source_board_membership_id": membership_id, "active": True}, {"$set": {"active": False, "ended_at": payload.ended_at.isoformat(), "end_reason": f"Fin de membresía de Junta: {payload.reason}", "updated_at": now_utc()}})
+    ended = await db.board_memberships.find_one({"membership_id": membership_id}, {"_id": 0, "person_id": 1})
+    if ended and not await db.board_memberships.find_one({"person_id": ended.get("person_id"), "active": True}):
+        await db.users.update_one({"person_id": ended.get("person_id")}, {"$pull": {"capabilities": BOARD_CONFIDENTIAL_ACCESS, "privilege_groups": "board"}})
     await record_board_audit(db, current_user["user_id"], "board_member_ended", "board_membership", membership_id, {"reason": payload.reason})
     return serialize(await db.board_memberships.find_one({"membership_id": membership_id}, {"_id": 0}))
 

@@ -27,6 +27,7 @@ import PresentacionNotasPage from './pages/PresentacionNotasPage';
 import CodigosInvitacionPage from './pages/CodigosInvitacionPage';
 import CoreGovernancePage from './pages/CoreGovernancePage';
 import ChangePasswordPage from './pages/ChangePasswordPage';
+import AccessOnboardingPage from './pages/AccessOnboardingPage';
 import ProcessesDashboardPage from './pages/processes/ProcessesDashboardPage';
 import SevenWeeksPage from './pages/processes/SevenWeeksPage';
 import SevenWeeksDetailPage from './pages/processes/SevenWeeksDetailPage';
@@ -57,6 +58,7 @@ function ProtectedRoute({ children }) {
   if (loading) return <div className="flex items-center justify-center min-h-screen"><div className="text-lg text-muted-foreground">Cargando...</div></div>;
   if (!user) return <Navigate to="/login" />;
   if (user.must_change_password) return <Navigate to="/cambiar-clave" replace />;
+  if (user.onboarding_required && !user.onboarding_completed_at) return <Navigate to="/acuerdo-confidencialidad" replace />;
   return children;
 }
 
@@ -101,6 +103,7 @@ function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/cambiar-clave" element={<ChangePasswordPage />} />
+          <Route path="/acuerdo-confidencialidad" element={<AccessOnboardingPage />} />
           {/* Rutas de presentación full-screen (fuera del AppLayout) */}
           <Route path="/presentacion/presenter" element={<StaffRoute><PresentacionPresenterPage /></StaffRoute>} />
           <Route path="/presentacion/audiencia/:code" element={<PresentacionAudiencePage />} />

@@ -342,7 +342,7 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - Validación: React build PASS, frontend 17/17 PASS, auth/Junta 13/13 iniciales PASS; Mega‑Bloque D volvió a PASS tras limpiar fixtures; datos temporales eliminados.
 - Reporte independiente: `/app/test_reports/iteration_12.json`. El hallazgo de rutas antiguas de grabación fue corregido después del reporte y validado contra la suite activa.
 
-### P0 — siguiente: Gobierno jerárquico y confidencialidad v2
+### P0 — Gobierno jerárquico y confidencialidad v2 — COMPLETADO 2026‑09‑16
 
 - Pastor es superadministrador único y decide cuántos coordinadores generales existen.
 - Todo coordinador general debe completar información administrativa, cambio de clave, consentimiento electrónico de privacidad/confidencialidad, seguridad de dispositivo y deber de reportar incidentes antes de recibir acceso operativo.
@@ -350,6 +350,14 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - Jerarquía delegable: Pastor → Coordinador general → Director de área/ministerio/células → secretario, tesorero y equipo.
 - Cada nivel solo podrá crear cuentas dentro de su alcance y delegar un subconjunto de sus propios privilegios; nunca podrá elevarse ni conceder Junta/Finanzas sin autorización pastoral.
 - Finanzas deberá permitir únicamente las personas designadas explícitamente por el pastor; la cantidad no se codificará de forma rígida hasta confirmar el límite operativo.
+- Implementado bloqueo backend/frontend hasta cambiar clave y firmar onboarding; `/auth/me` y onboarding permanecen disponibles durante la activación.
+- Formulario administrativo: contacto preferido, contacto de emergencia, dispositivo, compromiso de servicio, cuatro aceptaciones y firma electrónica.
+- Cada firma guarda snapshot de política, versión, fecha/hora, IP y agente de navegador en `access_consents`.
+- Política editable/versionada por pastor y límite de accesos a Finanzas configurable desde `/nucleo`.
+- Jerarquía aplicada con `parent_user_id`: pastor → coordinador → director → secretario/tesorero/equipo. Las cuentas subordinadas se limitan al mismo `organization_scope`.
+- Grupos separados: `membership`, `board`, `finance`. Junta y Finanzas solo las concede el pastor; no son heredables.
+- Junta exige privilegio confidencial y membresía activa simultáneamente. El bypass detectado en iteration 13 fue corregido separando capacidades de Junta de `doors.manage`.
+- Validación: frontend build PASS, frontend 17/17 PASS, backend focalizado 18/18 PASS, retest jerarquía/Junta 20/20 PASS, desktop/móvil sin overflow, artefactos QA eliminados.
 
 ### P0 — siguiente: Mega‑Bloque G — CONTABILIDAD Y FINANZAS
 

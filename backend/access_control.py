@@ -34,6 +34,10 @@ PERSON_ADDRESSES_WRITE = "person.addresses.write"
 PERSON_PASTORAL_NOTES_READ = "person.notes.pastoral.read"
 CORE_GOVERNANCE_MANAGE = "core.governance.manage"
 CORE_ACCESS_MANAGE = "core.access.manage"
+BOARD_CONFIDENTIAL_ACCESS = "board.confidential.access"
+FINANCE_READ = "finance.read"
+FINANCE_MANAGE = "finance.manage"
+FINANCE_CAPABILITIES = [FINANCE_READ, FINANCE_MANAGE]
 PROCESSES_READ = "processes.read"
 PROCESSES_WRITE = "processes.write"
 PROCESSES_PARTICIPATE = "processes.participate"
@@ -204,7 +208,7 @@ async def ensure_access_defaults(db) -> None:
             {"$set": {"access_scope": defaults["access_scope"]}},
         )
         await db.users.update_many(
-            {"rol": role, "$or": [{"access_policy_version": {"$lt": 12}}, {"access_policy_version": {"$exists": False}}]},
+            {"rol": role, "$or": [{"parent_user_id": {"$exists": False}}, {"access_policy_version": {"$lt": 12}}, {"access_policy_version": {"$exists": False}}]},
             {
                 "$addToSet": {"capabilities": {"$each": defaults["capabilities"]}},
                 "$set": {"access_policy_version": 12},

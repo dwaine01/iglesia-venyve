@@ -1,94 +1,35 @@
 import React, { useMemo, useState } from 'react';
 import { Eye, EyeOff, KeyRound, UserPlus } from 'lucide-react';
-
 import { Button } from '../ui/button';
+import { Checkbox } from '../ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '../ui/dialog';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 
-const generateTemporaryPassword = () => {
-  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%';
-  const values = new Uint32Array(14);
-  window.crypto.getRandomValues(values);
-  return Array.from(values, (value) => alphabet[value % alphabet.length]).join('');
-};
+const levelsFor = (user) => user?.rol === 'pastor'
+  ? [['coordinador_general', 'Coordinador general'], ['director', 'Director de área'], ['lider', 'Líder'], ['persona', 'Persona']]
+  : user?.access_level === 'coordinador_general'
+    ? [['director', 'Director de área'], ['lider', 'Líder'], ['persona', 'Persona']]
+    : [['secretario', 'Secretario/a'], ['tesorero', 'Tesorero/a'], ['equipo', 'Miembro de equipo'], ['persona', 'Persona']];
 
-export const CreateAccessDialog = ({ candidates, isPastor, onCreate }) => {
-  const [open, setOpen] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ person_id: '', email: '', temporary_password: '', access_level: 'lider' });
+const blankForm = (user) => ({ person_id: '', email: '', temporary_password: '', access_level: levelsFor(user)[0][0], access_title: '', scope_type: user?.organization_scope?.type || 'ministry', scope_name: user?.organization_scope?.name || '', privilege_groups: (user?.privilege_groups || ['membership']).filter((item) => item === 'membership') });
+const generatePassword = () => { const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%'; const values = new Uint32Array(14); window.crypto.getRandomValues(values); return Array.from(values, (value) => chars[value % chars.length]).join(''); };
+
+export const CreateAccessDialog = ({ candidates, currentUser, onCreate }) => {
+  const [open, setOpen] = useState(false); const [showPassword, setShowPassword] = useState(false); const [saving, setSaving] = useState(false); const [form, setForm] = useState(blankForm(currentUser));
   const selected = useMemo(() => candidates.find((item) => item.person_id === form.person_id), [candidates, form.person_id]);
-
-  const updatePerson = (personId) => {
-    const person = candidates.find((item) => item.person_id === personId);
-    setForm((old) => ({ ...old, person_id: personId, email: person?.email || old.email }));
-  };
-
-  const submit = async (event) => {
-    event.preventDefault();
-    setSaving(true);
-    const created = await onCreate(form);
-    setSaving(false);
-    if (created) {
-      setOpen(false);
-      setForm({ person_id: '', email: '', temporary_password: '', access_level: 'lider' });
-    }
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button className="bg-[#D4B871] text-[#101D36] hover:bg-[#E0C982]" data-testid="open-create-access-button">
-          <UserPlus className="mr-2 h-4 w-4" />Crear acceso
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="max-h-[92vh] overflow-y-auto bg-white sm:max-w-xl" data-testid="create-access-dialog">
-        <DialogHeader>
-          <DialogTitle>Crear acceso desde un Perfil 360</DialogTitle>
-          <DialogDescription>La cuenta quedará vinculada a una sola Persona y deberá cambiar su clave al ingresar.</DialogDescription>
-        </DialogHeader>
-        <form className="space-y-4" onSubmit={submit}>
-          <div>
-            <Label>Persona</Label>
-            <Select value={form.person_id} onValueChange={updatePerson}>
-              <SelectTrigger data-testid="access-person-select"><SelectValue placeholder="Seleccionar Perfil 360" /></SelectTrigger>
-              <SelectContent className="max-h-72 bg-white">
-                {candidates.map((item) => <SelectItem key={item.person_id} value={item.person_id}>{item.name} · {item.person_number || 'Sin número'}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            {selected && <p className="mt-1 text-xs text-slate-500" data-testid="access-selected-person">{selected.name}</p>}
-          </div>
-          <div>
-            <Label htmlFor="access-email">Correo de ingreso</Label>
-            <Input id="access-email" type="email" value={form.email} onChange={(event) => setForm((old) => ({ ...old, email: event.target.value }))} required data-testid="access-email-input" />
-          </div>
-          <div>
-            <Label>Nivel de acceso</Label>
-            <Select value={form.access_level} onValueChange={(value) => setForm((old) => ({ ...old, access_level: value }))}>
-              <SelectTrigger data-testid="access-level-select"><SelectValue /></SelectTrigger>
-              <SelectContent className="bg-white">
-                {isPastor && <SelectItem value="coordinador_general">Coordinador general</SelectItem>}
-                <SelectItem value="lider">Líder</SelectItem>
-                <SelectItem value="persona">Persona</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label htmlFor="temporary-password">Clave temporal</Label>
-            <div className="mt-1 flex gap-2">
-              <Input id="temporary-password" type={showPassword ? 'text' : 'password'} value={form.temporary_password} onChange={(event) => setForm((old) => ({ ...old, temporary_password: event.target.value }))} minLength={10} required data-testid="temporary-password-input" />
-              <Button type="button" variant="outline" size="icon" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? 'Ocultar clave' : 'Mostrar clave'} data-testid="toggle-temporary-password-button">{showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</Button>
-              <Button type="button" variant="outline" size="icon" onClick={() => setForm((old) => ({ ...old, temporary_password: generateTemporaryPassword() }))} aria-label="Generar clave segura" data-testid="generate-temporary-password-button"><KeyRound className="h-4 w-4" /></Button>
-            </div>
-            <p className="mt-1 text-xs text-slate-500">Compártala de forma privada. El sistema exigirá una nueva clave en el primer ingreso.</p>
-          </div>
-          <Button type="submit" disabled={saving || !form.person_id || !form.email || form.temporary_password.length < 10} className="w-full bg-[#101D36]" data-testid="create-access-submit-button">
-            {saving ? 'Creando acceso…' : 'Crear acceso controlado'}
-          </Button>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
+  const scoped = ['director', 'secretario', 'tesorero', 'equipo'].includes(form.access_level);
+  const update = (field, value) => setForm((old) => ({ ...old, [field]: value }));
+  const toggleGroup = (group, checked) => setForm((old) => ({ ...old, privilege_groups: checked ? [...new Set([...old.privilege_groups, group])] : old.privilege_groups.filter((item) => item !== group) }));
+  const submit = async (event) => { event.preventDefault(); setSaving(true); const payload = { ...form, organization_scope: scoped ? { type: form.scope_type, name: form.scope_name } : null }; delete payload.scope_type; delete payload.scope_name; const created = await onCreate(payload); setSaving(false); if (created) { setOpen(false); setForm(blankForm(currentUser)); } };
+  return <Dialog open={open} onOpenChange={setOpen}><DialogTrigger asChild><Button className="bg-[#D4B871] text-[#101D36] hover:bg-[#E0C982]" data-testid="open-create-access-button"><UserPlus className="mr-2 h-4 w-4" />Crear acceso</Button></DialogTrigger><DialogContent className="max-h-[92vh] overflow-y-auto bg-white sm:max-w-xl" data-testid="create-access-dialog"><DialogHeader><DialogTitle>Crear acceso desde un Perfil 360</DialogTitle><DialogDescription>El nuevo acceso quedará debajo de su responsabilidad y nunca podrá superar sus privilegios.</DialogDescription></DialogHeader><form className="space-y-4" onSubmit={submit}>
+    <div><Label>Persona</Label><Select value={form.person_id} onValueChange={(personId) => { const person = candidates.find((item) => item.person_id === personId); setForm((old) => ({ ...old, person_id: personId, email: person?.email || old.email })); }}><SelectTrigger data-testid="access-person-select"><SelectValue placeholder="Seleccionar Perfil 360" /></SelectTrigger><SelectContent className="max-h-72 bg-white">{candidates.map((item) => <SelectItem key={item.person_id} value={item.person_id}>{item.name} · {item.person_number || 'Sin número'}</SelectItem>)}</SelectContent></Select>{selected && <p className="mt-1 text-xs text-slate-500" data-testid="access-selected-person">{selected.name}</p>}</div>
+    <div><Label htmlFor="access-email">Correo de ingreso</Label><Input id="access-email" type="email" value={form.email} onChange={(event) => update('email', event.target.value)} required data-testid="access-email-input" /></div>
+    <div><Label>Nivel jerárquico</Label><Select value={form.access_level} onValueChange={(value) => update('access_level', value)}><SelectTrigger data-testid="access-level-select"><SelectValue /></SelectTrigger><SelectContent className="bg-white">{levelsFor(currentUser).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></div>
+    {scoped && <div className="grid gap-4 sm:grid-cols-2"><div><Label>Tipo de área</Label><Select value={form.scope_type} onValueChange={(value) => update('scope_type', value)} disabled={currentUser?.access_level === 'director'}><SelectTrigger data-testid="access-scope-type-select"><SelectValue /></SelectTrigger><SelectContent className="bg-white"><SelectItem value="ministry">Ministerio</SelectItem><SelectItem value="cell_network">Red/Células</SelectItem><SelectItem value="department">Departamento</SelectItem><SelectItem value="custom">Área personalizada</SelectItem></SelectContent></Select></div><div><Label htmlFor="scope-name">Nombre del área</Label><Input id="scope-name" value={form.scope_name} onChange={(event) => update('scope_name', event.target.value)} disabled={currentUser?.access_level === 'director'} required data-testid="access-scope-name-input" /></div><div className="sm:col-span-2"><Label htmlFor="access-title">Cargo específico</Label><Input id="access-title" value={form.access_title} onChange={(event) => update('access_title', event.target.value)} placeholder="Ej. Directora de Damas" required data-testid="access-title-input" /></div></div>}
+    <fieldset className="space-y-3 border p-4"><legend className="px-2 text-sm font-semibold">Privilegios iniciales</legend><label className="flex items-start gap-3 text-sm"><Checkbox checked={form.privilege_groups.includes('membership')} onCheckedChange={(value) => toggleGroup('membership', Boolean(value))} data-testid="access-membership-privilege" /><span><b>Membresía</b><br /><small>Información de personas dentro del alcance autorizado.</small></span></label>{currentUser?.rol === 'pastor' && <><label className="flex items-start gap-3 text-sm"><Checkbox checked={form.privilege_groups.includes('board')} onCheckedChange={(value) => toggleGroup('board', Boolean(value))} data-testid="access-board-privilege" /><span><b>Junta Directiva</b><br /><small>Además requiere membresía formal de Junta.</small></span></label><label className="flex items-start gap-3 text-sm"><Checkbox checked={form.privilege_groups.includes('finance')} onCheckedChange={(value) => toggleGroup('finance', Boolean(value))} data-testid="access-finance-privilege" /><span><b>Finanzas</b><br /><small>Acceso restringido concedido únicamente por el pastor.</small></span></label></>}</fieldset>
+    <div><Label htmlFor="temporary-password">Clave temporal</Label><div className="mt-1 flex gap-2"><Input id="temporary-password" type={showPassword ? 'text' : 'password'} value={form.temporary_password} onChange={(event) => update('temporary_password', event.target.value)} minLength={10} required data-testid="temporary-password-input" /><Button type="button" variant="outline" size="icon" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? 'Ocultar clave' : 'Mostrar clave'} data-testid="toggle-temporary-password-button">{showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</Button><Button type="button" variant="outline" size="icon" onClick={() => update('temporary_password', generatePassword())} aria-label="Generar clave segura" data-testid="generate-temporary-password-button"><KeyRound className="h-4 w-4" /></Button></div></div>
+    <Button type="submit" disabled={saving || !form.person_id || !form.email || form.temporary_password.length < 10 || (scoped && !form.scope_name)} className="w-full bg-[#101D36]" data-testid="create-access-submit-button">{saving ? 'Creando acceso…' : 'Crear acceso controlado'}</Button>
+  </form></DialogContent></Dialog>;
 };

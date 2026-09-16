@@ -15,6 +15,7 @@ from bson import ObjectId
 import json
 from dotenv import load_dotenv
 from access_control import (
+    BOARD_CONFIDENTIAL_ACCESS,
     CORE_ACCESS_MANAGE,
     access_defaults_for_role,
     ensure_access_defaults,
@@ -374,7 +375,7 @@ def verify_token(token: str):
         raise HTTPException(status_code=401, detail="Token invalido")
 
 
-async def get_current_user(authorization: Optional[str] = Header(None)):
+async def get_authenticated_user(authorization: Optional[str] = Header(None)):
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="No autorizado")
 
@@ -407,6 +408,22 @@ async def get_current_user(authorization: Optional[str] = Header(None)):
     payload["access_scope"] = normalized_access_scope(db_user)
     payload["person_id"] = db_user.get("person_id")
     payload["rol"] = db_user.get("rol")
+    payload["access_level"] = db_user.get("access_level") or ("coordinador_general" if db_user.get("rol") == "lider" and CORE_ACCESS_MANAGE in payload["capabilities"] else db_user.get("rol"))
+    payload["must_change_password"] = db_user.get("must_change_password", False) is True
+    payload["onboarding_required"] = db_user.get("onboarding_required", False) is True
+    payload["onboarding_completed_at"] = db_user.get("onboarding_completed_at")
+    payload["privilege_groups"] = db_user.get("privilege_groups") or []
+    payload["parent_user_id"] = db_user.get("parent_user_id")
+    payload["organization_scope"] = db_user.get("organization_scope")
+    return payload
+
+
+async def get_current_user(authorization: Optional[str] = Header(None)):
+    payload = await get_authenticated_user(authorization)
+    if payload.get("must_change_password"):
+        raise HTTPException(status_code=403, detail="Debe cambiar su clave temporal antes de continuar")
+    if payload.get("onboarding_required") and not payload.get("onboarding_completed_at"):
+        raise HTTPException(status_code=403, detail="Debe completar el acuerdo de confidencialidad antes de continuar")
     return payload
 
 
@@ -419,6 +436,9 @@ app.include_router(core_person_router)
 from core_profile import router as core_profile_router
 
 app.include_router(core_profile_router)
+
+from access_onboarding import router as access_onboarding_router, ensure_indexes as access_onboarding_ensure_indexes
+app.include_router(access_onboarding_router)
 
 # --- ACCESS-01 + P-001 Slice 2B Contactos/Direcciones (modular) ---
 from person_domains import router as person_domains_router, ensure_indexes as person_domains_ensure_indexes
@@ -565,6 +585,7 @@ async def startup():
     await person_core_expansion_ensure()
     await ministries_ensure()
     await core_governance_ensure()
+    await access_onboarding_ensure_indexes()
     await migrate_core_identity(db, "system:startup")
     await seed_process_catalog(db)
     await ensure_process_indexes(db)
@@ -988,23 +1009,23 @@ async def login(user: UserLogin, request: Request):
         user_token_version(db_user),
     )
     person_id = db_user.get("person_id")
-    return {"token": token, "user": {"id": user_id, "nombre": db_user["nombre"], "email": db_user["email"], "rol": db_user["rol"], "person_id": person_id, "canonical_profile_path": f"/personas/{person_id}" if person_id else None, "capabilities": normalized_capabilities(db_user), "access_level": "coordinador_general" if db_user.get("rol") == "lider" and CORE_ACCESS_MANAGE in normalized_capabilities(db_user) else db_user.get("rol"), "must_change_password": db_user.get("must_change_password", False) is True}}
+    return {"token": token, "user": {"id": user_id, "nombre": db_user["nombre"], "email": db_user["email"], "rol": db_user["rol"], "person_id": person_id, "canonical_profile_path": f"/personas/{person_id}" if person_id else None, "capabilities": normalized_capabilities(db_user), "access_level": db_user.get("access_level") or ("coordinador_general" if db_user.get("rol") == "lider" and CORE_ACCESS_MANAGE in normalized_capabilities(db_user) else db_user.get("rol")), "must_change_password": db_user.get("must_change_password", False) is True, "onboarding_required": db_user.get("onboarding_required", False) is True, "onboarding_completed_at": db_user.get("onboarding_completed_at"), "privilege_groups": db_user.get("privilege_groups") or [], "organization_scope": db_user.get("organization_scope")}}
 
 
 @app.get("/api/auth/me")
 async def get_me(authorization: Optional[str] = Header(None)):
     if not authorization:
         raise HTTPException(status_code=401, detail="No autorizado")
-    payload = await get_current_user(authorization)
+    payload = await get_authenticated_user(authorization)
     user = await db.users.find_one({"_id": ObjectId(payload["user_id"])})
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     person_id = user.get("person_id")
-    return {"id": str(user["_id"]), "nombre": user["nombre"], "email": user["email"], "rol": user["rol"], "person_id": person_id, "canonical_profile_path": f"/personas/{person_id}" if person_id else None, "capabilities": normalized_capabilities(user), "access_level": "coordinador_general" if user.get("rol") == "lider" and CORE_ACCESS_MANAGE in normalized_capabilities(user) else user.get("rol"), "must_change_password": user.get("must_change_password", False) is True}
+    return {"id": str(user["_id"]), "nombre": user["nombre"], "email": user["email"], "rol": user["rol"], "person_id": person_id, "canonical_profile_path": f"/personas/{person_id}" if person_id else None, "capabilities": normalized_capabilities(user), "access_level": user.get("access_level") or ("coordinador_general" if user.get("rol") == "lider" and CORE_ACCESS_MANAGE in normalized_capabilities(user) else user.get("rol")), "must_change_password": user.get("must_change_password", False) is True, "onboarding_required": user.get("onboarding_required", False) is True, "onboarding_completed_at": user.get("onboarding_completed_at"), "privilege_groups": user.get("privilege_groups") or [], "organization_scope": user.get("organization_scope")}
 
 
 @app.post("/api/auth/change-password")
-async def change_password(payload: PasswordChange, current_user: dict = Depends(get_current_user)):
+async def change_password(payload: PasswordChange, current_user: dict = Depends(get_authenticated_user)):
     user = await db.users.find_one({"_id": ObjectId(current_user["user_id"])})
     if not user or not bcrypt.checkpw(payload.current_password.encode("utf-8"), user["password"].encode("utf-8")):
         raise HTTPException(status_code=400, detail="La clave actual no es correcta")
@@ -1018,7 +1039,7 @@ async def change_password(payload: PasswordChange, current_user: dict = Depends(
     token = create_token(str(user["_id"]), user["email"], user["rol"], new_version)
     capabilities = normalized_capabilities(user)
     person_id = user.get("person_id")
-    return {"token": token, "user": {"id": str(user["_id"]), "nombre": user["nombre"], "email": user["email"], "rol": user["rol"], "person_id": person_id, "canonical_profile_path": f"/personas/{person_id}" if person_id else None, "capabilities": capabilities, "access_level": "coordinador_general" if user.get("rol") == "lider" and CORE_ACCESS_MANAGE in capabilities else user.get("rol"), "must_change_password": False}}
+    return {"token": token, "user": {"id": str(user["_id"]), "nombre": user["nombre"], "email": user["email"], "rol": user["rol"], "person_id": person_id, "canonical_profile_path": f"/personas/{person_id}" if person_id else None, "capabilities": capabilities, "access_level": user.get("access_level") or ("coordinador_general" if user.get("rol") == "lider" and CORE_ACCESS_MANAGE in capabilities else user.get("rol")), "must_change_password": False, "onboarding_required": user.get("onboarding_required", False) is True, "onboarding_completed_at": user.get("onboarding_completed_at"), "privilege_groups": user.get("privilege_groups") or [], "organization_scope": user.get("organization_scope")}}
 
 
 # --- Contacts Routes ---

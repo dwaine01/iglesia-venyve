@@ -32,6 +32,11 @@
 - El primer ingreso exige cambio de contraseña; el cambio incrementa `token_version` y revoca el JWT anterior.
 - Verificar 403 para líder/persona en administración de accesos y 403 para coordinador intentando elevar privilegios.
 - Ninguna respuesta API puede incluir hash o contraseña.
+- Toda cuenta privilegiada queda bloqueada en backend hasta completar cambio de clave y onboarding.
+- Verificar cadena Pastor → Coordinador general → Director → secretario/tesorero/equipo y `parent_user_id` directo.
+- Director solo puede crear cuentas con el mismo `organization_scope`.
+- Junta exige simultáneamente `board.confidential.access` y membresía activa; Finanzas nunca es delegable fuera del pastor.
+- Las firmas deben conservar snapshot y versión de política, cuatro aceptaciones, fecha/hora, IP y agente de navegador.
 
 ## Mega‑Bloque B — Procesos
 

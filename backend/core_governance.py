@@ -9,10 +9,14 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr, Field
 
 from access_control import (
+    BOARD_CONFIDENTIAL_ACCESS,
+    BOARD_AI,
+    BOARD_AUDIO,
     CELLULAR_CAPABILITIES,
     CORE_ACCESS_MANAGE,
     DOOR_BOARD_CAPABILITIES,
     CORE_GOVERNANCE_MANAGE,
+    FINANCE_CAPABILITIES,
     PROCESS_CAPABILITIES,
     PERSON_DOMAIN_CAPABILITIES,
     PERSON_PASTORAL_NOTES_READ,
@@ -77,6 +81,12 @@ class UserAccessItem(BaseModel):
     token_version: int
     access_level: str
     must_change_password: bool
+    parent_user_id: Optional[str] = None
+    access_title: Optional[str] = None
+    organization_scope: Optional[dict] = None
+    privilege_groups: list[str] = []
+    onboarding_required: bool = False
+    onboarding_completed_at: Optional[str] = None
 
 
 class UserAccessList(BaseModel):
@@ -85,16 +95,20 @@ class UserAccessList(BaseModel):
 
 class AccessUpdate(BaseModel):
     rol: Optional[Literal["pastor", "lider", "persona"]] = None
-    access_level: Optional[Literal["pastor", "coordinador_general", "lider", "persona"]] = None
+    access_level: Optional[Literal["pastor", "coordinador_general", "director", "secretario", "tesorero", "equipo", "lider", "persona"]] = None
     is_active: bool
     capabilities: Optional[list[str]] = Field(default=None, max_length=100)
+    privilege_groups: Optional[list[Literal["membership", "board", "finance"]]] = None
 
 
 class UserAccessCreate(BaseModel):
     person_id: str
     email: EmailStr
     temporary_password: str = Field(min_length=10, max_length=128)
-    access_level: Literal["pastor", "coordinador_general", "lider", "persona"]
+    access_level: Literal["pastor", "coordinador_general", "director", "secretario", "tesorero", "equipo", "lider", "persona"]
+    access_title: Optional[str] = Field(default=None, max_length=120)
+    organization_scope: Optional[dict] = None
+    privilege_groups: list[Literal["membership", "board", "finance"]] = []
 
 
 def require_governance(current_user: dict = Depends(get_current_user)) -> dict:
@@ -112,6 +126,8 @@ def require_access_manager(current_user: dict = Depends(get_current_user)) -> di
 
 
 def access_level(user: dict) -> str:
+    if user.get("access_level"):
+        return user["access_level"]
     if user.get("rol") == "pastor":
         return "pastor"
     if user.get("rol") == "lider" and CORE_ACCESS_MANAGE in (user.get("capabilities") or []):
@@ -119,22 +135,50 @@ def access_level(user: dict) -> str:
     return user.get("rol", "persona")
 
 
-def access_defaults(level: str) -> dict:
-    role = "lider" if level == "coordinador_general" else level
+def access_defaults(level: str, privilege_groups: Optional[list[str]] = None) -> dict:
+    role = "persona" if level == "persona" else "pastor" if level == "pastor" else "lider"
     defaults = access_defaults_for_role(role)
-    if level == "coordinador_general":
+    groups = sorted(set(privilege_groups or ([] if level not in {"pastor", "coordinador_general"} else ["membership"])))
+    if level in {"coordinador_general", "director"}:
         defaults["capabilities"] = sorted(set([*defaults["capabilities"], CORE_ACCESS_MANAGE]))
-        defaults["access_scope"] = {"persons": "all"}
-    return {"rol": role, **defaults}
+    if "membership" not in groups:
+        defaults["capabilities"] = [item for item in defaults["capabilities"] if item not in PERSON_DOMAIN_CAPABILITIES]
+    if "board" in groups:
+        defaults["capabilities"] = sorted(set([*defaults["capabilities"], BOARD_AUDIO, BOARD_AI, BOARD_CONFIDENTIAL_ACCESS]))
+    if "finance" in groups:
+        defaults["capabilities"] = sorted(set([*defaults["capabilities"], *FINANCE_CAPABILITIES]))
+    defaults["access_scope"] = {"persons": "all" if level == "coordinador_general" else "created_by" if role == "lider" else defaults["access_scope"]["persons"]}
+    return {"rol": role, "access_level": level, "privilege_groups": groups, **defaults}
 
 
 def ensure_level_allowed(actor: dict, level: str, target: Optional[dict] = None) -> None:
     if actor.get("rol") == "pastor":
         return
-    if level in {"pastor", "coordinador_general"}:
-        raise HTTPException(status_code=403, detail="Solo el pastor puede administrar coordinadores generales")
-    if target and access_level(target) in {"pastor", "coordinador_general"}:
+    actor_level = actor.get("access_level") or "lider"
+    allowed = {"coordinador_general": {"director", "lider", "persona"}, "director": {"secretario", "tesorero", "equipo", "persona"}}
+    if level not in allowed.get(actor_level, set()):
+        raise HTTPException(status_code=403, detail="No puede crear o elevar este nivel de acceso")
+    if target and access_level(target) not in allowed.get(actor_level, set()):
         raise HTTPException(status_code=403, detail="No puede modificar este nivel de acceso")
+
+
+def ensure_privileges_allowed(actor: dict, groups: list[str]) -> None:
+    if actor.get("rol") == "pastor":
+        return
+    if any(group in {"board", "finance"} for group in groups):
+        raise HTTPException(status_code=403, detail="Solo el pastor puede conceder Junta o Finanzas")
+    actor_groups = set(actor.get("privilege_groups") or [])
+    if not set(groups).issubset(actor_groups):
+        raise HTTPException(status_code=403, detail="Solo puede delegar privilegios que ya posee")
+
+
+async def ensure_finance_limit(groups: list[str], target: Optional[dict] = None) -> None:
+    if "finance" not in groups or (target and "finance" in (target.get("privilege_groups") or [])):
+        return
+    policy = await db.governance_policies.find_one({"policy_key": "staff_confidentiality", "active": True}, {"_id": 0, "finance_max_users": 1})
+    maximum = (policy or {}).get("finance_max_users")
+    if maximum and await db.users.count_documents({"is_active": {"$ne": False}, "privilege_groups": "finance"}) >= maximum:
+        raise HTTPException(status_code=409, detail=f"Se alcanzó el máximo pastoral de {maximum} accesos a Finanzas")
 
 
 def serialize_user(user: dict) -> dict:
@@ -152,6 +196,12 @@ def serialize_user(user: dict) -> dict:
         "token_version": user.get("token_version", 1),
         "access_level": access_level(user),
         "must_change_password": user.get("must_change_password", False) is True,
+        "parent_user_id": user.get("parent_user_id"),
+        "access_title": user.get("access_title"),
+        "organization_scope": user.get("organization_scope"),
+        "privilege_groups": user.get("privilege_groups") or [],
+        "onboarding_required": user.get("onboarding_required", False) is True,
+        "onboarding_completed_at": user.get("onboarding_completed_at").isoformat().replace("+00:00", "Z") if isinstance(user.get("onboarding_completed_at"), datetime) else user.get("onboarding_completed_at"),
     }
 
 
@@ -256,7 +306,8 @@ async def run_migration(current_user: dict = Depends(require_governance)):
 
 @router.get("/users", response_model=UserAccessList)
 async def list_users(current_user: dict = Depends(require_access_manager)):
-    users = await db.users.find({}, {"password": 0}).sort([("rol", 1), ("nombre", 1)]).to_list(10000)
+    query = {} if current_user.get("rol") == "pastor" else {"$or": [{"_id": ObjectId(current_user["user_id"])}, {"parent_user_id": current_user["user_id"]}]}
+    users = await db.users.find(query, {"password": 0}).sort([("rol", 1), ("nombre", 1)]).to_list(10000)
     return {"items": [serialize_user(user) for user in users]}
 
 
@@ -283,6 +334,12 @@ async def list_access_candidates(current_user: dict = Depends(require_access_man
 @router.post("/users", response_model=UserAccessItem, status_code=201)
 async def create_user_access(payload: UserAccessCreate, current_user: dict = Depends(require_access_manager)):
     ensure_level_allowed(current_user, payload.access_level)
+    ensure_privileges_allowed(current_user, payload.privilege_groups)
+    await ensure_finance_limit(payload.privilege_groups)
+    if payload.access_level in {"director", "secretario", "tesorero", "equipo"} and not payload.organization_scope:
+        raise HTTPException(status_code=400, detail="Debe indicar el área de servicio")
+    if current_user.get("access_level") == "director" and payload.organization_scope != current_user.get("organization_scope"):
+        raise HTTPException(status_code=403, detail="Solo puede crear cuentas dentro de su propia área")
     if not ObjectId.is_valid(payload.person_id):
         raise HTTPException(status_code=400, detail="Perfil 360 inválido")
     person = await db.persons.find_one({"_id": ObjectId(payload.person_id)})
@@ -293,7 +350,7 @@ async def create_user_access(payload: UserAccessCreate, current_user: dict = Dep
     email = str(payload.email).strip().lower()
     if await db.users.find_one({"email": email}):
         raise HTTPException(status_code=409, detail="Este correo ya tiene acceso")
-    defaults = access_defaults(payload.access_level)
+    defaults = access_defaults(payload.access_level, payload.privilege_groups)
     now = datetime.now(timezone.utc)
     surname = person.get("apellidos") or person.get("apellido") or ""
     user_doc = {
@@ -303,6 +360,11 @@ async def create_user_access(payload: UserAccessCreate, current_user: dict = Dep
         "person_id": payload.person_id,
         "is_active": True,
         "must_change_password": True,
+        "onboarding_required": payload.access_level not in {"persona", "lider"},
+        "onboarding_completed_at": None,
+        "parent_user_id": current_user["user_id"],
+        "access_title": payload.access_title,
+        "organization_scope": payload.organization_scope,
         "token_version": 1,
         "created_by_user_id": current_user["user_id"],
         "created_at": now,
@@ -332,10 +394,15 @@ async def update_user_access(
     target = await db.users.find_one({"_id": ObjectId(user_id)})
     if not target:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    if current_user.get("rol") != "pastor" and target.get("parent_user_id") != current_user["user_id"]:
+        raise HTTPException(status_code=403, detail="Solo puede administrar cuentas creadas directamente bajo su responsabilidad")
     requested_level = payload.access_level or payload.rol
     if not requested_level:
         raise HTTPException(status_code=400, detail="Debe indicar el nivel de acceso")
     ensure_level_allowed(current_user, requested_level, target)
+    requested_groups = payload.privilege_groups if payload.privilege_groups is not None else target.get("privilege_groups", [])
+    ensure_privileges_allowed(current_user, requested_groups)
+    await ensure_finance_limit(requested_groups, target)
     requested_role = "lider" if requested_level == "coordinador_general" else requested_level
     if user_id == current_user["user_id"] and (not payload.is_active or requested_role != "pastor"):
         raise HTTPException(status_code=400, detail="No puede retirar su propio acceso de pastor")
@@ -343,8 +410,8 @@ async def update_user_access(
         active_pastors = await db.users.count_documents({"rol": "pastor", "is_active": {"$ne": False}})
         if active_pastors <= 1:
             raise HTTPException(status_code=400, detail="Debe existir al menos un pastor activo")
-    defaults = access_defaults(requested_level)
-    allowed = set(PERSON_DOMAIN_CAPABILITIES + PROCESS_CAPABILITIES + CELLULAR_CAPABILITIES + DOOR_BOARD_CAPABILITIES + [PERSON_PASTORAL_NOTES_READ, CORE_GOVERNANCE_MANAGE, CORE_ACCESS_MANAGE])
+    defaults = access_defaults(requested_level, requested_groups)
+    allowed = set(PERSON_DOMAIN_CAPABILITIES + PROCESS_CAPABILITIES + CELLULAR_CAPABILITIES + DOOR_BOARD_CAPABILITIES + FINANCE_CAPABILITIES + [BOARD_CONFIDENTIAL_ACCESS, PERSON_PASTORAL_NOTES_READ, CORE_GOVERNANCE_MANAGE, CORE_ACCESS_MANAGE])
     capabilities = defaults["capabilities"]
     if payload.capabilities is not None:
         if current_user.get("rol") != "pastor":
@@ -363,6 +430,8 @@ async def update_user_access(
     )
     update = {
         "rol": requested_role,
+        "access_level": requested_level,
+        "privilege_groups": requested_groups,
         "is_active": payload.is_active,
         "capabilities": capabilities,
         "access_scope": defaults["access_scope"],
