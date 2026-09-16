@@ -285,7 +285,7 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - No se usa `whisper-1` como sustituto.
 - **Board AI: BLOCKED controlado mientras `BOARD_AI_ENDPOINT_URL`, `BOARD_AI_API_KEY` y `BOARD_AI_MODEL` no estén configurados.** Junta manual, minutas, votos, documentos y audio no dependen del proveedor IA.
 
-### P0 — Restauración Railway — PARCHE VALIDADO, REDEPLOY PENDIENTE 2026‑09‑16
+### P0 — Restauración Railway — RESUELTO Y VALIDADO EN PRODUCCIÓN 2026‑09‑16
 
 - Corregida la precedencia de configuración: Kubernetes/runtime prevalece sobre `.env` mediante `load_dotenv(..., override=False)`.
 - La carga local de `.env` ahora usa una ruta relativa explícita a `server.py`, sin depender del directorio de ejecución.
@@ -295,7 +295,8 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - Instalación limpia pública: PASS; `pip check`: PASS; imports `server.py` y `board_ai_service.py`: PASS sin paquete Emergent.
 - Uvicorn supervisado RUNNING y `/api/health` preview 200; login/auth, Junta manual y CORS de regresión PASS.
 - Revisión de despliegue: PASS; auditoría de seguridad: PASS sin CRITICAL/HIGH/MEDIUM.
-- **No declarar Production restaurada hasta que el nuevo commit esté en GitHub main, Railway complete el redeploy y pasen health, login, frontend→backend, CORS y logs productivos.**
+- Railway Production confirmado **Active** por el usuario: boot limpio, índices creados, `/api/health` 200, frontend sin errores, login pastor end‑to‑end PASS, APIs reales 200 y CORS PASS.
+- `backend/.env.example` quedó rastreado con `CORS_ORIGIN_REGEX` y los tres límites `MAX_*`; validación de parseo/regex PASS y sin secretos reales.
 
 ### P0 — siguiente: Mega‑Bloque G — CONTABILIDAD Y FINANZAS
 
@@ -312,12 +313,11 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 
 ## 12. Próximas tareas ejecutables
 
-1. Publicar el parche portable en GitHub `main`, completar redeploy Railway y cerrar la matriz Production PASS.
-2. Diseñar y aprobar el schema contable por fondos para Ohio.
-3. Implementar plan de cuentas, períodos, asientos balanceados y cierres.
-4. Construir ingresos/donantes/recibos, gastos/proveedores/aprobaciones y conciliación bancaria.
-5. Preparar adapter Pushpay OAuth/webhooks idempotentes sin activarlo hasta obtener sandbox.
-6. Conectar dashboard financiero con Junta Directiva y permisos segregados.
+1. Diseñar y aprobar el schema contable por fondos para Ohio.
+2. Implementar plan de cuentas, períodos, asientos balanceados y cierres.
+3. Construir ingresos/donantes/recibos, gastos/proveedores/aprobaciones y conciliación bancaria.
+4. Preparar adapter Pushpay OAuth/webhooks idempotentes sin activarlo hasta obtener sandbox.
+5. Conectar dashboard financiero con Junta Directiva y permisos segregados.
 
 ## 13. Restricciones vigentes
 
