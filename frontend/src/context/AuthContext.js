@@ -51,12 +51,20 @@ export function AuthProvider({ children }) {
     return res.data;
   };
 
+  const changePassword = async (current_password, new_password) => {
+    const res = await axios.post(`${API}/api/auth/change-password`, { current_password, new_password }, getAuthHeaders());
+    localStorage.setItem('token', res.data.token);
+    setToken(res.data.token);
+    setUser(res.data.user);
+    return res.data;
+  };
+
   const getAuthHeaders = () => ({
     headers: { Authorization: `Bearer ${token}` }
   });
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, login, register, logout, getAuthHeaders, API }}>
+    <AuthContext.Provider value={{ user, token, loading, login, register, changePassword, logout, getAuthHeaders, API }}>
       {children}
     </AuthContext.Provider>
   );

@@ -3,12 +3,14 @@ from datetime import datetime, timezone
 from typing import Literal, Optional
 from uuid import uuid4
 
+import bcrypt
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
 
 from access_control import (
     CELLULAR_CAPABILITIES,
+    CORE_ACCESS_MANAGE,
     DOOR_BOARD_CAPABILITIES,
     CORE_GOVERNANCE_MANAGE,
     PROCESS_CAPABILITIES,
@@ -73,6 +75,8 @@ class UserAccessItem(BaseModel):
     capabilities: list[str]
     access_scope: dict
     token_version: int
+    access_level: str
+    must_change_password: bool
 
 
 class UserAccessList(BaseModel):
@@ -80,15 +84,57 @@ class UserAccessList(BaseModel):
 
 
 class AccessUpdate(BaseModel):
-    rol: Literal["pastor", "lider", "persona"]
+    rol: Optional[Literal["pastor", "lider", "persona"]] = None
+    access_level: Optional[Literal["pastor", "coordinador_general", "lider", "persona"]] = None
     is_active: bool
     capabilities: Optional[list[str]] = Field(default=None, max_length=100)
+
+
+class UserAccessCreate(BaseModel):
+    person_id: str
+    email: EmailStr
+    temporary_password: str = Field(min_length=10, max_length=128)
+    access_level: Literal["pastor", "coordinador_general", "lider", "persona"]
 
 
 def require_governance(current_user: dict = Depends(get_current_user)) -> dict:
     if current_user.get("rol") != "pastor" or not has_capability(current_user, CORE_GOVERNANCE_MANAGE):
         raise HTTPException(status_code=403, detail="Gobierno del núcleo restringido")
     return current_user
+
+
+def require_access_manager(current_user: dict = Depends(get_current_user)) -> dict:
+    if current_user.get("rol") == "pastor" and has_capability(current_user, CORE_GOVERNANCE_MANAGE):
+        return current_user
+    if current_user.get("rol") == "lider" and has_capability(current_user, CORE_ACCESS_MANAGE):
+        return current_user
+    raise HTTPException(status_code=403, detail="Gestión de accesos restringida")
+
+
+def access_level(user: dict) -> str:
+    if user.get("rol") == "pastor":
+        return "pastor"
+    if user.get("rol") == "lider" and CORE_ACCESS_MANAGE in (user.get("capabilities") or []):
+        return "coordinador_general"
+    return user.get("rol", "persona")
+
+
+def access_defaults(level: str) -> dict:
+    role = "lider" if level == "coordinador_general" else level
+    defaults = access_defaults_for_role(role)
+    if level == "coordinador_general":
+        defaults["capabilities"] = sorted(set([*defaults["capabilities"], CORE_ACCESS_MANAGE]))
+        defaults["access_scope"] = {"persons": "all"}
+    return {"rol": role, **defaults}
+
+
+def ensure_level_allowed(actor: dict, level: str, target: Optional[dict] = None) -> None:
+    if actor.get("rol") == "pastor":
+        return
+    if level in {"pastor", "coordinador_general"}:
+        raise HTTPException(status_code=403, detail="Solo el pastor puede administrar coordinadores generales")
+    if target and access_level(target) in {"pastor", "coordinador_general"}:
+        raise HTTPException(status_code=403, detail="No puede modificar este nivel de acceso")
 
 
 def serialize_user(user: dict) -> dict:
@@ -104,6 +150,8 @@ def serialize_user(user: dict) -> dict:
         "capabilities": sorted(user.get("capabilities") or []),
         "access_scope": user.get("access_scope") or {"persons": "none"},
         "token_version": user.get("token_version", 1),
+        "access_level": access_level(user),
+        "must_change_password": user.get("must_change_password", False) is True,
     }
 
 
@@ -146,7 +194,7 @@ async def integrity_snapshot() -> dict:
         "users_without_person": await db.users.count_documents({"$or": [{"person_id": {"$exists": False}}, {"person_id": None}]}),
         "legacy_people_without_person": await db.people.count_documents({"$or": [{"canonical_person_id": {"$exists": False}}, {"canonical_person_id": None}]}),
         "access_policy_outdated": await db.users.count_documents({"$or": [
-            {"access_policy_version": {"$ne": 11}},
+            {"access_policy_version": {"$ne": 12}},
             {"capabilities": {"$exists": False}},
             {"access_scope": {"$exists": False}},
         ]}),
@@ -207,50 +255,118 @@ async def run_migration(current_user: dict = Depends(require_governance)):
 
 
 @router.get("/users", response_model=UserAccessList)
-async def list_users(current_user: dict = Depends(require_governance)):
+async def list_users(current_user: dict = Depends(require_access_manager)):
     users = await db.users.find({}, {"password": 0}).sort([("rol", 1), ("nombre", 1)]).to_list(10000)
     return {"items": [serialize_user(user) for user in users]}
+
+
+@router.get("/access-candidates", response_model=dict)
+async def list_access_candidates(current_user: dict = Depends(require_access_manager)):
+    people = await db.persons.find(
+        {"$or": [{"auth_user_id": {"$exists": False}}, {"auth_user_id": None}]},
+        {"nombre": 1, "apellido": 1, "apellidos": 1, "person_number": 1},
+    ).sort([("nombre", 1), ("apellido", 1)]).to_list(1000)
+    items = []
+    for person in people:
+        person_id = str(person["_id"])
+        contact = await db.person_contacts.find_one({"person_id": person_id, "tipo": "email"}, {"_id": 0, "valor": 1})
+        surname = person.get("apellidos") or person.get("apellido") or ""
+        items.append({
+            "person_id": person_id,
+            "name": " ".join(part for part in [person.get("nombre", ""), surname] if part).strip(),
+            "person_number": person.get("person_number"),
+            "email": (contact or {}).get("valor", ""),
+        })
+    return {"items": items, "total": len(items)}
+
+
+@router.post("/users", response_model=UserAccessItem, status_code=201)
+async def create_user_access(payload: UserAccessCreate, current_user: dict = Depends(require_access_manager)):
+    ensure_level_allowed(current_user, payload.access_level)
+    if not ObjectId.is_valid(payload.person_id):
+        raise HTTPException(status_code=400, detail="Perfil 360 inválido")
+    person = await db.persons.find_one({"_id": ObjectId(payload.person_id)})
+    if not person:
+        raise HTTPException(status_code=404, detail="Perfil 360 no encontrado")
+    if person.get("auth_user_id") or await db.users.find_one({"person_id": payload.person_id}):
+        raise HTTPException(status_code=409, detail="Este Perfil 360 ya tiene acceso")
+    email = str(payload.email).strip().lower()
+    if await db.users.find_one({"email": email}):
+        raise HTTPException(status_code=409, detail="Este correo ya tiene acceso")
+    defaults = access_defaults(payload.access_level)
+    now = datetime.now(timezone.utc)
+    surname = person.get("apellidos") or person.get("apellido") or ""
+    user_doc = {
+        "nombre": " ".join(part for part in [person.get("nombre", ""), surname] if part).strip(),
+        "email": email,
+        "password": bcrypt.hashpw(payload.temporary_password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8"),
+        "person_id": payload.person_id,
+        "is_active": True,
+        "must_change_password": True,
+        "token_version": 1,
+        "created_by_user_id": current_user["user_id"],
+        "created_at": now,
+        "updated_at": now,
+        **defaults,
+    }
+    result = await db.users.insert_one(user_doc)
+    user_id = str(result.inserted_id)
+    linked = await db.persons.update_one(
+        {"_id": person["_id"], "$or": [{"auth_user_id": {"$exists": False}}, {"auth_user_id": None}]},
+        {"$set": {"auth_user_id": user_id, "updated_at": now}},
+    )
+    if not linked.modified_count:
+        await db.users.delete_one({"_id": result.inserted_id})
+        raise HTTPException(status_code=409, detail="El Perfil 360 fue vinculado por otra operación")
+    return serialize_user(user_doc)
 
 
 @router.put("/users/{user_id}/access", response_model=UserAccessItem)
 async def update_user_access(
     user_id: str,
     payload: AccessUpdate,
-    current_user: dict = Depends(require_governance),
+    current_user: dict = Depends(require_access_manager),
 ):
     if not ObjectId.is_valid(user_id):
         raise HTTPException(status_code=400, detail="user_id inválido")
     target = await db.users.find_one({"_id": ObjectId(user_id)})
     if not target:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
-    if user_id == current_user["user_id"] and (not payload.is_active or payload.rol != "pastor"):
+    requested_level = payload.access_level or payload.rol
+    if not requested_level:
+        raise HTTPException(status_code=400, detail="Debe indicar el nivel de acceso")
+    ensure_level_allowed(current_user, requested_level, target)
+    requested_role = "lider" if requested_level == "coordinador_general" else requested_level
+    if user_id == current_user["user_id"] and (not payload.is_active or requested_role != "pastor"):
         raise HTTPException(status_code=400, detail="No puede retirar su propio acceso de pastor")
-    if target.get("rol") == "pastor" and (payload.rol != "pastor" or not payload.is_active):
+    if target.get("rol") == "pastor" and (requested_role != "pastor" or not payload.is_active):
         active_pastors = await db.users.count_documents({"rol": "pastor", "is_active": {"$ne": False}})
         if active_pastors <= 1:
             raise HTTPException(status_code=400, detail="Debe existir al menos un pastor activo")
-    defaults = access_defaults_for_role(payload.rol)
-    allowed = set(PERSON_DOMAIN_CAPABILITIES + PROCESS_CAPABILITIES + CELLULAR_CAPABILITIES + DOOR_BOARD_CAPABILITIES + [PERSON_PASTORAL_NOTES_READ, CORE_GOVERNANCE_MANAGE])
+    defaults = access_defaults(requested_level)
+    allowed = set(PERSON_DOMAIN_CAPABILITIES + PROCESS_CAPABILITIES + CELLULAR_CAPABILITIES + DOOR_BOARD_CAPABILITIES + [PERSON_PASTORAL_NOTES_READ, CORE_GOVERNANCE_MANAGE, CORE_ACCESS_MANAGE])
     capabilities = defaults["capabilities"]
     if payload.capabilities is not None:
+        if current_user.get("rol") != "pastor":
+            raise HTTPException(status_code=403, detail="Solo el pastor puede personalizar capacidades")
         invalid = sorted(set(payload.capabilities) - allowed)
         if invalid:
             raise HTTPException(status_code=400, detail=f"Capabilities inválidas: {', '.join(invalid)}")
         capabilities = sorted(set(payload.capabilities))
-        if payload.rol == "pastor" and CORE_GOVERNANCE_MANAGE not in capabilities:
+        if requested_role == "pastor" and CORE_GOVERNANCE_MANAGE not in capabilities:
             capabilities.append(CORE_GOVERNANCE_MANAGE)
     changed = (
-        target.get("rol") != payload.rol
+        target.get("rol") != requested_role
         or target.get("is_active", True) is not payload.is_active
         or sorted(target.get("capabilities") or []) != sorted(capabilities)
         or target.get("access_scope") != defaults["access_scope"]
     )
     update = {
-        "rol": payload.rol,
+        "rol": requested_role,
         "is_active": payload.is_active,
         "capabilities": capabilities,
         "access_scope": defaults["access_scope"],
-        "access_policy_version": 11,
+        "access_policy_version": 12,
         "updated_at": datetime.now(timezone.utc),
     }
     if changed:

@@ -26,6 +26,7 @@ import PresentacionImprimirPage from './pages/PresentacionImprimirPage';
 import PresentacionNotasPage from './pages/PresentacionNotasPage';
 import CodigosInvitacionPage from './pages/CodigosInvitacionPage';
 import CoreGovernancePage from './pages/CoreGovernancePage';
+import ChangePasswordPage from './pages/ChangePasswordPage';
 import ProcessesDashboardPage from './pages/processes/ProcessesDashboardPage';
 import SevenWeeksPage from './pages/processes/SevenWeeksPage';
 import SevenWeeksDetailPage from './pages/processes/SevenWeeksDetailPage';
@@ -55,6 +56,7 @@ function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
   if (loading) return <div className="flex items-center justify-center min-h-screen"><div className="text-lg text-muted-foreground">Cargando...</div></div>;
   if (!user) return <Navigate to="/login" />;
+  if (user.must_change_password) return <Navigate to="/cambiar-clave" replace />;
   return children;
 }
 
@@ -76,6 +78,14 @@ function StaffRoute({ children }) {
   return children;
 }
 
+function AccessManagerRoute({ children }) {
+  const { user, loading } = useAuth();
+  if (loading) return <div className="flex min-h-screen items-center justify-center">Cargando…</div>;
+  if (!user) return <Navigate to="/login" replace />;
+  if (user.rol !== 'pastor' && !(user.capabilities || []).includes('core.access.manage')) return <Navigate to="/" replace />;
+  return children;
+}
+
 // Redirect to correct dashboard based on role
 function RoleDashboard() {
   const { user } = useAuth();
@@ -90,6 +100,7 @@ function App() {
       <Router>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/cambiar-clave" element={<ChangePasswordPage />} />
           {/* Rutas de presentación full-screen (fuera del AppLayout) */}
           <Route path="/presentacion/presenter" element={<StaffRoute><PresentacionPresenterPage /></StaffRoute>} />
           <Route path="/presentacion/audiencia/:code" element={<PresentacionAudiencePage />} />
@@ -101,7 +112,7 @@ function App() {
             
             {/* Pastor routes */}
             <Route path="dashboard-general" element={<DashboardGeneralPage />} />
-            <Route path="nucleo" element={<PastorOnlyRoute><CoreGovernancePage /></PastorOnlyRoute>} />
+            <Route path="nucleo" element={<AccessManagerRoute><CoreGovernancePage /></AccessManagerRoute>} />
             <Route path="procesos/dashboard" element={<ProcessesDashboardPage />} />
             <Route path="procesos/7-semanas" element={<SevenWeeksPage />} />
             <Route path="procesos/7-semanas/:enrollmentId" element={<SevenWeeksDetailPage />} />

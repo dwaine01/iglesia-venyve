@@ -19,7 +19,8 @@ import { BRAND } from '../config/brand';
 const LOGO_URL = LOGO_IGLESIA;
 
 // Menu items by role
-const getNavItems = (rol) => {
+const getNavItems = (user) => {
+  const rol = user?.rol;
   if (rol === 'pastor') {
     return [
       { to: '/dashboard-general', icon: Crown, label: 'Panel General', end: true },
@@ -54,7 +55,7 @@ const getNavItems = (rol) => {
   }
   
   // Default: lider
-  return [
+  const items = [
     { to: '/', icon: LayoutDashboard, label: 'Panel principal', end: true },
     { to: '/procesos/dashboard', icon: Activity, label: 'Panel de Procesos', testId: 'nav-process-dashboard' },
     { to: '/procesos/7-semanas', icon: BookOpenCheck, label: 'Ley de las 7 Semanas', testId: 'nav-seven-weeks' },
@@ -73,6 +74,10 @@ const getNavItems = (rol) => {
     { to: '/presentacion', icon: Presentation, label: 'Manual de 7 Semanas' },
     { to: '/estadisticas', icon: BarChart3, label: 'Estadísticas' },
   ];
+  if ((user?.capabilities || []).includes('core.access.manage')) {
+    items.splice(1, 0, { to: '/nucleo', icon: DatabaseZap, label: 'Gestión de accesos', testId: 'nav-core-governance' });
+  }
+  return items;
 };
 
 const breadcrumbMap = {
@@ -115,10 +120,11 @@ const breadcrumbMap = {
 
 function SidebarContent({ onClose, testIdPrefix = '' }) {
   const { user, logout } = useAuth();
-  const navItems = getNavItems(user?.rol);
+  const navItems = getNavItems(user);
 
   const getRolLabel = () => {
     if (user?.rol === 'pastor') return 'Pastor (Acceso Maestro)';
+    if (user?.access_level === 'coordinador_general') return 'Coordinador general';
     if (user?.rol === 'persona') return 'Consolidado';
     return 'Líder';
   };

@@ -23,6 +23,16 @@
 - Cambiar el rol de una cuenta de prueba, guardar y comprobar la actualización.
 - Verificar que la pantalla no tenga overflow en 1920x800 ni 390x844.
 
+## Gestión jerárquica de accesos
+
+- El contrato continúa siendo JWT Bearer; no se introducen cookies de sesión.
+- Pastor: crea y administra coordinadores generales, líderes y personas.
+- Coordinador general: crea y administra líderes y personas; nunca pastores ni otros coordinadores generales.
+- Cada acceso nuevo se vincula con un Perfil 360 existente y usa contraseña temporal bcrypt.
+- El primer ingreso exige cambio de contraseña; el cambio incrementa `token_version` y revoca el JWT anterior.
+- Verificar 403 para líder/persona en administración de accesos y 403 para coordinador intentando elevar privilegios.
+- Ninguna respuesta API puede incluir hash o contraseña.
+
 ## Mega‑Bloque B — Procesos
 
 - Registro público con rol líder/pastor debe retornar 403; sin invitación solo crea Persona.

@@ -15,6 +15,7 @@ from bson import ObjectId
 import json
 from dotenv import load_dotenv
 from access_control import (
+    CORE_ACCESS_MANAGE,
     access_defaults_for_role,
     ensure_access_defaults,
     normalized_access_scope,
@@ -172,6 +173,11 @@ class UserRegister(BaseModel):
 class UserLogin(BaseModel):
     email: EmailStr
     password: str
+
+
+class PasswordChange(BaseModel):
+    current_password: str = Field(min_length=1, max_length=128)
+    new_password: str = Field(min_length=10, max_length=128)
 
 
 class InviteCodeCreate(BaseModel):
@@ -982,7 +988,7 @@ async def login(user: UserLogin, request: Request):
         user_token_version(db_user),
     )
     person_id = db_user.get("person_id")
-    return {"token": token, "user": {"id": user_id, "nombre": db_user["nombre"], "email": db_user["email"], "rol": db_user["rol"], "person_id": person_id, "canonical_profile_path": f"/personas/{person_id}" if person_id else None}}
+    return {"token": token, "user": {"id": user_id, "nombre": db_user["nombre"], "email": db_user["email"], "rol": db_user["rol"], "person_id": person_id, "canonical_profile_path": f"/personas/{person_id}" if person_id else None, "capabilities": normalized_capabilities(db_user), "access_level": "coordinador_general" if db_user.get("rol") == "lider" and CORE_ACCESS_MANAGE in normalized_capabilities(db_user) else db_user.get("rol"), "must_change_password": db_user.get("must_change_password", False) is True}}
 
 
 @app.get("/api/auth/me")
@@ -994,7 +1000,25 @@ async def get_me(authorization: Optional[str] = Header(None)):
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     person_id = user.get("person_id")
-    return {"id": str(user["_id"]), "nombre": user["nombre"], "email": user["email"], "rol": user["rol"], "person_id": person_id, "canonical_profile_path": f"/personas/{person_id}" if person_id else None}
+    return {"id": str(user["_id"]), "nombre": user["nombre"], "email": user["email"], "rol": user["rol"], "person_id": person_id, "canonical_profile_path": f"/personas/{person_id}" if person_id else None, "capabilities": normalized_capabilities(user), "access_level": "coordinador_general" if user.get("rol") == "lider" and CORE_ACCESS_MANAGE in normalized_capabilities(user) else user.get("rol"), "must_change_password": user.get("must_change_password", False) is True}
+
+
+@app.post("/api/auth/change-password")
+async def change_password(payload: PasswordChange, current_user: dict = Depends(get_current_user)):
+    user = await db.users.find_one({"_id": ObjectId(current_user["user_id"])})
+    if not user or not bcrypt.checkpw(payload.current_password.encode("utf-8"), user["password"].encode("utf-8")):
+        raise HTTPException(status_code=400, detail="La clave actual no es correcta")
+    if bcrypt.checkpw(payload.new_password.encode("utf-8"), user["password"].encode("utf-8")):
+        raise HTTPException(status_code=400, detail="La nueva clave debe ser diferente")
+    new_version = user_token_version(user) + 1
+    await db.users.update_one(
+        {"_id": user["_id"]},
+        {"$set": {"password": bcrypt.hashpw(payload.new_password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8"), "must_change_password": False, "token_version": new_version, "updated_at": utc_now()}},
+    )
+    token = create_token(str(user["_id"]), user["email"], user["rol"], new_version)
+    capabilities = normalized_capabilities(user)
+    person_id = user.get("person_id")
+    return {"token": token, "user": {"id": str(user["_id"]), "nombre": user["nombre"], "email": user["email"], "rol": user["rol"], "person_id": person_id, "canonical_profile_path": f"/personas/{person_id}" if person_id else None, "capabilities": capabilities, "access_level": "coordinador_general" if user.get("rol") == "lider" and CORE_ACCESS_MANAGE in capabilities else user.get("rol"), "must_change_password": False}}
 
 
 # --- Contacts Routes ---

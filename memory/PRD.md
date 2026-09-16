@@ -330,6 +330,27 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - Datos efímeros de certificación eliminados y verificados: **0 residuos QA temporales**.
 - Regresiones críticas: **0**. Reportes: `/app/test_reports/iteration_10.json` y `/app/test_reports/iteration_11.json`.
 
+### Corrección crítica Junta + Accesos jerárquicos v1 — COMPLETADO 2026‑09‑16
+
+- Corregida pantalla blanca de preview provocada por overlay de `ResizeObserver`; el aviso benigno ya no cubre la aplicación.
+- Al abrir una reunión, Junta cambia automáticamente a **Audio/Minuta** y muestra **Ir a grabación** en la cabecera.
+- `BoardRecorder` usa el API activo por bloques: `/api/board/recordings/uploads`, `chunks/{seq}` y `complete`; acepta WebM, MP4 y OGG según navegador.
+- El control muestra espera de micrófono y errores legibles de permiso, dispositivo o navegador.
+- Pastor crea accesos desde un Perfil 360 existente con clave temporal; primer ingreso exige cambio de clave y revoca el JWT anterior.
+- Pastor puede crear coordinadores generales; coordinadores generales pueden crear líderes/personas, pero reciben 403 al intentar crear o modificar pastor/coordinador.
+- Consola `/nucleo` disponible para pastor y coordinadores autorizados mediante `core.access.manage`.
+- Validación: React build PASS, frontend 17/17 PASS, auth/Junta 13/13 iniciales PASS; Mega‑Bloque D volvió a PASS tras limpiar fixtures; datos temporales eliminados.
+- Reporte independiente: `/app/test_reports/iteration_12.json`. El hallazgo de rutas antiguas de grabación fue corregido después del reporte y validado contra la suite activa.
+
+### P0 — siguiente: Gobierno jerárquico y confidencialidad v2
+
+- Pastor es superadministrador único y decide cuántos coordinadores generales existen.
+- Todo coordinador general debe completar información administrativa, cambio de clave, consentimiento electrónico de privacidad/confidencialidad, seguridad de dispositivo y deber de reportar incidentes antes de recibir acceso operativo.
+- Privilegios restringidos se otorgan individualmente por el pastor: Junta Directiva/libro de minutas y Finanzas/Contabilidad. Ser coordinador general no concede estos accesos automáticamente.
+- Jerarquía delegable: Pastor → Coordinador general → Director de área/ministerio/células → secretario, tesorero y equipo.
+- Cada nivel solo podrá crear cuentas dentro de su alcance y delegar un subconjunto de sus propios privilegios; nunca podrá elevarse ni conceder Junta/Finanzas sin autorización pastoral.
+- Finanzas deberá permitir únicamente las personas designadas explícitamente por el pastor; la cantidad no se codificará de forma rígida hasta confirmar el límite operativo.
+
 ### P0 — siguiente: Mega‑Bloque G — CONTABILIDAD Y FINANZAS
 
 - Jurisdicción: Columbus, Ohio, Estados Unidos.
