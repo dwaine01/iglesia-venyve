@@ -21,6 +21,12 @@ PERSON_ATTENDANCE_WRITE = "person.attendance.write"
 PERSON_NOTES_READ = "person.notes.read"
 PERSON_NOTES_WRITE = "person.notes.write"
 PERSON_HISTORY_READ = "person.history.read"
+PERSON_DIRECTORY_SEARCH = "person.directory.search"
+PERSON_TALENTS_READ = "person.talents.read"
+PERSON_TALENTS_WRITE = "person.talents.write"
+PERSON_MINISTRIES_READ = "person.ministries.read"
+PERSON_MINISTRIES_WRITE = "person.ministries.write"
+MINISTRIES_CATALOG_MANAGE = "ministries.catalog.manage"
 PERSON_CONTACTS_READ = "person.contacts.read"
 PERSON_CONTACTS_WRITE = "person.contacts.write"
 PERSON_ADDRESSES_READ = "person.addresses.read"
@@ -41,6 +47,12 @@ PERSON_DOMAIN_CAPABILITIES = [
     PERSON_NOTES_READ,
     PERSON_NOTES_WRITE,
     PERSON_HISTORY_READ,
+    PERSON_DIRECTORY_SEARCH,
+    PERSON_TALENTS_READ,
+    PERSON_TALENTS_WRITE,
+    PERSON_MINISTRIES_READ,
+    PERSON_MINISTRIES_WRITE,
+    MINISTRIES_CATALOG_MANAGE,
     PERSON_CONTACTS_READ,
     PERSON_CONTACTS_WRITE,
     PERSON_ADDRESSES_READ,
@@ -71,7 +83,7 @@ def access_defaults_for_role(role: str) -> dict:
             {"capabilities": [], "access_scope": {"persons": "none"}},
         )
     )
-    defaults["access_policy_version"] = 3
+    defaults["access_policy_version"] = 5
     return defaults
 
 
@@ -120,9 +132,9 @@ async def ensure_access_defaults(db) -> None:
             {"$set": {"access_scope": defaults["access_scope"]}},
         )
         await db.users.update_many(
-            {"rol": role, "access_policy_version": {"$ne": 3}},
+            {"rol": role, "access_policy_version": {"$ne": 5}},
             {
                 "$addToSet": {"capabilities": {"$each": defaults["capabilities"]}},
-                "$set": {"access_policy_version": 3},
+                "$set": {"access_policy_version": 5},
             },
         )

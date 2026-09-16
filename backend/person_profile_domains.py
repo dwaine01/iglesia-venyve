@@ -25,13 +25,19 @@ from access_control import (
     PERSON_HOUSEHOLD_WRITE,
     PERSON_NOTES_READ,
     PERSON_NOTES_WRITE,
+    PERSON_MINISTRIES_READ,
+    PERSON_MINISTRIES_WRITE,
     PERSON_PASTORAL_NOTES_READ,
+    PERSON_TALENTS_READ,
+    PERSON_TALENTS_WRITE,
     PERSON_PROFILE_SENSITIVE_READ,
     PERSON_PROFILE_WRITE,
     authorize_person,
     has_capability,
 )
 from core_person import _age_category, db, now_utc, require_person_profile_user
+from person_core_expansion import age_info, household_snapshot, relationship_items, talent_snapshot
+from ministries import assignment_items
 
 router = APIRouter(prefix="/api/core/persons", tags=["person-profile-domains"])
 MAX_PHOTO_BYTES = 5 * 1024 * 1024
@@ -106,11 +112,15 @@ class BasicsUpdate(BaseModel):
     nombre: Optional[str] = Field(default=None, min_length=2, max_length=100)
     apellido: Optional[str] = Field(default=None, min_length=2, max_length=100)
     fecha_nacimiento: Optional[str] = None
-    genero: Optional[str] = Field(default=None, max_length=60)
-    estado_civil: Optional[str] = Field(default=None, max_length=60)
-    ocupacion: Optional[str] = Field(default=None, max_length=140)
+    genero: Optional[Literal["masculino", "femenino", "no_especificado"]] = None
+    estado_civil: Optional[
+        Literal[
+            "soltero", "casado", "divorciado", "viudo",
+            "separado", "otro", "no_especificado",
+        ]
+    ] = None
 
-    @field_validator("nombre", "apellido", "genero", "estado_civil", "ocupacion")
+    @field_validator("nombre", "apellido")
     @classmethod
     def clean_text(cls, value: Optional[str]) -> Optional[str]:
         return clean_optional(value)
@@ -353,9 +363,17 @@ async def profile_domain_snapshot(person_id: str, current_user: dict) -> dict:
             "read": has_capability(current_user, PERSON_HISTORY_READ),
             "write": False,
         },
+        "talentos": {
+            "read": has_capability(current_user, PERSON_TALENTS_READ),
+            "write": has_capability(current_user, PERSON_TALENTS_WRITE),
+        },
+        "ministerios": {
+            "read": has_capability(current_user, PERSON_MINISTRIES_READ),
+            "write": has_capability(current_user, PERSON_MINISTRIES_WRITE),
+        },
     }
-    household_doc = (
-        await db.person_households.find_one({"person_id": person_id})
+    household = (
+        await household_snapshot(person_id)
         if permissions["household"]["read"]
         else None
     )
@@ -364,8 +382,8 @@ async def profile_domain_snapshot(person_id: str, current_user: dict) -> dict:
         if permissions["procesos"]["read"]
         else None
     )
-    family_docs = (
-        await db.person_family.find({"person_id": person_id}).sort("created_at", 1).to_list(100)
+    family = (
+        await relationship_items(person_id)
         if permissions["familia"]["read"]
         else []
     )
@@ -395,8 +413,12 @@ async def profile_domain_snapshot(person_id: str, current_user: dict) -> dict:
     return {
         "permissions": permissions,
         "photo_available": bool(photo),
-        "household": serialize_household(household_doc),
-        "familia": [serialize_family(item) for item in family_docs],
+        "household": household,
+        "familia": family,
+        "talentos": await talent_snapshot(person_id),
+        "ministerios": (
+            await assignment_items(person_id) if permissions["ministerios"]["read"] else []
+        ),
         "llegada_origen": serialize_arrival(arrival_doc),
         "asistencia": [serialize_attendance(item) for item in attendance_docs],
         "notas": [serialize_note(item) for item in note_docs],
@@ -575,8 +597,10 @@ async def delete_household(person_id: str, current_user: dict = Depends(require_
 @router.get("/{person_id}/family")
 async def list_family(person_id: str, current_user: dict = Depends(require_person_profile_user)):
     await authorize_domain(person_id, current_user, PERSON_FAMILY_READ)
-    docs = await db.person_family.find({"person_id": person_id}).sort("created_at", 1).to_list(200)
-    return {"items": [serialize_family(doc) for doc in docs]}
+    raise HTTPException(
+        status_code=410,
+        detail="Familia usa relaciones canónicas; consulte /relationships",
+    )
 
 
 @router.post("/{person_id}/family", status_code=status.HTTP_201_CREATED)
@@ -586,18 +610,10 @@ async def create_family(
     current_user: dict = Depends(require_person_profile_user),
 ):
     await authorize_domain(person_id, current_user, PERSON_FAMILY_WRITE)
-    now = now_utc()
-    doc = {
-        "_id": str(uuid4()),
-        "person_id": person_id,
-        **payload.model_dump(),
-        "created_by": current_user["user_id"],
-        "created_at": now,
-        "updated_at": now,
-    }
-    await db.person_family.insert_one(doc)
-    await record_activity(person_id, current_user, "familia", "created", f"Relación agregada: {doc['relacion']}")
-    return serialize_family(doc)
+    raise HTTPException(
+        status_code=410,
+        detail="No se permiten familiares como texto; use /relationships",
+    )
 
 
 @router.put("/{person_id}/family/{relation_id}")
@@ -608,14 +624,10 @@ async def update_family(
     current_user: dict = Depends(require_person_profile_user),
 ):
     await authorize_domain(person_id, current_user, PERSON_FAMILY_WRITE)
-    update = {**payload.model_dump(), "updated_at": now_utc()}
-    result = await db.person_family.update_one(
-        {"_id": relation_id, "person_id": person_id}, {"$set": update}
+    raise HTTPException(
+        status_code=410,
+        detail="No se permiten familiares como texto; use /relationships",
     )
-    if not result.matched_count:
-        raise HTTPException(status_code=404, detail="Relación familiar no encontrada")
-    await record_activity(person_id, current_user, "familia", "updated", "Relación familiar actualizada")
-    return serialize_family(await db.person_family.find_one({"_id": relation_id}))
 
 
 @router.delete("/{person_id}/family/{relation_id}")
@@ -627,9 +639,8 @@ async def delete_family(
     await authorize_domain(person_id, current_user, PERSON_FAMILY_WRITE)
     result = await db.person_family.delete_one({"_id": relation_id, "person_id": person_id})
     if not result.deleted_count:
-        raise HTTPException(status_code=404, detail="Relación familiar no encontrada")
-    await record_activity(person_id, current_user, "familia", "deleted", "Relación familiar eliminada")
-    return {"message": "Relación familiar eliminada"}
+        raise HTTPException(status_code=404, detail="Relación heredada no encontrada")
+    return {"message": "Relación heredada eliminada"}
 
 
 @router.get("/{person_id}/arrival")

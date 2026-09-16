@@ -14,6 +14,8 @@ import EstadisticasPage from './pages/EstadisticasPage';
 import PersonasListPage from './pages/PersonasListPage';
 import PersonaNuevaPage from './pages/PersonaNuevaPage';
 import PersonaPerfilPage from './pages/PersonaPerfilPage';
+import MinisteriosPage from './pages/MinisteriosPage';
+import MinisterioDetailPage from './pages/MinisterioDetailPage';
 import BitacoraPage from './pages/BitacoraPage';
 import PresentacionHomePage from './pages/PresentacionHomePage';
 import PresentacionPresenterPage from './pages/PresentacionPresenterPage';
@@ -85,7 +87,9 @@ function App() {
             <Route path="registro" element={<StaffRoute><RegistroPage /></StaffRoute>} />
           <Route path="personas" element={<StaffRoute><PersonasListPage /></StaffRoute>} />
           <Route path="personas/nueva" element={<StaffRoute><PersonaNuevaPage /></StaffRoute>} />
-            <Route path="personas/:personId" element={<PersonaPerfilPage />} />
+          <Route path="personas/:personId" element={<PersonaPerfilPage />} />
+          <Route path="ministerios" element={<MinisteriosPage />} />
+          <Route path="ministerios/:ministryId" element={<MinisterioDetailPage />} />
             <Route path="bitacora" element={<StaffRoute><BitacoraPage /></StaffRoute>} />
             <Route path="codigos" element={<StaffRoute><CodigosInvitacionPage /></StaffRoute>} />
             <Route path="estadisticas" element={<EstadisticasPage />} />

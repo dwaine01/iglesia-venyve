@@ -15,6 +15,14 @@ export default function PersonasListPage() {
   const { API, getAuthHeaders } = useAuth();
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
+  const [talentId, setTalentId] = useState('');
+  const [gender, setGender] = useState('');
+  const [ageGroup, setAgeGroup] = useState('');
+  const [catalog, setCatalog] = useState([]);
+  const [ministryId, setMinistryId] = useState('');
+  const [ministryRoleId, setMinistryRoleId] = useState('');
+  const [ministries, setMinistries] = useState([]);
+  const [ministryRoles, setMinistryRoles] = useState([]);
   const [persons, setPersons] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -24,9 +32,17 @@ export default function PersonasListPage() {
     setLoading(true);
     setError('');
     try {
-      const res = await axios.get(`${API}/api/core/persons`, {
+      const res = await axios.get(`${API}/api/core/persons/directory/search`, {
         ...getAuthHeaders(),
-        params: search ? { search, limit: 50 } : { limit: 50 },
+        params: {
+          q: search || undefined,
+          talent_id: talentId || undefined,
+          genero: gender || undefined,
+          age_group: ageGroup || undefined,
+          ministry_id: ministryId || undefined,
+          ministry_role_id: ministryRoleId || undefined,
+          limit: 50,
+        },
       });
       setPersons(res.data.items || []);
       setTotal(res.data.total || 0);
@@ -35,6 +51,22 @@ export default function PersonasListPage() {
     } finally {
       setLoading(false);
     }
+  }, [API, ageGroup, gender, getAuthHeaders, ministryId, ministryRoleId, talentId]);
+
+  useEffect(() => {
+    Promise.all([
+      axios.get(`${API}/api/core/talents/catalog`, getAuthHeaders()),
+      axios.get(`${API}/api/ministries`, getAuthHeaders()),
+      axios.get(`${API}/api/ministries/roles/catalog`, getAuthHeaders()),
+    ])
+      .then(([talentResponse, ministryResponse, roleResponse]) => {
+        setCatalog(talentResponse.data.items || []);
+        setMinistries(ministryResponse.data.items || []);
+        setMinistryRoles(roleResponse.data.items || []);
+      })
+      .catch(() => {
+        setCatalog([]); setMinistries([]); setMinistryRoles([]);
+      });
   }, [API, getAuthHeaders]);
 
   useEffect(() => {
@@ -46,7 +78,7 @@ export default function PersonasListPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#F5F0E8] via-[#FAFAF8] to-[#EDE8DD] p-4 md:p-8">
-      <div className="max-w-5xl mx-auto space-y-6">
+      <div className="max-w-7xl mx-auto space-y-6">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
             <h1 className="text-2xl md:text-3xl font-bold text-gray-900 flex items-center gap-2">
@@ -69,18 +101,39 @@ export default function PersonasListPage() {
         <Card className="border-none shadow-md">
           <CardHeader className="pb-3">
             <CardTitle className="text-base font-semibold text-gray-700">
-              Buscar por nombre, apellido o número VV
+              Directorio interno de Personas y talentos
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="relative mb-4">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <Input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Ej. María González o VV-000012"
-                className="pl-9"
-              />
+            <div className="mb-4 grid gap-3 md:grid-cols-2 xl:grid-cols-7">
+              <div className="relative md:col-span-2">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Nombre, VV, Pintor, Mecánico..."
+                  className="pl-9"
+                />
+              </div>
+              <select value={talentId} onChange={(e) => setTalentId(e.target.value)} className="h-9 rounded-md border bg-white px-3 text-sm">
+                <option value="">Toda ocupación/habilidad</option>
+                {catalog.map((item) => <option key={item.talent_id} value={item.talent_id}>{item.nombre}</option>)}
+              </select>
+              <select value={gender} onChange={(e) => setGender(e.target.value)} className="h-9 rounded-md border bg-white px-3 text-sm">
+                <option value="">Todo género</option><option value="masculino">Masculino</option><option value="femenino">Femenino</option><option value="no_especificado">No especificado</option>
+              </select>
+              <select value={ageGroup} onChange={(e) => setAgeGroup(e.target.value)} className="h-9 rounded-md border bg-white px-3 text-sm">
+                <option value="">Todo grupo de edad</option><option value="ninez">Niñez</option><option value="adolescencia">Adolescencia</option><option value="adulto">Adulto</option>
+              </select>
+              <select value={ministryId} onChange={(e) => setMinistryId(e.target.value)} className="h-9 rounded-md border bg-white px-3 text-sm">
+                <option value="">Todo Ministerio</option>{ministries.map((item) => <option key={item.ministry_id} value={item.ministry_id}>{item.nombre}</option>)}
+              </select>
+              <select value={ministryRoleId} onChange={(e) => setMinistryRoleId(e.target.value)} className="h-9 rounded-md border bg-white px-3 text-sm">
+                <option value="">Toda función ministerial</option>{ministryRoles.map((item) => <option key={item.role_id} value={item.role_id}>{item.nombre}</option>)}
+              </select>
+            </div>
+            <div className="mb-4 rounded-md border border-dashed bg-gray-50 px-3 py-2 text-xs text-gray-500">
+              Estado de Membresía: filtro preparado, disponible cuando el módulo Membresía sea fuente de verdad.
             </div>
             {error && (
               <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-md p-3 mb-4">
@@ -105,8 +158,8 @@ export default function PersonasListPage() {
                     <TableRow>
                       <TableHead>VV</TableHead>
                       <TableHead>Nombre</TableHead>
-                      <TableHead>Teléfono</TableHead>
-                      <TableHead>Categoría</TableHead>
+                      <TableHead>Ocupación / habilidades</TableHead>
+                      <TableHead>Edad / categoría</TableHead>
                       <TableHead className="text-right">Acción</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -119,11 +172,14 @@ export default function PersonasListPage() {
                         <TableCell className="font-medium">
                           <PersonCanonicalLink personId={p.person_id}>{nombreCompleto(p)}</PersonCanonicalLink>
                         </TableCell>
-                        <TableCell>{p.telefono || '—'}</TableCell>
                         <TableCell>
-                          {p.age_category ? (
-                            <Badge variant="secondary" className="capitalize">
-                              {p.age_category}
+                          <p className="font-medium text-gray-800">{p.talents?.ocupacion_principal?.nombre || '—'}</p>
+                          {p.talents?.habilidades?.length > 0 && <p className="max-w-xs text-xs text-gray-500">{p.talents.habilidades.map((item) => item.nombre).join(', ')}</p>}
+                        </TableCell>
+                        <TableCell>
+                          {p.age_group_label ? (
+                            <Badge variant="secondary">
+                              {p.age_years} años · {p.age_group_label}
                             </Badge>
                           ) : (
                             '—'

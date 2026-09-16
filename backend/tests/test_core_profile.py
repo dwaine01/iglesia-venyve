@@ -76,7 +76,8 @@ async def test_profile_returns_header_and_sections(client):
     assert "city" not in header
 
     sections = body["sections"]
-    assert len(sections) == 3 + len(PLANNED_DOMAINS)
+    # 1 core + 2 real domains (contacto, direcciones) + 1 ministerio_servicio + PLANNED_DOMAINS
+    assert len(sections) == 1 + 2 + 1 + len(PLANNED_DOMAINS)
 
     core_section = sections[0]
     assert core_section["section_key"] == "core"
@@ -84,11 +85,11 @@ async def test_profile_returns_header_and_sections(client):
     assert core_section["summary"] == "Laura Martinez"
 
     domain_sections = sections[1:]
-    expected_keys = ["contacto", "direcciones", *[key for key, _ in PLANNED_DOMAINS]]
+    expected_keys = ["contacto", "direcciones", "ministerio_servicio", *[key for key, _ in PLANNED_DOMAINS]]
     assert [section["section_key"] for section in domain_sections] == expected_keys
     restricted_keys = {
         "contacto", "direcciones", "llegada_origen", "familia",
-        "household", "asistencia", "historial",
+        "household", "asistencia", "historial", "ministerio_servicio",
     }
     for section in domain_sections:
         expected_status = (

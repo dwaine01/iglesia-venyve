@@ -1,4 +1,5 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   BookOpen,
   BriefcaseBusiness,
@@ -56,6 +57,7 @@ const statusContent = (section) => {
 };
 
 export default function Profile360Summary({ sections, available, onSelect }) {
+  const navigate = useNavigate();
   const modules = sections.filter((section) => section.section_key !== 'core');
 
   return (
@@ -69,7 +71,7 @@ export default function Profile360Summary({ sections, available, onSelect }) {
         {modules.map((section, index) => {
           const Icon = ICONS[section.section_key] || FALLBACK_ICONS[index % FALLBACK_ICONS.length];
           const targetTab = section.tab_key || section.section_key;
-          const canOpen = available.includes(targetTab);
+          const canOpen = Boolean(section.route) || available.includes(targetTab);
           const status = statusContent(section);
           const unavailable = section.status_code === 'module_unavailable';
           const restricted = section.status_code === 'access_restricted';
@@ -79,7 +81,7 @@ export default function Profile360Summary({ sections, available, onSelect }) {
               key={section.section_key}
               type="button"
               disabled={!canOpen}
-              onClick={() => canOpen && onSelect(targetTab)}
+              onClick={() => canOpen && (section.route ? navigate(section.route) : onSelect(targetTab))}
               data-testid={`resumen-360-card-${section.section_key}`}
               className={`group min-h-[104px] w-full rounded-lg border p-4 text-left transition-all ${
                 canOpen

@@ -82,7 +82,13 @@ export default function PersonProfileHeader({ header, photoSrc, onEdit, onSelect
     },
     { key: 'gender', icon: UsersRound, label: 'Género', value: titleCase(header.genero) },
     { key: 'civil', icon: Heart, label: 'Estado civil', value: titleCase(header.estado_civil) },
-    { key: 'occupation', icon: BriefcaseBusiness, label: 'Ocupación', value: header.ocupacion },
+    {
+      key: 'occupation',
+      icon: BriefcaseBusiness,
+      label: 'Ocupación principal',
+      value: header.ocupacion,
+      helper: header.habilidades?.map((item) => item.nombre).join(', ') || null,
+    },
   ].filter((item) => item.value);
 
   const copyNumber = async () => {

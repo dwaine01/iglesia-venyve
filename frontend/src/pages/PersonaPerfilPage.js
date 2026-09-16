@@ -7,9 +7,9 @@ import PersonContactSection from '../components/PersonContactSection';
 import PersonProfileHeader from '../components/PersonProfileHeader';
 import PersonProfileEditor from '../components/PersonProfileEditor';
 import Profile360Summary from '../components/Profile360Summary';
+import CanonicalFamilySection from '../components/CanonicalFamilySection';
 import {
   AttendanceSection,
-  FamilySection,
   HistorySection,
   HouseholdSection,
   ProcessesSection,
@@ -148,6 +148,8 @@ export default function PersonaPerfilPage() {
             onOpenChange={setEditorOpen}
             personId={personId}
             header={header}
+            talents={profile.talentos}
+            canEditTalents={profile.permissions?.talentos?.write}
             API={API}
             getAuthHeaders={getAuthHeaders}
             onChanged={refreshProfile}
@@ -210,13 +212,13 @@ export default function PersonaPerfilPage() {
 
           {available.includes('familia') && (
             <TabsContent value="familia" className="mt-0 rounded-xl border border-[#E8E5DE] bg-white p-4 shadow-sm sm:p-6">
-              <FamilySection personId={personId} items={profile.familia} canWrite={profile.permissions?.familia?.write} API={API} getAuthHeaders={getAuthHeaders} onChanged={refreshProfile} />
+              <CanonicalFamilySection personId={personId} items={profile.familia} canWrite={profile.permissions?.familia?.write} API={API} getAuthHeaders={getAuthHeaders} onChanged={refreshProfile} />
             </TabsContent>
           )}
 
           {available.includes('procesos') && (
             <TabsContent value="procesos" className="mt-0 rounded-xl border border-[#E8E5DE] bg-white p-4 shadow-sm sm:p-6">
-              <ProcessesSection personId={personId} arrival={profile.llegada_origen} processes={profile.procesos} canWrite={profile.permissions?.procesos?.write} API={API} getAuthHeaders={getAuthHeaders} onChanged={refreshProfile} />
+              <ProcessesSection personId={personId} arrival={profile.llegada_origen} processes={profile.procesos} ministries={profile.ministerios} canWrite={profile.permissions?.procesos?.write} canWriteMinistries={profile.permissions?.ministerios?.write} API={API} getAuthHeaders={getAuthHeaders} onChanged={refreshProfile} />
             </TabsContent>
           )}
 

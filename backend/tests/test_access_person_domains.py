@@ -133,12 +133,13 @@ async def test_explicit_capability_and_scope_enable_visible_profile_domains(scop
     assert domain_statuses["direcciones"] == "has_summary"
     expected_unavailable = {
         "membership", "bautismo", "bienvenida", "consolidacion", "ley7",
-        "discipulado", "mentor_acompanamiento", "celula", "ministerio_servicio",
+        "discipulado", "mentor_acompanamiento", "celula",
     }
     assert expected_unavailable.issubset(domain_statuses)
     assert {domain_statuses[key] for key in expected_unavailable} == {"module_unavailable"}
     # historial now shows has_summary because contact/address CRUD records activity
-    for built_key in ("llegada_origen", "familia", "household", "asistencia"):
+    # ministerio_servicio is now a real domain, shows no_record when no assignments
+    for built_key in ("llegada_origen", "familia", "household", "asistencia", "ministerio_servicio"):
         assert domain_statuses[built_key] == "no_record"
     assert domain_statuses["historial"] == "has_summary"
 

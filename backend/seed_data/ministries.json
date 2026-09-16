@@ -1,0 +1,13 @@
+[
+  {"nombre":"Pastoral"},
+  {"nombre":"Frontal"},
+  {"nombre":"Caballeros/Hombres"},
+  {"nombre":"Damas/Mujeres"},
+  {"nombre":"Jóvenes","suggested_age_groups":["adulto"]},
+  {"nombre":"Adolescentes","suggested_age_groups":["adolescencia"]},
+  {"nombre":"Niños","suggested_age_groups":["ninez"]},
+  {"nombre":"Ujieres"},
+  {"nombre":"Sonido"},
+  {"nombre":"Media"},
+  {"nombre":"Alabanza"}
+]

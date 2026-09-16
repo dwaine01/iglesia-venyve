@@ -60,31 +60,33 @@ async def test_complete_profile_block_is_modular_visible_and_persistent():
                     "apellido": "Guzmán",
                     "fecha_nacimiento": "1990-03-12",
                     "genero": "femenino",
-                    "estado_civil": "casada",
-                    "ocupacion": "Docente",
+                    "estado_civil": "casado",
                 },
             )
             assert basics.status_code == 200, basics.text
 
             household = await client.put(
-                f"/api/core/persons/{person_id}/household",
+                f"/api/core/persons/{person_id}/household-membership",
                 json={
                     "nombre_hogar": "Hogar Guzmán",
                     "rol_en_hogar": "Madre",
                     "tipo_vivienda": "Propia",
-                    "miembros_estimados": 4,
                     "notas": "Registro verificable",
                 },
             )
             family = await client.post(
-                f"/api/core/persons/{person_id}/family",
+                f"/api/core/persons/{person_id}/family/quick-create",
                 json={
-                    "nombre": "Carlos Guzmán",
-                    "relacion": "Hermano",
-                    "alcance": "extendida",
+                    "nombre": "Carlos",
+                    "apellido": "Guzmán",
+                    "fecha_nacimiento": "2012-08-09",
+                    "genero": "masculino",
                     "telefono": "809-555-0199",
+                    "relation_type": "sibling_of",
+                    "same_household": False,
                 },
             )
+            related_person_id = family.json().get("person_id") if family.status_code == 201 else None
             arrival = await client.put(
                 f"/api/core/persons/{person_id}/arrival",
                 json={
@@ -146,10 +148,10 @@ async def test_complete_profile_block_is_modular_visible_and_persistent():
             assert body["header"]["photo_available"] is True
             assert body["header"]["nombre_completo"] == "Ana María Guzmán"
             assert body["header"]["genero"] == "femenino"
-            assert body["header"]["estado_civil"] == "casada"
-            assert body["header"]["ocupacion"] == "Docente"
+            assert body["header"]["estado_civil"] == "casado"
             assert body["household"]["nombre_hogar"] == "Hogar Guzmán"
-            assert body["familia"][0]["alcance"] == "extendida"
+            assert body["familia"][0]["related_person_id"] == related_person_id
+            assert body["familia"][0]["relation_label"] == "Hermano/a"
             assert body["llegada_origen"]["lugar_origen"] == "Santiago"
             assert body["asistencia"][0]["actividad"] == "Servicio dominical"
             assert body["notas"][0]["categoria"] == "seguimiento"
@@ -158,11 +160,11 @@ async def test_complete_profile_block_is_modular_visible_and_persistent():
             assert {item["status_code"] for item in body["procesos"]} == {"module_unavailable"}
 
             statuses = {item["section_key"]: item["status_code"] for item in body["sections"]}
-            for built in ("llegada_origen", "familia", "household", "asistencia", "historial"):
-                assert statuses[built] == "has_summary"
+            for built in ("llegada_origen", "familia", "household", "asistencia", "historial", "ministerio_servicio"):
+                assert statuses[built] == "has_summary" if built != "ministerio_servicio" else "no_record"
             for unavailable in (
                 "membership", "bautismo", "bienvenida", "consolidacion", "ley7",
-                "discipulado", "mentor_acompanamiento", "celula", "ministerio_servicio",
+                "discipulado", "mentor_acompanamiento", "celula",
             ):
                 assert statuses[unavailable] == "module_unavailable"
 
@@ -170,9 +172,15 @@ async def test_complete_profile_block_is_modular_visible_and_persistent():
             for forbidden in ("household", "familia", "asistencia", "notas", "procesos"):
                 assert forbidden not in person_doc
         finally:
+            related_ids = [item for item in [related_person_id if 'related_person_id' in locals() else None] if item]
+            membership = await server.db.household_memberships.find_one({"person_id": person_id})
+            if membership:
+                await server.db.households.delete_one({"_id": membership["household_id"]})
+                await server.db.household_memberships.delete_many({"household_id": membership["household_id"]})
+            await server.db.person_relationships.delete_many({
+                "$or": [{"person_a_id": person_id}, {"person_b_id": person_id}]
+            })
             for collection in (
-                server.db.person_households,
-                server.db.person_family,
                 server.db.person_arrivals,
                 server.db.person_attendance,
                 server.db.person_notes,
@@ -180,8 +188,11 @@ async def test_complete_profile_block_is_modular_visible_and_persistent():
                 server.db.person_photos,
                 server.db.person_photo_uploads,
             ):
-                await collection.delete_many({"person_id": person_id})
+                await collection.delete_many({"person_id": {"$in": [person_id, *related_ids]}})
+            await server.db.person_contacts.delete_many({"person_id": {"$in": related_ids}})
             await server.db.person_photo_chunks.delete_many({"upload_id": upload_id if 'upload_id' in locals() else None})
             from bson import ObjectId
-            await server.db.persons.delete_one({"_id": ObjectId(person_id)})
+            await server.db.persons.delete_many({
+                "_id": {"$in": [ObjectId(item) for item in [person_id, *related_ids]]}
+            })
     await server.db.users.delete_one({"_id": user_result.inserted_id})

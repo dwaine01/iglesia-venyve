@@ -22,6 +22,8 @@ from access_control import (
     PERSON_HISTORY_READ,
     PERSON_HOUSEHOLD_READ,
     PERSON_NOTES_READ,
+    PERSON_MINISTRIES_READ,
+    PERSON_TALENTS_READ,
     PERSON_PROFILE_SENSITIVE_READ,
     PERSON_PROFILE_WRITE,
     can_access_person,
@@ -29,6 +31,7 @@ from access_control import (
 )
 from person_domains import address_items, contact_items
 from person_profile_domains import profile_domain_snapshot
+from person_core_expansion import age_info
 
 router = APIRouter(prefix="/api/core", tags=["core-profile"])
 
@@ -44,7 +47,6 @@ PLANNED_DOMAINS = [
     ("discipulado", "Discipulado"),
     ("mentor_acompanamiento", "Mentor / Acompañamiento"),
     ("celula", "Célula"),
-    ("ministerio_servicio", "Ministerio / Servicio"),
     ("familia", "Familia"),
     ("household", "Household"),
     ("asistencia", "Asistencia"),
@@ -152,7 +154,7 @@ def build_header(
         return header
 
     if has_capability(current_user, PERSON_PROFILE_SENSITIVE_READ):
-        for field in ("fecha_nacimiento", "genero", "estado_civil", "ocupacion"):
+        for field in ("fecha_nacimiento", "genero", "estado_civil"):
             if person.get(field):
                 header[field] = person[field]
 
@@ -201,7 +203,7 @@ async def get_person_profile(person_id: str, current_user: dict = Depends(requir
     if not doc:
         raise HTTPException(status_code=404, detail="Persona no encontrada")
     person = serialize_person(doc)
-    for optional_field in ("photo_url", "genero", "estado_civil", "ocupacion"):
+    for optional_field in ("photo_url", "genero", "estado_civil"):
         if doc.get(optional_field):
             person[optional_field] = doc[optional_field]
 
@@ -220,6 +222,8 @@ async def get_person_profile(person_id: str, current_user: dict = Depends(requir
         PERSON_ATTENDANCE_READ,
         PERSON_NOTES_READ,
         PERSON_HISTORY_READ,
+        PERSON_MINISTRIES_READ,
+        PERSON_TALENTS_READ,
     )
     can_read_any_domain = in_scope and any(
         has_capability(current_user, capability) for capability in domain_read_capabilities
@@ -230,6 +234,12 @@ async def get_person_profile(person_id: str, current_user: dict = Depends(requir
     header = build_header(person, current_user, contacts, addresses)
     if snapshot:
         header["photo_available"] = snapshot["photo_available"]
+        header.update(await age_info(person.get("fecha_nacimiento")))
+        if has_capability(current_user, PERSON_TALENTS_READ):
+            occupation = snapshot["talentos"].get("ocupacion_principal")
+            if occupation:
+                header["ocupacion"] = occupation["nombre"]
+            header["habilidades"] = snapshot["talentos"].get("habilidades", [])
 
     domain_sections = []
     available = ["resumen"]
@@ -270,7 +280,7 @@ async def get_person_profile(person_id: str, current_user: dict = Depends(requir
         tab_access = {
             "household": permissions["household"]["read"],
             "familia": permissions["familia"]["read"],
-            "procesos": permissions["procesos"]["read"],
+            "procesos": permissions["procesos"]["read"] or permissions["ministerios"]["read"],
             "asistencia": permissions["asistencia"]["read"],
             "historial": permissions["historial"]["read"] or permissions["notas"]["read"],
         }
@@ -282,6 +292,7 @@ async def get_person_profile(person_id: str, current_user: dict = Depends(requir
         arrival = snapshot["llegada_origen"]
         attendance = snapshot["asistencia"]
         history = snapshot["historial"]
+        ministries = snapshot["ministerios"]
         built_sections = {
             "llegada_origen": (
                 _domain_section(
@@ -341,6 +352,28 @@ async def get_person_profile(person_id: str, current_user: dict = Depends(requir
         built_sections["household"]["tab_key"] = "household"
         built_sections["asistencia"]["tab_key"] = "asistencia"
         built_sections["historial"]["tab_key"] = "historial"
+        
+        # Ministerio/Servicio is now a real domain, add it separately
+        ministries_section = (
+            _domain_section(
+                "ministerio_servicio",
+                "Ministerio / Servicio",
+                ministries,
+                " · ".join(
+                    f"{item['ministry_name']} — {item['role_name']}"
+                    for item in ministries[:3]
+                ) if ministries else None,
+            )
+            if permissions["ministerios"]["read"]
+            else _restricted_section(
+                "ministerio_servicio", "Ministerio / Servicio", "procesos"
+            )
+        )
+        ministries_section["tab_key"] = "procesos"
+        if len(ministries) == 1:
+            ministries_section["route"] = ministries[0]["ministry_path"]
+        domain_sections.append(ministries_section)
+        
         response.update(snapshot)
     else:
         planned.extend(["household", "familia", "procesos", "asistencia", "historial"])
@@ -353,6 +386,11 @@ async def get_person_profile(person_id: str, current_user: dict = Depends(requir
             "asistencia": _restricted_section("asistencia", "Asistencia", "asistencia"),
             "historial": _restricted_section("historial", "Historial", "historial"),
         }
+        # Ministerio/Servicio restricted when no snapshot
+        ministries_section = _restricted_section(
+            "ministerio_servicio", "Ministerio / Servicio", "procesos"
+        )
+        domain_sections.append(ministries_section)
 
     for key, label in PLANNED_DOMAINS:
         domain_sections.append(built_sections.get(key) or _unavailable_section(key, label))

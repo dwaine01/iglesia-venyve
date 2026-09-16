@@ -356,6 +356,19 @@ from person_profile_domains import (
 
 app.include_router(person_profile_domains_router)
 
+# --- Canonical relationships, households and structured talent directory ---
+from person_core_expansion import (
+    router as person_core_expansion_router,
+    ensure_indexes_and_seed as person_core_expansion_ensure,
+)
+
+app.include_router(person_core_expansion_router)
+
+# --- Central Ministry domain ---
+from ministries import router as ministries_router, ensure_indexes_and_seed as ministries_ensure
+
+app.include_router(ministries_router)
+
 
 # --- Default Checklists ---
 DEFAULT_CHECKLISTS = {
@@ -443,6 +456,8 @@ async def startup():
     await core_person_ensure_indexes()
     await person_domains_ensure_indexes()
     await person_profile_domains_ensure_indexes()
+    await person_core_expansion_ensure()
+    await ministries_ensure()
     print("Core Person (P-001) indexes created")
 
 
@@ -1725,7 +1740,6 @@ async def get_presentation_notes(authorization: Optional[str] = Header(None)):
     return {n["slide_id"]: n.get("note_text", "") for n in notes}
 
 # --- Presentación: Sincronización Presenter ↔ Audience ---
-import secrets
 
 @app.post("/api/presentation/session")
 async def create_presentation_session(authorization: Optional[str] = Header(None)):
