@@ -1,33 +1,63 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
+import { ArrowLeft, Church, RefreshCw, UsersRound } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
-import { ArrowLeft, Church, Search, UserPlus, UsersRound } from 'lucide-react';
+import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
-import PersonCanonicalLink from '../components/PersonCanonicalLink';
-import PersonPhoto from '../components/PersonPhoto';
+import { MinistryAssignmentPanel } from '../components/ministries/MinistryAssignmentPanel';
+import { MinistryMemberCard } from '../components/ministries/MinistryMemberCard';
+import { Alert, AlertDescription, AlertTitle } from '../components/ui/alert';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
-import { Card, CardContent } from '../components/ui/card';
-import { Input } from '../components/ui/input';
+import { Skeleton } from '../components/ui/skeleton';
+
+const detailText = (error, fallback) => typeof error?.response?.data?.detail === 'string' ? error.response.data.detail : fallback;
 
 export default function MinisterioDetailPage() {
   const { ministryId } = useParams();
   const { API, getAuthHeaders } = useAuth();
   const [ministry, setMinistry] = useState(null);
   const [roles, setRoles] = useState([]);
-  const [query, setQuery] = useState('');
-  const [candidates, setCandidates] = useState([]);
-  const [selected, setSelected] = useState(null);
-  const [roleId, setRoleId] = useState('');
-  const load = async () => { const [detail, roleResponse] = await Promise.all([axios.get(`${API}/api/ministries/${ministryId}`, getAuthHeaders()), axios.get(`${API}/api/ministries/roles/catalog`, { ...getAuthHeaders(), params: { ministry_id: ministryId } })]); setMinistry(detail.data); setRoles(roleResponse.data.items || []); };
-  useEffect(() => { load(); }, [ministryId]);
-  const search = async () => { const response = await axios.get(`${API}/api/core/persons/directory/search`, { ...getAuthHeaders(), params: { q: query, limit: 20 } }); setCandidates(response.data.items || []); };
-  const assign = async () => { if (!selected || !roleId) return; await axios.post(`${API}/api/ministries/person/${selected.person_id}/assignments`, { person_id: selected.person_id, ministry_id: ministryId, role_id: roleId, activo: true, fecha_inicio: new Date().toISOString().slice(0, 10) }, getAuthHeaders()); setSelected(null); setCandidates([]); setQuery(''); await load(); };
-  if (!ministry) return <div className="p-8 text-gray-500">Cargando Ministerio...</div>;
-  return <div className="min-h-screen bg-[#F7F5EF] p-4 lg:p-7"><div className="mx-auto max-w-7xl space-y-6">
-    <Link to="/ministerios" className="inline-flex items-center gap-2 text-sm text-gray-600"><ArrowLeft className="h-4 w-4" />Todos los Ministerios</Link>
-    <div className="rounded-xl border bg-white p-6 shadow-sm"><div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div><h1 className="flex items-center gap-3 text-3xl font-bold text-[#101D36]"><Church className="h-8 w-8 text-[#8A6D2F]" />{ministry.nombre}</h1><p className="mt-1 text-gray-500">{ministry.descripcion || 'Ministerio activo'}</p></div><div className="flex gap-2"><Badge className="bg-[#F3EACD] text-[#755B21]"><UsersRound className="mr-1 h-4 w-4" />{ministry.active_people_count} personas</Badge>{ministry.leadership_vacancy && <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-700">Liderazgo vacante</Badge>}</div></div></div>
-    <Card><CardContent className="p-5"><h2 className="mb-3 font-bold text-[#101D36]">Agregar Persona existente</h2><div className="grid gap-2 md:grid-cols-[1fr_auto_1fr_auto]"><Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Nombre, VV, talento..." /><Button variant="outline" onClick={search}><Search className="mr-2 h-4 w-4" />Buscar</Button><select value={roleId} onChange={(e) => setRoleId(e.target.value)} className="h-9 rounded-md border bg-white px-3 text-sm"><option value="">Función en el Ministerio</option>{roles.map((role) => <option key={role.role_id} value={role.role_id}>{role.nombre}</option>)}</select><Button onClick={assign} disabled={!selected || !roleId} className="bg-[#132443]"><UserPlus className="mr-2 h-4 w-4" />Asignar</Button></div>{candidates.length > 0 && <div className="mt-3 grid gap-2 md:grid-cols-2">{candidates.map((person) => <button key={person.person_id} onClick={() => setSelected(person)} className={`rounded-lg border p-3 text-left ${selected?.person_id === person.person_id ? 'border-[#C8A951] bg-[#FBF8EF]' : ''}`}><p className="font-semibold">{person.nombre_completo}</p><p className="font-mono text-xs text-[#8A6D2F]">{person.person_number}</p></button>)}</div>}</CardContent></Card>
-    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{ministry.members.map((member) => <Card key={member.assignment_id}><CardContent className="flex gap-3 p-4"><PersonPhoto personId={member.person_id} available={member.photo_available} name={member.nombre_completo} /><div className="min-w-0 flex-1"><PersonCanonicalLink personId={member.person_id} className="font-semibold text-[#101D36]">{member.nombre_completo}</PersonCanonicalLink><p className="font-mono text-xs text-[#8A6D2F]">{member.person_number}</p><Badge variant="outline" className="mt-2">{member.role_name}</Badge></div></CardContent></Card>)}</div>
-  </div></div>;
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  const load = useCallback(async () => {
+    setLoading(true); setError('');
+    try {
+      const [detail, roleResponse] = await Promise.all([
+        axios.get(`${API}/api/ministries/${ministryId}`, getAuthHeaders()),
+        axios.get(`${API}/api/ministries/roles/catalog`, { ...getAuthHeaders(), params: { ministry_id: ministryId } }),
+      ]);
+      setMinistry(detail.data); setRoles(roleResponse.data.items || []);
+    } catch (requestError) { setError(detailText(requestError, 'No se pudo cargar el Ministerio.')); }
+    finally { setLoading(false); }
+  }, [API, getAuthHeaders, ministryId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const deactivate = async (member) => {
+    if (!window.confirm(`¿Retirar a ${member.nombre_completo} de este Ministerio?`)) return;
+    try {
+      await axios.put(`${API}/api/ministries/assignments/${member.assignment_id}`, { activo: false, fecha_fin: new Date().toISOString().slice(0, 10) }, getAuthHeaders());
+      toast.success('Asignación ministerial finalizada.'); await load();
+    } catch (requestError) { toast.error(detailText(requestError, 'No se pudo finalizar la asignación.')); }
+  };
+
+  if (loading) return <div className="directory-surface min-h-screen p-6" data-testid="ministry-detail-loading"><div className="mx-auto max-w-7xl space-y-4"><Skeleton className="h-7 w-52" /><Skeleton className="h-40 w-full" /><Skeleton className="h-56 w-full" /></div></div>;
+  if (error || !ministry) return <div className="directory-surface min-h-screen p-6"><Alert variant="destructive" data-testid="ministry-detail-error"><AlertTitle>No pudimos abrir este Ministerio</AlertTitle><AlertDescription className="mt-2 flex items-center justify-between gap-3"><span>{error}</span><Button variant="outline" size="sm" onClick={load} data-testid="ministry-detail-retry-button"><RefreshCw className="mr-2 h-4 w-4" />Reintentar</Button></AlertDescription></Alert></div>;
+
+  return (
+    <div className="directory-surface min-h-screen px-4 py-7 sm:px-6 lg:px-8" data-testid="ministry-detail-page">
+      <div className="mx-auto max-w-7xl space-y-7">
+        <Link to="/ministerios" data-testid="back-to-ministries-link" className="inline-flex items-center gap-2 text-sm text-slate-600 transition-colors hover:text-amber-800"><ArrowLeft className="h-4 w-4" />Todos los Ministerios</Link>
+        <header className="flex flex-col gap-5 border-b border-slate-200 pb-7 sm:flex-row sm:items-end sm:justify-between">
+          <div><p className="mb-2 text-xs font-semibold uppercase text-amber-700">Ministerio activo</p><h1 className="flex items-center gap-3 text-4xl font-bold text-slate-950 sm:text-5xl" data-testid="ministry-detail-title"><Church className="h-9 w-9 text-amber-700" />{ministry.nombre}</h1><p className="mt-2 text-sm text-slate-600 sm:text-base">{ministry.descripcion || 'Unidad ministerial activa'}</p></div>
+          <div className="flex flex-wrap gap-2"><Badge variant="outline" className="border-slate-300 bg-white" data-testid="ministry-detail-people-count"><UsersRound className="mr-1 h-4 w-4" />{ministry.active_people_count} personas</Badge><Badge variant="outline" className={ministry.leadership_vacancy ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-emerald-200 bg-emerald-50 text-emerald-700'} data-testid="ministry-detail-leadership-status">{ministry.leadership_vacancy ? 'Liderazgo vacante' : 'Liderazgo activo'}</Badge></div>
+        </header>
+
+        <MinistryAssignmentPanel ministryId={ministryId} roles={roles} API={API} getAuthHeaders={getAuthHeaders} onAssigned={load} />
+        <section><div className="mb-4 flex items-center gap-2"><UsersRound className="h-5 w-5 text-amber-700" /><h2 className="text-xl font-bold text-slate-950">Equipo ministerial</h2></div>{ministry.members.length === 0 ? <div className="rounded-lg border border-dashed bg-white px-6 py-14 text-center text-sm text-slate-500" data-testid="ministry-members-empty-state">Este Ministerio todavía no tiene Personas asignadas.</div> : <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3" data-testid="ministry-members-grid">{ministry.members.map((member) => <MinistryMemberCard key={member.assignment_id} member={member} onDeactivate={deactivate} />)}</div>}</section>
+      </div>
+    </div>
+  );
 }

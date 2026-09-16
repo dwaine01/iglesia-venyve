@@ -199,10 +199,57 @@ class AgePolicyPayload(BaseModel):
     rules: list[dict] = Field(..., min_length=1, max_length=20)
 
 
-async def serialize_person_brief(person: dict) -> dict:
+class DirectoryTalentItem(BaseModel):
+    talent_id: str
+    nombre: str
+
+
+class DirectoryTalents(BaseModel):
+    ocupacion_principal: Optional[DirectoryTalentItem] = None
+    habilidades: list[DirectoryTalentItem] = Field(default_factory=list)
+
+
+class DirectoryMinistryItem(BaseModel):
+    assignment_id: str
+    ministry_id: str
+    ministry_name: str
+    role_id: str
+    role_name: str
+    ministry_path: str
+
+
+class DirectoryPersonItem(BaseModel):
+    person_id: str
+    person_number: Optional[str] = None
+    nombre: Optional[str] = None
+    apellido: Optional[str] = None
+    nombre_completo: str
+    genero: str
+    age_category: Optional[str] = None
+    age_years: Optional[int] = None
+    age_group: Optional[str] = None
+    age_group_label: Optional[str] = None
+    talents: DirectoryTalents
+    ministries: list[DirectoryMinistryItem] = Field(default_factory=list)
+    canonical_profile_path: str
+
+
+class DirectorySearchResponse(BaseModel):
+    items: list[DirectoryPersonItem]
+    total: int
+    has_more: bool
+    membership_filter_available: bool = False
+
+
+async def serialize_person_brief(
+    person: dict,
+    talents: Optional[dict] = None,
+    age: Optional[dict] = None,
+    ministries: Optional[list[dict]] = None,
+) -> dict:
     person_id = str(person["_id"])
-    talents = await talent_snapshot(person_id)
-    age = await age_info(person.get("fecha_nacimiento"))
+    talents = talents if talents is not None else await talent_snapshot(person_id)
+    age = age if age is not None else await age_info(person.get("fecha_nacimiento"))
     return {
         "person_id": person_id,
         "person_number": person.get("person_number"),
@@ -213,6 +260,7 @@ async def serialize_person_brief(person: dict) -> dict:
         "age_category": person.get("age_category"),
         **age,
         "talents": talents,
+        "ministries": ministries or [],
         "canonical_profile_path": f"/personas/{person_id}",
     }
 
@@ -238,6 +286,72 @@ async def talent_snapshot(person_id: str) -> dict:
             if item in catalog
         ],
     }
+
+
+async def directory_talent_snapshots(person_ids: list[str]) -> dict[str, dict]:
+    assignments = await db.person_talents.find({"_id": {"$in": person_ids}}).to_list(len(person_ids))
+    talent_ids = {
+        talent_id
+        for assignment in assignments
+        for talent_id in [assignment.get("ocupacion_principal_id"), *assignment.get("habilidad_ids", [])]
+        if talent_id
+    }
+    catalog = {
+        doc["_id"]: doc
+        async for doc in db.talent_catalog.find({"_id": {"$in": list(talent_ids)}, "activo": True})
+    }
+    by_person = {assignment["_id"]: assignment for assignment in assignments}
+    snapshots = {}
+    for person_id in person_ids:
+        assignment = by_person.get(person_id, {})
+        occupation_id = assignment.get("ocupacion_principal_id")
+        snapshots[person_id] = {
+            "ocupacion_principal": (
+                {"talent_id": occupation_id, "nombre": catalog[occupation_id]["nombre"]}
+                if occupation_id in catalog
+                else None
+            ),
+            "habilidades": [
+                {"talent_id": talent_id, "nombre": catalog[talent_id]["nombre"]}
+                for talent_id in assignment.get("habilidad_ids", [])
+                if talent_id in catalog
+            ],
+        }
+    return snapshots
+
+
+async def directory_ministry_snapshots(person_ids: list[str]) -> dict[str, list[dict]]:
+    assignments = await db.ministry_assignments.find({
+        "person_id": {"$in": person_ids},
+        "activo": True,
+    }).to_list(5000)
+    ministry_ids = list({item["ministry_id"] for item in assignments})
+    role_ids = list({item["role_id"] for item in assignments})
+    ministries = {
+        doc["_id"]: doc
+        async for doc in db.ministry_catalog.find({"_id": {"$in": ministry_ids}, "activo": True})
+    }
+    roles = {
+        doc["_id"]: doc
+        async for doc in db.ministry_roles.find({"_id": {"$in": role_ids}, "activo": True})
+    }
+    snapshots = {person_id: [] for person_id in person_ids}
+    for assignment in assignments:
+        ministry = ministries.get(assignment["ministry_id"])
+        role = roles.get(assignment["role_id"])
+        if not ministry or not role:
+            continue
+        snapshots.setdefault(assignment["person_id"], []).append({
+            "assignment_id": assignment["_id"],
+            "ministry_id": assignment["ministry_id"],
+            "ministry_name": ministry["nombre"],
+            "role_id": assignment["role_id"],
+            "role_name": role["nombre"],
+            "ministry_path": f"/ministerios/{assignment['ministry_id']}",
+        })
+    for items in snapshots.values():
+        items.sort(key=lambda item: (item["ministry_name"], item["role_name"]))
+    return snapshots
 
 
 async def household_snapshot(person_id: str) -> Optional[dict]:
@@ -404,10 +518,12 @@ async def create_talent_catalog(
     return {"talent_id": doc["_id"], "nombre": doc["nombre"], "tipo": doc["tipo"]}
 
 
-@router.get("/api/core/persons/directory/search")
+@router.get("/api/core/persons/directory/search", response_model=DirectorySearchResponse)
 async def search_directory(
     q: str = "",
     talent_id: Optional[str] = None,
+    occupation_id: Optional[str] = None,
+    skill_id: Optional[str] = None,
     genero: Optional[str] = None,
     age_group: Optional[str] = None,
     ministry_id: Optional[str] = None,
@@ -433,7 +549,12 @@ async def search_directory(
     query = {}
     if genero:
         query["genero"] = genero
-    candidates = await db.persons.find(query).limit(500).to_list(500)
+    candidates = await db.persons.find(query).sort([("apellido", 1), ("nombre", 1)]).limit(500).to_list(500)
+    candidate_ids = [str(person["_id"]) for person in candidates]
+    talents_by_person = await directory_talent_snapshots(candidate_ids)
+    ministries_by_person = await directory_ministry_snapshots(candidate_ids)
+    age_policy = await db.person_settings.find_one({"_id": "age_policy"})
+    age_rules = (age_policy or {}).get("rules") or DEFAULT_AGE_RULES
     needle = normalize(q)
     results = []
     for person in candidates:
@@ -442,30 +563,58 @@ async def search_directory(
             continue
         if not can_access_person(current_user, person):
             continue
-        talents = await talent_snapshot(person["person_id"])
+        talents = talents_by_person[person["person_id"]]
+        ministries = ministries_by_person[person["person_id"]]
         talent_ids = [
             talents["ocupacion_principal"]["talent_id"] if talents["ocupacion_principal"] else None,
             *[item["talent_id"] for item in talents["habilidades"]],
         ]
+        occupation_talent_id = (
+            talents["ocupacion_principal"]["talent_id"]
+            if talents["ocupacion_principal"]
+            else None
+        )
+        skill_ids = [item["talent_id"] for item in talents["habilidades"]]
         searchable = normalize(
             " ".join([
                 person.get("nombre", ""), person.get("apellido", ""),
                 person.get("person_number", ""),
                 *([talents["ocupacion_principal"]["nombre"]] if talents["ocupacion_principal"] else []),
                 *[item["nombre"] for item in talents["habilidades"]],
+                *[item["ministry_name"] for item in ministries],
+                *[item["role_name"] for item in ministries],
             ])
         )
-        age = await age_info(person.get("fecha_nacimiento"))
+        calculated_age = calculate_age(person.get("fecha_nacimiento"))
+        matched_age_rule = next(
+            (
+                rule for rule in age_rules
+                if calculated_age is not None and rule["min_age"] <= calculated_age <= rule["max_age"]
+            ),
+            None,
+        )
+        age = {
+            "age_years": calculated_age,
+            "age_group": matched_age_rule.get("key") if matched_age_rule else None,
+            "age_group_label": matched_age_rule.get("label") if matched_age_rule else None,
+        }
         if needle and needle not in searchable:
             continue
         if talent_id and talent_id not in talent_ids:
             continue
+        if occupation_id and occupation_talent_id != occupation_id:
+            continue
+        if skill_id and skill_id not in skill_ids:
+            continue
         if age_group and age["age_group"] != age_group:
             continue
-        results.append({**await serialize_person_brief(person), "talents": talents})
-        if len(results) >= limit:
-            break
-    return {"items": results, "total": len(results), "membership_filter_available": False}
+        results.append(await serialize_person_brief(person, talents, age, ministries))
+    return {
+        "items": results[:limit],
+        "total": len(results),
+        "has_more": len(results) > limit,
+        "membership_filter_available": False,
+    }
 
 
 @router.get("/api/core/persons/{person_id}/talents")

@@ -13,7 +13,7 @@ export default function PersonPhoto({ personId, available, name, className = 'h-
       .catch(() => setSrc(null));
     return () => { if (url) URL.revokeObjectURL(url); };
   }, [API, available, getAuthHeaders, personId]);
-  if (src) return <img src={src} alt={name} className={`${className} rounded-lg object-cover`} />;
+  if (src) return <img src={src} alt={name} data-testid={`person-photo-${personId}`} className={`${className} rounded-lg object-cover`} />;
   const initials = (name || '?').split(' ').map((part) => part[0]).slice(0, 2).join('');
-  return <div className={`${className} flex items-center justify-center rounded-lg bg-[#F3EACD] font-semibold text-[#755B21]`}>{initials}</div>;
+  return <div data-testid={`person-photo-fallback-${personId}`} className={`${className} flex items-center justify-center rounded-lg bg-[#F3EACD] font-semibold text-[#755B21]`}>{initials}</div>;
 }

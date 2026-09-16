@@ -131,6 +131,8 @@ async def test_ministry_catalog_assignments_profile_and_directory_are_one_relati
         )
         assert directory.status_code == 200
         assert [item["person_id"] for item in directory.json()["items"]] == [person_ids[1]]
+        assert directory.json()["items"][0]["ministries"][0]["ministry_id"] == ministry_id
+        assert directory.json()["items"][0]["ministries"][0]["role_name"] == "Director/a"
 
         for person_id in person_ids:
             person_doc = await server.db.persons.find_one({"_id": ObjectId(person_id)})

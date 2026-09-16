@@ -6,8 +6,10 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from datetime import datetime
 from access_control import access_defaults_for_role
 
-MONGO_URL = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
-DB_NAME = os.environ.get("DB_NAME", "ley7semanas_db")
+MONGO_URL = os.environ.get("MONGO_URL")
+DB_NAME = os.environ.get("DB_NAME")
+if not MONGO_URL or not DB_NAME:
+    raise RuntimeError("MONGO_URL and DB_NAME environment variables are required.")
 
 DEFAULT_CHECKLISTS = {
     1: [

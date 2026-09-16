@@ -16,6 +16,7 @@ import PersonaNuevaPage from './pages/PersonaNuevaPage';
 import PersonaPerfilPage from './pages/PersonaPerfilPage';
 import MinisteriosPage from './pages/MinisteriosPage';
 import MinisterioDetailPage from './pages/MinisterioDetailPage';
+import DirectorioTalentosPage from './pages/DirectorioTalentosPage';
 import BitacoraPage from './pages/BitacoraPage';
 import PresentacionHomePage from './pages/PresentacionHomePage';
 import PresentacionPresenterPage from './pages/PresentacionPresenterPage';
@@ -85,11 +86,12 @@ function App() {
             <Route path="semana/:weekNum" element={<SemanaPage />} />
             <Route path="persona/:personId/semana/:weekNum" element={<SemanaPage />} />
             <Route path="registro" element={<StaffRoute><RegistroPage /></StaffRoute>} />
-          <Route path="personas" element={<StaffRoute><PersonasListPage /></StaffRoute>} />
-          <Route path="personas/nueva" element={<StaffRoute><PersonaNuevaPage /></StaffRoute>} />
-          <Route path="personas/:personId" element={<PersonaPerfilPage />} />
-          <Route path="ministerios" element={<MinisteriosPage />} />
-          <Route path="ministerios/:ministryId" element={<MinisterioDetailPage />} />
+            <Route path="personas" element={<StaffRoute><PersonasListPage /></StaffRoute>} />
+            <Route path="personas/nueva" element={<StaffRoute><PersonaNuevaPage /></StaffRoute>} />
+            <Route path="personas/:personId" element={<PersonaPerfilPage />} />
+            <Route path="directorio" element={<DirectorioTalentosPage />} />
+            <Route path="ministerios" element={<MinisteriosPage />} />
+            <Route path="ministerios/:ministryId" element={<MinisterioDetailPage />} />
             <Route path="bitacora" element={<StaffRoute><BitacoraPage /></StaffRoute>} />
             <Route path="codigos" element={<StaffRoute><CodigosInvitacionPage /></StaffRoute>} />
             <Route path="estadisticas" element={<EstadisticasPage />} />

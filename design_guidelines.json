@@ -1,0 +1,121 @@
+{
+  "project_name": "Directorio de Talentos / Busqueda Global - Canonical 360",
+  "language": "es",
+  "architecture_principle": "FROZEN ARCHITECTURE: ONE PERSON -> ONE CANONICAL PROFILE 360 -> MANY MODULES. Every person search result or ministry assignment card links to /personas/{person_id}. No alternative or shadow profiles permitted.",
+  "tech_stack": {
+    "framework": "React (JavaScript .js)",
+    "styling": "Tailwind CSS + Custom CSS Variables",
+    "components": "Shadcn UI (JavaScript adapted)",
+    "icons": "lucide-react"
+  },
+  "visual_identity": {
+    "theme": "Institutional Warm Light / Navy & Gold Accent",
+    "fonts": {
+      "headings": "Spectral, serif",
+      "body": "IBM Plex Sans, sans-serif",
+      "mono": "JetBrains Mono, monospace"
+    },
+    "colors": {
+      "navy_primary": "#0F172A",
+      "navy_secondary": "#1E293B",
+      "navy_dark": "#0B132B",
+      "gold_accent": "#D97706",
+      "gold_hover": "#B45309",
+      "gold_light": "#FEF3C7",
+      "background_light": "#FAFAFA",
+      "surface_card": "#FFFFFF",
+      "surface_subtle": "#F8FAFC",
+      "border_light": "#E2E8F0",
+      "text_primary": "#0F172A",
+      "text_muted": "#64748B",
+      "text_subtle": "#94A3B8"
+    }
+  },
+  "layout_and_spacing": {
+    "container": "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8",
+    "header_nav": "bg-slate-900/95 backdrop-blur-md text-white sticky top-0 z-50 border-b border-slate-800",
+    "grid_results": "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6",
+    "filters_panel": "bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-6"
+  },
+  "key_features_blueprint": {
+    "1_global_search_and_filters": {
+      "description": "Directorio Global de Personas con busqueda libre en tiempo real y chips combinables (ocupacion, habilidad, ministerio, estado de membresia, grupo etario, genero, funcion).",
+      "filter_chips": [
+        "Ocupación (ej. Mecánico, Ingeniero, Medico)",
+        "Habilidad (ej. Electricidad, Canto, Sonido)",
+        "Estado Membresía (ej. Miembro Activo, En Preparación, Visitante)",
+        "Ministerio (ej. Alabanza, Jóvenes, Misiones)",
+        "Función/Rol (ej. Líder, Integrante, Servidor)",
+        "Grupo Etario (ej. Niños, Jóvenes, Adultos, Adulto Mayor)",
+        "Género (Masculino, Femenino)"
+      ],
+      "active_filters_display": "Banda de chips removibles con opcion 'Limpiar filtros' y contador de resultados."
+    },
+    "2_person_results_card": {
+      "description": "Tarjeta de Persona que resalta talentos, ministerios asignados y estado de membresia, con enlace directo al Perfil 360 Canónico.",
+      "canonical_link": "/personas/{person_id}",
+      "data_testids": {
+        "search_input": "global-search-input",
+        "filter_occupation": "filter-occupation-select",
+        "filter_skill": "filter-skill-select",
+        "filter_membership": "filter-membership-select",
+        "filter_ministry": "filter-ministry-select",
+        "filter_role": "filter-role-select",
+        "filter_age": "filter-age-select",
+        "filter_gender": "filter-gender-select",
+        "results_container": "person-results-grid",
+        "person_card": "person-card-{person_id}",
+        "person_canonical_link": "person-canonical-link-{person_id}"
+      }
+    },
+    "3_empty_loading_error_states": {
+      "loading": "Skeleton grid de 6 tarjetas con pulso sutil.",
+      "empty": "Ilustración sutil con texto en español: 'No se encontraron personas con los criterios seleccionados' y botón para resetear filtros.",
+      "error": "Banner de alerta con icono de advertencia, mensaje en español y botón de reintento."
+    },
+    "4_ministries_catalog_and_detail": {
+      "catalog_view": "Grilla de tarjetas de ministerios con contadores de asignaciones, líder principal y badge de estado.",
+      "detail_view": "Detalle del ministerio con lista de integrantes asignados, asignación rápida de personas existentes a través del Perfil 360.",
+      "data_testids": {
+        "ministries_grid": "ministries-catalog-grid",
+        "ministry_card": "ministry-card-{ministry_id}",
+        "assign_person_btn": "ministry-assign-person-button",
+        "ministry_member_row": "ministry-member-row-{person_id}"
+      }
+    },
+    "5_quick_family_creation": {
+      "description": "Modal/pantalla de creación rápida de grupo familiar con asignación de rol familiar (cabeza, cónyuge, hijo) y asignación ministerial opcional.",
+      "data_testids": {
+        "open_family_modal": "open-quick-family-modal",
+        "family_name_input": "family-name-input",
+        "add_member_btn": "add-family-member-button",
+        "save_family_btn": "save-family-button"
+      }
+    }
+  },
+  "media_and_assets": {
+    "avatar_fallback": "Abreviatura de iniciales sobre fondo dorado o navy",
+    "default_portraits": [
+      {
+        "category": "Hombre profesional",
+        "url": "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1Nzh8MHwxfHNlYXJjaHxffHByb2Zlc3Npb25hbCUyMHBvcnRyYWl0JTIwbWFufGVufDB8fHx8MTc4OTUyOTU4NHww&ixlib=rb-4.1.0&q=85"
+      },
+      {
+        "category": "Mujer profesional",
+        "url": "https://images.unsplash.com/photo-1607503873903-c5e95f80d7b9?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1Nzh8MHwxfHNlYXJjaHxffHByb2Zlc3Npb25hbCUyMHBvcnRyYWl0JTIwd29tYW58ZW58MHx8fHwxNzg5NTI5NTg0fDA&ixlib=rb-4.1.0&q=85"
+      },
+      {
+        "category": "Artesano / Técnico",
+        "url": "https://images.pexels.com/photos/28513049/pexels-photo-28513049.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940"
+      }
+    ]
+  },
+  "instructions_to_main_agent": [
+    "Mantener el idioma 100% Español en todos los textos de la interfaz.",
+    "Asegurar que todas las interacciones de búsqueda y filtrado sean inmediatas y reactivas.",
+    "Proporcionar data-testid en minusculas con guiones en todos los botones, inputs, cards y selectores.",
+    "Garantizar que al hacer clic en cualquier avatar o nombre de persona se navegue a /personas/{person_id}.",
+    "Aplicar la tipografía Spectral para títulos principales de módulo y IBM Plex Sans para el resto del texto.",
+    "No crear perfiles de persona duplicados para ministerios o familias."
+  ]
+}

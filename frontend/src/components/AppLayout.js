@@ -7,7 +7,7 @@ import { Separator } from './ui/separator';
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 import {
   LayoutDashboard, BookOpen, Map, Calendar, Users, BarChart3, LogOut, Menu, ChevronRight,
-  Crown, Star, Trophy, Presentation, NotebookPen, KeyRound, IdCard, Church
+  Crown, Star, Trophy, Presentation, NotebookPen, KeyRound, IdCard, Church, Search
 } from 'lucide-react';
 
 import { LOGO_IGLESIA } from '../data/presentationData';
@@ -19,8 +19,9 @@ const getNavItems = (rol) => {
   if (rol === 'pastor') {
     return [
       { to: '/dashboard-general', icon: Crown, label: 'Dashboard General', end: true },
-      { to: '/personas', icon: IdCard, label: 'Personas' },
-      { to: '/ministerios', icon: Church, label: 'Ministerios' },
+      { to: '/personas', icon: IdCard, label: 'Personas', testId: 'nav-personas' },
+      { to: '/directorio', icon: Search, label: 'Directorio de Talentos', testId: 'nav-directorio-talentos' },
+      { to: '/ministerios', icon: Church, label: 'Ministerios', testId: 'nav-ministerios' },
       { to: '/bitacora', icon: NotebookPen, label: 'Bitácora Evangelística' },
       { to: '/codigos', icon: KeyRound, label: 'Códigos de Invitación' },
       { to: '/presentacion', icon: Presentation, label: 'Manual 7 Semanas' },
@@ -48,8 +49,9 @@ const getNavItems = (rol) => {
     { to: '/', icon: LayoutDashboard, label: 'Dashboard', end: true },
     { to: '/introduccion', icon: BookOpen, label: 'Introducción' },
     { to: '/mapa', icon: Map, label: 'Mapa 7 Semanas' },
-      { to: '/personas', icon: IdCard, label: 'Personas' },
-      { to: '/ministerios', icon: Church, label: 'Ministerios' },
+    { to: '/personas', icon: IdCard, label: 'Personas', testId: 'nav-personas' },
+    { to: '/directorio', icon: Search, label: 'Directorio de Talentos', testId: 'nav-directorio-talentos' },
+    { to: '/ministerios', icon: Church, label: 'Ministerios', testId: 'nav-ministerios' },
     { type: 'separator', label: 'Semanas' },
     { to: '/semana/1', icon: Calendar, label: 'Semana 1 - Preparación' },
     { to: '/semana/2', icon: Calendar, label: 'Semana 2 - Invasión' },
@@ -78,6 +80,7 @@ const breadcrumbMap = {
   '/bitacora': 'Bitácora Evangelística',
   '/codigos': 'Códigos de Invitación',
   '/estadisticas': 'Estadísticas',
+  '/directorio': 'Directorio de Talentos',
   '/ministerios': 'Ministerios',
 };
 
@@ -113,11 +116,11 @@ function SidebarContent({ onClose }) {
       <div className="p-4 border-b border-border bg-gradient-to-r from-[#F5F0E8] to-[#FAFAF8]">
         <div className="flex items-center gap-2 mb-1">
           {getRolIcon()}
-          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider" data-testid="current-user-role">
             {getRolLabel()}
           </span>
         </div>
-        <p className="text-sm font-semibold text-foreground truncate">{user?.nombre || 'Usuario'}</p>
+        <p className="text-sm font-semibold text-foreground truncate" data-testid="current-user-name">{user?.nombre || 'Usuario'}</p>
       </div>
 
       {/* Navigation */}
@@ -141,6 +144,7 @@ function SidebarContent({ onClose }) {
               to={item.to}
               end={item.end}
               onClick={onClose}
+              data-testid={item.testId || `nav-${item.to.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '')}`}
               className={({ isActive }) =>
                 `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
                   isActive
@@ -165,6 +169,7 @@ function SidebarContent({ onClose }) {
             onClose?.();
           }}
           className="w-full justify-start text-destructive hover:text-destructive hover:bg-red-50"
+          data-testid="sidebar-logout-button"
         >
           <LogOut className="w-4 h-4 mr-3" />
           Cerrar Sesión
@@ -240,7 +245,7 @@ export default function AppLayout() {
             <div className="hidden sm:flex items-center gap-2 text-sm text-muted-foreground min-w-0 flex-1 lg:flex-initial">
               <span className="hidden lg:inline">Inicio</span>
               <ChevronRight className="w-4 h-4 hidden lg:inline" />
-              <span className="text-foreground font-medium truncate">{getBreadcrumb()}</span>
+              <span className="text-foreground font-medium truncate" data-testid="current-breadcrumb">{getBreadcrumb()}</span>
             </div>
 
             {/* Spacer + acciones a la derecha */}

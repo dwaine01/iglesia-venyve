@@ -20,8 +20,10 @@ from bson.errors import InvalidId
 from server import get_current_user
 from access_control import normalized_access_scope, normalized_capabilities
 
-MONGO_URL = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
-DB_NAME = os.environ.get("DB_NAME", "ley7semanas_db")
+MONGO_URL = os.environ.get("MONGO_URL")
+DB_NAME = os.environ.get("DB_NAME")
+if not MONGO_URL or not DB_NAME:
+    raise RuntimeError("MONGO_URL and DB_NAME environment variables are required.")
 _client = AsyncIOMotorClient(MONGO_URL)
 db = _client[DB_NAME]
 

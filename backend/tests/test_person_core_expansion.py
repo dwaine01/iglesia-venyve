@@ -78,10 +78,21 @@ async def test_canonical_family_household_talents_and_directory():
         by_skill = await client.get(
             "/api/core/persons/directory/search", params={"talent_id": painter["talent_id"]}
         )
+        by_occupation_and_skill = await client.get(
+            "/api/core/persons/directory/search",
+            params={
+                "occupation_id": mechanic["talent_id"],
+                "skill_id": custom.json()["talent_id"],
+                "age_group": "adulto",
+            },
+        )
         assert by_text.status_code == 200
         assert by_skill.status_code == 200
+        assert by_occupation_and_skill.status_code == 200
         assert {item["person_id"] for item in by_text.json()["items"]} == {parent_id}
         assert {item["person_id"] for item in by_skill.json()["items"]} == {parent_id}
+        assert [item["person_id"] for item in by_occupation_and_skill.json()["items"]] == [parent_id]
+        assert by_occupation_and_skill.json()["has_more"] is False
         membership_filter = await client.get(
             "/api/core/persons/directory/search", params={"membership_status": "activo"}
         )
@@ -167,6 +178,17 @@ async def test_canonical_family_household_talents_and_directory():
         assert child_profile.json()["familia"][0]["related_person_id"] == parent_id
         assert child_profile.json()["ministerios"][0]["ministry_id"] == ministry_id
         assert child_profile.json()["ministerios"][0]["role_name"] == "Participante"
+
+        directory_by_ministry_text = await client.get(
+            "/api/core/persons/directory/search", params={"q": "Niños"}
+        )
+        assert directory_by_ministry_text.status_code == 200
+        child_directory_item = next(
+            item for item in directory_by_ministry_text.json()["items"]
+            if item["person_id"] == child_id
+        )
+        assert child_directory_item["ministries"][0]["ministry_id"] == ministry_id
+        assert child_directory_item["ministries"][0]["role_name"] == "Participante"
 
         parent_profile = await client.get(f"/api/core/persons/{parent_id}/profile")
         assert parent_profile.json()["header"]["ocupacion"] == "Mecánico"

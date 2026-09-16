@@ -22,7 +22,10 @@ load_dotenv(override=False)
 app = FastAPI(title="Manual Ley 7 Semanas API")
 
 # CORS
-origins = os.environ.get("CORS_ORIGINS", "*").split(",")
+cors_origins = os.environ.get("CORS_ORIGINS")
+if not cors_origins:
+    raise RuntimeError("CORS_ORIGINS environment variable is required.")
+origins = cors_origins.split(",")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins, 
@@ -32,8 +35,10 @@ app.add_middleware(
 )
 
 # MongoDB
-MONGO_URL = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
-DB_NAME = os.environ.get("DB_NAME", "ley7semanas_db")
+MONGO_URL = os.environ.get("MONGO_URL")
+DB_NAME = os.environ.get("DB_NAME")
+if not MONGO_URL or not DB_NAME:
+    raise RuntimeError("MONGO_URL and DB_NAME environment variables are required.")
 client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]
 
@@ -1519,7 +1524,7 @@ _PLAYWRIGHT_CHROMIUM_PATH = os.environ.get(
 )
 # URL pública del frontend (para que el headless browser cargue la página
 # exactamente como la ve el usuario). En producción ingress maneja todo.
-_FRONTEND_PUBLIC_URL = os.environ.get("FRONTEND_PUBLIC_URL", "http://localhost:3000")
+_FRONTEND_PUBLIC_URL = os.environ.get("FRONTEND_PUBLIC_URL") or cors_origins.split(",")[0]
 
 
 def _pick_frontend_url_from_request(request_url: Optional[str]) -> str:

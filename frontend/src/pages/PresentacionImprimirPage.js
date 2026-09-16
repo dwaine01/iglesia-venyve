@@ -40,7 +40,7 @@ export default function PresentacionImprimirPage() {
   const handleDownloadServerPdf = async () => {
     if (isDownloadingServer) return;
     setIsDownloadingServer(true);
-    const API = process.env.REACT_APP_BACKEND_URL || '';
+    const API = process.env.REACT_APP_BACKEND_URL;
     const token = localStorage.getItem('token');
     const loadingToast = toast.loading('Generando PDF del manual...', {
       description: 'El servidor está renderizando cada página. Esto tarda unos 10-20 segundos.',
@@ -97,7 +97,7 @@ export default function PresentacionImprimirPage() {
 
     // Helper: convierte una imagen externa a data URL usando el proxy del backend
     // para evitar errores CORS durante la captura con html2canvas.
-    const API = process.env.REACT_APP_BACKEND_URL || '';
+    const API = process.env.REACT_APP_BACKEND_URL;
     const toDataUrl = async (url) => {
       try {
         if (!url || url.startsWith('data:') || url.startsWith('blob:')) return url;
