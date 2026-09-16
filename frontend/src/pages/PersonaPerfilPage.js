@@ -18,6 +18,7 @@ import { Button } from '../components/ui/button';
 import { Skeleton } from '../components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs';
 import { displayLabel } from '../lib/displayLabels';
+import { PersonFinanceSection } from '../components/finance/PersonFinanceSection';
 
 // P-001 Slice 2A - Person Profile 360 (shell full-screen).
 // Consume unicamente el read-model /api/core/persons/{id}/profile.
@@ -32,11 +33,12 @@ const SECTION_LABELS = {
   procesos: 'Procesos',
   asistencia: 'Asistencia',
   historial: 'Historial',
+  finanzas: 'Finanzas',
 };
 
 export default function PersonaPerfilPage() {
   const { personId } = useParams();
-  const { API, getAuthHeaders } = useAuth();
+  const { API, getAuthHeaders, user } = useAuth();
   const navigate = useNavigate();
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -101,9 +103,10 @@ export default function PersonaPerfilPage() {
   const sections = profile?.sections || [];
   const available = profile?.sections_available || ['resumen'];
   const planned = profile?.sections_planned || [];
+  const canViewFinance = user?.rol === 'pastor' || (user?.capabilities || []).includes('finance.read');
   const allSections = [
     'resumen', 'contacto', 'direcciones', 'household',
-    'familia', 'procesos', 'asistencia', 'historial',
+    'familia', 'procesos', 'asistencia', 'historial', ...(canViewFinance ? ['finanzas'] : []),
   ];
 
   if (loading) {
@@ -159,7 +162,7 @@ export default function PersonaPerfilPage() {
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
           <div className="overflow-hidden rounded-xl border border-[#E8E5DE] bg-[#EEECE6] p-1 shadow-sm">
-            <TabsList className="grid h-auto w-full grid-cols-4 gap-1 bg-transparent p-0 lg:grid-cols-8">
+            <TabsList className="grid h-auto w-full grid-cols-4 gap-1 bg-transparent p-0 lg:grid-cols-9">
               {allSections.map((section) => (
                 <TabsTrigger
                   key={section}
@@ -233,6 +236,12 @@ export default function PersonaPerfilPage() {
           {available.includes('historial') && (
             <TabsContent value="historial" className="mt-0 rounded-xl border border-[#E8E5DE] bg-white p-4 shadow-sm sm:p-6">
               <HistorySection personId={personId} notes={profile.notas} activity={profile.historial} canWrite={profile.permissions?.notas?.write} canPastoral={profile.permissions?.notas?.pastoral} API={API} getAuthHeaders={getAuthHeaders} onChanged={refreshProfile} />
+            </TabsContent>
+          )}
+
+          {canViewFinance && (
+            <TabsContent value="finanzas" className="mt-0 rounded-xl border border-[#E8E5DE] bg-white p-4 shadow-sm sm:p-6">
+              <PersonFinanceSection personId={personId} />
             </TabsContent>
           )}
 

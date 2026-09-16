@@ -28,6 +28,14 @@ import CodigosInvitacionPage from './pages/CodigosInvitacionPage';
 import CoreGovernancePage from './pages/CoreGovernancePage';
 import ChangePasswordPage from './pages/ChangePasswordPage';
 import AccessOnboardingPage from './pages/AccessOnboardingPage';
+import FinanceDashboardPage from './pages/finance/FinanceDashboardPage';
+import FinanceSetupPage from './pages/finance/FinanceSetupPage';
+import FinanceJournalsPage from './pages/finance/FinanceJournalsPage';
+import FinanceContributionsPage from './pages/finance/FinanceContributionsPage';
+import FinanceOperationsPage from './pages/finance/FinanceOperationsPage';
+import FinanceReconciliationPage from './pages/finance/FinanceReconciliationPage';
+import FinanceReportsPage from './pages/finance/FinanceReportsPage';
+import FinanceIntegrationsPage from './pages/finance/FinanceIntegrationsPage';
 import ProcessesDashboardPage from './pages/processes/ProcessesDashboardPage';
 import SevenWeeksPage from './pages/processes/SevenWeeksPage';
 import SevenWeeksDetailPage from './pages/processes/SevenWeeksDetailPage';
@@ -88,6 +96,14 @@ function AccessManagerRoute({ children }) {
   return children;
 }
 
+function FinanceRoute({ children }) {
+  const { user, loading } = useAuth();
+  if (loading) return <div className="flex min-h-screen items-center justify-center">Cargando…</div>;
+  if (!user) return <Navigate to="/login" replace />;
+  if (user.rol !== 'pastor' && !(user.capabilities || []).some((item) => ['finance.read', 'finance.manage'].includes(item))) return <Navigate to="/" replace />;
+  return children;
+}
+
 // Redirect to correct dashboard based on role
 function RoleDashboard() {
   const { user } = useAuth();
@@ -140,6 +156,14 @@ function App() {
             <Route path="junta/reuniones" element={<BoardMeetingsPage />} />
             <Route path="junta/reuniones/:meetingId" element={<BoardMeetingDetailPage />} />
             <Route path="junta/minutas" element={<BoardMinutesPage />} />
+            <Route path="finanzas" element={<FinanceRoute><FinanceDashboardPage /></FinanceRoute>} />
+            <Route path="finanzas/configuracion" element={<FinanceRoute><FinanceSetupPage /></FinanceRoute>} />
+            <Route path="finanzas/asientos" element={<FinanceRoute><FinanceJournalsPage /></FinanceRoute>} />
+            <Route path="finanzas/contribuciones" element={<FinanceRoute><FinanceContributionsPage /></FinanceRoute>} />
+            <Route path="finanzas/operaciones" element={<FinanceRoute><FinanceOperationsPage /></FinanceRoute>} />
+            <Route path="finanzas/conciliacion" element={<FinanceRoute><FinanceReconciliationPage /></FinanceRoute>} />
+            <Route path="finanzas/reportes" element={<FinanceRoute><FinanceReportsPage /></FinanceRoute>} />
+            <Route path="finanzas/integraciones" element={<FinanceRoute><FinanceIntegrationsPage /></FinanceRoute>} />
             <Route path="lider/:liderId/dashboard" element={<DashboardPage />} />
             
             {/* Lider routes */}

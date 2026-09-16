@@ -146,7 +146,7 @@ def access_defaults(level: str, privilege_groups: Optional[list[str]] = None) ->
     if "board" in groups:
         defaults["capabilities"] = sorted(set([*defaults["capabilities"], BOARD_AUDIO, BOARD_AI, BOARD_CONFIDENTIAL_ACCESS]))
     if "finance" in groups:
-        defaults["capabilities"] = sorted(set([*defaults["capabilities"], *FINANCE_CAPABILITIES]))
+        defaults["capabilities"] = sorted(set([*defaults["capabilities"], *FINANCE_CAPABILITIES, "person.directory.search", "person.profile.read"]))
     defaults["access_scope"] = {"persons": "all" if level == "coordinador_general" else "created_by" if role == "lider" else defaults["access_scope"]["persons"]}
     return {"rol": role, "access_level": level, "privilege_groups": groups, **defaults}
 
@@ -360,7 +360,7 @@ async def create_user_access(payload: UserAccessCreate, current_user: dict = Dep
         "person_id": payload.person_id,
         "is_active": True,
         "must_change_password": True,
-        "onboarding_required": payload.access_level not in {"persona", "lider"},
+        "onboarding_required": payload.access_level not in {"persona", "lider"} or bool(set(payload.privilege_groups) & {"board", "finance"}),
         "onboarding_completed_at": None,
         "parent_user_id": current_user["user_id"],
         "access_title": payload.access_title,

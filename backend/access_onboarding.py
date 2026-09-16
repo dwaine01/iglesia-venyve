@@ -19,6 +19,8 @@ class PolicyUpdate(BaseModel):
     title: str = Field(min_length=5, max_length=160)
     body: str = Field(min_length=100, max_length=12000)
     finance_max_users: Optional[int] = Field(default=None, ge=1, le=100)
+    approval_status: Literal["pending_review", "approved"] = "pending_review"
+    approved_by_name: Optional[str] = Field(default=None, max_length=160)
 
 
 class OnboardingSubmit(BaseModel):
@@ -39,8 +41,11 @@ async def active_policy() -> dict:
     policy = await db.governance_policies.find_one({"policy_key": POLICY_KEY, "active": True}, {"_id": 0}, sort=[("version", -1)])
     if not policy:
         now = datetime.now(timezone.utc)
-        policy = {"policy_key": POLICY_KEY, "version": 1, "title": "Acuerdo de privacidad y confidencialidad", "body": DEFAULT_POLICY, "finance_max_users": None, "active": True, "created_at": now, "updated_at": now}
+        policy = {"policy_key": POLICY_KEY, "version": 1, "title": "Borrador operativo de privacidad y confidencialidad", "body": DEFAULT_POLICY, "finance_max_users": None, "approval_status": "pending_review", "active": True, "created_at": now, "updated_at": now}
         await db.governance_policies.insert_one({"_id": f"{POLICY_KEY}:1", **policy})
+    policy.setdefault("approval_status", "pending_review")
+    if policy["approval_status"] != "approved" and not policy.get("title", "").lower().startswith("borrador"):
+        policy["title"] = f"Borrador operativo — {policy.get('title', 'Privacidad y confidencialidad')}"
     return {**policy, "created_at": policy.get("created_at").isoformat().replace("+00:00", "Z") if isinstance(policy.get("created_at"), datetime) else policy.get("created_at"), "updated_at": policy.get("updated_at").isoformat().replace("+00:00", "Z") if isinstance(policy.get("updated_at"), datetime) else policy.get("updated_at")}
 
 
@@ -75,9 +80,11 @@ def require_pastor(current_user: dict = Depends(get_authenticated_user)) -> dict
 
 @router.put("/policy", response_model=dict)
 async def update_policy(payload: PolicyUpdate, current_user: dict = Depends(require_pastor)):
+    if payload.approval_status == "approved" and not payload.approved_by_name:
+        raise HTTPException(status_code=422, detail="Indique quién realizó la revisión pastoral/legal")
     current = await active_policy(); now = datetime.now(timezone.utc); version = int(current["version"]) + 1
     await db.governance_policies.update_many({"policy_key": POLICY_KEY, "active": True}, {"$set": {"active": False, "retired_at": now}})
-    policy = {"policy_key": POLICY_KEY, "version": version, "title": payload.title.strip(), "body": payload.body.strip(), "finance_max_users": payload.finance_max_users, "active": True, "created_by_user_id": current_user["user_id"], "created_at": now, "updated_at": now}
+    policy = {"policy_key": POLICY_KEY, "version": version, "title": payload.title.strip(), "body": payload.body.strip(), "finance_max_users": payload.finance_max_users, "approval_status": payload.approval_status, "approved_by_name": payload.approved_by_name.strip() if payload.approved_by_name else None, "approved_at": now if payload.approval_status == "approved" else None, "active": True, "created_by_user_id": current_user["user_id"], "created_at": now, "updated_at": now}
     await db.governance_policies.insert_one({"_id": f"{POLICY_KEY}:{version}", **policy})
     return await active_policy()
 

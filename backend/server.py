@@ -440,6 +440,10 @@ app.include_router(core_profile_router)
 from access_onboarding import router as access_onboarding_router, ensure_indexes as access_onboarding_ensure_indexes
 app.include_router(access_onboarding_router)
 
+from finance_routes import router as finance_router
+from finance_engine import ensure_indexes_and_seed as finance_ensure_indexes
+app.include_router(finance_router)
+
 # --- ACCESS-01 + P-001 Slice 2B Contactos/Direcciones (modular) ---
 from person_domains import router as person_domains_router, ensure_indexes as person_domains_ensure_indexes
 
@@ -586,6 +590,7 @@ async def startup():
     await ministries_ensure()
     await core_governance_ensure()
     await access_onboarding_ensure_indexes()
+    await finance_ensure_indexes()
     await migrate_core_identity(db, "system:startup")
     await seed_process_catalog(db)
     await ensure_process_indexes(db)

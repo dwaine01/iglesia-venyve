@@ -2,13 +2,11 @@ import React, { useEffect, useState } from 'react';
 import { Outlet, NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Button } from './ui/button';
-import { Sheet, SheetContent, SheetDescription, SheetTitle, SheetTrigger } from './ui/sheet';
 import { Separator } from './ui/separator';
-import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 import {
   LayoutDashboard, BookOpen, Map, Calendar, Users, BarChart3, LogOut, Menu, ChevronRight,
   Crown, Star, Trophy, Presentation, NotebookPen, KeyRound, IdCard, Church, Search, DatabaseZap,
-  Activity, BookOpenCheck, Compass, HeartHandshake, RadioTower, DoorOpen, Gavel
+  Activity, BookOpenCheck, Compass, HeartHandshake, RadioTower, DoorOpen, Gavel, Landmark
 } from 'lucide-react';
 
 import { LOGO_IGLESIA } from '../data/presentationData';
@@ -33,6 +31,7 @@ const getNavItems = (user) => {
       { to: '/celulas/dashboard', icon: RadioTower, label: 'Sistema Celular', testId: 'nav-cellular' },
       { to: '/puertas/dashboard', icon: DoorOpen, label: '9 Puertas', testId: 'nav-doors' },
       { to: '/junta/dashboard', icon: Gavel, label: 'Junta Directiva', testId: 'nav-board' },
+      { to: '/finanzas', icon: Landmark, label: 'Contabilidad y Finanzas', testId: 'nav-finance' },
       { to: '/personas', icon: IdCard, label: 'Personas', testId: 'nav-personas' },
       { to: '/directorio', icon: Search, label: 'Directorio de Talentos', testId: 'nav-directorio-talentos' },
       { to: '/ministerios', icon: Church, label: 'Ministerios', testId: 'nav-ministerios' },
@@ -76,6 +75,9 @@ const getNavItems = (user) => {
   ];
   if ((user?.capabilities || []).includes('core.access.manage')) {
     items.splice(1, 0, { to: '/nucleo', icon: DatabaseZap, label: 'Gestión de accesos', testId: 'nav-core-governance' });
+  }
+  if ((user?.capabilities || []).some((item) => ['finance.read', 'finance.manage'].includes(item)) && !items.some((item) => item.to === '/finanzas')) {
+    items.splice(1, 0, { to: '/finanzas', icon: Landmark, label: 'Contabilidad y Finanzas', testId: 'nav-finance' });
   }
   return items;
 };
@@ -249,16 +251,7 @@ export default function AppLayout() {
         <SidebarContent />
       </aside>
 
-      {/* Mobile Sidebar (Sheet) */}
-      <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-        <SheetContent side="left" className="p-0 w-[85vw] max-w-xs" data-testid="mobile-navigation-sheet">
-          <VisuallyHidden>
-            <SheetTitle>Menú de navegación</SheetTitle>
-            <SheetDescription>Accesos disponibles según su rol institucional.</SheetDescription>
-          </VisuallyHidden>
-          <SidebarContent onClose={() => setMobileOpen(false)} testIdPrefix="mobile-" />
-        </SheetContent>
-      </Sheet>
+      {mobileOpen && <div className="fixed inset-0 z-50 lg:hidden" data-testid="mobile-navigation-overlay"><button type="button" className="absolute inset-0 bg-black/45" onClick={() => setMobileOpen(false)} aria-label="Cerrar menú" data-testid="close-mobile-navigation-backdrop" /><aside id="mobile-navigation-sheet" className="relative h-full w-[85vw] max-w-xs bg-white shadow-2xl" data-testid="mobile-navigation-sheet" aria-label="Menú de navegación"><SidebarContent onClose={() => setMobileOpen(false)} testIdPrefix="mobile-" /></aside></div>}
 
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto">
@@ -267,12 +260,15 @@ export default function AppLayout() {
           <div className="flex items-center gap-2 px-3 py-2.5 lg:px-6 lg:py-3">
             {/* Hamburger - solo mobile */}
             <Button
+              type="button"
               variant="ghost"
               size="icon"
               className="lg:hidden shrink-0 h-9 w-9"
               onClick={() => setMobileOpen(true)}
               data-testid="btn-menu-mobile"
               aria-label="Abrir menú"
+              aria-expanded={mobileOpen}
+              aria-controls="mobile-navigation-sheet"
             >
               <Menu className="w-5 h-5" />
             </Button>

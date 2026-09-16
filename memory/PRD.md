@@ -359,26 +359,36 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - Junta exige privilegio confidencial y membresía activa simultáneamente. El bypass detectado en iteration 13 fue corregido separando capacidades de Junta de `doors.manage`.
 - Validación: frontend build PASS, frontend 17/17 PASS, backend focalizado 18/18 PASS, retest jerarquía/Junta 20/20 PASS, desktop/móvil sin overflow, artefactos QA eliminados.
 
-### P0 — siguiente: Mega‑Bloque G — CONTABILIDAD Y FINANZAS
+### P0 — Mega‑Bloque G — CONTABILIDAD Y FINANZAS — IMPLEMENTADO Y CERTIFICADO 2026‑09‑16
 
-- Jurisdicción: Columbus, Ohio, Estados Unidos.
-- Contabilidad por fondos, plan de cuentas, fondos restringidos/no restringidos, donaciones, diezmos, ofrendas, promesas, gastos, proveedores, presupuestos, bancos, conciliación, caja, activos, cierres y auditoría inmutable.
-- Pushpay seleccionado para donaciones/pagos. Cuenta aún no creada; solicitar sandbox/OAuth al iniciar la integración.
-- RBAC financiero, segregación de funciones, aprobaciones multinivel y reportes para liderazgo/Junta.
+- Jurisdicción operativa: Columbus, Ohio, Estados Unidos; base contable de efectivo configurable.
+- Contabilidad por fondos con plan de cuentas, fondos restringidos/no restringidos, períodos, asientos balanceados y auditoría inmutable.
+- Ingresos con Persona 360 o anónimo, diezmos/ofrendas/donaciones, asignación dividida entre fondos, campañas, promesas, conteos y depósitos.
+- Operaciones con proveedores, gastos, pagos, transferencias, presupuestos y conciliación bancaria.
+- Reportes de actividad, ingresos/gastos, posición financiera, flujo de efectivo, balances por fondo, presupuesto versus real y auditoría.
+- RBAC financiero explícito: Finanzas no se hereda; solo el pastor concede el grupo restringido. Segregación preparador → revisor distinto → aprobación pastoral.
+- Corregida la idempotencia: múltiples contribuciones manuales sin identificador externo son válidas; duplicados reales CSV/Pushpay continúan protegidos con 409 y los orígenes externos exigen identificador.
+- Corregida la navegación móvil: la notificación de bienvenida se presenta abajo, no cubre el botón de menú y el acceso a Finanzas abre correctamente en 390×844 sin overflow.
+- Verificación independiente iteration 15: backend 100%, frontend 100%, health 200, build PASS, RBAC/seguridad focal PASS y respuestas MongoDB sin `_id` expuesto.
+- Regresión local posterior: contribuciones manuales/split/idempotencia **2/2 PASS**, frontend **19/19 PASS**, build PASS y cero fixtures financieros QA remanentes.
+- Pushpay seleccionado para donaciones/pagos. El adapter existe, pero la integración permanece explícitamente **MOCKED/BLOCKED** hasta recibir credenciales sandbox reales.
 
-### P1/P2 — backlog
+### P1/P2 — siguientes pasos y backlog
 
-- **Mega‑Bloque E — Operaciones:** eventos, check‑in, asistencia y voluntariado.
-- **Mega‑Bloque F — Cuidado:** casos pastorales, visitación y Operación 72.
-- **Mega‑Bloque H — Automatización + IA:** workflows, alertas, dashboards y asistente sobre datos autorizados.
+- **P1 — Validación funcional del usuario:** revisar Mega‑Bloque G completo con flujos reales de la iglesia.
+- **P1 — Pushpay:** activar OAuth/sandbox, sincronización idempotente y mapeo contable únicamente después de recibir credenciales reales.
+- **P2 — Finanzas:** pulido visual y desminificación de páginas financieras según feedback, sin alterar contratos verificados.
+- **P3 — Mega‑Bloque E — Operaciones:** eventos, check‑in, asistencia y voluntariado.
+- **P4 — Mega‑Bloque F — Cuidado:** casos pastorales, visitación y Operación 72.
+- **P5 — Mega‑Bloque H — Automatización + IA:** workflows, alertas, dashboards y asistente sobre datos autorizados.
 
 ## 12. Próximas tareas ejecutables
 
-1. Diseñar y aprobar el schema contable por fondos para Ohio.
-2. Implementar plan de cuentas, períodos, asientos balanceados y cierres.
-3. Construir ingresos/donantes/recibos, gastos/proveedores/aprobaciones y conciliación bancaria.
-4. Preparar adapter Pushpay OAuth/webhooks idempotentes sin activarlo hasta obtener sandbox.
-5. Conectar dashboard financiero con Junta Directiva y permisos segregados.
+1. Entregar Mega‑Bloque G al usuario para validación funcional y recopilar ajustes operativos reales.
+2. Mantener Pushpay **MOCKED/BLOCKED** hasta recibir las credenciales sandbox.
+3. Al recibir credenciales, integrar Pushpay mediante playbook verificado, probar OAuth/webhooks y generar asientos balanceados idempotentes.
+4. Aplicar el pulido P2 de Finanzas y desminificar componentes one-line según feedback.
+5. Continuar con Mega‑Bloque E — Operaciones después de la aprobación funcional de Finanzas.
 
 ## 13. Restricciones vigentes
 

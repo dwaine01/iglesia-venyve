@@ -29,6 +29,8 @@ const COMMON_LABELS = Object.freeze({
   assessment: 'Identificación de dones',
   excelente: 'Meta alcanzada', bien: 'En ritmo', recien_iniciado: 'Recién iniciado', meta_baja: 'Requiere acompañamiento', sin_personas: 'Sin personas asignadas',
   created_by: 'Creado por', created_at: 'Fecha de creación', updated_at: 'Última actualización', processed_at: 'Fecha de procesamiento',
+  cash: 'Efectivo', modified_cash: 'Efectivo modificado', accrual: 'Devengado', asset: 'Activo', liability: 'Pasivo', net_assets: 'Activos netos', revenue: 'Ingreso', expense: 'Gasto',
+  unrestricted: 'Sin restricción', donor_restricted: 'Restricción del donante', board_designated: 'Designado por Junta', posted: 'Contabilizado', submitted: 'Enviado a revisión', reviewed: 'Revisado', payment_pending_posting: 'Pago pendiente de contabilizar', pending_reconciliation: 'Pendiente de conciliación', reconciled: 'Conciliado', balanced: 'Cuadrado', needs_review: 'Requiere revisión',
   person_id: 'Perfil 360', responsible_person_id: 'Responsable', meeting_id: 'Reunión', source_id: 'Registro de origen', source_type: 'Tipo de origen',
   external_processing_acknowledged: 'Procesamiento externo confirmado', transcription_status: 'Estado de transcripción',
   active_members: 'Miembros activos', average_attendance: 'Promedio de asistencia', has_leader_in_training: 'Líder en formación', has_host: 'Anfitrión asignado', open_followups: 'Seguimientos abiertos', open_needs: 'Necesidades abiertas',
