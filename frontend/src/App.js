@@ -32,6 +32,7 @@ import FinanceDashboardPage from './pages/finance/FinanceDashboardPage';
 import FinanceSetupPage from './pages/finance/FinanceSetupPage';
 import FinanceJournalsPage from './pages/finance/FinanceJournalsPage';
 import FinanceContributionsPage from './pages/finance/FinanceContributionsPage';
+import FinanceContributorsPage from './pages/finance/FinanceContributorsPage';
 import FinanceOperationsPage from './pages/finance/FinanceOperationsPage';
 import FinanceReconciliationPage from './pages/finance/FinanceReconciliationPage';
 import FinanceReportsPage from './pages/finance/FinanceReportsPage';
@@ -160,6 +161,8 @@ function App() {
             <Route path="finanzas/configuracion" element={<FinanceRoute><FinanceSetupPage /></FinanceRoute>} />
             <Route path="finanzas/asientos" element={<FinanceRoute><FinanceJournalsPage /></FinanceRoute>} />
             <Route path="finanzas/contribuciones" element={<FinanceRoute><FinanceContributionsPage /></FinanceRoute>} />
+            <Route path="finanzas/contribuyentes" element={<FinanceRoute><FinanceContributorsPage /></FinanceRoute>} />
+            <Route path="finanzas/contribuyentes/:personId" element={<FinanceRoute><FinanceContributorsPage /></FinanceRoute>} />
             <Route path="finanzas/operaciones" element={<FinanceRoute><FinanceOperationsPage /></FinanceRoute>} />
             <Route path="finanzas/conciliacion" element={<FinanceRoute><FinanceReconciliationPage /></FinanceRoute>} />
             <Route path="finanzas/reportes" element={<FinanceRoute><FinanceReportsPage /></FinanceRoute>} />

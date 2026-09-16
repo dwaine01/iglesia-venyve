@@ -372,10 +372,20 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - Verificación independiente iteration 15: backend 100%, frontend 100%, health 200, build PASS, RBAC/seguridad focal PASS y respuestas MongoDB sin `_id` expuesto.
 - Regresión local posterior: contribuciones manuales/split/idempotencia **2/2 PASS**, frontend **19/19 PASS**, build PASS y cero fixtures financieros QA remanentes.
 - Pushpay seleccionado para donaciones/pagos. El adapter existe, pero la integración permanece explícitamente **MOCKED/BLOCKED** hasta recibir credenciales sandbox reales.
+- Auditoría operativa ampliada completada contra 28 requisitos: **27 PASS, 0 PARTIAL, 0 MISSING y 1 BLOCKED (Pushpay)**. Matriz trazable en `/app/memory/FINANCE_GAP_AUDIT.md`.
+- Captura diaria: permite abrir primero una sesión de conteo, registrar sobres ligados por `batch_id`, buscar Persona 360, capturar múltiples conceptos/fondos/proyectos y métodos efectivo, cheque, Zelle, ACH, transferencia, Pushpay u otro.
+- Contribuyentes: ficha financiera confidencial con filtros, totales por concepto/fondo/método, elegibilidad anual configurable, carta PDF en borrador o con plantilla aprobada y auditoría de emisión.
+- Correcciones: conserva original y snapshots before/after; anula asiento no contabilizado o crea reversión si está contabilizado; bloquea fechas cerradas y marca depósitos que requieren ajuste.
+- Conteos/depósitos: doble conteo independiente, desglose, diferencias autorizadas, comprobante y traza contribución → conteo → depósito → banco → conciliación → contabilidad.
+- Cuentas por pagar: proveedor/beneficiario, factura, vencimiento, categorías, fondo/proyecto, naturaleza fija/variable, clasificación empleado/pastor configurable, comprobante GridFS, revisión, aprobación, programación, pago y conciliación.
+- Obligaciones recurrentes generan AP idempotente; no se implementó payroll ficticio.
+- Fondos/proyectos/presupuesto: Pro‑Templo y Misiones, entradas/gastos/disponible/presupuesto con drill‑down; presupuestos por cuenta/fondo/ministerio/proyecto/categoría.
+- Cierre mensual: checklist integral, bloqueo de movimientos en período cerrado y reapertura pastoral con motivo/auditoría.
+- Certificación iteration 16 + self-test final: E2E real PASS, backend **4/4**, frontend **19/19**, build PASS, health 200, desktop/móvil sin overflow, GridFS/RBAC/auditoría PASS y **0 artefactos QA**.
 
 ### P1/P2 — siguientes pasos y backlog
 
-- **P1 — Validación funcional del usuario:** revisar Mega‑Bloque G completo con flujos reales de la iglesia.
+- **P1 — Aceptación funcional del usuario:** revisar Mega‑Bloque G ya certificado con casos reales de la oficina de la iglesia y recopilar ajustes de política/terminología.
 - **P1 — Pushpay:** activar OAuth/sandbox, sincronización idempotente y mapeo contable únicamente después de recibir credenciales reales.
 - **P2 — Finanzas:** pulido visual y desminificación de páginas financieras según feedback, sin alterar contratos verificados.
 - **P3 — Mega‑Bloque E — Operaciones:** eventos, check‑in, asistencia y voluntariado.
@@ -384,7 +394,7 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 
 ## 12. Próximas tareas ejecutables
 
-1. Entregar Mega‑Bloque G al usuario para validación funcional y recopilar ajustes operativos reales.
+1. Entregar la matriz final y Mega‑Bloque G al usuario para aceptación funcional con datos reales autorizados.
 2. Mantener Pushpay **MOCKED/BLOCKED** hasta recibir las credenciales sandbox.
 3. Al recibir credenciales, integrar Pushpay mediante playbook verificado, probar OAuth/webhooks y generar asientos balanceados idempotentes.
 4. Aplicar el pulido P2 de Finanzas y desminificar componentes one-line según feedback.

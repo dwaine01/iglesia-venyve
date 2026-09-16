@@ -4,7 +4,7 @@
     "subtitle": "Sistema Integral de Gestión Ministerial",
     "slogan": "Una iglesia. Una visión. Un solo sistema.",
     "logo_text": "Casa de Oración Ven y Ve",
-    "description": "Personas, procesos, células, puertas, ministerios y liderazgo conectados en un mismo lugar.",
+    "description": "Personas, procesos, células, puertas, ministerios, liderazgo y administración financiera conectados en un mismo lugar.",
     "module_brand_prefix": "VEN Y VE 360 | ",
     "modules_eyebrows": {
       "dashboard": "VEN Y VE 360 | Visión General",
@@ -24,12 +24,12 @@
     "font_family_sans": "Inter, Manrope, system-ui, sans-serif",
     "font_family_mono": "JetBrains Mono, Roboto Mono, monospace",
     "hierarchy": {
-      "h1": "text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight font-display",
-      "h2": "text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight font-display",
-      "h3": "text-xl sm:text-2xl font-semibold tracking-tight",
-      "h4": "text-lg sm:text-xl font-medium",
-      "body": "text-sm sm:text-base font-normal leading-relaxed font-sans",
-      "caption": "text-xs font-medium uppercase tracking-widest text-slate-400 font-mono"
+      "h1": "text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight font-display text-slate-100",
+      "h2": "text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight font-display text-slate-100",
+      "h3": "text-xl sm:text-2xl font-semibold tracking-tight text-amber-400",
+      "h4": "text-lg sm:text-xl font-medium text-slate-200",
+      "body": "text-sm sm:text-base font-normal leading-relaxed font-sans text-slate-300",
+      "caption": "text-xs font-medium uppercase tracking-widest text-amber-500/80 font-mono"
     }
   },
   "colors": {
@@ -43,114 +43,52 @@
     "card_dark": "#111827",
     "border_gold": "rgba(217, 119, 6, 0.25)",
     "text_dark_bg": "#F8FAFC",
-    "text_muted_dark": "#94A3B8"
+    "text_muted_dark": "#94A3B8",
+    "status": {
+      "success": "#10B981",
+      "warning": "#F59E0B",
+      "error": "#EF4444",
+      "info": "#3B82F6"
+    }
   },
-  "login_page_blueprint": {
-    "header_brand": "Casa de Oración Ven y Ve",
-    "app_title": "VEN Y VE 360",
-    "subtitle": "Sistema Integral de Gestión Ministerial",
-    "motto": "Una iglesia. Una visión. Un solo sistema.",
-    "description": "Personas, procesos, células, puertas, ministerios y liderazgo conectados en un mismo lugar.",
-    "theme": "Navy & Gold Glassmorphism Premium",
-    "card_style": "backdrop-blur-xl bg-slate-900/85 border border-amber-500/20 shadow-2xl rounded-2xl p-8"
-  },
-  "spiritual_carousel": {
-    "categories": [
-      "PERSONAS",
-      "CONSOLIDACIÓN",
-      "SERVICIO",
-      "CUIDADO MUTUO",
-      "MULTIPLICACIÓN",
-      "LIDERAZGO",
-      "UNIDAD",
-      "FRUTO",
-      "VISIÓN VEN Y VE 360"
+  "financial_module_guidelines": {
+    "core_principles": [
+      "No duplicate modules or parallel accounting tables",
+      "Single core accounting entry for contributions, count sessions, deposits, and accounts payable",
+      "Strict RBAC & Confidentiality: restricted backend access for financial records (Finance team & Senior Pastors only)",
+      "Audit trail & non-destructive history for all transactions, edits, and adjustments",
+      "High density, scan-optimized fast batch entry interface for envelope count sessions (mobile and desktop/tablet support)",
+      "Strict approval workflow: AP status transitions (Pendiente -> Aprobada -> Programada -> Pagada)"
     ],
-    "quotes": [
+    "payment_methods": ["Efectivo", "Cheque", "Zelle", "Pushpay", "ACH / Transferencia", "Otro"],
+    "contribution_concepts": ["Diezmo", "Ofrenda", "Misiones", "Pro-Templo", "Proyecto / Campaña", "Donación", "Otro"],
+    "pushpay_integration_status": "MOCKED / BLOCKED until live API credentials are provided"
+  },
+  "media": {
+    "image_urls": [
       {
-        "category": "PERSONAS",
-        "text": "Cada persona importa en el Reino; ninguna vida queda fuera del cuidado pastoral."
+        "category": "worship_header",
+        "url": "https://images.unsplash.com/photo-1570786032462-2efc3ca8fccd?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1ODh8MHwxfHNlYXJjaHwyfHxjaHVyY2glMjBjb21tdW5pdHklMjBmaW5hbmNlJTIwd29yc2hpcCUyMGxlYWR8ZW58MHx8fHwxNzg5NTk0OTQyfDA&ixlib=rb-4.1.0&q=85",
+        "description": "Church congregation worship and leadership"
       },
       {
-        "category": "CONSOLIDACIÓN",
-        "text": "Consolidar es afirmar los pasos de quien llega para que eche raíces en la fe."
-      },
-      {
-        "category": "SERVICIO",
-        "text": "Sirviendo con amor y excelencia reflejamos el corazón de Cristo en la comunidad."
-      },
-      {
-        "category": "CUIDADO MUTUO",
-        "text": "Unidos en oración y mentoría, cuidamos el alma y fortalecemos la familia."
-      },
-      {
-        "category": "MULTIPLICACIÓN",
-        "text": "Cada célula es una semilla de avivamiento destinada a multiplicarse con fruto."
-      },
-      {
-        "category": "LIDERAZGO",
-        "text": "Formar líderes siervos es asegurar el legado del evangelio para las futuras generaciones."
-      },
-      {
-        "category": "UNIDAD",
-        "text": "Una sola visión nos une, un solo Espíritu nos impulsa a la meta."
-      },
-      {
-        "category": "FRUTO",
-        "text": "El verdadero fruto permanece cuando caminamos en obediencia y discipulado constante."
-      },
-      {
-        "category": "VISIÓN VEN Y VE 360",
-        "text": "Una iglesia. Una visión. Un solo sistema para conectar, cuidar y multiplicar."
+        "category": "pastoral_choir",
+        "url": "https://images.pexels.com/photos/8814999/pexels-photo-8814999.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "Pastor leading church ceremony"
       }
     ]
   },
-  "cap_module": {
-    "title": "Encuentra tu lugar para servir",
-    "subtitle": "Descubre tus dones, talentos e intereses para integrarte activamente en la misión.",
-    "pedagogical_flow": [
-      "Identificar dones",
-      "Recomendar Puerta",
-      "Confirmar con líder",
-      "Activar en servicio",
-      "Dar seguimiento",
-      "Desarrollar liderazgo"
-    ],
-    "rule": "La asignación final de servicio es siempre una decisión humana y pastoral guiada por el discernimiento."
-  },
-  "seven_weeks_module": {
-    "hero_title": "La Ley de las 7 Semanas",
-    "hero_subtitle": "Acompañamiento Intensivo de Consolidación y Discipulado Inicial",
-    "progression_steps": [
-      "Persona",
-      "Discípulo",
-      "Obrero",
-      "Ministro"
-    ]
-  },
-  "label_dictionary": {
-    "SLA": "SEGUIMIENTOS A TIEMPO",
-    "SLA_EXPIRED": "SEGUIMIENTO FUERA DE TIEMPO",
-    "SLA_CRITICAL": "SEGUIMIENTO URGENTE",
-    "DASHBOARD_DESCRIPTION": "Seguimiento de cada persona y alertas tempranas para que nadie se quede sin atención durante su proceso.",
-    "new_visitor": "Nuevo Visitante",
-    "consolidation": "Consolidación",
-    "ready_for_cellular": "Listo para Célula",
-    "follow_up_required": "Requiere Seguimiento",
-    "overdue": "Atrasado",
-    "week_1": "Semana 1",
-    "week_2": "Semana 2",
-    "week_3": "Semana 3",
-    "week_4": "Semana 4",
-    "week_5": "Semana 5",
-    "week_6": "Semana 6",
-    "week_7": "Semana 7"
-  },
   "general_ui_ux_guidelines": {
-    "testing_attribute": "Every interactive and key informational element MUST include data-testid with kebab-case identifiers (e.g. data-testid=\"login-submit-button\").",
+    "testing_attribute": "Every interactive and key informational element MUST include data-testid with kebab-case identifiers (e.g. data-testid=\"finance-contribution-submit-button\").",
     "responsive_breakpoints": "Full compatibility required across desktop (1920x800), tablet (768px-1024px), and mobile (390x844).",
     "contrast_and_accessibility": "Ensure 4.5:1 minimum contrast ratio for normal text on dark backgrounds with gold accents.",
     "component_files": "This project uses JS/JSX component files (.js). Ensure guidelines target standard React Javascript structures.",
     "no_transparent_overlays": "Never use fully transparent header backgrounds; use backdrop-blur-md with dark translucent fills to maintain legibility."
-  }
+  },
+  "instructions_to_main_agent": [
+    "Verify existing endpoints and database schemas before extending components.",
+    "Maintain institutional navy and gold visual styling consistently.",
+    "Ensure all forms have proper validation, state persistence, and toast feedback via Sonner.",
+    "Support RBAC checks on both API endpoints and frontend rendering for financial confidentiality."
+  ]
 }

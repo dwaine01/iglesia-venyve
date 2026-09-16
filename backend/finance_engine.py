@@ -47,7 +47,24 @@ async def validate_lines(lines: list[dict]) -> tuple[int, int]:
     return debit, credit
 
 
+async def ensure_open_period(entry_date: str) -> None:
+    closed = await db.finance_periods.find_one(
+        {
+            "start_date": {"$lte": entry_date},
+            "end_date": {"$gte": entry_date},
+            "status": "closed",
+        },
+        {"_id": 0, "period_id": 1},
+    )
+    if closed:
+        raise HTTPException(
+            status_code=409,
+            detail=f"El período {closed['period_id']} está cerrado; registre un ajuste en un período abierto o solicite reapertura",
+        )
+
+
 async def create_journal(user_id: str, entry_date: str, memo: str, source_type: str, source_id: str, lines: list[dict], status: str = "draft") -> dict:
+    await ensure_open_period(entry_date)
     debit, credit = await validate_lines(lines); entry_id = str(uuid4()); now = now_utc()
     doc = {"_id": entry_id, "entry_id": entry_id, "entry_number": await db.finance_journal_entries.count_documents({}) + 1, "entry_date": entry_date, "memo": memo, "source_type": source_type, "source_id": source_id, "status": status, "lines": lines, "total_debit_cents": debit, "total_credit_cents": credit, "prepared_by_user_id": user_id, "reviewed_by_user_id": None, "approved_by_user_id": None, "submitted_at": now if status == "submitted" else None, "reviewed_at": None, "approved_at": None, "posted_at": None, "created_at": now, "updated_at": now}
     await db.finance_journal_entries.insert_one(doc); await audit(user_id, "journal_created", "journal_entry", entry_id, {"source_type": source_type, "source_id": source_id, "total_cents": debit}); return serialize(doc)
@@ -68,14 +85,33 @@ async def ensure_indexes_and_seed():
     await db.finance_reconciliations.create_index("reconciliation_id", unique=True); await db.finance_audit_events.create_index([("created_at", -1)])
     await db.finance_campaigns.create_index("campaign_id", unique=True); await db.finance_promises.create_index("promise_id", unique=True)
     await db.finance_batches.create_index("batch_id", unique=True)
+    await db.finance_contribution_types.create_index("type_key", unique=True)
+    await db.finance_contribution_corrections.create_index("correction_id", unique=True)
+    await db.finance_annual_statements.create_index("statement_id", unique=True)
+    await db.finance_annual_statements.create_index([("person_id", 1), ("year", -1)])
+    await db.finance_recurring_obligations.create_index("obligation_id", unique=True)
+    await db.finance_recurring_obligations.create_index([("active", 1), ("next_due_date", 1)])
+    await db.finance_recurring_runs.create_index([("obligation_id", 1), ("due_date", 1)], unique=True)
+    await db["finance_documents.files"].create_index([("metadata.entity_type", 1), ("metadata.entity_id", 1), ("uploadDate", -1)])
     now = now_utc()
-    await db.finance_settings.update_one({"_id": "primary"}, {"$setOnInsert": {"accounting_basis": "cash", "currency": "USD", "fiscal_year_start_month": 1, "approval_flow": ["preparer", "reviewer", "pastoral_approver"], "pushpay_status": "blocked_credentials_required", "created_at": now}, "$set": {"updated_at": now}}, upsert=True)
+    await db.finance_settings.update_one({"_id": "primary"}, {"$setOnInsert": {"accounting_basis": "cash", "currency": "USD", "fiscal_year_start_month": 1, "approval_flow": ["preparer", "reviewer", "pastoral_approver"], "pushpay_status": "blocked_credentials_required", "organization": {"legal_name": "Casa de Oración Ven y Ve", "address": "", "city_state_zip": "Columbus, Ohio", "tax_id": "", "phone": "", "email": ""}, "annual_statement_template": {"title": "Carta anual de contribuciones", "intro_text": "", "acknowledgment_text": "", "footer_text": "", "approved": False, "version": 1}, "created_at": now}, "$set": {"updated_at": now}}, upsert=True)
+    await db.finance_settings.update_one({"_id": "primary", "organization": {"$exists": False}}, {"$set": {"organization": {"legal_name": "Casa de Oración Ven y Ve", "address": "", "city_state_zip": "Columbus, Ohio", "tax_id": "", "phone": "", "email": ""}, "annual_statement_template": {"title": "Carta anual de contribuciones", "intro_text": "", "acknowledgment_text": "", "footer_text": "", "approved": False, "version": 1}, "updated_at": now}})
     funds = [("GENERAL", "Fondo General", "unrestricted"), ("MISSIONS", "Misiones", "donor_restricted"), ("BUILDING", "Pro-Templo", "donor_restricted")]
     for code, name, restriction in funds:
         await db.finance_funds.update_one({"code": code}, {"$setOnInsert": {"_id": str(uuid4()), "fund_id": str(uuid4()), "code": code, "name": name, "restriction_type": restriction, "purpose": name, "active": True, "created_at": now}}, upsert=True)
-    accounts = [("1000", "Efectivo", "asset"), ("1010", "Fondos no depositados", "asset"), ("1020", "Banco principal", "asset"), ("2000", "Cuentas por pagar", "liability"), ("3000", "Activos netos sin restricción", "net_assets"), ("3100", "Activos netos con restricción", "net_assets"), ("4000", "Ingresos por diezmos", "revenue"), ("4010", "Ingresos por ofrendas", "revenue"), ("4020", "Ingresos por donaciones", "revenue"), ("5000", "Gastos ministeriales", "expense"), ("5010", "Gastos de misiones", "expense"), ("5020", "Gastos Pro-Templo", "expense")]
+    accounts = [("1000", "Efectivo", "asset"), ("1010", "Fondos no depositados", "asset"), ("1020", "Banco principal", "asset"), ("2000", "Cuentas por pagar", "liability"), ("3000", "Activos netos sin restricción", "net_assets"), ("3100", "Activos netos con restricción", "net_assets"), ("4000", "Ingresos por diezmos", "revenue"), ("4010", "Ingresos por ofrendas", "revenue"), ("4020", "Ingresos por donaciones", "revenue"), ("4030", "Ingresos para misiones", "revenue"), ("4040", "Ingresos Pro-Templo", "revenue"), ("4050", "Ingresos de proyectos y campañas", "revenue"), ("4090", "Otros ingresos", "revenue"), ("5000", "Gastos ministeriales", "expense"), ("5010", "Gastos de misiones", "expense"), ("5020", "Gastos Pro-Templo", "expense"), ("5030", "Servicios públicos", "expense"), ("5040", "Mantenimiento y reparaciones", "expense"), ("5050", "Compensación y apoyo ministerial", "expense"), ("5090", "Otros gastos operacionales", "expense")]
     for code, name, account_type in accounts:
         await db.finance_accounts.update_one({"code": code}, {"$setOnInsert": {"_id": str(uuid4()), "account_id": str(uuid4()), "code": code, "name": name, "account_type": account_type, "active": True, "created_at": now}}, upsert=True)
-    for key, name, account_code in [("tithe", "Diezmo", "4000"), ("offering", "Ofrenda", "4010"), ("donation", "Donación", "4020")]:
+    contribution_types = [
+        ("tithe", "Diezmo", "4000", True),
+        ("offering", "Ofrenda", "4010", True),
+        ("donation", "Donación", "4020", True),
+        ("missions", "Misiones", "4030", True),
+        ("building", "Pro-Templo", "4040", True),
+        ("project", "Proyecto / Campaña", "4050", True),
+        ("other", "Otro ingreso", "4090", False),
+    ]
+    for key, name, account_code, annual_statement_eligible in contribution_types:
         account = await db.finance_accounts.find_one({"code": account_code}, {"_id": 0, "account_id": 1})
-        await db.finance_contribution_types.update_one({"type_key": key}, {"$setOnInsert": {"_id": key, "type_key": key, "name": name, "revenue_account_id": account["account_id"], "active": True, "created_at": now}}, upsert=True)
+        await db.finance_contribution_types.update_one({"type_key": key}, {"$setOnInsert": {"_id": key, "type_key": key, "name": name, "revenue_account_id": account["account_id"], "annual_statement_eligible": annual_statement_eligible, "active": True, "created_at": now}}, upsert=True)
+        await db.finance_contribution_types.update_one({"type_key": key, "annual_statement_eligible": {"$exists": False}}, {"$set": {"annual_statement_eligible": annual_statement_eligible, "updated_at": now}})

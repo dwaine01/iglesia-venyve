@@ -441,8 +441,10 @@ from access_onboarding import router as access_onboarding_router, ensure_indexes
 app.include_router(access_onboarding_router)
 
 from finance_routes import router as finance_router
+from finance_expansion_routes import router as finance_expansion_router
 from finance_engine import ensure_indexes_and_seed as finance_ensure_indexes
 app.include_router(finance_router)
+app.include_router(finance_expansion_router)
 
 # --- ACCESS-01 + P-001 Slice 2B Contactos/Direcciones (modular) ---
 from person_domains import router as person_domains_router, ensure_indexes as person_domains_ensure_indexes
