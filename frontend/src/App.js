@@ -28,6 +28,7 @@ import CodigosInvitacionPage from './pages/CodigosInvitacionPage';
 import CoreGovernancePage from './pages/CoreGovernancePage';
 import ChangePasswordPage from './pages/ChangePasswordPage';
 import AccessOnboardingPage from './pages/AccessOnboardingPage';
+import MembershipVerificationPage from './pages/MembershipVerificationPage';
 import FinanceDashboardPage from './pages/finance/FinanceDashboardPage';
 import FinanceSetupPage from './pages/finance/FinanceSetupPage';
 import FinanceJournalsPage from './pages/finance/FinanceJournalsPage';
@@ -121,6 +122,7 @@ function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/cambiar-clave" element={<ChangePasswordPage />} />
           <Route path="/acuerdo-confidencialidad" element={<AccessOnboardingPage />} />
+          <Route path="/verificar/carnet/:token" element={<MembershipVerificationPage />} />
           {/* Rutas de presentación full-screen (fuera del AppLayout) */}
           <Route path="/presentacion/presenter" element={<StaffRoute><PresentacionPresenterPage /></StaffRoute>} />
           <Route path="/presentacion/audiencia/:code" element={<PresentacionAudiencePage />} />

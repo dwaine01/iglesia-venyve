@@ -38,6 +38,7 @@ BOARD_CONFIDENTIAL_ACCESS = "board.confidential.access"
 FINANCE_READ = "finance.read"
 FINANCE_MANAGE = "finance.manage"
 FINANCE_CAPABILITIES = [FINANCE_READ, FINANCE_MANAGE]
+MEMBERSHIP_DOCUMENTS_MANAGE = "membership.documents.manage"
 PROCESSES_READ = "processes.read"
 PROCESSES_WRITE = "processes.write"
 PROCESSES_PARTICIPATE = "processes.participate"
@@ -124,7 +125,7 @@ PERSON_DOMAIN_CAPABILITIES = [
 
 _ROLE_ACCESS_DEFAULTS = {
     "pastor": {
-        "capabilities": [*PERSON_DOMAIN_CAPABILITIES, *PROCESS_CAPABILITIES, *CELLULAR_CAPABILITIES, *DOOR_BOARD_CAPABILITIES, *FINANCE_CAPABILITIES, PERSON_PASTORAL_NOTES_READ, CORE_GOVERNANCE_MANAGE, CORE_ACCESS_MANAGE],
+        "capabilities": [*PERSON_DOMAIN_CAPABILITIES, *PROCESS_CAPABILITIES, *CELLULAR_CAPABILITIES, *DOOR_BOARD_CAPABILITIES, *FINANCE_CAPABILITIES, MEMBERSHIP_DOCUMENTS_MANAGE, PERSON_PASTORAL_NOTES_READ, CORE_GOVERNANCE_MANAGE, CORE_ACCESS_MANAGE],
         "access_scope": {"persons": "all"},
     },
     "lider": {
@@ -146,7 +147,7 @@ def access_defaults_for_role(role: str) -> dict:
             {"capabilities": [], "access_scope": {"persons": "none"}},
         )
     )
-    defaults["access_policy_version"] = 12
+    defaults["access_policy_version"] = 13
     return defaults
 
 
@@ -208,9 +209,9 @@ async def ensure_access_defaults(db) -> None:
             {"$set": {"access_scope": defaults["access_scope"]}},
         )
         await db.users.update_many(
-            {"rol": role, "$or": [{"parent_user_id": {"$exists": False}}, {"access_policy_version": {"$lt": 12}}, {"access_policy_version": {"$exists": False}}]},
+            {"rol": role, "$or": [{"parent_user_id": {"$exists": False}}, {"access_policy_version": {"$lt": 13}}, {"access_policy_version": {"$exists": False}}]},
             {
                 "$addToSet": {"capabilities": {"$each": defaults["capabilities"]}},
-                "$set": {"access_policy_version": 12},
+                "$set": {"access_policy_version": 13},
             },
         )

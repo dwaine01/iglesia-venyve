@@ -1,94 +1,130 @@
 {
-  "brand_identity": {
-    "app_name": "VEN Y VE 360",
-    "subtitle": "Sistema Integral de Gestión Ministerial",
-    "slogan": "Una iglesia. Una visión. Un solo sistema.",
-    "logo_text": "Casa de Oración Ven y Ve",
-    "description": "Personas, procesos, células, puertas, ministerios, liderazgo y administración financiera conectados en un mismo lugar.",
-    "module_brand_prefix": "VEN Y VE 360 | ",
-    "modules_eyebrows": {
-      "dashboard": "VEN Y VE 360 | Visión General",
-      "personas": "VEN Y VE 360 | Directorio & Personas",
-      "procesos": "VEN Y VE 360 | Procesos & Discipulado",
-      "seven_weeks": "VEN Y VE 360 | Ley de las 7 Semanas",
-      "celular": "VEN Y VE 360 | Sistema Celular",
-      "puertas": "VEN Y VE 360 | 9 Puertas de Atención",
-      "cap": "VEN Y VE 360 | Centro de Activación y Misión (CAP)",
-      "junta": "VEN Y VE 360 | Junta Directiva & Gobernanza",
-      "ministerios": "VEN Y VE 360 | Ministerios & Voluntariado",
-      "finanzas": "VEN Y VE 360 | Administración & Finanzas"
+  "project_name": "Carnet y Certificado Oficial - Ven y Ve 360",
+  "concept": {
+    "name": "Fidelidad Visual Absoluta a Master Templates Oficiales",
+    "description": "Reproducción con 100% de precisión visual de los documentos reales de la iglesia: Certificado de Miembro (Carta Horizontal) y Carnet de Miembro (CR80 Vertical/Horizontal). Prohibido rediseñar, cambiar proporciones, tonos o tipografías de los másteres."
+  },
+  "master_templates_spec": {
+    "certificado": {
+      "format": "Letter Landscape / Carta Horizontal (11in x 8.5in / 279.4mm x 215.9mm / 1056px x 816px a 96dpi)",
+      "master_url": "https://customer-assets-agu9un31.emergentagent.net/job_venyve-sync/artifacts/pudr46ao_Untitled000%20%283%29%20%2859%29.webp",
+      "background": "Blanco puro (#FFFFFF) con franja azul/gris lateral izquierda y patrón ornamental gris filigrana",
+      "colors": {
+        "primary_blue": "#0A2540",
+        "deep_navy": "#0B1428",
+        "gold_accent": "#C8A951",
+        "slate_gray": "#4A5568",
+        "pattern_gray": "#E2E8F0"
+      },
+      "typography": {
+        "title": "Spectral / Playfair Display, Serif elegante en mayúsculas 'CERTIFICADO DE MIEMBRO'",
+        "fixed_biblical_verse": "Jeremías 29:11 ('Porque yo sé los pensamientos que tengo acerca de vosotros...')",
+        "dynamic_name": "Nombre completo de la persona con escalado dinámico inteligente (truncate/font-size shrink si >28 chars)",
+        "issue_date": "Fecha de emisión en español ('Dado en la ciudad de... a los X días del mes de...')",
+        "signature_block": "Imagen de firma PNG transparente administrable + Nombre del Pastor/Pastora + Cargo oficial"
+      },
+      "print_settings": "@page { size: letter landscape; margin: 0; }"
+    },
+    "carnet": {
+      "format": "CR80 Standard (85.6mm x 53.98mm / 3.375in x 2.125in / 1012px x 638px alta densidad o 324px x 204px preview)",
+      "master_url": "https://customer-assets-agu9un31.emergentagent.net/job_venyve-sync/artifacts/0rsbi552_Alcides%20Rodriguez%20%282%29%20%2822%29.webp",
+      "background": "Fondo blanco con diagonal azul institucional superior/inferior y bordes limpios",
+      "colors": {
+        "primary_blue": "#0A2540",
+        "accent_cyan": "#0088CC",
+        "card_white": "#FFFFFF",
+        "text_dark": "#1A202C",
+        "text_muted": "#718096"
+      },
+      "photo": "Marco para foto con object-fit cover centrado sin deformación aspect-ratio 3:4 o cuadrado según master",
+      "qr_code": "QR dinámico que renderiza URL pública segura de verificación ('https://.../verify/credential/{hash_or_id}') sin incluir cédula ni datos sensibles",
+      "fields": {
+        "member_number": "Número de miembro único y persistente (ej. VEV-2026-0842)",
+        "full_name": "Nombre completo con ajuste de tamaño automático",
+        "role_cargo": "Cargo canónico obtenido automáticamente del perfil Persona 360",
+        "issued_date": "Fecha de Emisión (DD/MM/AAAA)",
+        "expires_date": "Fecha de Vencimiento (Política inicial configurable 12 meses)"
+      },
+      "print_settings": "@page { size: 85.6mm 53.98mm; margin: 0; }"
     }
   },
   "typography": {
-    "font_family_display": "Playfair Display, Cormorant Garamond, serif",
-    "font_family_sans": "Inter, Manrope, system-ui, sans-serif",
-    "font_family_mono": "JetBrains Mono, Roboto Mono, monospace",
+    "font_family_heading": "Spectral, serif",
+    "font_family_body": "IBM Plex Sans, sans-serif",
+    "font_family_mono": "JetBrains Mono, monospace",
     "hierarchy": {
-      "h1": "text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight font-display text-slate-100",
-      "h2": "text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight font-display text-slate-100",
-      "h3": "text-xl sm:text-2xl font-semibold tracking-tight text-amber-400",
-      "h4": "text-lg sm:text-xl font-medium text-slate-200",
-      "body": "text-sm sm:text-base font-normal leading-relaxed font-sans text-slate-300",
-      "caption": "text-xs font-medium uppercase tracking-widest text-amber-500/80 font-mono"
+      "h1": "text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight",
+      "h2": "text-2xl sm:text-3xl font-semibold",
+      "h3": "text-xl sm:text-2xl font-medium",
+      "body": "text-base leading-relaxed",
+      "caption": "text-xs tracking-wider uppercase text-slate-500"
     }
   },
   "colors": {
-    "primary_navy": "#0F172A",
-    "navy_light": "#1E293B",
-    "gold": "#D97706",
-    "gold_accent": "#F59E0B",
-    "gold_muted": "#B45309",
-    "gold_light": "#FEF3C7",
-    "background_dark": "#0B1120",
-    "card_dark": "#111827",
-    "border_gold": "rgba(217, 119, 6, 0.25)",
-    "text_dark_bg": "#F8FAFC",
-    "text_muted_dark": "#94A3B8",
-    "status": {
-      "success": "#10B981",
-      "warning": "#F59E0B",
-      "error": "#EF4444",
-      "info": "#3B82F6"
-    }
+    "navy_primary": "#0B1428",
+    "blue_accent": "#0A2540",
+    "gold_highlight": "#C8A951",
+    "surface_light": "#F8FAFC",
+    "surface_card": "#FFFFFF",
+    "border_subtle": "#E2E8F0",
+    "text_dark": "#0F172A",
+    "text_muted": "#64748B"
   },
-  "financial_module_guidelines": {
-    "core_principles": [
-      "No duplicate modules or parallel accounting tables",
-      "Single core accounting entry for contributions, count sessions, deposits, and accounts payable",
-      "Strict RBAC & Confidentiality: restricted backend access for financial records (Finance team & Senior Pastors only)",
-      "Audit trail & non-destructive history for all transactions, edits, and adjustments",
-      "High density, scan-optimized fast batch entry interface for envelope count sessions (mobile and desktop/tablet support)",
-      "Strict approval workflow: AP status transitions (Pendiente -> Aprobada -> Programada -> Pagada)"
-    ],
-    "payment_methods": ["Efectivo", "Cheque", "Zelle", "Pushpay", "ACH / Transferencia", "Otro"],
-    "contribution_concepts": ["Diezmo", "Ofrenda", "Misiones", "Pro-Templo", "Proyecto / Campaña", "Donación", "Otro"],
-    "pushpay_integration_status": "MOCKED / BLOCKED until live API credentials are provided"
+  "visual_enhancers": {
+    "shadows": "shadow-xl border border-slate-200/80 rounded-2xl",
+    "card_preview_shell": "bg-slate-900/95 backdrop-blur-md p-6 rounded-2xl text-white shadow-2xl",
+    "certificate_preview_wrapper": "aspect-[11/8.5] w-full max-w-4xl mx-auto shadow-2xl bg-white overflow-hidden border border-slate-300 relative"
+  },
+  "grids": {
+    "dashboard_grid": "grid grid-cols-1 lg:grid-cols-12 gap-8",
+    "preview_split": "col-span-12 lg:col-span-8 (área de previsualización) y col-span-12 lg:col-span-4 (panel de configuración/emisión)"
+  },
+  "layouts": {
+    "page_container": "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8",
+    "modal_preview": "max-w-5xl mx-auto bg-white p-8 rounded-2xl shadow-2xl"
+  },
+  "motion": {
+    "transitions": "transition-colors duration-200 ease-in-out",
+    "hover_lift": "hover:-translate-y-0.5 hover:shadow-lg transition-all duration-200"
+  },
+  "accessibility": {
+    "contrast_ratio": "APCA 75+ / Minimum 4.5:1 WCAG AA",
+    "data_testid_policy": "Todos los campos, botones, previews, firmas y QR tienen data-testid explícito en kebab-case."
   },
   "media": {
-    "image_urls": [
-      {
-        "category": "worship_header",
-        "url": "https://images.unsplash.com/photo-1570786032462-2efc3ca8fccd?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1ODh8MHwxfHNlYXJjaHwyfHxjaHVyY2glMjBjb21tdW5pdHklMjBmaW5hbmNlJTIwd29yc2hpcCUyMGxlYWR8ZW58MHx8fHwxNzg5NTk0OTQyfDA&ixlib=rb-4.1.0&q=85",
-        "description": "Church congregation worship and leadership"
-      },
-      {
-        "category": "pastoral_choir",
-        "url": "https://images.pexels.com/photos/8814999/pexels-photo-8814999.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
-        "description": "Pastor leading church ceremony"
-      }
-    ]
+    "master_certificate": "https://customer-assets-agu9un31.emergentagent.net/job_venyve-sync/artifacts/pudr46ao_Untitled000%20%283%29%20%2859%29.webp",
+    "master_carnet": "https://customer-assets-agu9un31.emergentagent.net/job_venyve-sync/artifacts/0rsbi552_Alcides%20Rodriguez%20%282%29%20%2822%29.webp"
   },
-  "general_ui_ux_guidelines": {
-    "testing_attribute": "Every interactive and key informational element MUST include data-testid with kebab-case identifiers (e.g. data-testid=\"finance-contribution-submit-button\").",
-    "responsive_breakpoints": "Full compatibility required across desktop (1920x800), tablet (768px-1024px), and mobile (390x844).",
-    "contrast_and_accessibility": "Ensure 4.5:1 minimum contrast ratio for normal text on dark backgrounds with gold accents.",
-    "component_files": "This project uses JS/JSX component files (.js). Ensure guidelines target standard React Javascript structures.",
-    "no_transparent_overlays": "Never use fully transparent header backgrounds; use backdrop-blur-md with dark translucent fills to maintain legibility."
+  "3d_libraries": {
+    "status": "not_required_for_official_document_rendering",
+    "note": "Documentos imprimibles oficiales requieren renderizado bidimensional SVG/HTML5 Canvas de alta precisión sin distorsiones 3D."
+  },
+  "image_urls": {
+    "master_certificado": "https://customer-assets-agu9un31.emergentagent.net/job_venyve-sync/artifacts/pudr46ao_Untitled000%20%283%29%20%2859%29.webp",
+    "master_carnet": "https://customer-assets-agu9un31.emergentagent.net/job_venyve-sync/artifacts/0rsbi552_Alcides%20Rodriguez%20%282%29%20%2822%29.webp"
+  },
+  "component_path": {
+    "button": "/app/frontend/src/components/ui/button.jsx",
+    "dialog": "/app/frontend/src/components/ui/dialog.jsx",
+    "select": "/app/frontend/src/components/ui/select.jsx",
+    "input": "/app/frontend/src/components/ui/input.jsx",
+    "badge": "/app/frontend/src/components/ui/badge.jsx",
+    "tabs": "/app/frontend/src/components/ui/tabs.jsx",
+    "card": "/app/frontend/src/components/ui/card.jsx"
   },
   "instructions_to_main_agent": [
-    "Verify existing endpoints and database schemas before extending components.",
-    "Maintain institutional navy and gold visual styling consistently.",
-    "Ensure all forms have proper validation, state persistence, and toast feedback via Sonner.",
-    "Support RBAC checks on both API endpoints and frontend rendering for financial confidentiality."
-  ]
+    "REGLA CRÍTICA: NO rediseñar ni modificar la identidad de Certificado de Miembro ni Carnet de Miembro.",
+    "El Certificado debe renderizarse en proporción Carta Horizontal (11 x 8.5) con overlay de campos dinámicos exactos: {person.full_name}, {membership.certificate_issue_date}, {certificate.authorized_signature}.",
+    "El Carnet debe renderizarse en tamaño CR80 (85.6mm x 53.98mm) con foto recortada object-fit cover centrada, QR seguro de verificación pública sin datos sensibles, cargo automático de Persona 360, número de miembro único persistente, fecha de emisión y vencimiento (política 12 meses configurable).",
+    "Solo Pastor/Pastora pueden configurar parámetros globales (firma PNG transparente, nombre/cargo, vigencia por defecto), usuarios con permiso explícito pueden emitir.",
+    "Reimpresión conserva el número de miembro y fechas originales; renovación actualiza la vigencia.",
+    "Incluir data-testid en todos los elementos interactivos y dinámicos (ej: data-testid='issue-certificate-btn', data-testid='carnet-qr-code')."
+  ],
+  "UNIVERSAL GUIDELINES FOR MAIN AGENT": {
+    "no_universal_transition": "Prohibido transition: all. Usar transitions específicas para transform y opacity.",
+    "no_center_app": "No aplicar text-align: center global en .App",
+    "no_ai_emojis": "No usar emojis tipo 🤖🧠. Usar lucide-react únicamente.",
+    "gradient_rules": "No usar gradientes chillones/saturados en documentos oficiales.",
+    "data_testid_mandatory": "Todos los elementos clave deben poseer data-testid en kebab-case."
+  }
 }

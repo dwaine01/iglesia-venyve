@@ -19,6 +19,7 @@ import { Skeleton } from '../components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs';
 import { displayLabel } from '../lib/displayLabels';
 import { PersonFinanceSection } from '../components/finance/PersonFinanceSection';
+import { MembershipDocumentsSection } from '../components/membership/MembershipDocumentsSection';
 
 // P-001 Slice 2A - Person Profile 360 (shell full-screen).
 // Consume unicamente el read-model /api/core/persons/{id}/profile.
@@ -34,6 +35,7 @@ const SECTION_LABELS = {
   asistencia: 'Asistencia',
   historial: 'Historial',
   finanzas: 'Finanzas',
+  membresia: 'Carnet y certificado',
 };
 
 export default function PersonaPerfilPage() {
@@ -104,9 +106,10 @@ export default function PersonaPerfilPage() {
   const available = profile?.sections_available || ['resumen'];
   const planned = profile?.sections_planned || [];
   const canViewFinance = user?.rol === 'pastor' || (user?.capabilities || []).includes('finance.read');
+  const canManageMembershipDocuments = user?.rol === 'pastor' || (user?.capabilities || []).includes('membership.documents.manage');
   const allSections = [
     'resumen', 'contacto', 'direcciones', 'household',
-    'familia', 'procesos', 'asistencia', 'historial', ...(canViewFinance ? ['finanzas'] : []),
+    'familia', 'procesos', 'asistencia', 'historial', ...(canViewFinance ? ['finanzas'] : []), ...(canManageMembershipDocuments ? ['membresia'] : []),
   ];
 
   if (loading) {
@@ -162,13 +165,13 @@ export default function PersonaPerfilPage() {
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
           <div className="overflow-hidden rounded-xl border border-[#E8E5DE] bg-[#EEECE6] p-1 shadow-sm">
-            <TabsList className="grid h-auto w-full grid-cols-4 gap-1 bg-transparent p-0 lg:grid-cols-9">
+            <TabsList className="grid h-auto w-full grid-cols-4 gap-1 bg-transparent p-0 lg:grid-cols-10">
               {allSections.map((section) => (
                 <TabsTrigger
                   key={section}
                   value={section}
                   data-testid={`profile-tab-${section}`}
-                  disabled={!available.includes(section) && section !== 'finanzas'}
+                  disabled={!available.includes(section) && section !== 'finanzas' && section !== 'membresia'}
                   className="min-h-9 rounded-lg px-2 text-xs font-medium text-gray-600 data-[state=active]:bg-white data-[state=active]:text-[#101D36] data-[state=active]:shadow-sm sm:text-sm"
                 >
                   {SECTION_LABELS[section] || displayLabel(section, 'Sección')}
@@ -242,6 +245,12 @@ export default function PersonaPerfilPage() {
           {canViewFinance && (
             <TabsContent value="finanzas" className="mt-0 rounded-xl border border-[#E8E5DE] bg-white p-4 shadow-sm sm:p-6">
               <PersonFinanceSection personId={personId} />
+            </TabsContent>
+          )}
+
+          {canManageMembershipDocuments && (
+            <TabsContent value="membresia" className="mt-0">
+              <MembershipDocumentsSection personId={personId} photoSrc={photoSrc} />
             </TabsContent>
           )}
 

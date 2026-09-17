@@ -17,6 +17,7 @@ from access_control import (
     DOOR_BOARD_CAPABILITIES,
     CORE_GOVERNANCE_MANAGE,
     FINANCE_CAPABILITIES,
+    MEMBERSHIP_DOCUMENTS_MANAGE,
     PROCESS_CAPABILITIES,
     PERSON_DOMAIN_CAPABILITIES,
     PERSON_PASTORAL_NOTES_READ,
@@ -411,7 +412,7 @@ async def update_user_access(
         if active_pastors <= 1:
             raise HTTPException(status_code=400, detail="Debe existir al menos un pastor activo")
     defaults = access_defaults(requested_level, requested_groups)
-    allowed = set(PERSON_DOMAIN_CAPABILITIES + PROCESS_CAPABILITIES + CELLULAR_CAPABILITIES + DOOR_BOARD_CAPABILITIES + FINANCE_CAPABILITIES + [BOARD_CONFIDENTIAL_ACCESS, PERSON_PASTORAL_NOTES_READ, CORE_GOVERNANCE_MANAGE, CORE_ACCESS_MANAGE])
+    allowed = set(PERSON_DOMAIN_CAPABILITIES + PROCESS_CAPABILITIES + CELLULAR_CAPABILITIES + DOOR_BOARD_CAPABILITIES + FINANCE_CAPABILITIES + [MEMBERSHIP_DOCUMENTS_MANAGE, BOARD_CONFIDENTIAL_ACCESS, PERSON_PASTORAL_NOTES_READ, CORE_GOVERNANCE_MANAGE, CORE_ACCESS_MANAGE])
     capabilities = defaults["capabilities"]
     if payload.capabilities is not None:
         if current_user.get("rol") != "pastor":
@@ -419,12 +420,13 @@ async def update_user_access(
         invalid = sorted(set(payload.capabilities) - allowed)
         if invalid:
             raise HTTPException(status_code=400, detail=f"Capabilities inválidas: {', '.join(invalid)}")
-        capabilities = sorted(set(payload.capabilities))
+        capabilities = sorted(set(defaults["capabilities"] + payload.capabilities))
         if requested_role == "pastor" and CORE_GOVERNANCE_MANAGE not in capabilities:
             capabilities.append(CORE_GOVERNANCE_MANAGE)
     changed = (
         target.get("rol") != requested_role
         or target.get("is_active", True) is not payload.is_active
+        or sorted(target.get("privilege_groups") or []) != sorted(requested_groups)
         or sorted(target.get("capabilities") or []) != sorted(capabilities)
         or target.get("access_scope") != defaults["access_scope"]
     )
@@ -435,7 +437,7 @@ async def update_user_access(
         "is_active": payload.is_active,
         "capabilities": capabilities,
         "access_scope": defaults["access_scope"],
-        "access_policy_version": 12,
+        "access_policy_version": 13,
         "updated_at": datetime.now(timezone.utc),
     }
     if changed:

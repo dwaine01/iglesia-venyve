@@ -446,6 +446,9 @@ from finance_engine import ensure_indexes_and_seed as finance_ensure_indexes
 app.include_router(finance_router)
 app.include_router(finance_expansion_router)
 
+from membership_documents import router as membership_documents_router, ensure_membership_documents
+app.include_router(membership_documents_router)
+
 # --- ACCESS-01 + P-001 Slice 2B Contactos/Direcciones (modular) ---
 from person_domains import router as person_domains_router, ensure_indexes as person_domains_ensure_indexes
 
@@ -593,6 +596,7 @@ async def startup():
     await core_governance_ensure()
     await access_onboarding_ensure_indexes()
     await finance_ensure_indexes()
+    await ensure_membership_documents()
     await migrate_core_identity(db, "system:startup")
     await seed_process_catalog(db)
     await ensure_process_indexes(db)

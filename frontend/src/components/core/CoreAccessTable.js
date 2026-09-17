@@ -1,41 +1,35 @@
-import React, { useEffect, useState } from 'react';
-import { ExternalLink, Loader2, Save, UserRoundCog } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import React, { useMemo, useState } from 'react';
+import { Save, ShieldCheck } from 'lucide-react';
 
-import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { Checkbox } from '../ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
-import { Switch } from '../ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../ui/table';
+import { displayLabel } from '../../lib/displayLabels';
 
-const levelLabel = { pastor: 'Pastor', coordinador_general: 'Coordinador general', director: 'Director/a', secretario: 'Secretario/a', tesorero: 'Tesorero/a', equipo: 'Equipo', lider: 'Líder', persona: 'Persona' };
+const levels = ['persona', 'lider', 'puerta', 'director', 'coordinador', 'pastor'];
+const groups = ['membership', 'cellular', 'doors', 'ministries', 'board', 'finance'];
+const DOCUMENT_CAPABILITY = 'membership.documents.manage';
 
-const LevelSelect = ({ item, draft, currentUser, onChange, testId }) => {
-  const protectedLevel = ['pastor', 'coordinador_general'].includes(item.access_level);
-  const canEdit = item.user_id !== currentUser?.id && (currentUser?.rol === 'pastor' || !protectedLevel);
-  const levels = currentUser?.rol === 'pastor' ? ['pastor', 'coordinador_general', 'director', 'lider', 'secretario', 'tesorero', 'equipo', 'persona'] : currentUser?.access_level === 'coordinador_general' ? ['director', 'lider', 'persona'] : ['secretario', 'tesorero', 'equipo', 'persona'];
-  return <Select value={draft.access_level} onValueChange={(value) => onChange(item.user_id, 'access_level', value)} disabled={!canEdit}><SelectTrigger className="w-full bg-white" data-testid={testId}><SelectValue /></SelectTrigger><SelectContent className="bg-white">{levels.map((level) => <SelectItem key={level} value={level}>{levelLabel[level]}</SelectItem>)}</SelectContent></Select>;
-};
+export const CoreAccessTable = ({ items = [], currentUser, saving, onSave }) => {
+  const initial = useMemo(() => Object.fromEntries(items.map((item) => [item.user_id, {
+    access_level: item.access_level || item.rol,
+    is_active: item.is_active !== false,
+    privilege_groups: item.privilege_groups || [],
+    capabilities: item.capabilities || [],
+  }])), [items]);
+  const [drafts, setDrafts] = useState(initial);
 
-const PrivilegeEditor = ({ item, draft, currentUser, onChange }) => { const protectedLevel = ['pastor', 'coordinador_general'].includes(item.access_level); const canEdit = item.user_id !== currentUser?.id && (currentUser?.rol === 'pastor' || !protectedLevel); const available = currentUser?.rol === 'pastor' ? [['membership', 'Membresía'], ['board', 'Junta'], ['finance', 'Finanzas']] : [['membership', 'Membresía']]; const toggle = (group, checked) => onChange(item.user_id, 'privilege_groups', checked ? [...new Set([...(draft.privilege_groups || []), group])] : (draft.privilege_groups || []).filter((value) => value !== group)); return <div className="flex flex-wrap gap-3">{available.map(([group, label]) => <label key={group} className="flex items-center gap-1.5 text-xs"><Checkbox checked={(draft.privilege_groups || []).includes(group)} onCheckedChange={(value) => toggle(group, Boolean(value))} disabled={!canEdit} data-testid={`core-user-privilege-${group}-${item.user_id}`} />{label}</label>)}</div>; };
+  React.useEffect(() => setDrafts(initial), [initial]);
+  const patch = (userId, changes) => setDrafts((current) => ({ ...current, [userId]: { ...current[userId], ...changes } }));
 
-const AccessActions = ({ item, draft, currentUser, saving, onChange, onSave, onOpenProfile, suffix = '' }) => {
-  const protectedLevel = ['pastor', 'coordinador_general'].includes(item.access_level);
-  const canEdit = item.user_id !== currentUser?.id && (currentUser?.rol === 'pastor' || !protectedLevel);
-  return <><div className="flex items-center gap-2"><Switch checked={draft.is_active} onCheckedChange={(value) => onChange(item.user_id, 'is_active', value)} disabled={!canEdit} data-testid={`core-user-active-switch${suffix}-${item.user_id}`} /><span className="text-xs text-gray-600">{draft.is_active ? 'Activa' : 'Inactiva'}</span></div><div className="flex gap-2"><Button variant="outline" size="icon" onClick={() => onOpenProfile(item.person_id)} disabled={!item.person_id} aria-label="Abrir Perfil 360" data-testid={`core-user-profile-button${suffix}-${item.user_id}`}><ExternalLink className="h-4 w-4" /></Button><Button size="sm" onClick={() => onSave(item.user_id)} disabled={!canEdit || saving === item.user_id} className="bg-[#101D36] text-white hover:bg-[#1B2A4A]" data-testid={`core-user-save-button${suffix}-${item.user_id}`}>{saving === item.user_id ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Save className="mr-1 h-4 w-4" />}Guardar</Button></div></>;
-};
-
-export const CoreAccessTable = ({ users, currentUser, saving, onSave }) => {
-  const navigate = useNavigate();
-  const [drafts, setDrafts] = useState({});
-  useEffect(() => { setDrafts(Object.fromEntries(users.map((item) => [item.user_id, { access_level: item.access_level || item.rol, is_active: item.is_active, privilege_groups: item.privilege_groups || [] }]))); }, [users]);
-  const change = (id, field, value) => setDrafts((old) => ({ ...old, [id]: { ...old[id], [field]: value } }));
-  const openProfile = (personId) => personId && navigate(`/personas/${personId}`);
-
-  return <section className="px-4 py-8 sm:px-6 lg:px-8" data-testid="core-access-section">
-    <div className="mb-5 flex items-start gap-3"><UserRoundCog className="mt-1 h-5 w-5 text-[#9A7A2F]" /><div><h2 className="font-['Spectral'] text-2xl font-bold text-[#101D36]">Cuentas y niveles de acceso</h2><p className="mt-1 text-sm text-gray-600">Cada cuenta apunta a un Perfil 360. Los cambios revocan las sesiones anteriores.</p></div></div>
-    <div className="space-y-3 md:hidden">{users.map((item) => { const draft = drafts[item.user_id] || item; return <div key={item.user_id} className="rounded-md border border-[#E5E1D7] bg-white p-4 shadow-sm" data-testid={`core-user-card-${item.user_id}`}><div className="mb-4 flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate font-semibold text-[#101D36]" data-testid={`core-user-name-${item.user_id}`}>{item.nombre}</p><p className="truncate text-xs text-gray-500">{item.email}</p></div><Badge variant="outline">{levelLabel[item.access_level || item.rol]}</Badge></div><div className="grid gap-3"><LevelSelect item={item} draft={draft} currentUser={currentUser} onChange={change} testId={`core-user-role-select-${item.user_id}`} /><PrivilegeEditor item={item} draft={draft} currentUser={currentUser} onChange={change} /><AccessActions item={item} draft={draft} currentUser={currentUser} saving={saving} onChange={change} onSave={(id) => onSave(id, drafts[id])} onOpenProfile={openProfile} /></div></div>; })}</div>
-    <div className="hidden overflow-x-auto rounded-md border border-[#E5E1D7] bg-white md:block"><Table><TableHeader><TableRow><TableHead>Cuenta</TableHead><TableHead>Perfil 360</TableHead><TableHead>Nivel</TableHead><TableHead>Privilegios</TableHead><TableHead>Estado y acciones</TableHead></TableRow></TableHeader><TableBody>{users.map((item) => { const draft = drafts[item.user_id] || item; return <TableRow key={item.user_id} data-testid={`core-user-row-${item.user_id}`}><TableCell><p className="font-semibold text-[#101D36]" data-testid={`core-user-name-desktop-${item.user_id}`}>{item.nombre}</p><p className="text-xs text-gray-500">{item.email}</p></TableCell><TableCell><span className="font-mono text-xs text-[#8A6D2F]" data-testid={`core-user-person-id-${item.user_id}`}>{item.person_id ? item.person_id.slice(-8) : 'Sin enlace'}</span></TableCell><TableCell className="min-w-44"><LevelSelect item={item} draft={draft} currentUser={currentUser} onChange={change} testId={`core-user-role-select-desktop-${item.user_id}`} /></TableCell><TableCell><PrivilegeEditor item={item} draft={draft} currentUser={currentUser} onChange={change} /></TableCell><TableCell><AccessActions item={item} draft={draft} currentUser={currentUser} saving={saving} onChange={change} onSave={(id) => onSave(id, drafts[id])} onOpenProfile={openProfile} suffix="-desktop" /></TableCell></TableRow>; })}</TableBody></Table></div>
+  return <section className="overflow-hidden border bg-white" data-testid="core-access-table">
+    <div className="border-b bg-slate-50 p-4"><h2 className="font-['Spectral'] text-xl font-semibold">Accesos del sistema</h2><p className="mt-1 text-xs text-slate-500">Los módulos restringidos requieren concesión explícita del pastor.</p></div>
+    <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Usuario</TableHead><TableHead>Nivel</TableHead><TableHead>Grupos</TableHead><TableHead>Documentos oficiales</TableHead><TableHead>Estado</TableHead><TableHead /></TableRow></TableHeader><TableBody>{items.map((item) => {
+      const draft = drafts[item.user_id] || {};
+      const locked = item.user_id === currentUser?.user_id;
+      const hasDocumentPermission = draft.capabilities?.includes(DOCUMENT_CAPABILITY);
+      return <TableRow key={item.user_id} data-testid={`access-row-${item.user_id}`}><TableCell><b>{item.display_name || item.email}</b><small className="block text-slate-500">{item.email}</small></TableCell><TableCell><Select disabled={locked} value={draft.access_level || item.rol} onValueChange={(value) => patch(item.user_id, { access_level: value })}><SelectTrigger data-testid={`access-level-${item.user_id}`}><SelectValue /></SelectTrigger><SelectContent className="bg-white">{levels.map((level) => <SelectItem key={level} value={level}>{displayLabel(level)}</SelectItem>)}</SelectContent></Select></TableCell><TableCell><div className="flex max-w-md flex-wrap gap-2">{groups.map((group) => <label key={group} className="flex items-center gap-1 text-xs"><Checkbox disabled={locked || group === 'finance' && currentUser?.rol !== 'pastor'} checked={draft.privilege_groups?.includes(group)} onCheckedChange={(checked) => patch(item.user_id, { privilege_groups: checked ? [...new Set([...(draft.privilege_groups || []), group])] : (draft.privilege_groups || []).filter((value) => value !== group) })} data-testid={`access-group-${group}-${item.user_id}`} />{displayLabel(group)}</label>)}</div></TableCell><TableCell><label className="flex items-center gap-2 text-sm"><Checkbox disabled={locked || currentUser?.rol !== 'pastor'} checked={hasDocumentPermission} onCheckedChange={(checked) => patch(item.user_id, { capabilities: checked ? [...new Set([...(draft.capabilities || []), DOCUMENT_CAPABILITY])] : (draft.capabilities || []).filter((value) => value !== DOCUMENT_CAPABILITY) })} data-testid={`membership-documents-permission-${item.user_id}`} /><ShieldCheck className="h-4 w-4 text-[#B5953F]" />Emitir carnets/certificados</label></TableCell><TableCell><Select disabled={locked} value={draft.is_active ? 'active' : 'inactive'} onValueChange={(value) => patch(item.user_id, { is_active: value === 'active' })}><SelectTrigger data-testid={`access-status-${item.user_id}`}><SelectValue /></SelectTrigger><SelectContent className="bg-white"><SelectItem value="active">Activo</SelectItem><SelectItem value="inactive">Inactivo</SelectItem></SelectContent></Select></TableCell><TableCell><Button size="sm" disabled={locked || saving === item.user_id} onClick={() => onSave(item.user_id, draft)} data-testid={`save-access-${item.user_id}`}><Save className="h-4 w-4" />Guardar</Button></TableCell></TableRow>;
+    })}</TableBody></Table></div>
   </section>;
 };
