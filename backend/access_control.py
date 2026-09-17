@@ -39,6 +39,13 @@ FINANCE_READ = "finance.read"
 FINANCE_MANAGE = "finance.manage"
 FINANCE_CAPABILITIES = [FINANCE_READ, FINANCE_MANAGE]
 MEMBERSHIP_DOCUMENTS_MANAGE = "membership.documents.manage"
+MEMBERSHIP_ACCEPTANCE_MANAGE = "membership.acceptance.manage"
+CONSOLIDATION_MENTOR_TRANSFER = "consolidation.mentor.transfer"
+CONSOLIDATION_RETREAT_CLOSE = "consolidation.retreat.close"
+FRONT_GROUPS_MANAGE = "front_groups.manage"
+MENTOR_QUALIFICATIONS_MANAGE = "mentor.qualifications.manage"
+LEADERSHIP_REQUIREMENTS_MANAGE = "leadership.requirements.manage"
+LEADERSHIP_PROMOTE = "leadership.promote"
 PROCESSES_READ = "processes.read"
 PROCESSES_WRITE = "processes.write"
 PROCESSES_PARTICIPATE = "processes.participate"
@@ -74,6 +81,16 @@ PROCESS_CAPABILITIES = [
     PROCESSES_PARTICIPATE,
     PROCESSES_MANAGE,
     PROCESS_ALERTS_MANAGE,
+]
+
+JOURNEY_GOVERNANCE_CAPABILITIES = [
+    MEMBERSHIP_ACCEPTANCE_MANAGE,
+    CONSOLIDATION_MENTOR_TRANSFER,
+    CONSOLIDATION_RETREAT_CLOSE,
+    FRONT_GROUPS_MANAGE,
+    MENTOR_QUALIFICATIONS_MANAGE,
+    LEADERSHIP_REQUIREMENTS_MANAGE,
+    LEADERSHIP_PROMOTE,
 ]
 
 PERSON_SELF_CAPABILITIES = [
@@ -125,7 +142,7 @@ PERSON_DOMAIN_CAPABILITIES = [
 
 _ROLE_ACCESS_DEFAULTS = {
     "pastor": {
-        "capabilities": [*PERSON_DOMAIN_CAPABILITIES, *PROCESS_CAPABILITIES, *CELLULAR_CAPABILITIES, *DOOR_BOARD_CAPABILITIES, *FINANCE_CAPABILITIES, MEMBERSHIP_DOCUMENTS_MANAGE, PERSON_PASTORAL_NOTES_READ, CORE_GOVERNANCE_MANAGE, CORE_ACCESS_MANAGE],
+        "capabilities": [*PERSON_DOMAIN_CAPABILITIES, *PROCESS_CAPABILITIES, *CELLULAR_CAPABILITIES, *DOOR_BOARD_CAPABILITIES, *FINANCE_CAPABILITIES, *JOURNEY_GOVERNANCE_CAPABILITIES, MEMBERSHIP_DOCUMENTS_MANAGE, PERSON_PASTORAL_NOTES_READ, CORE_GOVERNANCE_MANAGE, CORE_ACCESS_MANAGE],
         "access_scope": {"persons": "all"},
     },
     "lider": {
@@ -147,7 +164,7 @@ def access_defaults_for_role(role: str) -> dict:
             {"capabilities": [], "access_scope": {"persons": "none"}},
         )
     )
-    defaults["access_policy_version"] = 13
+    defaults["access_policy_version"] = 14
     return defaults
 
 
@@ -209,9 +226,9 @@ async def ensure_access_defaults(db) -> None:
             {"$set": {"access_scope": defaults["access_scope"]}},
         )
         await db.users.update_many(
-            {"rol": role, "$or": [{"parent_user_id": {"$exists": False}}, {"access_policy_version": {"$lt": 13}}, {"access_policy_version": {"$exists": False}}]},
+            {"rol": role, "$or": [{"parent_user_id": {"$exists": False}}, {"access_policy_version": {"$lt": 14}}, {"access_policy_version": {"$exists": False}}]},
             {
                 "$addToSet": {"capabilities": {"$each": defaults["capabilities"]}},
-                "$set": {"access_policy_version": 13},
+                "$set": {"access_policy_version": 14},
             },
         )

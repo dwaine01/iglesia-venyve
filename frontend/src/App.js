@@ -42,6 +42,10 @@ import ProcessesDashboardPage from './pages/processes/ProcessesDashboardPage';
 import SevenWeeksPage from './pages/processes/SevenWeeksPage';
 import SevenWeeksDetailPage from './pages/processes/SevenWeeksDetailPage';
 import ConsolidationPage from './pages/processes/ConsolidationPage';
+import ConsolidationDetailPage from './pages/processes/ConsolidationDetailPage';
+import DiscipleshipPage from './pages/processes/DiscipleshipPage';
+import FrontGroupsPage from './pages/FrontGroupsPage';
+import LeadershipPage from './pages/LeadershipPage';
 import MentorshipPage from './pages/processes/MentorshipPage';
 import CapPage from './pages/processes/CapPage';
 import CellularDashboardPage from './pages/cellular/CellularDashboardPage';
@@ -139,6 +143,10 @@ function App() {
             <Route path="procesos/7-semanas" element={<SevenWeeksPage />} />
             <Route path="procesos/7-semanas/:enrollmentId" element={<SevenWeeksDetailPage />} />
             <Route path="procesos/consolidacion" element={<ConsolidationPage />} />
+            <Route path="procesos/consolidacion/:enrollmentId" element={<ConsolidationDetailPage />} />
+            <Route path="procesos/discipulado" element={<DiscipleshipPage />} />
+            <Route path="grupos-frontales" element={<FrontGroupsPage />} />
+            <Route path="liderazgo" element={<LeadershipPage />} />
             <Route path="procesos/mentoria" element={<MentorshipPage />} />
             <Route path="procesos/cap" element={<CapPage />} />
             <Route path="celulas/dashboard" element={<CellularDashboardPage />} />

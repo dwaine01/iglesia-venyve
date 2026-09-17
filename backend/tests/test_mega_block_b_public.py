@@ -184,8 +184,11 @@ def test_process_catalog_and_dashboard_have_real_serializable_data(pastor_sessio
     assert catalog.status_code == 200, catalog.text
     catalog_data = catalog.json()
     assert len(catalog_data.get("definitions", [])) >= 4
-    seven = next(item for item in catalog_data["definitions"] if item["process_key"] == "seven_weeks")
-    assert len(seven.get("stages", [])) == 7
+    consolidation = next(item for item in catalog_data["definitions"] if item["process_key"] == "consolidation")
+    assert consolidation["version"] == 2
+    assert len(consolidation.get("stages", [])) == 11
+    assert any(item["process_key"] == "discipleship" for item in catalog_data["definitions"])
+    assert all(item["process_key"] != "seven_weeks" for item in catalog_data["definitions"])
     assert len(catalog_data.get("doors", [])) == 9
 
     dashboard = requests.get(api_url("/api/processes/dashboard"), headers=auth_headers(token), timeout=30)
@@ -244,7 +247,7 @@ def test_seven_weeks_requires_cycle_and_blocks_duplicate_active(pastor_session, 
         json={"process_key": "seven_weeks", "person_id": qa_person_id, "status": "active"},
         timeout=30,
     )
-    assert no_cycle.status_code == 400, no_cycle.text
+    assert no_cycle.status_code == 409, no_cycle.text
 
     create = requests.post(
         api_url("/api/processes/enrollments"),
@@ -258,8 +261,7 @@ def test_seven_weeks_requires_cycle_and_blocks_duplicate_active(pastor_session, 
         },
         timeout=30,
     )
-    assert create.status_code == 201, create.text
-    enrollment_id = create.json()["enrollment_id"]
+    assert create.status_code == 409, create.text
 
     duplicate = requests.post(
         api_url("/api/processes/enrollments"),
@@ -269,86 +271,35 @@ def test_seven_weeks_requires_cycle_and_blocks_duplicate_active(pastor_session, 
     )
     assert duplicate.status_code == 409, duplicate.text
 
-    detail = requests.get(api_url(f"/api/processes/enrollments/{enrollment_id}"), headers=auth_headers(token), timeout=30)
-    assert detail.status_code == 200, detail.text
-    payload = detail.json()
-    assert payload["person_id"] == qa_person_id
-    assert payload["current_stage_key"] == "week_1"
-
 
 def test_week1_completion_opens_week2_and_records_timeline(pastor_session, qa_person_id, qa_cycle_id):
     token = pastor_session["token"]
-    enrollments = requests.get(
+    blocked = requests.post(
         api_url("/api/processes/enrollments"),
         headers=auth_headers(token),
-        params={"process_key": "seven_weeks", "cycle_id": qa_cycle_id},
+        json={"process_key": "seven_weeks", "person_id": qa_person_id, "cycle_id": qa_cycle_id, "status": "active"},
         timeout=30,
     )
-    assert enrollments.status_code == 200, enrollments.text
-    row = next(item for item in enrollments.json().get("items", []) if item.get("person_id") == qa_person_id)
-    enrollment_id = row["enrollment_id"]
-
-    detail = requests.get(api_url(f"/api/processes/enrollments/{enrollment_id}"), headers=auth_headers(token), timeout=30)
-    assert detail.status_code == 200, detail.text
-    stage = next(item for item in detail.json().get("stages", []) if item.get("stage_key") == "week_1")
-
-    for task in stage.get("tasks", []):
-        done = requests.put(
-            api_url(f"/api/processes/enrollments/{enrollment_id}/stages/week_1/tasks/{task['task_id']}"),
-            headers=auth_headers(token),
-            json={"completed": True},
-            timeout=30,
-        )
-        assert done.status_code == 200, done.text
-
-    complete = requests.put(
-        api_url(f"/api/processes/enrollments/{enrollment_id}/stages/week_1"),
-        headers=auth_headers(token),
-        json={
-            "status": "completed",
-            "attendance": "present",
-            "result": "QA week1 completed",
-            "notes": "QA notes",
-            "next_action": "Move to week2",
-        },
-        timeout=30,
-    )
-    assert complete.status_code == 200, complete.text
-    body = complete.json()
-    assert body["enrollment"]["current_stage_key"] == "week_2"
-
-    detail_after = requests.get(api_url(f"/api/processes/enrollments/{enrollment_id}"), headers=auth_headers(token), timeout=30)
-    assert detail_after.status_code == 200, detail_after.text
-    timeline = detail_after.json().get("timeline", [])
-    assert len(timeline) > 0
+    assert blocked.status_code == 409
+    assert "Consolidación v2" in blocked.json()["detail"]
 
 
 # Module: consolidation, mentorship, CAP contracts
 def test_consolidation_contact_flow_updates_timeline_and_stage(pastor_session, qa_person_id):
     token = pastor_session["token"]
     create = requests.post(
-        api_url("/api/processes/enrollments"),
+        api_url("/api/processes/consolidation/intakes"),
         headers=auth_headers(token),
         json={
-            "process_key": "consolidation",
             "person_id": qa_person_id,
-            "status": "active",
-            "next_action": "Primer contacto QA",
+            "entry_mode": "visitor_followup",
+            "initial_result": "Primer contacto QA",
+            "next_followup_at": (datetime.now(timezone.utc) + timedelta(days=2)).isoformat(),
         },
         timeout=30,
     )
-    assert create.status_code in (201, 409), create.text
-
-    if create.status_code == 201:
-        enrollment_id = create.json()["enrollment_id"]
-    else:
-        items = requests.get(
-            api_url("/api/processes/enrollments"),
-            headers=auth_headers(token),
-            params={"process_key": "consolidation"},
-            timeout=30,
-        ).json()["items"]
-        enrollment_id = next(item["enrollment_id"] for item in items if item["person_id"] == qa_person_id)
+    assert create.status_code == 201, create.text
+    enrollment_id = create.json()["enrollment_id"]
 
     contact = requests.post(
         api_url(f"/api/processes/enrollments/{enrollment_id}/contacts"),
@@ -359,7 +310,7 @@ def test_consolidation_contact_flow_updates_timeline_and_stage(pastor_session, q
             "outcome": "QA first contact",
             "next_contact_at": (datetime.now(timezone.utc) + timedelta(days=2)).isoformat(),
             "next_action": "QA follow-up",
-            "advance_stage": True,
+            "advance_stage": False,
         },
         timeout=30,
     )

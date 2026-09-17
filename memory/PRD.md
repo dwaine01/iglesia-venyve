@@ -397,7 +397,78 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - Confirmación posterior en Railway: los commits publicados seguían modificando únicamente PRD/metadatos y `HEAD:frontend/yarn.lock` conservaba el hash anterior sin `qrcode`; no era una nueva falla de build. El lockfile queda marcado explícitamente como archivo versionado para que el próximo Publish incluya sus 90 altas/2 ajustes.
 - Cierre confirmado por el usuario el 2026‑09‑17: Publish incluyó finalmente el lockfile, Railway desplegó el frontend sin error y `https://panel.iglesiavenyve.org` respondió HTTP 200; verificación visual de producción mostró la pantalla de acceso completa y sin overflow horizontal.
 - `.env` continúa excluido deliberadamente del contexto Docker para no incrustar secretos; Railway inyecta `MONGO_URL`, `DB_NAME`, JWT y CORS como variables runtime según `DEPLOYMENT.md`.
-- Pendiente P0: corregir el desacople `CoreGovernancePage` → `CoreAccessTable` (`users` frente a `items`) y alinear niveles/grupos del payload con `AccessUpdate` antes de certificar la delegación del permiso.
+- P0 RBAC resuelto: `CoreGovernancePage` entrega `items`, la tabla usa niveles/grupos válidos y el backend materializa/revoca capacidades delegadas sin convertir títulos operativos en roles administrativos inválidos.
+
+### P0 — Consolidación v2: de visitante a Líder — IMPLEMENTADO 2026‑09‑17
+
+#### Regla oficial
+- Un solo motor de Consolidación con cuatro puertas inmutables: `complete_cycle`, `direct_church`, `cell`, `visitor_followup`.
+- Tronco común: Nuevo/seguimiento → Oración e Invasión solo cuando aplica → MCD → NPT → Fiesta de Bienvenida → LBS 1 → LBS 2 → LBS 3 → Retiro → Educación/Discipulado.
+- Fiesta es obligatoria. Membresía nace exclusivamente con la acción explícita **Firmó Carta de Membresía**, no por asistencia ni por completar Retiro.
+- Retiro culmina Consolidación, registra estado de entrega documental y abre un único expediente enlazado de Discipulado.
+- Liderazgo ministerial y `users.rol` permanecen separados; promoción nunca concede administración del software.
+
+#### Reutilización y migración
+- Reutilizados Persona 360, `person_arrivals`, motor de procesos, stages/tasks/timeline/evidence/alerts, Mentoría, CAP, Ministerios, Sistema Celular, membresías, certificado/carnet/QR y RBAC.
+- `consolidation` definición v2 incorpora 11 etapas; `seven_weeks` queda histórico/read-only y no acepta nuevas inscripciones genéricas.
+- Migración append-only `consolidation_v2_historical_links`: crea vínculo v2 con `legacy_source_snapshot`, conserva enrollment/stages originales y usa cycle_id de migración para convivir con índices activos.
+- El catálogo operativo conserva `consolidation`, `discipleship`, `mentorship` y `cap`; excluye solamente el escritor legado `seven_weeks`.
+
+#### Membresía y documentos
+- Número de miembro se asigna en firma mediante contador Mongo atómico y `membership_number_registry` inmutable; es distinto de Person ID y nunca se reutiliza.
+- Reintentos de firma son idempotentes y conservan número/fecha originales.
+- `person_memberships` separa status, aceptación, beneficios, elegibilidad de certificado/carnet y entrega en Retiro.
+- Emisión documental ahora rechaza Personas sin firma formal; membresías históricas se preservan mediante backfill `legacy_membership` y registro de números existentes.
+
+#### Mentoría y Fiesta
+- `mentor_assignments` conserva asignación actual e historial append-only con mentor anterior/nuevo, etapa, motivo, fechas y actor.
+- `mentor_qualifications` define autorización LBS global o por Grupo Frontal.
+- Fiesta evalúa al mentor. Si no está calificado, `mentor_transfer_required=true` y LBS queda bloqueado hasta transferencia formal a mentor autorizado.
+
+#### Grupo Frontal
+- Nueva estructura propia `front_groups`, distinta de Redes/Ministerios/Puertas/Células pero enlazable mediante `linked_structures`.
+- Estado activo/inactivo, líder principal, equipo, mentores, historial de líderes, procesos organizados, personas alcanzadas y estadísticas.
+- `front_group_assignments` define team/mentor/leader y conserva altas/bajas históricas.
+- Líder principal puede iniciar Consolidación y promover únicamente dentro de su Grupo cuando RBAC concede la capability correspondiente.
+
+#### Liderazgo configurable
+- `leadership_requirement_catalog`: requisitos agregables, editables, activables/desactivables y retirables sin cambiar código.
+- Fuentes automáticas: membresía activa, formación/Mentoría/Discipulado, CAP y servicio ministerial; requisitos manuales admiten evidencia triestado.
+- Ficha de elegibilidad muestra ✓ `met`, ⚠ `pending`, ✕ `not_met`; la elegibilidad no promueve automáticamente.
+- Pastora global O Líder principal del Grupo Frontal con `leadership.promote` puede aprobar; no existe doble aprobación.
+- `leadership_promotions` conserva aprobador/rol/fecha/grupo/observaciones/requisitos snapshot/estado anterior→nuevo; segundo intento se bloquea.
+- `person_leadership_status` registra el estado ministerial sin modificar `users.rol` ni autoasignar capabilities.
+
+#### RBAC explícito
+- Nuevas capabilities pastorales/delegables: `membership.acceptance.manage`, `consolidation.mentor.transfer`, `consolidation.retreat.close`, `front_groups.manage`, `mentor.qualifications.manage`, `leadership.requirements.manage`, `leadership.promote`.
+- Backend valida capability y scope en cada acción sensible; secretaria autorizada necesita capability y pertenencia scoped cuando corresponde.
+- `CoreAccessTable` permite concesión/revocación explícita con payload contractual válido y conserva grupos restringidos `membership`, `board`, `finance`.
+
+#### Frontend y read models
+- Consolidación: tablero, intake de cuatro puertas, métricas, embudo, alertas, expediente, riel de etapas, tareas y acciones formales de Fiesta/Retiro.
+- Nuevas rutas: `/procesos/consolidacion/:enrollmentId`, `/procesos/discipulado`, `/grupos-frontales`, `/liderazgo`.
+- Perfil 360 muestra simultáneamente Membresía, Consolidación, mentor, Discipulado y Liderazgo.
+- Navegación principal retira 7 Semanas como escritor visible; rutas históricas se conservan para compatibilidad.
+
+#### APIs principales
+- `POST /api/processes/consolidation/intakes`
+- `GET /api/processes/consolidation/dashboard`
+- `GET /api/processes/consolidation/{id}`
+- `POST /api/processes/consolidation/{id}/start`
+- `POST /api/processes/consolidation/{id}/mentor/evaluate`
+- `POST /api/processes/consolidation/{id}/mentor/transfer`
+- `POST /api/processes/consolidation/{id}/membership-acceptance`
+- `POST /api/processes/consolidation/{id}/retreat-close`
+- CRUD `/api/front-groups` y calificaciones LBS
+- CRUD `/api/leadership/requirements`, eligibility, evidencia y promote
+
+#### Certificación
+- Backend completo: **132 passed, 3 skipped**, sin fallas; E2E Consolidación v2 ampliado **5/5 PASS**.
+- Regresión post-auditoría iteration 23: catálogo/gates + recorrido **7/7 PASS**.
+- Frontend: **19/19 PASS**, build de producción PASS.
+- Testing independiente: P0 RBAC, rutas públicas, Grupos Frontales, Liderazgo y móvil validados; observación de catálogo corregida para conservar Mentoría/CAP requeridos por negocio.
+- Desktop 1920×800 y móvil 390×844 verificados; riel responsive sin overflow.
+- Cleanup final: `persons=0`, `users=0`, `qa_people=0`, `qa_users=0`; fixtures de suite se crean/reponen por prueba y se eliminan al terminar.
 
 ### P0 — Eliminación segura de Personas y limpieza QA — IMPLEMENTADO 2026‑09‑17
 
@@ -417,7 +488,7 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 
 ### P1/P2 — siguientes pasos y backlog
 
-- **P0 — Gobierno de accesos:** restaurar filas de `CoreAccessTable`, persistir concesión/revocación de `membership.documents.manage` y ejecutar regresión backend + frontend.
+- **P1 — Aceptación operativa:** validar Consolidación v2 con responsables reales, asignar capabilities y crear el primer Grupo Frontal de producción.
 - **P1 — Aceptación funcional del usuario:** revisar Mega‑Bloque G ya certificado con casos reales de la oficina de la iglesia y recopilar ajustes de política/terminología.
 - **P1 — Pushpay:** activar OAuth/sandbox, sincronización idempotente y mapeo contable únicamente después de recibir credenciales reales.
 - **P2 — Finanzas:** pulido visual y desminificación de páginas financieras según feedback, sin alterar contratos verificados.
@@ -427,11 +498,11 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 
 ## 12. Próximas tareas ejecutables
 
-1. Corregir y certificar `CoreGovernancePage/CoreAccessTable`, incluyendo persistencia real de `membership.documents.manage`.
-2. Entregar Documentos Oficiales de Membresía y Mega‑Bloque G al usuario para aceptación funcional con datos reales autorizados.
-3. Mantener Pushpay **MOCKED/BLOCKED** hasta recibir las credenciales sandbox.
-4. Al recibir credenciales, integrar Pushpay mediante playbook verificado, probar OAuth/webhooks y generar asientos balanceados idempotentes.
-5. Aplicar el pulido P2 de Finanzas y continuar con Mega‑Bloque E — Operaciones después de la aprobación funcional.
+1. Publicar Consolidación v2 y ejecutar aceptación real: cuatro puertas, Fiesta/firma, transferencia, Retiro, Discipulado y promoción scoped.
+2. Crear Grupos Frontales reales, asignar líderes/equipo/mentores y delegar capabilities desde Núcleo sin otorgar privilegios administrativos indebidos.
+3. Entregar Documentos Oficiales de Membresía y Mega‑Bloque G al usuario para aceptación funcional con datos reales autorizados.
+4. Mantener Pushpay **MOCKED/BLOCKED** hasta recibir las credenciales sandbox.
+5. Al recibir credenciales, integrar Pushpay mediante playbook verificado y continuar con Mega‑Bloque E después de la aceptación funcional.
 
 ## 13. Restricciones vigentes
 

@@ -32,10 +32,9 @@ def serialize(value):
     return value
 
 
-async def get_definition(db, process_key: str) -> dict:
-    definition = await db.process_definitions.find_one(
-        {"process_key": process_key, "active": True}, {"_id": 0}, sort=[("version", -1)]
-    )
+async def get_definition(db, process_key: str, version: int | None = None) -> dict:
+    query = {"process_key": process_key, "active": True} if version is None else {"process_key": process_key, "version": version}
+    definition = await db.process_definitions.find_one(query, {"_id": 0}, sort=[("version", -1)])
     if not definition:
         raise ValueError(f"Proceso no configurado: {process_key}")
     return definition
@@ -67,9 +66,12 @@ async def create_enrollment(
     next_action_at: datetime | None = None,
     source: str = "manual",
     source_id: str | None = None,
+    allow_parallel_versions: bool = False,
 ) -> tuple[dict, bool]:
     definition = await get_definition(db, process_key)
     query = {"process_key": process_key, "person_id": person_id, "status": {"$in": ["planned", "active", "paused"]}}
+    if allow_parallel_versions:
+        query["definition_version"] = definition["version"]
     if cycle_id:
         query["cycle_id"] = cycle_id
     existing = await db.process_enrollments.find_one(query, {"_id": 0})
@@ -146,10 +148,10 @@ async def recalculate_enrollment(db, enrollment_id: str, actor_user_id: str, all
     enrollment = await db.process_enrollments.find_one({"enrollment_id": enrollment_id}, {"_id": 0})
     if not enrollment:
         raise ValueError("Inscripción no encontrada")
-    definition = await get_definition(db, enrollment["process_key"])
+    definition = await get_definition(db, enrollment["process_key"], enrollment.get("definition_version"))
     stages = await db.process_stage_progress.find({"enrollment_id": enrollment_id}, {"_id": 0}).sort("stage_order", 1).to_list(100)
-    completed = [item for item in stages if item.get("status") == "completed"]
-    next_stage = next((item for item in stages if item.get("status") != "completed"), None)
+    completed = [item for item in stages if item.get("status") in {"completed", "skipped"}]
+    next_stage = next((item for item in stages if item.get("status") not in {"completed", "skipped"}), None)
     progress = round((len(completed) / max(1, len(stages))) * 100, 1)
     now = now_utc()
     update = {"progress_pct": progress, "last_activity_at": now, "updated_at": now}
@@ -244,7 +246,7 @@ async def evaluate_alerts(db, force: bool = False) -> dict:
                 last = _as_utc(enrollment.get("last_activity_at") or enrollment.get("created_at"))
                 if last and now - last >= timedelta(hours=threshold):
                     fact = f"Sin actividad registrada durante {threshold} horas."
-            elif condition == "new_visitor_uncontacted" and current.get("stage_key") == "new_visitor" and not enrollment.get("last_contact_at"):
+            elif condition == "new_visitor_uncontacted" and current.get("stage_key") in {"new_visitor", "visitor_followup"} and not enrollment.get("last_contact_at"):
                 started = _as_utc(enrollment.get("started_at") or enrollment.get("created_at"))
                 if started and now - started >= timedelta(hours=threshold):
                     fact = "Nuevo visitante sin contacto dentro del SLA."
@@ -274,6 +276,19 @@ async def evaluate_alerts(db, force: bool = False) -> dict:
             elif condition == "formation_no_door" and enrollment.get("status") == "completed" and enrollment["process_key"] in {"seven_weeks", "consolidation"}:
                 if not await db.cap_assessments.find_one({"person_id": enrollment["person_id"], "selected_door_key": {"$nin": [None, ""]}}):
                     fact = "Formación completada sin puerta seleccionada."
+            elif condition == "welcome_membership_pending" and enrollment.get("current_stage_key") == "welcome_party":
+                opened = _as_utc(current.get("opened_at"))
+                membership = await db.person_memberships.find_one({"person_id": enrollment["person_id"], "acceptance_signed_at": {"$exists": True}}, {"_id": 1})
+                if not membership and opened and now - opened >= timedelta(hours=threshold):
+                    fact = "Fiesta de Bienvenida sin Carta de Membresía registrada."
+            elif condition == "mentor_lbs_unqualified" and enrollment.get("mentor_transfer_required") is True:
+                fact = "El mentor actual no está autorizado para impartir LBS."
+            elif condition == "retreat_delivery_pending" and enrollment.get("current_stage_key") == "retreat":
+                membership = await db.person_memberships.find_one({"person_id": enrollment["person_id"]}, {"_id": 0, "certificate_delivery_status": 1})
+                if membership and membership.get("certificate_delivery_status") != "delivered":
+                    fact = "La entrega del certificado continúa pendiente en Retiro."
+            elif condition == "discipleship_handoff_missing" and enrollment.get("retreat_completed_at") and not enrollment.get("discipleship_enrollment_id"):
+                fact = "Retiro completado sin expediente de Educación / Discipulado."
             alert_query = {"rule_key": rule["rule_key"], "enrollment_id": enrollment["enrollment_id"], "status": {"$in": ["open", "acknowledged"]}}
             open_alert = await db.process_alerts.find_one(alert_query)
             if fact and not open_alert:

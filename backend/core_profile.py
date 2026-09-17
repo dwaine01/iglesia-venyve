@@ -26,6 +26,7 @@ from access_control import (
     PERSON_TALENTS_READ,
     PERSON_PROFILE_SENSITIVE_READ,
     PERSON_PROFILE_WRITE,
+    PROCESSES_READ,
     can_access_person,
     has_capability,
 )
@@ -443,6 +444,22 @@ async def get_person_profile(person_id: str, current_user: dict = Depends(requir
     for key, label in PLANNED_DOMAINS:
         domain_sections.append(built_sections.get(key) or _unavailable_section(key, label))
 
+    journey_status = None
+    if has_capability(current_user, PROCESSES_READ):
+        consolidation = await db.process_enrollments.find_one({"person_id": person_id, "process_key": "consolidation"}, {"_id": 0}, sort=[("created_at", -1)])
+        discipleship = await db.process_enrollments.find_one({"person_id": person_id, "process_key": "discipleship"}, {"_id": 0}, sort=[("created_at", -1)])
+        membership = await db.person_memberships.find_one({"person_id": person_id}, {"_id": 0})
+        leadership = await db.person_leadership_status.find_one({"person_id": person_id}, {"_id": 0})
+        mentor = await db.mentor_assignments.find_one({"person_id": person_id, "active": True}, {"_id": 0}, sort=[("started_at", -1)])
+        journey_status = {
+            "person_status": "active" if person.get("is_archived") is not True else "archived",
+            "membership": membership,
+            "consolidation": consolidation,
+            "discipleship": discipleship,
+            "leadership": leadership,
+            "mentor_assignment": mentor,
+        }
+
     sections = [_core_section(person)] + domain_sections
     return {
         "canonical_profile_path": f"/personas/{person_id}",
@@ -450,5 +467,6 @@ async def get_person_profile(person_id: str, current_user: dict = Depends(requir
         "sections": sections,
         "sections_available": available,
         "sections_planned": planned,
+        "journey_status": journey_status,
         **response,
     }

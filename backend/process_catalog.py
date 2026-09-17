@@ -61,6 +61,28 @@ SEVEN_WEEK_STAGES = [
     },
 ]
 
+CONSOLIDATION_V2_STAGES = [
+    {"key": "visitor_followup", "order": 1, "name": "Nuevo y seguimiento", "short_name": "Nuevo", "sla_hours": 24, "tasks": [("response_recorded", "Registrar respuesta del visitante", True), ("next_followup", "Agendar siguiente seguimiento", True)]},
+    {"key": "prayer", "order": 2, "name": "Oración", "short_name": "Oración", "sla_hours": 168, "tasks": [("prayer_list", "Registrar cobertura y lista de oración", True)]},
+    {"key": "invasion", "order": 3, "name": "Invasión", "short_name": "Invasión", "sla_hours": 168, "tasks": [("contact_made", "Registrar contacto o visita", True), ("response_logged", "Documentar respuesta", True)]},
+    {"key": "mcd", "order": 4, "name": "MCD", "short_name": "MCD", "sla_hours": 168, "tasks": [("mcd_delivered", "Registrar entrega de MCD", True), ("mcd_completed", "Confirmar MCD completado", True)]},
+    {"key": "npt", "order": 5, "name": "Nací Para Triunfar", "short_name": "NPT", "sla_hours": 168, "tasks": [("npt_completed", "Confirmar NPT completado", True), ("welcome_scheduled", "Programar Fiesta de Bienvenida", True)]},
+    {"key": "welcome_party", "order": 6, "name": "Fiesta de Bienvenida", "short_name": "Fiesta", "sla_hours": 168, "tasks": [("welcome_attended", "Registrar asistencia a la Fiesta", True), ("membership_decision", "Registrar decisión sobre Carta de Membresía", True), ("mentor_evaluated", "Evaluar autorización LBS del mentor", True)]},
+    {"key": "lbs_1", "order": 7, "name": "LBS 1 · Liberación", "short_name": "LBS 1", "sla_hours": 168, "tasks": [("lbs_1_session", "Registrar sesión LBS 1", True), ("lbs_1_result", "Documentar resultado", True)]},
+    {"key": "lbs_2", "order": 8, "name": "LBS 2 · Bendición", "short_name": "LBS 2", "sla_hours": 168, "tasks": [("lbs_2_session", "Registrar sesión LBS 2", True), ("lbs_2_result", "Documentar resultado", True)]},
+    {"key": "lbs_3", "order": 9, "name": "LBS 3 · Sanidad", "short_name": "LBS 3", "sla_hours": 168, "tasks": [("lbs_3_session", "Registrar sesión LBS 3", True), ("lbs_3_result", "Documentar resultado", True)]},
+    {"key": "retreat", "order": 10, "name": "Retiro", "short_name": "Retiro", "sla_hours": 336, "tasks": [("retreat_attended", "Registrar Retiro completado", True), ("document_delivery", "Registrar entrega documental", True)]},
+    {"key": "discipleship_handoff", "order": 11, "name": "Educación / Discipulado", "short_name": "Discipulado", "sla_hours": 72, "tasks": [("discipleship_opened", "Abrir expediente en Discipulado", True)]},
+]
+
+DISCIPLESHIP_STAGES = [
+    {"key": "orientation", "order": 1, "name": "Orientación", "short_name": "Orientación", "sla_hours": 168, "tasks": [("orientation_meeting", "Registrar orientación inicial", True)]},
+    {"key": "foundations", "order": 2, "name": "Fundamentos", "short_name": "Fundamentos", "sla_hours": 720, "tasks": [("foundations_progress", "Registrar avance de fundamentos", True)]},
+    {"key": "formation", "order": 3, "name": "Formación", "short_name": "Formación", "sla_hours": 720, "tasks": [("formation_progress", "Registrar avance formativo", True)]},
+    {"key": "service", "order": 4, "name": "Servicio ministerial", "short_name": "Servicio", "sla_hours": 720, "tasks": [("service_evidence", "Registrar evidencia de servicio", True)]},
+    {"key": "completed", "order": 5, "name": "Discipulado completado", "short_name": "Completado", "sla_hours": 0, "tasks": [("outcome_recorded", "Registrar resultado final", True)]},
+]
+
 
 PROCESS_DEFINITIONS = [
     {
@@ -80,6 +102,11 @@ PROCESS_DEFINITIONS = [
             {"key": "ready_for_activation", "order": 6, "name": "Listo para activación", "short_name": "Activación", "sla_hours": 168, "tasks": [("cap_prepared", "Preparar evaluación CAP", True)]},
             {"key": "completed", "order": 7, "name": "Consolidación completada", "short_name": "Completado", "sla_hours": 0, "tasks": [("next_step_confirmed", "Confirmar próximo paso", True)]},
         ],
+    },
+    {
+        "process_key": "consolidation", "name": "Consolidación v2", "version": 2,
+        "description": "Ruta única desde las cuatro puertas de entrada hasta Membresía, Retiro y Discipulado.",
+        "stages": CONSOLIDATION_V2_STAGES,
     },
     {
         "process_key": "mentorship", "name": "Mentoría", "version": 1,
@@ -102,6 +129,11 @@ PROCESS_DEFINITIONS = [
             {"key": "continuous_training", "order": 5, "name": "Formación continua", "short_name": "Formación", "sla_hours": 720, "tasks": [("training_plan", "Definir plan de formación continua", True)]},
             {"key": "completed", "order": 6, "name": "CAP completado", "short_name": "Completado", "sla_hours": 0, "tasks": [("cellular_handoff", "Preparar conexión con Sistema Celular", True)]},
         ],
+    },
+    {
+        "process_key": "discipleship", "name": "Educación / Discipulado", "version": 1,
+        "description": "Formación posterior al Retiro enlazada al historial de Consolidación.",
+        "stages": DISCIPLESHIP_STAGES,
     },
 ]
 
@@ -131,6 +163,10 @@ ALERT_RULES = [
     ("mentor_inactive", "Mentor sin contacto reciente", "mentorship", "mentor_inactive", 168, "warning"),
     ("completed_no_cell", "Proceso terminado sin célula", "seven_weeks", "completed_no_cell", 0, "warning"),
     ("formation_no_door", "Formación terminada sin puerta", None, "formation_no_door", 0, "warning"),
+    ("welcome_membership_pending", "Fiesta sin Carta de Membresía", "consolidation", "welcome_membership_pending", 168, "warning"),
+    ("mentor_lbs_unqualified", "Mentor no autorizado para LBS", "consolidation", "mentor_lbs_unqualified", 0, "critical"),
+    ("retreat_delivery_pending", "Retiro con entrega documental pendiente", "consolidation", "retreat_delivery_pending", 0, "warning"),
+    ("discipleship_handoff_missing", "Retiro sin apertura de Discipulado", "consolidation", "discipleship_handoff_missing", 0, "critical"),
 ]
 
 

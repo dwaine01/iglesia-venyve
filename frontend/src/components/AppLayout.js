@@ -6,7 +6,7 @@ import { Separator } from './ui/separator';
 import {
   LayoutDashboard, BookOpen, Map, Calendar, Users, BarChart3, LogOut, Menu, ChevronRight,
   Crown, Star, Trophy, Presentation, NotebookPen, KeyRound, IdCard, Church, Search, DatabaseZap,
-  Activity, BookOpenCheck, Compass, HeartHandshake, RadioTower, DoorOpen, Gavel, Landmark
+  Activity, Award, BookHeart, Compass, HeartHandshake, Network, RadioTower, DoorOpen, Gavel, Landmark
 } from 'lucide-react';
 
 import { LOGO_IGLESIA } from '../data/presentationData';
@@ -24,8 +24,10 @@ const getNavItems = (user) => {
       { to: '/dashboard-general', icon: Crown, label: 'Panel General', end: true },
       { to: '/nucleo', icon: DatabaseZap, label: 'Gobierno del Núcleo', testId: 'nav-core-governance' },
       { to: '/procesos/dashboard', icon: Activity, label: 'Panel de Procesos', testId: 'nav-process-dashboard' },
-      { to: '/procesos/7-semanas', icon: BookOpenCheck, label: 'Ley de las 7 Semanas', testId: 'nav-seven-weeks' },
       { to: '/procesos/consolidacion', icon: Activity, label: 'Consolidación', testId: 'nav-consolidation' },
+      { to: '/procesos/discipulado', icon: BookHeart, label: 'Educación / Discipulado', testId: 'nav-discipleship' },
+      { to: '/grupos-frontales', icon: Network, label: 'Grupos Frontales', testId: 'nav-front-groups' },
+      { to: '/liderazgo', icon: Award, label: 'Liderazgo', testId: 'nav-leadership' },
       { to: '/procesos/mentoria', icon: HeartHandshake, label: 'Mentoría', testId: 'nav-mentorship' },
       { to: '/procesos/cap', icon: Compass, label: 'Encuentra tu lugar para servir', testId: 'nav-cap' },
       { to: '/celulas/dashboard', icon: RadioTower, label: 'Sistema Celular', testId: 'nav-cellular' },
@@ -46,7 +48,8 @@ const getNavItems = (user) => {
   if (rol === 'persona') {
     return [
       { to: '/procesos/dashboard', icon: Trophy, label: 'Mi Progreso', end: true },
-      { to: '/procesos/7-semanas', icon: BookOpenCheck, label: 'Mis 7 Semanas' },
+      { to: '/procesos/consolidacion', icon: Activity, label: 'Mi Consolidación' },
+      { to: '/procesos/discipulado', icon: BookHeart, label: 'Mi Discipulado' },
       { to: '/procesos/mentoria', icon: HeartHandshake, label: 'Mi Mentoría' },
       { to: '/procesos/cap', icon: Compass, label: 'Mi lugar para servir' },
       { to: '/celulas/dashboard', icon: RadioTower, label: 'Mi Célula', testId: 'nav-cellular' },
@@ -57,8 +60,10 @@ const getNavItems = (user) => {
   const items = [
     { to: '/', icon: LayoutDashboard, label: 'Panel principal', end: true },
     { to: '/procesos/dashboard', icon: Activity, label: 'Panel de Procesos', testId: 'nav-process-dashboard' },
-    { to: '/procesos/7-semanas', icon: BookOpenCheck, label: 'Ley de las 7 Semanas', testId: 'nav-seven-weeks' },
     { to: '/procesos/consolidacion', icon: Activity, label: 'Consolidación', testId: 'nav-consolidation' },
+    { to: '/procesos/discipulado', icon: BookHeart, label: 'Educación / Discipulado', testId: 'nav-discipleship' },
+    { to: '/grupos-frontales', icon: Network, label: 'Grupos Frontales', testId: 'nav-front-groups' },
+    { to: '/liderazgo', icon: Award, label: 'Liderazgo', testId: 'nav-leadership' },
     { to: '/procesos/mentoria', icon: HeartHandshake, label: 'Mentoría', testId: 'nav-mentorship' },
     { to: '/procesos/cap', icon: Compass, label: 'Encuentra tu lugar para servir', testId: 'nav-cap' },
     { to: '/celulas/dashboard', icon: RadioTower, label: 'Sistema Celular', testId: 'nav-cellular' },
@@ -102,6 +107,9 @@ const breadcrumbMap = {
   '/procesos/dashboard': 'Panel de Procesos',
   '/procesos/7-semanas': 'Ley de las 7 Semanas',
   '/procesos/consolidacion': 'Consolidación',
+  '/procesos/discipulado': 'Educación / Discipulado',
+  '/grupos-frontales': 'Grupos Frontales',
+  '/liderazgo': 'Liderazgo',
   '/procesos/mentoria': 'Mentoría',
   '/procesos/cap': 'Encuentra tu lugar para servir',
   '/celulas/dashboard': 'Panel del Sistema Celular',

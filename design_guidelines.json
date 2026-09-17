@@ -1,130 +1,102 @@
 {
-  "project_name": "Carnet y Certificado Oficial - Ven y Ve 360",
-  "concept": {
-    "name": "Fidelidad Visual Absoluta a Master Templates Oficiales",
-    "description": "Reproducción con 100% de precisión visual de los documentos reales de la iglesia: Certificado de Miembro (Carta Horizontal) y Carnet de Miembro (CR80 Vertical/Horizontal). Prohibido rediseñar, cambiar proporciones, tonos o tipografías de los másteres."
-  },
-  "master_templates_spec": {
-    "certificado": {
-      "format": "Letter Landscape / Carta Horizontal (11in x 8.5in / 279.4mm x 215.9mm / 1056px x 816px a 96dpi)",
-      "master_url": "https://customer-assets-agu9un31.emergentagent.net/job_venyve-sync/artifacts/pudr46ao_Untitled000%20%283%29%20%2859%29.webp",
-      "background": "Blanco puro (#FFFFFF) con franja azul/gris lateral izquierda y patrón ornamental gris filigrana",
-      "colors": {
-        "primary_blue": "#0A2540",
-        "deep_navy": "#0B1428",
-        "gold_accent": "#C8A951",
-        "slate_gray": "#4A5568",
-        "pattern_gray": "#E2E8F0"
-      },
-      "typography": {
-        "title": "Spectral / Playfair Display, Serif elegante en mayúsculas 'CERTIFICADO DE MIEMBRO'",
-        "fixed_biblical_verse": "Jeremías 29:11 ('Porque yo sé los pensamientos que tengo acerca de vosotros...')",
-        "dynamic_name": "Nombre completo de la persona con escalado dinámico inteligente (truncate/font-size shrink si >28 chars)",
-        "issue_date": "Fecha de emisión en español ('Dado en la ciudad de... a los X días del mes de...')",
-        "signature_block": "Imagen de firma PNG transparente administrable + Nombre del Pastor/Pastora + Cargo oficial"
-      },
-      "print_settings": "@page { size: letter landscape; margin: 0; }"
-    },
-    "carnet": {
-      "format": "CR80 Standard (85.6mm x 53.98mm / 3.375in x 2.125in / 1012px x 638px alta densidad o 324px x 204px preview)",
-      "master_url": "https://customer-assets-agu9un31.emergentagent.net/job_venyve-sync/artifacts/0rsbi552_Alcides%20Rodriguez%20%282%29%20%2822%29.webp",
-      "background": "Fondo blanco con diagonal azul institucional superior/inferior y bordes limpios",
-      "colors": {
-        "primary_blue": "#0A2540",
-        "accent_cyan": "#0088CC",
-        "card_white": "#FFFFFF",
-        "text_dark": "#1A202C",
-        "text_muted": "#718096"
-      },
-      "photo": "Marco para foto con object-fit cover centrado sin deformación aspect-ratio 3:4 o cuadrado según master",
-      "qr_code": "QR dinámico que renderiza URL pública segura de verificación ('https://.../verify/credential/{hash_or_id}') sin incluir cédula ni datos sensibles",
-      "fields": {
-        "member_number": "Número de miembro único y persistente (ej. VEV-2026-0842)",
-        "full_name": "Nombre completo con ajuste de tamaño automático",
-        "role_cargo": "Cargo canónico obtenido automáticamente del perfil Persona 360",
-        "issued_date": "Fecha de Emisión (DD/MM/AAAA)",
-        "expires_date": "Fecha de Vencimiento (Política inicial configurable 12 meses)"
-      },
-      "print_settings": "@page { size: 85.6mm 53.98mm; margin: 0; }"
-    }
-  },
+  "project_name": "VEN Y VE 360 - Persona a Miembro y Líder",
+  "archetype": "ORGANIC_SWISS_HYBRID",
+  "theme": "light_default_with_dark_toggle",
   "typography": {
-    "font_family_heading": "Spectral, serif",
-    "font_family_body": "IBM Plex Sans, sans-serif",
-    "font_family_mono": "JetBrains Mono, monospace",
-    "hierarchy": {
-      "h1": "text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight",
-      "h2": "text-2xl sm:text-3xl font-semibold",
-      "h3": "text-xl sm:text-2xl font-medium",
-      "body": "text-base leading-relaxed",
-      "caption": "text-xs tracking-wider uppercase text-slate-500"
+    "headings_font": "Spectral, Georgia, serif",
+    "body_font": "Inter, system-ui, sans-serif",
+    "mono_font": "JetBrains Mono, monospace",
+    "scale": {
+      "h1": "text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight font-serif",
+      "h2": "text-2xl sm:text-3xl font-semibold tracking-tight font-serif",
+      "h3": "text-xl sm:text-2xl font-medium tracking-tight font-serif",
+      "h4": "text-lg font-medium text-slate-800",
+      "body": "text-sm sm:text-base leading-relaxed text-slate-600",
+      "small": "text-xs text-slate-500 font-medium",
+      "overline": "text-xs font-semibold tracking-widest uppercase text-amber-700"
     }
   },
   "colors": {
-    "navy_primary": "#0B1428",
-    "blue_accent": "#0A2540",
-    "gold_highlight": "#C8A951",
-    "surface_light": "#F8FAFC",
-    "surface_card": "#FFFFFF",
-    "border_subtle": "#E2E8F0",
-    "text_dark": "#0F172A",
-    "text_muted": "#64748B"
+    "palette": {
+      "primary": "#0F172A",
+      "primary_blue": "#1E3A8A",
+      "accent_gold": "#D97706",
+      "accent_gold_light": "#FEF3C7",
+      "success_green": "#059669",
+      "success_green_light": "#D1FAE5",
+      "warning_amber": "#D97706",
+      "danger_red": "#DC2626",
+      "surface_slate": "#F8FAFC",
+      "border_subtle": "#E2E8F0"
+    },
+    "doors": {
+      "oracion_invasion": { "bg": "bg-indigo-50 text-indigo-700 border-indigo-200", "icon": "Flame" },
+      "entrada_directa": { "bg": "bg-blue-50 text-blue-700 border-blue-200", "icon": "Building2" },
+      "entrada_celula": { "bg": "bg-emerald-50 text-emerald-700 border-emerald-200", "icon": "Users" },
+      "seguimiento_posterior": { "bg": "bg-amber-50 text-amber-700 border-amber-200", "icon": "Clock" }
+    },
+    "stages": {
+      "MCD": { "badge": "bg-sky-100 text-sky-800 border-sky-300", "label": "MCD - Mi Cita con Dios" },
+      "NPT": { "badge": "bg-cyan-100 text-cyan-800 border-cyan-300", "label": "NPT - Nuevo Paso con Todos" },
+      "FIESTA": { "badge": "bg-purple-100 text-purple-800 border-purple-300", "label": "Fiesta de Bienvenida (Parada Formal)" },
+      "LBS1": { "badge": "bg-amber-100 text-amber-800 border-amber-300", "label": "LBS 1 - Nivel Básico" },
+      "LBS2": { "badge": "bg-amber-100 text-amber-800 border-amber-300", "label": "LBS 2 - Nivel Intermedio" },
+      "LBS3": { "badge": "bg-amber-100 text-amber-800 border-amber-300", "label": "LBS 3 - Nivel Avanzado" },
+      "RETIRO": { "badge": "bg-emerald-100 text-emerald-800 border-emerald-300", "label": "Retiro Final y Graduación" }
+    }
   },
   "visual_enhancers": {
-    "shadows": "shadow-xl border border-slate-200/80 rounded-2xl",
-    "card_preview_shell": "bg-slate-900/95 backdrop-blur-md p-6 rounded-2xl text-white shadow-2xl",
-    "certificate_preview_wrapper": "aspect-[11/8.5] w-full max-w-4xl mx-auto shadow-2xl bg-white overflow-hidden border border-slate-300 relative"
+    "borders": "1px solid #E2E8F0",
+    "shadows": "0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1)",
+    "glassmorphism": "backdrop-blur-md bg-white/80 border border-slate-200/60 shadow-sm",
+    "card_style": "bg-white border border-slate-200 rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow duration-200"
   },
-  "grids": {
-    "dashboard_grid": "grid grid-cols-1 lg:grid-cols-12 gap-8",
-    "preview_split": "col-span-12 lg:col-span-8 (área de previsualización) y col-span-12 lg:col-span-4 (panel de configuración/emisión)"
+  "grids_and_layouts": {
+    "dashboard_grid": "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4",
+    "bento_grid": "grid grid-cols-1 md:grid-cols-3 gap-6",
+    "modal_layout": "space-y-4 max-h-[85vh] overflow-y-auto pr-1"
   },
-  "layouts": {
-    "page_container": "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8",
-    "modal_preview": "max-w-5xl mx-auto bg-white p-8 rounded-2xl shadow-2xl"
+  "file_format_rules": {
+    "react_file_extension": ".js",
+    "use_tsx": false,
+    "note": "All frontend components must be saved with .js file extensions using JSX syntax."
   },
-  "motion": {
-    "transitions": "transition-colors duration-200 ease-in-out",
-    "hover_lift": "hover:-translate-y-0.5 hover:shadow-lg transition-all duration-200"
+  "testing_requirements": {
+    "data_testid_mandatory": true,
+    "convention": "kebab-case role-based (e.g. data-testid=\"promote-leader-submit-button\")",
+    "required_locations": [
+      "All interactive buttons and navigation links",
+      "Form inputs, selects, switches, and textareas",
+      "Status badges and summary indicators",
+      "Table action buttons and rows",
+      "Modal triggers and dialog action buttons"
+    ]
   },
-  "accessibility": {
-    "contrast_ratio": "APCA 75+ / Minimum 4.5:1 WCAG AA",
-    "data_testid_policy": "Todos los campos, botones, previews, firmas y QR tienen data-testid explícito en kebab-case."
+  "component_structure": {
+    "CoreAccessTable": "/app/frontend/src/components/core/CoreAccessTable.js",
+    "ConsolidationV2Shell": "/app/frontend/src/components/processes/ConsolidationV2Shell.js",
+    "FourDoorsIntakeDialog": "/app/frontend/src/components/processes/FourDoorsIntakeDialog.js",
+    "MentorTransferDialog": "/app/frontend/src/components/processes/MentorTransferDialog.js",
+    "MembershipAcceptanceDialog": "/app/frontend/src/components/membership/MembershipAcceptanceDialog.js",
+    "FrontGroupCatalog": "/app/frontend/src/components/cellular/FrontGroupCatalog.js",
+    "FrontGroupDetailDialog": "/app/frontend/src/components/cellular/FrontGroupDetailDialog.js",
+    "LeadershipPromotionDialog": "/app/frontend/src/components/processes/LeadershipPromotionDialog.js",
+    "Person360ProfileSummary": "/app/frontend/src/components/Profile360Summary.js"
   },
-  "media": {
-    "master_certificate": "https://customer-assets-agu9un31.emergentagent.net/job_venyve-sync/artifacts/pudr46ao_Untitled000%20%283%29%20%2859%29.webp",
-    "master_carnet": "https://customer-assets-agu9un31.emergentagent.net/job_venyve-sync/artifacts/0rsbi552_Alcides%20Rodriguez%20%282%29%20%2822%29.webp"
+  "instructions_to_main_agent": {
+    "priority_0": "Ensure CoreAccessTable & RBAC scoped authorization is intact and patched for Front Group leader scopes and Pastor permissions.",
+    "priority_1": "Implement Consolidated Intake v2 supporting all 4 Entry Doors: Oración e Invasión, Entrada Directa Iglesia, Célula, and Visitor Follow-up queue.",
+    "priority_2": "Build formal Welcome Party (Fiesta de Bienvenida) gate: mandatory mentor qualification evaluation for LBS and historical transfer modal when non-authorized.",
+    "priority_3": "Build explicit Membership Acceptance flow (Carta de Membresía) with authorized verifier, permanent membership code generation, and document issuance trigger.",
+    "priority_4": "Build Front Group (Grupo Frontal) independent structure catalog, scopes, statistics, team history, and process links.",
+    "priority_5": "Build 360 Platform Leadership Promotion modal with configurable criteria check (✓, ⚠, ✕), single-approval by Pastor OR Front Group Leader, without mutating users.role.",
+    "priority_6": "Integrate Retiro completion with Discipleship/Education handoff without purging consolidation log history."
   },
-  "3d_libraries": {
-    "status": "not_required_for_official_document_rendering",
-    "note": "Documentos imprimibles oficiales requieren renderizado bidimensional SVG/HTML5 Canvas de alta precisión sin distorsiones 3D."
-  },
-  "image_urls": {
-    "master_certificado": "https://customer-assets-agu9un31.emergentagent.net/job_venyve-sync/artifacts/pudr46ao_Untitled000%20%283%29%20%2859%29.webp",
-    "master_carnet": "https://customer-assets-agu9un31.emergentagent.net/job_venyve-sync/artifacts/0rsbi552_Alcides%20Rodriguez%20%282%29%20%2822%29.webp"
-  },
-  "component_path": {
-    "button": "/app/frontend/src/components/ui/button.jsx",
-    "dialog": "/app/frontend/src/components/ui/dialog.jsx",
-    "select": "/app/frontend/src/components/ui/select.jsx",
-    "input": "/app/frontend/src/components/ui/input.jsx",
-    "badge": "/app/frontend/src/components/ui/badge.jsx",
-    "tabs": "/app/frontend/src/components/ui/tabs.jsx",
-    "card": "/app/frontend/src/components/ui/card.jsx"
-  },
-  "instructions_to_main_agent": [
-    "REGLA CRÍTICA: NO rediseñar ni modificar la identidad de Certificado de Miembro ni Carnet de Miembro.",
-    "El Certificado debe renderizarse en proporción Carta Horizontal (11 x 8.5) con overlay de campos dinámicos exactos: {person.full_name}, {membership.certificate_issue_date}, {certificate.authorized_signature}.",
-    "El Carnet debe renderizarse en tamaño CR80 (85.6mm x 53.98mm) con foto recortada object-fit cover centrada, QR seguro de verificación pública sin datos sensibles, cargo automático de Persona 360, número de miembro único persistente, fecha de emisión y vencimiento (política 12 meses configurable).",
-    "Solo Pastor/Pastora pueden configurar parámetros globales (firma PNG transparente, nombre/cargo, vigencia por defecto), usuarios con permiso explícito pueden emitir.",
-    "Reimpresión conserva el número de miembro y fechas originales; renovación actualiza la vigencia.",
-    "Incluir data-testid en todos los elementos interactivos y dinámicos (ej: data-testid='issue-certificate-btn', data-testid='carnet-qr-code')."
-  ],
-  "UNIVERSAL GUIDELINES FOR MAIN AGENT": {
-    "no_universal_transition": "Prohibido transition: all. Usar transitions específicas para transform y opacity.",
-    "no_center_app": "No aplicar text-align: center global en .App",
-    "no_ai_emojis": "No usar emojis tipo 🤖🧠. Usar lucide-react únicamente.",
-    "gradient_rules": "No usar gradientes chillones/saturados en documentos oficiales.",
-    "data_testid_mandatory": "Todos los elementos clave deben poseer data-testid en kebab-case."
-  }
+  "UNIVERSAL_GUIDELINES_FOR_MAIN_AGENT": [
+    "Do NOT modify users.role when promoting a person to a ministerial leadership position.",
+    "Do NOT delete consolidation history upon mentor transfer or stage completion.",
+    "Do NOT use pure #000000 or full transparent headers.",
+    "DO include data-testid on all key buttons, inputs, tables, cards, and modal triggers.",
+    "DO maintain consistent Ven y Ve 360 styling with blue/gold/green badges, clean white cards, and clear Spectral serif section headers."
+  ]
 }

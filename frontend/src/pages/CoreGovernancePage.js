@@ -91,7 +91,7 @@ export default function CoreGovernancePage() {
         <>
           {user?.rol === 'pastor' && integrity && <><div className="px-4 py-6 sm:px-6 lg:px-8"><CoreHealthCards integrity={integrity} /></div><CoreMigrationPanel integrity={integrity} running={running} onRun={runMigration} />{integrity.duplicate_candidates?.length > 0 && <div className="mx-4 mt-6 rounded-md border border-amber-200 bg-amber-50 p-4 sm:mx-6 lg:mx-8" data-testid="core-duplicate-alert"><div className="flex gap-2"><ShieldCheck className="mt-0.5 h-4 w-4 text-amber-700" /><div><p className="font-semibold text-amber-900">Candidatos a duplicado: {integrity.duplicate_candidates.length}</p><p className="mt-1 text-xs text-amber-800">Se mantienen separados hasta una revisión humana; la migración nunca fusiona identidades ambiguas.</p></div></div></div>}</>}
           {user?.rol === 'pastor' && <ConfidentialityPolicyPanel />}
-          <CoreAccessTable users={users} currentUser={user} saving={saving} onSave={saveAccess} />
+          <CoreAccessTable items={users} currentUser={user} saving={saving} onSave={saveAccess} />
         </>
       )}
     </div>

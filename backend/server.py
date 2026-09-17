@@ -448,6 +448,13 @@ app.include_router(finance_expansion_router)
 
 from membership_documents import router as membership_documents_router, ensure_membership_documents
 app.include_router(membership_documents_router)
+from front_groups import router as front_groups_router, ensure_front_group_indexes
+app.include_router(front_groups_router)
+from consolidation_v2 import router as consolidation_v2_router, ensure_indexes as consolidation_v2_ensure_indexes
+app.include_router(consolidation_v2_router)
+from leadership import router as leadership_router, ensure_leadership_indexes_and_seed
+app.include_router(leadership_router)
+from consolidation_migration import migrate_historical_consolidation
 
 # --- ACCESS-01 + P-001 Slice 2B Contactos/Direcciones (modular) ---
 from person_domains import router as person_domains_router, ensure_indexes as person_domains_ensure_indexes
@@ -600,6 +607,10 @@ async def startup():
     await migrate_core_identity(db, "system:startup")
     await seed_process_catalog(db)
     await ensure_process_indexes(db)
+    await ensure_front_group_indexes()
+    await consolidation_v2_ensure_indexes()
+    await ensure_leadership_indexes_and_seed()
+    await migrate_historical_consolidation(db)
     await migrate_legacy_processes(db, "system:startup")
     await evaluate_alerts(db)
     await seed_cellular_catalog(db)

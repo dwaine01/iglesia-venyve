@@ -33,7 +33,7 @@ from process_engine import (
 from server import db, get_current_user
 
 router = APIRouter(prefix="/api/processes", tags=["processes"])
-PROCESS_KEYS = {"seven_weeks", "consolidation", "mentorship", "cap"}
+PROCESS_KEYS = {"seven_weeks", "consolidation", "mentorship", "cap", "discipleship"}
 
 
 class ItemList(BaseModel):
@@ -204,7 +204,7 @@ def require_manage(current_user: dict = Depends(get_current_user)) -> dict:
 async def load_person(person_id: str) -> dict:
     if not ObjectId.is_valid(person_id):
         raise HTTPException(status_code=400, detail="person_id inválido")
-    person = await db.persons.find_one({"_id": ObjectId(person_id)})
+    person = await db.persons.find_one({"_id": ObjectId(person_id), "is_archived": {"$ne": True}})
     if not person:
         raise HTTPException(status_code=404, detail="Persona no encontrada")
     person["person_id"] = person_id
@@ -260,7 +260,7 @@ async def scoped_enrollment_query(current_user: dict, base: dict) -> dict:
 
 
 async def mark_prior_stages(enrollment: dict, target_stage_key: str, actor_user_id: str) -> None:
-    definition = await get_definition(db, enrollment["process_key"])
+    definition = await get_definition(db, enrollment["process_key"], enrollment.get("definition_version"))
     target = next((item for item in definition["stages"] if item["key"] == target_stage_key), None)
     if not target:
         raise HTTPException(status_code=400, detail="Etapa inválida")
@@ -286,11 +286,20 @@ async def mark_prior_stages(enrollment: dict, target_stage_key: str, actor_user_
 
 @router.get("/catalog", response_model=CatalogResponse)
 async def catalog(current_user: dict = Depends(require_read)):
-    definitions = await db.process_definitions.find({"active": True}, {"_id": 0}).sort("name", 1).to_list(20)
+    definitions = await db.process_definitions.aggregate([
+        {"$match": {"active": True, "process_key": {"$ne": "seven_weeks"}}},
+        {"$sort": {"process_key": 1, "version": -1}},
+        {"$group": {"_id": "$process_key", "item": {"$first": "$$ROOT"}}},
+        {"$replaceRoot": {"newRoot": "$item"}},
+        {"$project": {"_id": 0}},
+        {"$sort": {"name": 1}},
+    ]).to_list(20)
     doors = await db.door_catalog.find({"active": True}, {"_id": 0}).sort("number", 1).to_list(20)
     user_query = {"is_active": {"$ne": False}, "rol": {"$in": ["pastor", "lider"]}, "person_id": {"$exists": True}}
     if current_user.get("rol") == "lider":
-        user_query["_id"] = ObjectId(current_user["user_id"])
+        led_group_ids = await db.front_group_assignments.distinct("front_group_id", {"person_id": current_user.get("person_id"), "role": "leader", "active": True})
+        scoped_person_ids = await db.front_group_assignments.distinct("person_id", {"front_group_id": {"$in": led_group_ids}, "active": True}) if led_group_ids else []
+        user_query["person_id"] = {"$in": list(set(scoped_person_ids + [current_user.get("person_id")]))}
     elif current_user.get("rol") == "persona":
         user_query["_id"] = {"$exists": False}
     users = await db.users.find(user_query, {"_id": 0, "person_id": 1, "nombre": 1, "rol": 1}).sort("nombre", 1).to_list(1000)
@@ -340,6 +349,8 @@ async def list_enrollments(process_key: Optional[str] = None, cycle_id: Optional
 
 @router.post("/enrollments", status_code=status.HTTP_201_CREATED, response_model=dict)
 async def enroll(payload: EnrollmentCreate, current_user: dict = Depends(require_write)):
+    if payload.process_key in {"seven_weeks", "consolidation"}:
+        raise HTTPException(status_code=409, detail="Las nuevas inscripciones se realizan por el intake oficial de Consolidación v2; 7 Semanas permanece como histórico")
     person = await load_person(payload.person_id)
     authorize_person(current_user, person, PROCESSES_WRITE)
     responsible = payload.responsible_person_id or current_user.get("person_id")
@@ -394,6 +405,17 @@ async def update_stage(enrollment_id: str, stage_key: str, payload: StageUpdate,
     if not stage_doc: raise HTTPException(status_code=404, detail="Etapa no encontrada")
     update = payload.model_dump(exclude_none=True)
     if update.get("status") == "completed":
+        if enrollment.get("process_key") == "consolidation" and enrollment.get("definition_version", 1) >= 2:
+            if stage_doc.get("status") not in {"open", "in_progress"}:
+                raise HTTPException(status_code=409, detail="Solo puede completar la etapa activa")
+            if stage_key in {"retreat", "discipleship_handoff"}:
+                raise HTTPException(status_code=409, detail="Cierre el Retiro desde la acción formal para registrar documentos y Discipulado")
+            if stage_key == "welcome_party":
+                membership = await db.person_memberships.find_one({"person_id": enrollment["person_id"], "status": "active", "acceptance_signed_at": {"$exists": True}}, {"_id": 1})
+                if not membership:
+                    raise HTTPException(status_code=409, detail="Registre la firma de la Carta de Membresía antes de cerrar la Fiesta")
+                if enrollment.get("mentor_lbs_qualified") is not True:
+                    raise HTTPException(status_code=409, detail="Evalúe o transfiera al mentor antes de iniciar LBS")
         missing = [item["label"] for item in stage_doc.get("tasks", []) if item.get("required") and not item.get("completed")]
         if missing: raise HTTPException(status_code=400, detail={"message": "Complete las tareas requeridas", "missing": missing})
         if enrollment["process_key"] == "seven_weeks" and (payload.attendance or stage_doc.get("attendance")) == "pending":
@@ -417,6 +439,8 @@ async def update_task(enrollment_id: str, stage_key: str, task_id: str, payload:
     enrollment = await load_enrollment(enrollment_id, current_user)
     stage_doc = await db.process_stage_progress.find_one({"enrollment_id": enrollment_id, "stage_key": stage_key})
     if not stage_doc: raise HTTPException(status_code=404, detail="Etapa no encontrada")
+    if enrollment.get("process_key") == "consolidation" and enrollment.get("definition_version", 1) >= 2 and stage_doc.get("status") == "locked":
+        raise HTTPException(status_code=409, detail="La tarea pertenece a una etapa todavía bloqueada")
     tasks = stage_doc.get("tasks", []); found = False; now = now_utc()
     for task in tasks:
         if task["task_id"] == task_id:
@@ -451,10 +475,12 @@ async def add_evidence(enrollment_id: str, payload: EvidenceCreate, current_user
 async def add_contact(enrollment_id: str, payload: ContactCreate, current_user: dict = Depends(require_write)):
     enrollment = await load_enrollment(enrollment_id, current_user)
     if enrollment["process_key"] not in {"consolidation", "mentorship"}: raise HTTPException(status_code=400, detail="Contacto no aplica a este proceso")
+    if payload.advance_stage and enrollment.get("process_key") == "consolidation" and enrollment.get("definition_version", 1) >= 2 and enrollment.get("current_stage_key") == "visitor_followup":
+        raise HTTPException(status_code=409, detail="Inicie MCD desde la acción formal para asignar mentor y registrar la respuesta")
     update = {"last_contact_at": payload.occurred_at, "next_contact_at": payload.next_contact_at, "next_action": payload.next_action, "next_action_at": payload.next_contact_at, "last_activity_at": now_utc(), "updated_at": now_utc()}
     await db.process_enrollments.update_one({"enrollment_id": enrollment_id}, {"$set": update})
     if payload.advance_stage:
-        definition = await get_definition(db, enrollment["process_key"])
+        definition = await get_definition(db, enrollment["process_key"], enrollment.get("definition_version"))
         current_index = next((index for index, item in enumerate(definition["stages"]) if item["key"] == enrollment["current_stage_key"]), 0)
         target = definition["stages"][min(current_index + 1, len(definition["stages"]) - 1)]["key"]
         await mark_prior_stages(enrollment, target, current_user["user_id"])

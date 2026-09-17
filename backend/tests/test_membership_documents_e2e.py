@@ -52,7 +52,11 @@ def membership_context():
     person_oid = ObjectId(); person_id = str(person_oid); prefix = f"QA-MEMBER-DOC-{uuid4().hex[:8]}"
     ministry_id = f"{prefix}-MINISTRY"; role_id = f"{prefix}-ROLE"; assignment_id = f"{prefix}-ASSIGNMENT"
     photo_id = str(uuid4()); photo = Image.new("RGB", (640, 800), (222, 232, 235)); draw = ImageDraw.Draw(photo); draw.ellipse((170, 120, 470, 420), fill=(156, 118, 89)); draw.rectangle((140, 430, 500, 800), fill=(25, 91, 111)); photo_bytes = io.BytesIO(); photo.save(photo_bytes, format="JPEG", quality=92)
-    database.persons.insert_one({"_id": person_oid, "first_name": "María Alejandra", "last_name": "Rodríguez de la Esperanza", "vv_number": "VV-90001", "estado": "activo", "created_at": datetime.now(timezone.utc)})
+    now = datetime.now(timezone.utc); membership_id = str(uuid4())
+    database.persons.insert_one({"_id": person_oid, "first_name": "María Alejandra", "last_name": "Rodríguez de la Esperanza", "vv_number": "VV-90001", "idempotency_key": f"qa:membership:{prefix}", "estado": "activo", "created_at": now})
+    database.membership_number_registry.delete_one({"member_number": "90001"})
+    database.membership_number_registry.insert_one({"_id": "90001", "member_number": "90001", "person_id": person_id, "reserved_at": now, "source": "formal_acceptance_test"})
+    database.person_memberships.insert_one({"_id": membership_id, "membership_id": membership_id, "person_id": person_id, "member_number": "90001", "status": "active", "acceptance_signed_at": now, "acceptance_verified_at": now, "acceptance_verified_by_user_id": "qa-test", "certificate_delivery_status": "pending_retreat", "card_delivery_status": "pending", "created_at": now, "updated_at": now})
     database.person_photos.insert_one({"_id": photo_id, "photo_id": photo_id, "person_id": person_id, "filename": f"{prefix}.jpg", "content_type": "image/jpeg", "data": Binary(photo_bytes.getvalue()), "is_current": True, "created_at": datetime.now(timezone.utc)})
     database.ministry_catalog.insert_one({"_id": ministry_id, "nombre": "Ministerio de Jóvenes", "activo": True})
     database.ministry_roles.insert_one({"_id": role_id, "nombre": "Directora", "normalized_name": "directora", "activo": True})
@@ -66,6 +70,7 @@ def membership_context():
         if membership:
             database.membership_document_issuances.delete_many({"membership_id": membership["membership_id"]})
             database.person_memberships.delete_one({"membership_id": membership["membership_id"]})
+            database.membership_number_registry.delete_one({"member_number": membership["member_number"]})
         database.person_photos.delete_many({"person_id": person_id})
         database.ministry_assignments.delete_one({"_id": assignment_id}); database.ministry_roles.delete_one({"_id": role_id}); database.ministry_catalog.delete_one({"_id": ministry_id}); database.persons.delete_one({"_id": person_oid})
         if original_settings:

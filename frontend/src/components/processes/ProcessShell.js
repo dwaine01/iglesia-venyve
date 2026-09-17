@@ -1,14 +1,14 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { Activity, BookOpenCheck, ChevronRight, Compass, HeartHandshake, LayoutDashboard } from 'lucide-react';
+import { Activity, BookHeart, ChevronRight, Compass, HeartHandshake, LayoutDashboard } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { moduleBrand, MODULE_BRANDS } from '../../config/brand';
 import { translateTechnicalText } from '../../lib/displayLabels';
 
 const links = [
   { to: '/procesos/dashboard', label: 'Panel', mobileLabel: 'Panel', icon: LayoutDashboard },
-  { to: '/procesos/7-semanas', label: '7 Semanas', mobileLabel: '7 Sem.', icon: BookOpenCheck },
   { to: '/procesos/consolidacion', label: 'Consolidación', mobileLabel: 'Consol.', icon: Activity },
+  { to: '/procesos/discipulado', label: 'Discipulado', mobileLabel: 'Discíp.', icon: BookHeart },
   { to: '/procesos/mentoria', label: 'Mentoría', mobileLabel: 'Mentoría', icon: HeartHandshake },
   { to: '/procesos/cap', label: 'Encuentra tu lugar para servir', mobileLabel: 'Servicio', icon: Compass },
 ];

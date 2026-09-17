@@ -21,6 +21,7 @@ import { displayLabel } from '../lib/displayLabels';
 import { PersonFinanceSection } from '../components/finance/PersonFinanceSection';
 import { MembershipDocumentsSection } from '../components/membership/MembershipDocumentsSection';
 import { PersonArchiveDialog } from '../components/PersonArchiveDialog';
+import { PersonJourneyStatusStrip } from '../components/PersonJourneyStatusStrip';
 import { toast } from 'sonner';
 
 // P-001 Slice 2A - Person Profile 360 (shell full-screen).
@@ -179,6 +180,7 @@ export default function PersonaPerfilPage() {
           error={archiveError}
           onConfirm={archivePerson}
         />
+        <PersonJourneyStatusStrip status={profile.journey_status} />
         {profile.profile_can_write && (
           <PersonProfileEditor
             open={editorOpen}

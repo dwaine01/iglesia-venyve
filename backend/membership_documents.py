@@ -156,16 +156,18 @@ async def settings_document() -> dict:
 
 
 async def allocate_member_number(person: dict, requested: Optional[str] = None) -> str:
+    person_id = person["person_id"]
     if requested:
         candidate = requested.zfill(5)
-        if await db.person_memberships.find_one({"member_number": candidate}, {"_id": 1}):
+        registry = await db.membership_number_registry.find_one({"member_number": candidate}, {"_id": 0})
+        if registry and registry.get("person_id") != person_id:
             raise HTTPException(status_code=409, detail="El número de miembro ya está asignado")
+        await db.membership_number_registry.update_one(
+            {"member_number": candidate},
+            {"$setOnInsert": {"member_number": candidate, "person_id": person_id, "reserved_at": now_utc(), "source": "legacy_requested"}},
+            upsert=True,
+        )
         return candidate
-    vv_digits = "".join(re.findall(r"\d", str(person.get("vv_number") or "")))
-    if vv_digits:
-        candidate = vv_digits[-5:].zfill(5)
-        if not await db.person_memberships.find_one({"member_number": candidate}, {"_id": 1}):
-            return candidate
     while True:
         counter = await db.membership_counters.find_one_and_update(
             {"counter_id": "member_number"},
@@ -175,8 +177,17 @@ async def allocate_member_number(person: dict, requested: Optional[str] = None) 
             projection={"_id": 0},
         )
         candidate = str(counter["sequence"]).zfill(5)
-        if not await db.person_memberships.find_one({"member_number": candidate}, {"_id": 1}):
+        try:
+            await db.membership_number_registry.insert_one({
+                "_id": candidate,
+                "member_number": candidate,
+                "person_id": person_id,
+                "reserved_at": now_utc(),
+                "source": "membership_acceptance",
+            })
             return candidate
+        except DuplicateKeyError:
+            continue
 
 
 async def get_or_create_membership(person: dict, actor_id: str, requested_number: Optional[str] = None) -> dict:
@@ -206,6 +217,68 @@ async def get_or_create_membership(person: dict, actor_id: str, requested_number
     except DuplicateKeyError:
         return await db.person_memberships.find_one({"person_id": person_id}, {"_id": 0})
     return serialize(document)
+
+
+async def activate_membership_from_acceptance(
+    person: dict,
+    actor_id: str,
+    enrollment_id: str,
+    signed_at: datetime,
+    notes: Optional[str] = None,
+) -> tuple[dict, bool]:
+    person_id = person["person_id"]
+    existing = await db.person_memberships.find_one({"person_id": person_id})
+    if existing and existing.get("acceptance_signed_at"):
+        return serialize(existing), False
+    now = now_utc()
+    if existing:
+        member_number = existing["member_number"]
+        await db.membership_number_registry.update_one(
+            {"member_number": member_number},
+            {"$setOnInsert": {"member_number": member_number, "person_id": person_id, "reserved_at": now, "source": "legacy_backfill"}},
+            upsert=True,
+        )
+        membership_id = existing["membership_id"]
+    else:
+        membership_id = str(uuid4())
+        member_number = await allocate_member_number(person)
+    fields = {
+        "membership_id": membership_id,
+        "person_id": person_id,
+        "member_number": member_number,
+        "status": "active",
+        "acceptance_signed_at": signed_at,
+        "acceptance_verified_at": now,
+        "acceptance_verified_by_user_id": actor_id,
+        "acceptance_enrollment_id": enrollment_id,
+        "acceptance_notes": notes,
+        "benefits_enabled_at": now,
+        "certificate_eligible_at": now,
+        "certificate_delivery_status": "pending_retreat",
+        "card_eligible_at": now,
+        "card_delivery_status": "pending",
+        "updated_by_user_id": actor_id,
+        "updated_at": now,
+    }
+    if existing:
+        await db.person_memberships.update_one({"membership_id": membership_id}, {"$set": fields})
+    else:
+        await db.person_memberships.insert_one({
+            "_id": membership_id,
+            **fields,
+            "certificate_issue_date": None,
+            "card_issue_date": None,
+            "card_expiration_date": None,
+            "card_position_snapshot": None,
+            "created_by_user_id": actor_id,
+            "created_at": now,
+        })
+    await db.users.update_many(
+        {"person_id": person_id},
+        {"$addToSet": {"privilege_groups": "membership"}, "$set": {"membership_status": "active", "updated_at": now}},
+    )
+    membership = await db.person_memberships.find_one({"membership_id": membership_id}, {"_id": 0})
+    return serialize(membership), True
 
 
 async def render_data(person: dict, membership: dict) -> dict:
@@ -313,13 +386,16 @@ async def person_membership(person_id: str, current_user: dict = Depends(managed
 @router.post("/api/membership/persons/{person_id}/documents/{document_type}/issue", response_model=dict, status_code=201)
 async def issue_membership_document(person_id: str, document_type: Literal["card", "certificate"], payload: IssueDocumentInput, current_user: dict = Depends(managed_user)):
     person = await canonical_person(person_id)
+    membership = await db.person_memberships.find_one({"person_id": person["person_id"], "status": "active"}, {"_id": 0})
+    if not membership:
+        raise HTTPException(status_code=409, detail="Registre primero la firma de la Carta de Membresía en Fiesta de Bienvenida")
+    if not membership.get("acceptance_signed_at") and not membership.get("legacy_membership"):
+        raise HTTPException(status_code=409, detail="La membresía no tiene aceptación formal registrada")
     settings = await settings_document()
     if document_type == "card" and not await db.person_photos.find_one({"person_id": person["person_id"], "is_current": True}, {"_id": 1}):
         raise HTTPException(status_code=422, detail="La Persona 360 necesita fotografía antes de emitir el carnet")
     if document_type == "certificate" and not settings.get("signature_file_id"):
         raise HTTPException(status_code=409, detail="Configure la firma autorizada antes de emitir el certificado")
-    requested_number = payload.existing_member_number if current_user.get("rol") == "pastor" else None
-    membership = await get_or_create_membership(person, current_user["user_id"], requested_number)
     now = now_utc(); position = await position_from_profile(person["person_id"])
     updates = {"status": "active", "updated_by_user_id": current_user["user_id"], "updated_at": now}
     if document_type == "card":
@@ -379,7 +455,17 @@ async def ensure_membership_documents():
     await db.person_memberships.create_index("membership_id", unique=True)
     await db.person_memberships.create_index("person_id", unique=True)
     await db.person_memberships.create_index("member_number", unique=True)
+    await db.membership_number_registry.create_index("member_number", unique=True)
+    await db.membership_number_registry.create_index("person_id", unique=True)
     await db.membership_document_issuances.create_index("issuance_id", unique=True)
     await db.membership_document_issuances.create_index([("person_id", 1), ("created_at", -1)])
+    async for membership in db.person_memberships.find({}, {"_id": 0, "membership_id": 1, "person_id": 1, "member_number": 1, "acceptance_signed_at": 1}):
+        await db.membership_number_registry.update_one(
+            {"member_number": membership["member_number"]},
+            {"$setOnInsert": {"member_number": membership["member_number"], "person_id": membership["person_id"], "reserved_at": now_utc(), "source": "legacy_backfill"}},
+            upsert=True,
+        )
+        if not membership.get("acceptance_signed_at"):
+            await db.person_memberships.update_one({"membership_id": membership["membership_id"]}, {"$set": {"legacy_membership": True}})
     now = now_utc()
     await db.membership_document_settings.update_one({"settings_id": "primary"}, {"$setOnInsert": {"_id": "primary", "settings_id": "primary", "expiration_months": 12, "authorized_signer_name": "", "authorized_signer_title": "", "organization_name": "Casa de Oración Ven y Ve", "signature_file_id": None, "created_at": now}, "$set": {"updated_at": now}}, upsert=True)

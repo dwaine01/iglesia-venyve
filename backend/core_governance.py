@@ -17,6 +17,7 @@ from access_control import (
     DOOR_BOARD_CAPABILITIES,
     CORE_GOVERNANCE_MANAGE,
     FINANCE_CAPABILITIES,
+    JOURNEY_GOVERNANCE_CAPABILITIES,
     MEMBERSHIP_DOCUMENTS_MANAGE,
     PROCESS_CAPABILITIES,
     PERSON_DOMAIN_CAPABILITIES,
@@ -245,7 +246,7 @@ async def integrity_snapshot() -> dict:
         "users_without_person": await db.users.count_documents({"$or": [{"person_id": {"$exists": False}}, {"person_id": None}]}),
         "legacy_people_without_person": await db.people.count_documents({"$or": [{"canonical_person_id": {"$exists": False}}, {"canonical_person_id": None}]}),
         "access_policy_outdated": await db.users.count_documents({"$or": [
-            {"access_policy_version": {"$ne": 12}},
+            {"access_policy_version": {"$ne": 14}},
             {"capabilities": {"$exists": False}},
             {"access_scope": {"$exists": False}},
         ]}),
@@ -404,7 +405,7 @@ async def update_user_access(
     requested_groups = payload.privilege_groups if payload.privilege_groups is not None else target.get("privilege_groups", [])
     ensure_privileges_allowed(current_user, requested_groups)
     await ensure_finance_limit(requested_groups, target)
-    requested_role = "lider" if requested_level == "coordinador_general" else requested_level
+    requested_role = "pastor" if requested_level == "pastor" else "persona" if requested_level == "persona" else "lider"
     if user_id == current_user["user_id"] and (not payload.is_active or requested_role != "pastor"):
         raise HTTPException(status_code=400, detail="No puede retirar su propio acceso de pastor")
     if target.get("rol") == "pastor" and (requested_role != "pastor" or not payload.is_active):
@@ -412,7 +413,7 @@ async def update_user_access(
         if active_pastors <= 1:
             raise HTTPException(status_code=400, detail="Debe existir al menos un pastor activo")
     defaults = access_defaults(requested_level, requested_groups)
-    allowed = set(PERSON_DOMAIN_CAPABILITIES + PROCESS_CAPABILITIES + CELLULAR_CAPABILITIES + DOOR_BOARD_CAPABILITIES + FINANCE_CAPABILITIES + [MEMBERSHIP_DOCUMENTS_MANAGE, BOARD_CONFIDENTIAL_ACCESS, PERSON_PASTORAL_NOTES_READ, CORE_GOVERNANCE_MANAGE, CORE_ACCESS_MANAGE])
+    allowed = set(PERSON_DOMAIN_CAPABILITIES + PROCESS_CAPABILITIES + CELLULAR_CAPABILITIES + DOOR_BOARD_CAPABILITIES + FINANCE_CAPABILITIES + JOURNEY_GOVERNANCE_CAPABILITIES + [MEMBERSHIP_DOCUMENTS_MANAGE, BOARD_CONFIDENTIAL_ACCESS, PERSON_PASTORAL_NOTES_READ, CORE_GOVERNANCE_MANAGE, CORE_ACCESS_MANAGE])
     capabilities = defaults["capabilities"]
     if payload.capabilities is not None:
         if current_user.get("rol") != "pastor":
@@ -420,7 +421,8 @@ async def update_user_access(
         invalid = sorted(set(payload.capabilities) - allowed)
         if invalid:
             raise HTTPException(status_code=400, detail=f"Capabilities inválidas: {', '.join(invalid)}")
-        capabilities = sorted(set(defaults["capabilities"] + payload.capabilities))
+        customizable = set(JOURNEY_GOVERNANCE_CAPABILITIES + [MEMBERSHIP_DOCUMENTS_MANAGE])
+        capabilities = sorted(set(defaults["capabilities"] + [item for item in payload.capabilities if item in customizable]))
         if requested_role == "pastor" and CORE_GOVERNANCE_MANAGE not in capabilities:
             capabilities.append(CORE_GOVERNANCE_MANAGE)
     changed = (
@@ -437,7 +439,7 @@ async def update_user_access(
         "is_active": payload.is_active,
         "capabilities": capabilities,
         "access_scope": defaults["access_scope"],
-        "access_policy_version": 13,
+        "access_policy_version": 14,
         "updated_at": datetime.now(timezone.utc),
     }
     if changed:

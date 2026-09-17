@@ -1,43 +1,47 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
-import { Loader2, MessageCircleMore, UserCheck } from 'lucide-react';
-import { toast } from 'sonner';
+import { AlertTriangle, BadgeCheck, Route, UsersRound } from 'lucide-react';
+
 import { useAuth } from '../../context/AuthContext';
-import { EnrollmentDialog } from '../../components/processes/EnrollmentDialog';
+import { ConsolidationIntakeDialog } from '../../components/processes/ConsolidationIntakeDialog';
+import { ConsolidationJourneyCard } from '../../components/processes/ConsolidationJourneyCard';
 import { ProcessError, ProcessLoading, ProcessShell } from '../../components/processes/ProcessShell';
-import { ProcessStatus, SlaPill } from '../../components/processes/ProcessStatus';
-import { Button } from '../../components/ui/button';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '../../components/ui/dialog';
-import { Input } from '../../components/ui/input';
-import { Label } from '../../components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
-import { Switch } from '../../components/ui/switch';
-import { Textarea } from '../../components/ui/textarea';
 
-const stageKeys = ['new_visitor', 'contacted', 'first_visit', 'follow_up', 'formation', 'ready_for_activation', 'completed'];
-const stageLabels = { new_visitor: 'Nuevo visitante', contacted: 'Contactado', first_visit: 'Primera visita', follow_up: 'Seguimiento', formation: 'Formación', ready_for_activation: 'Listo para activación', completed: 'Completado' };
-
-const ContactDialog = ({ item, onSaved }) => {
-  const { API, getAuthHeaders } = useAuth();
-  const [open, setOpen] = useState(false); const [detail, setDetail] = useState(null); const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ channel: 'call', outcome: '', next_contact_at: '', next_action: '', advance_stage: false });
-  useEffect(() => { if (open) axios.get(`${API}/api/processes/enrollments/${item.enrollment_id}`, getAuthHeaders()).then((response) => setDetail(response.data)); }, [API, getAuthHeaders, item.enrollment_id, open]);
-  const submit = async (event) => {
-    event.preventDefault(); setSaving(true);
-    try {
-      await axios.post(`${API}/api/processes/enrollments/${item.enrollment_id}/contacts`, { ...form, occurred_at: new Date().toISOString(), next_contact_at: form.next_contact_at ? new Date(form.next_contact_at).toISOString() : null }, getAuthHeaders());
-      toast.success('Contacto y próximo paso registrados'); setOpen(false); await onSaved();
-    } catch (error) { toast.error(error?.response?.data?.detail || 'No se pudo registrar el contacto'); } finally { setSaving(false); }
-  };
-  return <Dialog open={open} onOpenChange={setOpen}><DialogTrigger asChild><Button size="sm" variant="outline" data-testid={`open-contact-${item.enrollment_id}`}><MessageCircleMore className="mr-1 h-4 w-4" />Contacto</Button></DialogTrigger><DialogContent className="max-h-[85vh] overflow-y-auto bg-white"><DialogHeader><DialogTitle>Seguimiento e historial</DialogTitle><DialogDescription>{item.person.name} · cada contacto conserva resultado y próximo paso.</DialogDescription></DialogHeader><form onSubmit={submit} className="space-y-4"><Select value={form.channel} onValueChange={(value) => setForm((old) => ({ ...old, channel: value }))}><SelectTrigger data-testid="contact-channel-select"><SelectValue /></SelectTrigger><SelectContent className="bg-white"><SelectItem value="call">Llamada</SelectItem><SelectItem value="message">Mensaje</SelectItem><SelectItem value="visit">Visita</SelectItem><SelectItem value="meeting">Reunión</SelectItem><SelectItem value="other">Otro</SelectItem></SelectContent></Select><div><Label htmlFor="contact-outcome">Resultado</Label><Textarea id="contact-outcome" value={form.outcome} onChange={(event) => setForm((old) => ({ ...old, outcome: event.target.value }))} required data-testid="contact-outcome-input" /></div><div className="grid gap-3 sm:grid-cols-2"><div><Label htmlFor="contact-next-action">Próxima acción</Label><Input id="contact-next-action" value={form.next_action} onChange={(event) => setForm((old) => ({ ...old, next_action: event.target.value }))} data-testid="contact-next-action-input" /></div><div><Label htmlFor="contact-next-date">Próximo contacto</Label><Input id="contact-next-date" type="datetime-local" value={form.next_contact_at} onChange={(event) => setForm((old) => ({ ...old, next_contact_at: event.target.value }))} data-testid="contact-next-date-input" /></div></div><label className="flex items-center gap-3 rounded-md border p-3"><Switch checked={form.advance_stage} onCheckedChange={(value) => setForm((old) => ({ ...old, advance_stage: value }))} data-testid="contact-advance-switch" /><span className="text-sm">Avanzar a la próxima etapa</span></label><Button type="submit" disabled={saving} className="w-full bg-slate-900" data-testid="contact-submit-button">{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Guardar contacto</Button></form><div className="border-t pt-4" data-testid="consolidation-timeline"><h3 className="font-semibold text-slate-900">Historial de acompañamiento</h3><div className="mt-2 space-y-2">{detail?.timeline?.map((event) => <div key={`${event.occurred_at}-${event.event_type}`} className="rounded-md border p-3"><p className="text-sm font-medium text-slate-900">{event.title}</p><p className="text-xs text-slate-500">{new Date(event.occurred_at).toLocaleString('es')} · {event.detail}</p></div>)}</div></div></DialogContent></Dialog>;
-};
+const metrics = [
+  ['total', 'Rutas registradas', Route],
+  ['active', 'En progreso', UsersRound],
+  ['members', 'Miembros activos', BadgeCheck],
+  ['mentor_transfer_required', 'Transferencia requerida', AlertTriangle],
+];
+const filters = [['all', 'Todas'], ['visitor_followup', 'Seguimiento'], ['complete_cycle', 'Ciclo completo'], ['direct_church', 'Iglesia'], ['cell', 'Célula']];
+const entryNames = { complete_cycle: 'Ciclo completo', direct_church: 'Iglesia', cell: 'Célula', visitor_followup: 'Seguimiento' };
 
 export default function ConsolidationPage() {
-  const { API, getAuthHeaders, user } = useAuth();
-  const [items, setItems] = useState([]); const [assignees, setAssignees] = useState([]); const [loading, setLoading] = useState(true); const [error, setError] = useState('');
-  const load = useCallback(async () => { try { const [enrollments, catalog] = await Promise.all([axios.get(`${API}/api/processes/enrollments?process_key=consolidation`, getAuthHeaders()), axios.get(`${API}/api/processes/catalog`, getAuthHeaders())]); setItems(enrollments.data.items || []); setAssignees(catalog.data.assignees || []); } catch (requestError) { const detail = requestError?.response?.data?.detail; setError(typeof detail === 'string' ? detail : 'No se pudo cargar Consolidación.'); } finally { setLoading(false); } }, [API, getAuthHeaders]);
+  const { API, getAuthHeaders } = useAuth();
+  const [data, setData] = useState({ dashboard: {}, items: [], groups: [], assignees: [] });
+  const [filter, setFilter] = useState('all');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const load = useCallback(async () => {
+    setLoading(true); setError('');
+    try {
+      const [dashboard, enrollments, groups, catalog] = await Promise.all([
+        axios.get(`${API}/api/processes/consolidation/dashboard`, getAuthHeaders()),
+        axios.get(`${API}/api/processes/enrollments?process_key=consolidation`, getAuthHeaders()),
+        axios.get(`${API}/api/front-groups`, getAuthHeaders()),
+        axios.get(`${API}/api/processes/catalog`, getAuthHeaders()),
+      ]);
+      setData({ dashboard: dashboard.data, items: (enrollments.data.items || []).filter((item) => item.definition_version >= 2), groups: groups.data.items || [], assignees: catalog.data.assignees || [] });
+    } catch (requestError) { setError(requestError?.response?.data?.detail || 'No se pudo cargar Consolidación'); } finally { setLoading(false); }
+  }, [API, getAuthHeaders]);
   useEffect(() => { load(); }, [load]);
-  const assign = async (item, responsible) => { await axios.put(`${API}/api/processes/enrollments/${item.enrollment_id}`, { responsible_person_id: responsible }, getAuthHeaders()); toast.success('Responsable actualizado'); await load(); };
-  if (loading) return <ProcessShell title="Consolidación" description="Cargando recorrido de acompañamiento..."><ProcessLoading /></ProcessShell>;
-  return <ProcessShell title="Consolidación" description="Último contacto, próximo contacto, responsable y alertas tempranas conectados con 7 Semanas." actions={<EnrollmentDialog processKey="consolidation" assignees={assignees} onCreated={load} triggerLabel="Iniciar seguimiento" />}>{error ? <ProcessError message={error} /> : <div className="grid gap-4 xl:grid-cols-4">{stageKeys.map((stageKey) => { const stageItems = items.filter((item) => item.current_stage_key === stageKey); return <section key={stageKey} className={`min-w-0 ${stageKey === 'completed' ? 'xl:col-span-2' : ''}`} data-testid={`consolidation-stage-${stageKey}`}><div className="mb-3 flex items-center justify-between"><h2 className="font-['Spectral'] text-lg font-semibold text-slate-900">{stageLabels[stageKey]}</h2><span className="rounded-full bg-slate-200 px-2 py-0.5 text-xs font-semibold">{stageItems.length}</span></div><div className="space-y-3">{stageItems.length === 0 ? <div className="rounded-md border border-dashed border-slate-300 bg-white p-6 text-center text-xs text-slate-500">Sin personas en esta etapa</div> : stageItems.map((item) => <article key={item.enrollment_id} className="rounded-md border border-slate-200 bg-white p-4 shadow-sm" data-testid={`consolidation-card-${item.enrollment_id}`}><div className="flex items-start justify-between gap-2"><div><p className="font-semibold text-slate-900">{item.person.name}</p><p className="font-mono text-xs text-amber-700">{item.person.person_number}</p></div><ProcessStatus value={item.status} /></div><div className="mt-3"><SlaPill dueAt={item.current_stage?.due_at || item.next_action_at} /></div><div className="mt-3 grid grid-cols-2 gap-2"><div><p className="text-xs text-slate-500">Último contacto</p><p className="text-xs font-medium text-slate-800">{item.last_contact_at ? new Date(item.last_contact_at).toLocaleDateString('es') : 'Sin contacto'}</p></div><div><p className="text-xs text-slate-500">Próximo contacto</p><p className="text-xs font-medium text-slate-800">{item.next_contact_at ? new Date(item.next_contact_at).toLocaleDateString('es') : 'Sin fecha'}</p></div></div><p className="mt-3 text-xs text-slate-500">Próxima acción</p><p className="text-sm text-slate-800">{item.next_action || 'Sin próxima acción'}</p>{user?.rol !== 'persona' && <><div className="mt-3"><Label className="text-xs">Responsable</Label><Select value={item.responsible_person_id || ''} onValueChange={(value) => assign(item, value)}><SelectTrigger data-testid={`consolidation-owner-${item.enrollment_id}`}><SelectValue placeholder="Sin responsable" /></SelectTrigger><SelectContent className="bg-white">{assignees.map((owner) => <SelectItem key={owner.person_id} value={owner.person_id}>{owner.name}</SelectItem>)}</SelectContent></Select></div><div className="mt-3 flex items-center justify-between"><ContactDialog item={item} onSaved={load} /><Button size="icon" variant="ghost" onClick={() => window.location.assign(item.person.profile_path)} aria-label="Abrir Perfil 360" data-testid={`consolidation-profile-${item.enrollment_id}`}><UserCheck className="h-4 w-4" /></Button></div></>}</article>)}</div></section>; })}</div>}</ProcessShell>;
+  const visible = useMemo(() => filter === 'all' ? data.items : data.items.filter((item) => item.entry_mode === filter), [data.items, filter]);
+  return <ProcessShell title="Consolidación" eyebrow="Ruta oficial" description="Cuatro puertas de entrada, un solo recorrido y un historial permanente hasta Membresía, Retiro y Discipulado." actions={<ConsolidationIntakeDialog groups={data.groups} assignees={data.assignees} onCreated={load} />}>
+    {loading ? <ProcessLoading /> : error ? <ProcessError message={error} /> : <>
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" data-testid="consolidation-metrics">{metrics.map(([key, label, Icon]) => <article key={key} className="border border-slate-200 bg-white p-4"><Icon className="h-5 w-5 text-amber-600" /><strong className="mt-5 block font-['Spectral'] text-3xl text-slate-950" data-testid={`consolidation-metric-${key}`}>{data.dashboard[key] || 0}</strong><span className="text-xs text-slate-500">{label}</span></article>)}</section>
+      <section className="space-y-4"><div className="flex flex-wrap items-end justify-between gap-3"><div><h2 className="font-['Spectral'] text-2xl font-semibold">Expedientes activos e históricos</h2><p className="text-sm text-slate-500">La puerta de entrada se conserva aunque todas converjan en MCD.</p></div><div className="flex flex-wrap gap-2">{filters.map(([value, label]) => <button key={value} onClick={() => setFilter(value)} className={`border px-3 py-2 text-xs font-semibold ${filter === value ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-600'}`} data-testid={`consolidation-filter-${value}`}>{label}</button>)}</div></div>
+      {visible.length ? <div className="grid gap-4 lg:grid-cols-2">{visible.map((item) => <ConsolidationJourneyCard key={item.enrollment_id} item={item} />)}</div> : <div className="border border-dashed border-slate-300 bg-white p-10 text-center text-sm text-slate-500" data-testid="consolidation-empty-state">No hay rutas en este filtro.</div>}</section>
+      <section className="grid gap-5 xl:grid-cols-2" data-testid="consolidation-reports"><article className="border bg-white p-5"><h2 className="font-['Spectral'] text-2xl font-semibold">Efectividad por puerta</h2><div className="mt-4 space-y-3">{Object.entries(data.dashboard.by_entry || {}).map(([key, value]) => <div key={key}><div className="mb-1 flex justify-between text-xs"><span>{entryNames[key] || key}</span><b>{value}</b></div><div className="h-2 bg-slate-100"><div className="h-full bg-amber-500" style={{ width: `${data.dashboard.total ? value / data.dashboard.total * 100 : 0}%` }} /></div></div>)}</div><div className="mt-5 grid grid-cols-3 gap-2 border-t pt-4 text-center"><div><b>{data.dashboard.membership_conversion_pct || 0}%</b><span className="block text-[10px] text-slate-500">A membresía</span></div><div><b>{data.dashboard.retreat_conversion_pct || 0}%</b><span className="block text-[10px] text-slate-500">A Retiro</span></div><div><b>{data.dashboard.avg_days_to_membership ?? '—'}</b><span className="block text-[10px] text-slate-500">Días a membresía</span></div></div></article><article className="border bg-white p-5"><h2 className="font-['Spectral'] text-2xl font-semibold">Embudo formativo</h2><div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">{Object.entries(data.dashboard.by_stage || {}).map(([stage, value]) => <div key={stage} className="border border-slate-100 p-3"><b className="text-xl">{value}</b><span className="block text-[10px] uppercase text-slate-500">{stage.replaceAll('_', ' ')}</span></div>)}</div><div className={`mt-4 border p-3 text-sm ${data.dashboard.active_alerts ? 'border-red-200 bg-red-50 text-red-800' : 'border-emerald-200 bg-emerald-50 text-emerald-800'}`} data-testid="consolidation-alert-summary">{data.dashboard.active_alerts || 0} alertas operativas activas</div></article></section>
+    </>}
+  </ProcessShell>;
 }
