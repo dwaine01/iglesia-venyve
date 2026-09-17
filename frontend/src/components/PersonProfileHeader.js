@@ -104,7 +104,10 @@ export default function PersonProfileHeader({ header, photoSrc, onEdit, onArchiv
         <button onClick={onBack} className="flex items-center gap-2 text-sm font-medium text-gray-600 transition-colors hover:text-[#132443]" data-testid="person-profile-back-button">
           <span aria-hidden="true">←</span> Volver a Personas
         </button>
-        <div className="flex items-center gap-2 self-end sm:self-auto">
+        <div className="flex flex-wrap items-center justify-end gap-2 self-end sm:self-auto">
+          {onArchive && <Button variant="outline" onClick={onArchive} className="border-red-200 bg-white text-red-700 shadow-sm hover:bg-red-50 hover:text-red-800" data-testid="person-archive-button">
+            <Trash2 className="mr-2 h-4 w-4" /> Eliminar Persona
+          </Button>}
           <Button variant="outline" onClick={onEdit} disabled={!onEdit} className="bg-white shadow-sm" data-testid="person-profile-edit-button">
             <Pencil className="mr-2 h-4 w-4" /> Editar
           </Button>
@@ -125,12 +128,6 @@ export default function PersonProfileHeader({ header, photoSrc, onEdit, onArchiv
               <DropdownMenuItem onSelect={() => onSelectTab('direcciones')} data-testid="person-view-addresses-action">
                 <MapPin /> Ver direcciones
               </DropdownMenuItem>
-              {onArchive && <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onSelect={onArchive} className="text-red-700 focus:bg-red-50 focus:text-red-800" data-testid="person-archive-action">
-                  <Trash2 /> Eliminar Persona
-                </DropdownMenuItem>
-              </>}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>

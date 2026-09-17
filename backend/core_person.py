@@ -26,6 +26,7 @@ from access_control import (
     normalized_access_scope,
     normalized_capabilities,
 )
+from qa_demo_cleanup import delete_qa_artifacts, qa_summary
 
 MONGO_URL = os.environ.get("MONGO_URL")
 DB_NAME = os.environ.get("DB_NAME")
@@ -123,6 +124,19 @@ class PersonArchiveResponse(BaseModel):
     archived: bool
     linked_account_deactivated: bool
     archived_at: str
+
+
+class QaDemoSummaryResponse(BaseModel):
+    qa_users: int
+    qa_persons: int
+    total: int
+
+
+class QaDemoCleanupResponse(BaseModel):
+    qa_users: int
+    qa_persons: int
+    deleted_documents: int
+    deleted_by_collection: dict[str, int]
 
 
 @router.get("/persons")
@@ -263,6 +277,16 @@ async def get_person(person_id: str, current_user: dict = Depends(require_lider_
     person["sections_available"] = ["resumen"]
     person["sections_planned"] = ["contacto", "direcciones", "household", "familia", "procesos", "historial"]
     return person
+
+
+@router.get("/persons/qa-demo/summary", response_model=QaDemoSummaryResponse)
+async def get_qa_demo_summary(current_user: dict = Depends(require_pastor)):
+    return QaDemoSummaryResponse(**await qa_summary(db))
+
+
+@router.delete("/persons/qa-demo", response_model=QaDemoCleanupResponse)
+async def cleanup_qa_demo(current_user: dict = Depends(require_pastor)):
+    return QaDemoCleanupResponse(**await delete_qa_artifacts(db))
 
 
 @router.delete("/persons/{person_id}", response_model=PersonArchiveResponse)

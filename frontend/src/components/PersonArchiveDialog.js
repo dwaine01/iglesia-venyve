@@ -14,7 +14,7 @@ import {
 
 export const PersonArchiveDialog = ({ open, onOpenChange, personName, busy, error, onConfirm }) => (
   <AlertDialog open={open} onOpenChange={onOpenChange}>
-    <AlertDialogContent data-testid="person-archive-dialog">
+    <AlertDialogContent className="max-h-[85vh] overflow-y-auto border border-slate-200 bg-white shadow-2xl" data-testid="person-archive-dialog">
       <AlertDialogHeader>
         <div className="flex h-10 w-10 items-center justify-center rounded-md bg-red-50 text-red-700">
           <Archive className="h-5 w-5" />

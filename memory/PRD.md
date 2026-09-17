@@ -401,7 +401,7 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 
 ### P0 — Eliminación segura de Personas y limpieza QA — IMPLEMENTADO 2026‑09‑17
 
-- Pastor/Pastora puede seleccionar **Eliminar Persona** desde las acciones del Perfil 360 y confirmar en un diálogo explícito responsive.
+- Pastor/Pastora dispone de un botón rojo visible **Eliminar Persona** en el encabezado del Perfil 360 y confirma en un diálogo explícito responsive; ya no está escondido dentro de “Acciones”.
 - La operación es un archivo seguro: oculta la Persona del directorio, listados y Perfil 360, conserva historial ministerial/pastoral/financiero y registra auditoría.
 - Si existe cuenta no pastoral enlazada, se desactiva y aumenta `token_version`; carnets vigentes pasan a estado inactivo.
 - Se bloquea el autoarchivo y cualquier intento de eliminar un Perfil 360 enlazado a una cuenta pastoral.
@@ -410,6 +410,10 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - Limpieza autorizada ejecutada sobre MongoDB local: **7 Personas QA**, **5 cuentas QA** y **307 artefactos relacionados** eliminados; `finance_settings` se preservó y solo se retiró la referencia al actor QA.
 - Resultado posterior: **0 Personas QA/demo**, **0 cuentas QA/demo** y ningún registro objetivo remanente. Las pruebas futuras deben usar fixtures efímeros con cleanup.
 - Certificación independiente iteration 21: backend focal **4/4 PASS**, rol pastor/403/409/cascadas/ocultamiento PASS, flujo UI público desktop+móvil PASS y cleanup final confirmó `persons_total=0`, `users_total=0`, `qa_persons=0`, `qa_users=0` en la base local de desarrollo.
+- Tras feedback del usuario, se añadió en **Personas** el control pastoral visible **Limpiar muestras (N)** con conteo previo y confirmación; elimina permanentemente solo patrones QA/demo estrictos y referencias relacionadas, preservando Personas reales y configuraciones institucionales.
+- Endpoints pastor-only: `GET /api/core/persons/qa-demo/summary` y `DELETE /api/core/persons/qa-demo`; líderes/personas reciben 403.
+- Certificación iteration 22: backend QA cleanup y regresión pública PASS, frontend desktop/móvil PASS, diálogo sólido sin overflow, build PASS y cleanup final `remaining_people=0`, `remaining_users=0`.
+- Aclaración operativa: la limpieza previa se ejecutó en la base local de desarrollo. Después de publicar esta versión, producción mostrará **Limpiar muestras (N)** para ejecutar la limpieza segura sobre los datos de Railway; muestras no reconocidas por patrón pueden eliminarse individualmente desde su Perfil 360.
 
 ### P1/P2 — siguientes pasos y backlog
 

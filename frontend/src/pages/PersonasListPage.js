@@ -8,11 +8,13 @@ import { Input } from '../components/ui/input';
 import { Badge } from '../components/ui/badge';
 import { Skeleton } from '../components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
-import { Search, UserPlus, IdCard } from 'lucide-react';
+import { Search, UserPlus, IdCard, FlaskConical } from 'lucide-react';
 import PersonCanonicalLink from '../components/PersonCanonicalLink';
+import { QaDemoCleanupDialog } from '../components/QaDemoCleanupDialog';
+import { toast } from 'sonner';
 
 export default function PersonasListPage() {
-  const { API, getAuthHeaders } = useAuth();
+  const { API, getAuthHeaders, user } = useAuth();
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
   const [talentId, setTalentId] = useState('');
@@ -27,6 +29,10 @@ export default function PersonasListPage() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [qaSummary, setQaSummary] = useState(null);
+  const [cleanupOpen, setCleanupOpen] = useState(false);
+  const [cleaningQa, setCleaningQa] = useState(false);
+  const [cleanupError, setCleanupError] = useState('');
 
   const fetchPersons = useCallback(async (search) => {
     setLoading(true);
@@ -69,12 +75,37 @@ export default function PersonasListPage() {
       });
   }, [API, getAuthHeaders]);
 
+  const loadQaSummary = useCallback(() => {
+    if (user?.rol !== 'pastor') return;
+    axios.get(`${API}/api/core/persons/qa-demo/summary`, getAuthHeaders())
+      .then((response) => setQaSummary(response.data))
+      .catch(() => setQaSummary(null));
+  }, [API, getAuthHeaders, user?.rol]);
+
+  useEffect(() => { loadQaSummary(); }, [loadQaSummary]);
+
   useEffect(() => {
     const timer = setTimeout(() => fetchPersons(query.trim()), 300);
     return () => clearTimeout(timer);
   }, [query, fetchPersons]);
 
   const nombreCompleto = (p) => `${p.nombre || ''} ${p.apellido || ''}`.trim();
+
+  const cleanupQaDemo = async () => {
+    setCleaningQa(true);
+    setCleanupError('');
+    try {
+      const response = await axios.delete(`${API}/api/core/persons/qa-demo`, getAuthHeaders());
+      toast.success(`${response.data.deleted_documents} artefactos QA eliminados`);
+      setCleanupOpen(false);
+      setQaSummary({ qa_users: 0, qa_persons: 0, total: 0 });
+      await fetchPersons(query.trim());
+    } catch (requestError) {
+      setCleanupError(requestError?.response?.data?.detail || 'No se pudieron eliminar las muestras QA.');
+    } finally {
+      setCleaningQa(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#F5F0E8] via-[#FAFAF8] to-[#EDE8DD] p-4 md:p-8" data-testid="persons-directory-page">
@@ -89,15 +120,34 @@ export default function PersonasListPage() {
               Identidad única y permanente de cada persona en la iglesia (VV-XXXXXX).
             </p>
           </div>
-          <Button
-            onClick={() => navigate('/personas/nueva')}
-            className="bg-[#C8A951] hover:bg-[#B8964A] text-white gap-2"
-            data-testid="person-create-button"
-          >
-            <UserPlus className="w-4 h-4" />
-            Nueva Persona
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            {user?.rol === 'pastor' && qaSummary?.total > 0 && <Button
+              variant="outline"
+              onClick={() => { setCleanupError(''); setCleanupOpen(true); }}
+              className="border-red-200 bg-white text-red-700 hover:bg-red-50 hover:text-red-800"
+              data-testid="qa-demo-cleanup-button"
+            >
+              <FlaskConical className="w-4 h-4" />
+              Limpiar muestras ({qaSummary.total})
+            </Button>}
+            <Button
+              onClick={() => navigate('/personas/nueva')}
+              className="bg-[#C8A951] hover:bg-[#B8964A] text-white gap-2"
+              data-testid="person-create-button"
+            >
+              <UserPlus className="w-4 h-4" />
+              Nueva Persona
+            </Button>
+          </div>
         </div>
+        <QaDemoCleanupDialog
+          open={cleanupOpen}
+          onOpenChange={setCleanupOpen}
+          summary={qaSummary}
+          busy={cleaningQa}
+          error={cleanupError}
+          onConfirm={cleanupQaDemo}
+        />
 
         <Card className="border-none shadow-md">
           <CardHeader className="pb-3">
