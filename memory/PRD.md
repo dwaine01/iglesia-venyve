@@ -390,6 +390,8 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - Acceso restringido mediante la capability explícita `membership.documents.manage`; Pastor/Pastora conserva la configuración institucional.
 - Corregido el bloqueo de producción `ModuleNotFoundError: No module named 'PIL'`: `backend/requirements.txt` ahora fija `pillow==12.3.0`, dependencia requerida por `membership_documents.py`.
 - Validación iteration 18: instalación virtual limpia, `pip check`, import de Pillow, import completo de `server`, regresión/E2E de membresía **5/5 PASS**, health público 200 y vista pública de token inválido PASS.
+- Corregido el segundo bloqueo de build frontend: `package.json` incluía `qrcode` pero el commit no contenía su resolución en `yarn.lock`, por lo que Railway abortaba con `--frozen-lockfile`.
+- Validación iteration 19: instalación Yarn desde carpeta vacía con `--frozen-lockfile` PASS, `qrcode@^1.5.4` resuelto a 1.5.4, build de producción PASS y ruta pública de verificación PASS.
 - `.env` continúa excluido deliberadamente del contexto Docker para no incrustar secretos; Railway inyecta `MONGO_URL`, `DB_NAME`, JWT y CORS como variables runtime según `DEPLOYMENT.md`.
 - Pendiente P0: corregir el desacople `CoreGovernancePage` → `CoreAccessTable` (`users` frente a `items`) y alinear niveles/grupos del payload con `AccessUpdate` antes de certificar la delegación del permiso.
 
