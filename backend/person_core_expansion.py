@@ -546,7 +546,7 @@ async def search_directory(
         ministry_person_ids = set(
             await db.ministry_assignments.distinct("person_id", assignment_query)
         )
-    query = {}
+    query = {"is_archived": {"$ne": True}}
     if genero:
         query["genero"] = genero
     candidates = await db.persons.find(query).sort([("apellido", 1), ("nombre", 1)]).limit(500).to_list(500)

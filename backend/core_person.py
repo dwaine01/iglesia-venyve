@@ -10,6 +10,7 @@ import re
 import unicodedata
 from datetime import datetime, timezone
 from typing import Optional
+from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel, Field
@@ -51,6 +52,12 @@ def _normalize(text: Optional[str]) -> str:
 def require_lider_o_pastor(current_user: dict = Depends(get_current_user)) -> dict:
     if current_user.get("rol") not in ("lider", "pastor"):
         raise HTTPException(status_code=403, detail="No autorizado")
+    return current_user
+
+
+def require_pastor(current_user: dict = Depends(get_current_user)) -> dict:
+    if current_user.get("rol") != "pastor":
+        raise HTTPException(status_code=403, detail="Solo Pastor/Pastora puede eliminar Personas del directorio")
     return current_user
 
 
@@ -111,6 +118,13 @@ class DuplicateCheck(BaseModel):
     telefono: Optional[str] = None
 
 
+class PersonArchiveResponse(BaseModel):
+    person_id: str
+    archived: bool
+    linked_account_deactivated: bool
+    archived_at: str
+
+
 @router.get("/persons")
 async def list_persons(
     search: Optional[str] = Query(None),
@@ -118,7 +132,7 @@ async def list_persons(
     skip: int = Query(0, ge=0),
     current_user: dict = Depends(require_lider_o_pastor),
 ):
-    query = {}
+    query = {"is_archived": {"$ne": True}}
     if search:
         norm = _normalize(search)
         ors = [{"telefono": {"$regex": re.escape(search)}}]
@@ -126,7 +140,7 @@ async def list_persons(
             ors.append({"search_key": {"$regex": re.escape(norm)}})
         if search.upper().startswith("VV"):
             ors.append({"person_number": search.upper()})
-        query = {"$or": ors}
+        query = {"$and": [query, {"$or": ors}]}
     if current_user.get("access_scope", {}).get("persons") != "all":
         assigned_ids = []
         if current_user.get("person_id"):
@@ -145,7 +159,7 @@ async def list_persons(
         if valid_ids:
             scoped_or.append({"_id": {"$in": valid_ids}})
         scope_query = {"$or": scoped_or}
-        query = {"$and": [query, scope_query]} if query else scope_query
+        query = {"$and": [query, scope_query]}
     cursor = db.persons.find(query).skip(skip).limit(limit).sort("created_at", -1)
     items = [serialize_person(doc) async for doc in cursor]
     total = await db.persons.count_documents(query)
@@ -240,7 +254,7 @@ async def get_person(person_id: str, current_user: dict = Depends(require_lider_
         oid = ObjectId(person_id)
     except InvalidId:
         raise HTTPException(status_code=400, detail="person_id invalido")
-    doc = await db.persons.find_one({"_id": oid})
+    doc = await db.persons.find_one({"_id": oid, "is_archived": {"$ne": True}})
     if not doc:
         raise HTTPException(status_code=404, detail="Persona no encontrada")
     doc["person_id"] = person_id
@@ -251,9 +265,84 @@ async def get_person(person_id: str, current_user: dict = Depends(require_lider_
     return person
 
 
+@router.delete("/persons/{person_id}", response_model=PersonArchiveResponse)
+async def archive_person(person_id: str, current_user: dict = Depends(require_pastor)):
+    try:
+        oid = ObjectId(person_id)
+    except InvalidId:
+        raise HTTPException(status_code=400, detail="person_id invalido")
+    person = await db.persons.find_one({"_id": oid})
+    if not person:
+        raise HTTPException(status_code=404, detail="Persona no encontrada")
+    if person.get("is_archived") is True:
+        archived_at = person.get("archived_at") or now_utc()
+        return PersonArchiveResponse(
+            person_id=person_id,
+            archived=True,
+            linked_account_deactivated=False,
+            archived_at=archived_at.isoformat() if isinstance(archived_at, datetime) else str(archived_at),
+        )
+    if current_user.get("person_id") == person_id:
+        raise HTTPException(status_code=409, detail="No puede eliminar su propio Perfil 360")
+    linked_users = await db.users.find(
+        {"person_id": person_id},
+        {"_id": 1, "rol": 1},
+    ).to_list(20)
+    if any(item.get("rol") == "pastor" for item in linked_users):
+        raise HTTPException(status_code=409, detail="No se puede eliminar el Perfil 360 de otra cuenta pastoral")
+
+    now = now_utc()
+    archived = await db.persons.update_one(
+        {"_id": oid, "is_archived": {"$ne": True}},
+        {
+            "$set": {
+                "is_archived": True,
+                "archived_at": now,
+                "archived_by": current_user["user_id"],
+                "archive_reason": "Eliminada desde Perfil 360",
+                "updated_at": now,
+            },
+            "$inc": {"version": 1},
+        },
+    )
+    if archived.modified_count != 1:
+        raise HTTPException(status_code=409, detail="La Persona ya fue eliminada del directorio")
+    linked_update = await db.users.update_many(
+        {"person_id": person_id, "rol": {"$ne": "pastor"}},
+        {
+            "$set": {
+                "is_active": False,
+                "deactivated_at": now,
+                "deactivation_reason": "Perfil 360 eliminado del directorio",
+            },
+            "$inc": {"token_version": 1},
+        },
+    )
+    await db.person_memberships.update_many(
+        {"person_id": person_id},
+        {"$set": {"status": "inactive", "updated_at": now, "updated_by_user_id": current_user["user_id"]}},
+    )
+    await db.person_activity.insert_one({
+        "_id": str(uuid4()),
+        "person_id": person_id,
+        "domain": "core",
+        "action": "archived",
+        "summary": "Persona eliminada del directorio; historial conservado",
+        "actor_user_id": current_user["user_id"],
+        "created_at": now,
+    })
+    return PersonArchiveResponse(
+        person_id=person_id,
+        archived=True,
+        linked_account_deactivated=linked_update.modified_count > 0,
+        archived_at=now.isoformat(),
+    )
+
+
 async def ensure_indexes():
     await db.persons.create_index("search_key")
     await db.persons.create_index("person_number", unique=True)
     await db.persons.create_index("idempotency_key", unique=True)
     await db.persons.create_index("telefono")
+    await db.persons.create_index("is_archived")
     await db.counters.create_index("_id")

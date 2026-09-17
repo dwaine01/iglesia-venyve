@@ -10,6 +10,7 @@ import {
   MoreHorizontal,
   Pencil,
   Phone,
+  Trash2,
   UserRound,
   UsersRound,
 } from 'lucide-react';
@@ -68,7 +69,7 @@ function DetailItem({ icon: Icon, label, value, helper }) {
   );
 }
 
-export default function PersonProfileHeader({ header, photoSrc, onEdit, onSelectTab, onBack }) {
+export default function PersonProfileHeader({ header, photoSrc, onEdit, onArchive, onSelectTab, onBack }) {
   const [copied, setCopied] = useState(false);
   const age = useMemo(() => calculateAge(header.fecha_nacimiento), [header.fecha_nacimiento]);
   const ageLabel = header.age_category === 'menor' ? 'Menor' : header.age_category === 'adulto' ? 'Adulto' : titleCase(header.age_category);
@@ -100,30 +101,36 @@ export default function PersonProfileHeader({ header, photoSrc, onEdit, onSelect
   return (
     <section className="space-y-3" data-testid="person-profile-header">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <button onClick={onBack} className="flex items-center gap-2 text-sm font-medium text-gray-600 transition-colors hover:text-[#132443]">
+        <button onClick={onBack} className="flex items-center gap-2 text-sm font-medium text-gray-600 transition-colors hover:text-[#132443]" data-testid="person-profile-back-button">
           <span aria-hidden="true">←</span> Volver a Personas
         </button>
         <div className="flex items-center gap-2 self-end sm:self-auto">
-          <Button variant="outline" onClick={onEdit} disabled={!onEdit} className="bg-white shadow-sm">
+          <Button variant="outline" onClick={onEdit} disabled={!onEdit} className="bg-white shadow-sm" data-testid="person-profile-edit-button">
             <Pencil className="mr-2 h-4 w-4" /> Editar
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button className="bg-[#132443] text-white shadow-sm hover:bg-[#1C3157]">
+              <Button className="bg-[#132443] text-white shadow-sm hover:bg-[#1C3157]" data-testid="person-profile-actions-button">
                 <MoreHorizontal className="mr-2 h-4 w-4" /> Acciones <ChevronDown className="ml-2 h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-52">
-              <DropdownMenuItem onSelect={copyNumber}>
+              <DropdownMenuItem onSelect={copyNumber} data-testid="person-copy-number-action">
                 <Copy /> {copied ? 'VV copiado' : 'Copiar número VV'}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={() => onSelectTab('contacto')}>
+              <DropdownMenuItem onSelect={() => onSelectTab('contacto')} data-testid="person-view-contact-action">
                 <Phone /> Ver contacto
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => onSelectTab('direcciones')}>
+              <DropdownMenuItem onSelect={() => onSelectTab('direcciones')} data-testid="person-view-addresses-action">
                 <MapPin /> Ver direcciones
               </DropdownMenuItem>
+              {onArchive && <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={onArchive} className="text-red-700 focus:bg-red-50 focus:text-red-800" data-testid="person-archive-action">
+                  <Trash2 /> Eliminar Persona
+                </DropdownMenuItem>
+              </>}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>

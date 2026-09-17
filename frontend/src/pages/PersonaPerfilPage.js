@@ -20,6 +20,8 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs'
 import { displayLabel } from '../lib/displayLabels';
 import { PersonFinanceSection } from '../components/finance/PersonFinanceSection';
 import { MembershipDocumentsSection } from '../components/membership/MembershipDocumentsSection';
+import { PersonArchiveDialog } from '../components/PersonArchiveDialog';
+import { toast } from 'sonner';
 
 // P-001 Slice 2A - Person Profile 360 (shell full-screen).
 // Consume unicamente el read-model /api/core/persons/{id}/profile.
@@ -49,6 +51,9 @@ export default function PersonaPerfilPage() {
   const [editorOpen, setEditorOpen] = useState(false);
   const [photoSrc, setPhotoSrc] = useState(null);
   const [photoVersion, setPhotoVersion] = useState(0);
+  const [archiveOpen, setArchiveOpen] = useState(false);
+  const [archiving, setArchiving] = useState(false);
+  const [archiveError, setArchiveError] = useState('');
 
   const refreshProfile = async () => {
     const response = await axios.get(
@@ -107,10 +112,26 @@ export default function PersonaPerfilPage() {
   const planned = profile?.sections_planned || [];
   const canViewFinance = user?.rol === 'pastor' || (user?.capabilities || []).includes('finance.read');
   const canManageMembershipDocuments = user?.rol === 'pastor' || (user?.capabilities || []).includes('membership.documents.manage');
+  const canArchive = user?.rol === 'pastor' && user?.person_id !== personId && profile?.identity?.account_role !== 'pastor';
   const allSections = [
     'resumen', 'contacto', 'direcciones', 'household',
     'familia', 'procesos', 'asistencia', 'historial', ...(canViewFinance ? ['finanzas'] : []), ...(canManageMembershipDocuments ? ['membresia'] : []),
   ];
+
+  const archivePerson = async () => {
+    setArchiving(true);
+    setArchiveError('');
+    try {
+      await axios.delete(`${API}/api/core/persons/${personId}`, getAuthHeaders());
+      toast.success('Persona eliminada del directorio; su historial quedó conservado');
+      setArchiveOpen(false);
+      navigate('/personas', { replace: true });
+    } catch (requestError) {
+      setArchiveError(requestError?.response?.data?.detail || 'No se pudo eliminar la Persona del directorio.');
+    } finally {
+      setArchiving(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -146,8 +167,17 @@ export default function PersonaPerfilPage() {
           header={header}
           photoSrc={photoSrc}
           onEdit={profile.profile_can_write ? () => setEditorOpen(true) : undefined}
+          onArchive={canArchive ? () => { setArchiveError(''); setArchiveOpen(true); } : undefined}
           onSelectTab={setActiveTab}
           onBack={() => navigate('/personas')}
+        />
+        <PersonArchiveDialog
+          open={archiveOpen}
+          onOpenChange={setArchiveOpen}
+          personName={header.nombre_completo}
+          busy={archiving}
+          error={archiveError}
+          onConfirm={archivePerson}
         />
         {profile.profile_can_write && (
           <PersonProfileEditor

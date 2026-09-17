@@ -200,7 +200,7 @@ async def get_person_profile(person_id: str, current_user: dict = Depends(requir
         oid = ObjectId(person_id)
     except InvalidId:
         raise HTTPException(status_code=400, detail="person_id invalido")
-    doc = await db.persons.find_one({"_id": oid})
+    doc = await db.persons.find_one({"_id": oid, "is_archived": {"$ne": True}})
     if not doc:
         raise HTTPException(status_code=404, detail="Persona no encontrada")
     person = serialize_person(doc)

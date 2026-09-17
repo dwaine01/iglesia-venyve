@@ -399,6 +399,18 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - `.env` continúa excluido deliberadamente del contexto Docker para no incrustar secretos; Railway inyecta `MONGO_URL`, `DB_NAME`, JWT y CORS como variables runtime según `DEPLOYMENT.md`.
 - Pendiente P0: corregir el desacople `CoreGovernancePage` → `CoreAccessTable` (`users` frente a `items`) y alinear niveles/grupos del payload con `AccessUpdate` antes de certificar la delegación del permiso.
 
+### P0 — Eliminación segura de Personas y limpieza QA — IMPLEMENTADO 2026‑09‑17
+
+- Pastor/Pastora puede seleccionar **Eliminar Persona** desde las acciones del Perfil 360 y confirmar en un diálogo explícito responsive.
+- La operación es un archivo seguro: oculta la Persona del directorio, listados y Perfil 360, conserva historial ministerial/pastoral/financiero y registra auditoría.
+- Si existe cuenta no pastoral enlazada, se desactiva y aumenta `token_version`; carnets vigentes pasan a estado inactivo.
+- Se bloquea el autoarchivo y cualquier intento de eliminar un Perfil 360 enlazado a una cuenta pastoral.
+- Backend `DELETE /api/core/persons/{person_id}` protegido exclusivamente por rol pastor; respuesta Pydantic sin exposición de `_id`.
+- Verificación focal inicial: backend **15/15 PASS**, frontend **19/19 PASS**, build PASS y diálogo desktop 1920×800/móvil 390×844 sin overflow.
+- Limpieza autorizada ejecutada sobre MongoDB local: **7 Personas QA**, **5 cuentas QA** y **307 artefactos relacionados** eliminados; `finance_settings` se preservó y solo se retiró la referencia al actor QA.
+- Resultado posterior: **0 Personas QA/demo**, **0 cuentas QA/demo** y ningún registro objetivo remanente. Las pruebas futuras deben usar fixtures efímeros con cleanup.
+- Certificación independiente iteration 21: backend focal **4/4 PASS**, rol pastor/403/409/cascadas/ocultamiento PASS, flujo UI público desktop+móvil PASS y cleanup final confirmó `persons_total=0`, `users_total=0`, `qa_persons=0`, `qa_users=0` en la base local de desarrollo.
+
 ### P1/P2 — siguientes pasos y backlog
 
 - **P0 — Gobierno de accesos:** restaurar filas de `CoreAccessTable`, persistir concesión/revocación de `membership.documents.manage` y ejecutar regresión backend + frontend.

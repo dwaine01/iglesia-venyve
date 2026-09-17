@@ -2166,7 +2166,7 @@ async def get_dashboard_by_role(authorization: Optional[str] = Header(None), lea
             "rol": "pastor",
             "lideres": lideres_data,
             "total_lideres": len(lideres_data),
-        "total_personas_global": await db.persons.count_documents({}),
+        "total_personas_global": await db.persons.count_documents({"is_archived": {"$ne": True}}),
         "total_personas_en_proceso": sum(l["total_personas"] for l in lideres_data),
         }
     

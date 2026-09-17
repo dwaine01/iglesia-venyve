@@ -8,6 +8,7 @@ import uuid
 import bcrypt
 import pytest
 import pytest_asyncio
+from bson import ObjectId
 from httpx import AsyncClient, ASGITransport
 
 os.environ.setdefault("MONGO_URL", "mongodb://localhost:27017")
@@ -125,3 +126,78 @@ async def test_list_persons_requires_auth():
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         resp = await ac.get("/api/core/persons")
         assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_pastor_archives_person_preserves_record_and_hides_from_views(client):
+    created = await client.post("/api/core/persons", json={
+        "nombre": "QA Archivo", "apellido": "Seguro", "idempotency_key": str(uuid.uuid4()),
+    })
+    person_id = created.json()["person_id"]
+    linked_user = await server.db.users.insert_one({
+        "nombre": "QA Cuenta Vinculada",
+        "email": f"qa.archive.{uuid.uuid4().hex}@example.com",
+        "password": bcrypt.hashpw(b"NotUsed123!", bcrypt.gensalt()).decode(),
+        "rol": "persona",
+        "person_id": person_id,
+        "is_active": True,
+        "token_version": 3,
+        **access_defaults_for_role("persona"),
+    })
+    try:
+        archived = await client.delete(f"/api/core/persons/{person_id}")
+        assert archived.status_code == 200, archived.text
+        assert archived.json()["archived"] is True
+        assert archived.json()["linked_account_deactivated"] is True
+        person = await server.db.persons.find_one({"_id": ObjectId(person_id)})
+        assert person["is_archived"] is True
+        linked = await server.db.users.find_one({"_id": linked_user.inserted_id})
+        assert linked["is_active"] is False
+        assert linked["token_version"] == 4
+        assert (await client.get(f"/api/core/persons/{person_id}/profile")).status_code == 404
+        listing = await client.get("/api/core/persons", params={"search": "QA Archivo"})
+        assert listing.status_code == 200
+        assert all(item["person_id"] != person_id for item in listing.json()["items"])
+        activity = await server.db.person_activity.find_one({"person_id": person_id, "action": "archived"})
+        assert activity is not None
+    finally:
+        await server.db.users.delete_one({"_id": linked_user.inserted_id})
+
+
+@pytest.mark.asyncio
+async def test_non_pastor_cannot_archive_person(client):
+    created = await client.post("/api/core/persons", json={
+        "nombre": "QA Protegida", "apellido": "Rol", "idempotency_key": str(uuid.uuid4()),
+    })
+    person_id = created.json()["person_id"]
+    pastor = await server.db.users.find_one({"email": "pytest.pastor@example.com"})
+    await server.db.users.update_one({"_id": pastor["_id"]}, {"$set": {"rol": "lider"}})
+    try:
+        denied = await client.delete(f"/api/core/persons/{person_id}")
+        assert denied.status_code == 403
+    finally:
+        await server.db.users.update_one({"_id": pastor["_id"]}, {"$set": {"rol": "pastor"}})
+
+
+@pytest.mark.asyncio
+async def test_pastoral_profile_cannot_be_archived(client):
+    created = await client.post("/api/core/persons", json={
+        "nombre": "QA Pastor", "apellido": "Protegido", "idempotency_key": str(uuid.uuid4()),
+    })
+    person_id = created.json()["person_id"]
+    other_pastor = await server.db.users.insert_one({
+        "nombre": "QA Otro Pastor",
+        "email": f"qa.other.pastor.{uuid.uuid4().hex}@example.com",
+        "password": bcrypt.hashpw(b"NotUsed123!", bcrypt.gensalt()).decode(),
+        "rol": "pastor",
+        "person_id": person_id,
+        "is_active": True,
+        "token_version": 1,
+        **access_defaults_for_role("pastor"),
+    })
+    try:
+        blocked = await client.delete(f"/api/core/persons/{person_id}")
+        assert blocked.status_code == 409
+        assert "pastoral" in blocked.json()["detail"]
+    finally:
+        await server.db.users.delete_one({"_id": other_pastor.inserted_id})

@@ -89,7 +89,7 @@ async def canonical_person(person_id: str) -> dict:
     if ObjectId.is_valid(person_id):
         queries.append({"_id": ObjectId(person_id)})
     person = await db.persons.find_one({"$or": queries})
-    if not person:
+    if not person or person.get("is_archived") is True:
         raise HTTPException(status_code=404, detail="Persona 360 no encontrada")
     person["person_id"] = person.get("person_id") or str(person["_id"])
     return person
@@ -367,6 +367,8 @@ async def public_membership_verification(token: str):
     membership = await db.person_memberships.find_one({"membership_id": membership_id}, {"_id": 0})
     if not membership:
         return {"valid": False, "status": "invalid"}
+    if membership.get("status") != "active":
+        return {"valid": False, "status": "inactive"}
     person = await canonical_person(membership["person_id"]); expiry = membership.get("card_expiration_date")
     credential_status = "inactive" if membership.get("status") != "active" else "expired" if expiry and expiry < date.today().isoformat() else "active"
     settings = await settings_document()
