@@ -395,6 +395,7 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - Recurrencia investigada: la primera sincronización se generó correctamente en el working tree, pero `frontend/yarn.lock` quedó fuera del commit publicado; Railway volvió a construir el lockfile antiguo y reprodujo el mismo error.
 - Corrección versionada definitiva: `frontend/yarn.lock` contiene el bloque de `qrcode@^1.5.4` y sus dependencias transitivas; iteration 20 confirmó diff acotado `+89/-2`, instalación frozen limpia, build y ruta pública PASS.
 - Confirmación posterior en Railway: los commits publicados seguían modificando únicamente PRD/metadatos y `HEAD:frontend/yarn.lock` conservaba el hash anterior sin `qrcode`; no era una nueva falla de build. El lockfile queda marcado explícitamente como archivo versionado para que el próximo Publish incluya sus 90 altas/2 ajustes.
+- Cierre confirmado por el usuario el 2026‑09‑17: Publish incluyó finalmente el lockfile, Railway desplegó el frontend sin error y `https://panel.iglesiavenyve.org` respondió HTTP 200; verificación visual de producción mostró la pantalla de acceso completa y sin overflow horizontal.
 - `.env` continúa excluido deliberadamente del contexto Docker para no incrustar secretos; Railway inyecta `MONGO_URL`, `DB_NAME`, JWT y CORS como variables runtime según `DEPLOYMENT.md`.
 - Pendiente P0: corregir el desacople `CoreGovernancePage` → `CoreAccessTable` (`users` frente a `items`) y alinear niveles/grupos del payload con `AccessUpdate` antes de certificar la delegación del permiso.
 
