@@ -26,7 +26,7 @@ export const ConsolidationIntakeDialog = ({ groups, assignees, onCreated }) => {
   const [form, setForm] = useState({ entry_mode: 'visitor_followup', person_id: '', front_group_id: '', mentor_person_id: '', source_cell_id: '', next_followup_at: '', initial_result: '' });
   useEffect(() => {
     if (!open) return;
-    axios.get(`${API}/api/core/persons?limit=500`, getAuthHeaders()).then((response) => setPeople(response.data.items || [])).catch(() => setPeople([]));
+    axios.get(`${API}/api/core/persons?limit=100`, getAuthHeaders()).then((response) => setPeople(response.data.items || [])).catch(() => setPeople([]));
   }, [API, getAuthHeaders, open]);
   const visible = people.filter((person) => `${person.nombre} ${person.apellido} ${person.person_number}`.toLowerCase().includes(search.toLowerCase()));
   const update = (key, value) => setForm((current) => ({ ...current, [key]: value }));

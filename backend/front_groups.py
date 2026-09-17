@@ -9,9 +9,11 @@ from pydantic import BaseModel, Field
 
 from access_control import (
     FRONT_GROUPS_MANAGE,
+    FRONT_GROUPS_VIEW,
     MENTOR_QUALIFICATIONS_MANAGE,
     PROCESSES_READ,
     has_capability,
+    is_global_pastoral_authority,
 )
 from server import db, get_current_user
 
@@ -74,19 +76,19 @@ class MentorQualificationInput(BaseModel):
 
 
 def require_read(current_user: dict = Depends(get_current_user)) -> dict:
-    if current_user.get("rol") != "pastor" and not has_capability(current_user, PROCESSES_READ):
+    if not is_global_pastoral_authority(current_user) and not has_capability(current_user, FRONT_GROUPS_VIEW) and not has_capability(current_user, FRONT_GROUPS_MANAGE):
         raise HTTPException(status_code=403, detail="Sin permiso para consultar Grupos Frontales")
     return current_user
 
 
 def require_manage(current_user: dict = Depends(get_current_user)) -> dict:
-    if current_user.get("rol") != "pastor" and not has_capability(current_user, FRONT_GROUPS_MANAGE):
+    if not is_global_pastoral_authority(current_user) and not has_capability(current_user, FRONT_GROUPS_MANAGE):
         raise HTTPException(status_code=403, detail="Sin permiso para administrar Grupos Frontales")
     return current_user
 
 
 def require_qualification_manager(current_user: dict = Depends(get_current_user)) -> dict:
-    if current_user.get("rol") != "pastor" and not has_capability(current_user, MENTOR_QUALIFICATIONS_MANAGE):
+    if not is_global_pastoral_authority(current_user) and not has_capability(current_user, MENTOR_QUALIFICATIONS_MANAGE):
         raise HTTPException(status_code=403, detail="Sin permiso para calificar mentores LBS")
     return current_user
 
@@ -101,7 +103,7 @@ async def load_person(person_id: str) -> dict:
 
 
 async def group_in_scope(group_id: str, current_user: dict, leader_required: bool = False) -> bool:
-    if current_user.get("rol") == "pastor":
+    if is_global_pastoral_authority(current_user):
         return True
     role_query = "leader" if leader_required else {"$in": ["leader", "team", "mentor"]}
     return bool(await db.front_group_assignments.find_one({
@@ -131,7 +133,7 @@ async def person_name(person_id: Optional[str]) -> Optional[str]:
 @router.get("", response_model=dict)
 async def list_front_groups(current_user: dict = Depends(require_read)):
     query = {}
-    if current_user.get("rol") != "pastor" and not has_capability(current_user, FRONT_GROUPS_MANAGE):
+    if not is_global_pastoral_authority(current_user) and not has_capability(current_user, FRONT_GROUPS_MANAGE):
         group_ids = await db.front_group_assignments.distinct("front_group_id", {"person_id": current_user.get("person_id"), "active": True})
         query["front_group_id"] = {"$in": group_ids}
     groups = await db.front_groups.find(query, {"_id": 0}).sort("name", 1).to_list(1000)

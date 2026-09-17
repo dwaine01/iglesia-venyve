@@ -6,6 +6,7 @@ from bson import ObjectId
 from fastapi import HTTPException
 
 from front_groups import group_in_scope
+from access_control import is_global_pastoral_authority
 from process_engine import create_enrollment, get_definition, now_utc, record_event, serialize
 
 
@@ -37,7 +38,7 @@ async def load_consolidation(db, enrollment_id: str) -> dict:
 
 
 async def assert_consolidation_scope(db, enrollment: dict, current_user: dict, leader_required: bool = False) -> None:
-    if current_user.get("rol") == "pastor":
+    if is_global_pastoral_authority(current_user):
         return
     group_id = enrollment.get("front_group_id")
     if group_id and await group_in_scope(group_id, current_user, leader_required):

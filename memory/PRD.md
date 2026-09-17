@@ -486,9 +486,21 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - Certificación iteration 22: backend QA cleanup y regresión pública PASS, frontend desktop/móvil PASS, diálogo sólido sin overflow, build PASS y cleanup final `remaining_people=0`, `remaining_users=0`.
 - Aclaración operativa: la limpieza previa se ejecutó en la base local de desarrollo. Después de publicar esta versión, producción mostrará **Limpiar muestras (N)** para ejecutar la limpieza segura sobre los datos de Railway; muestras no reconocidas por patrón pueden eliminarse individualmente desde su Perfil 360.
 
+### P0 — Acceso RBAC a Liderazgo/Grupos Frontales y respuesta inmediata — RESUELTO 2026‑09‑17
+
+- Corregida la causa real de “No se pudo cargar Liderazgo/Grupo Frontal”: las vistas solicitaban `GET /api/core/persons?limit=500`, pero el contrato backend admite un máximo de 100 y respondía 422.
+- Liderazgo, detalle de Grupo Frontal e intake de Consolidación usan ahora `limit=100`; los detalles estructurados de FastAPI se convierten en mensajes legibles y ya no provocan errores de renderizado React.
+- Añadidas capabilities explícitas `front_groups.view` y `leadership.view`, disponibles en Gobierno del Núcleo, con guards de ruta y navegación consistentes.
+- El rol pastoral legado conserva acceso maestro únicamente en los módulos correspondientes; `core.access.manage` ya no eleva a una cuenta no pastoral a autoridad global ni elude scopes.
+- La política de acceso sube a versión 15 para materializar las nuevas capacidades de lectura durante el rollout.
+- Las tareas del expediente de Consolidación ahora cambian visualmente de inmediato, muestran guardado individual, persisten la respuesta del servidor y revierten el cambio si la API falla; se eliminó la recarga redundante del catálogo.
+- El riel de etapas dejó de depender de ancho mínimo horizontal y se adapta por cuadrícula sin overflow.
+- Validación final: backend **137 passed, 3 skipped**; frontend **19/19 PASS**; build de producción PASS; health externo 200; iteration 24 backend/UI PASS; navegación y tareas verificadas en 1920×800 y 390×844 sin overflow.
+- Limpieza final confirmada: **0 Personas QA y 0 cuentas QA**.
+
 ### P1/P2 — siguientes pasos y backlog
 
-- **P1 — Aceptación operativa:** validar Consolidación v2 con responsables reales, asignar capabilities y crear el primer Grupo Frontal de producción.
+- **P1 — Aceptación operativa:** validar Consolidación v2 con responsables reales, asignar `front_groups.view`/`leadership.view` y capacidades de gestión, y crear el primer Grupo Frontal de producción.
 - **P1 — Aceptación funcional del usuario:** revisar Mega‑Bloque G ya certificado con casos reales de la oficina de la iglesia y recopilar ajustes de política/terminología.
 - **P1 — Pushpay:** activar OAuth/sandbox, sincronización idempotente y mapeo contable únicamente después de recibir credenciales reales.
 - **P2 — Finanzas:** pulido visual y desminificación de páginas financieras según feedback, sin alterar contratos verificados.
@@ -498,7 +510,7 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 
 ## 12. Próximas tareas ejecutables
 
-1. Publicar Consolidación v2 y ejecutar aceptación real: cuatro puertas, Fiesta/firma, transferencia, Retiro, Discipulado y promoción scoped.
+1. Publicar la corrección RBAC/UX y ejecutar aceptación real: Liderazgo, Grupos Frontales, tareas inmediatas, cuatro puertas, Fiesta/firma, transferencia, Retiro, Discipulado y promoción scoped.
 2. Crear Grupos Frontales reales, asignar líderes/equipo/mentores y delegar capabilities desde Núcleo sin otorgar privilegios administrativos indebidos.
 3. Entregar Documentos Oficiales de Membresía y Mega‑Bloque G al usuario para aceptación funcional con datos reales autorizados.
 4. Mantener Pushpay **MOCKED/BLOCKED** hasta recibir las credenciales sandbox.

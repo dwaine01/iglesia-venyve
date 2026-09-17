@@ -24,6 +24,7 @@ from access_control import (
     PERSON_PASTORAL_NOTES_READ,
     access_defaults_for_role,
     has_capability,
+    is_global_pastoral_authority,
 )
 from canonical_identity import ensure_user_person_link, migrate_core_identity
 from server import db, get_current_user
@@ -114,13 +115,13 @@ class UserAccessCreate(BaseModel):
 
 
 def require_governance(current_user: dict = Depends(get_current_user)) -> dict:
-    if current_user.get("rol") != "pastor" or not has_capability(current_user, CORE_GOVERNANCE_MANAGE):
+    if not is_global_pastoral_authority(current_user):
         raise HTTPException(status_code=403, detail="Gobierno del núcleo restringido")
     return current_user
 
 
 def require_access_manager(current_user: dict = Depends(get_current_user)) -> dict:
-    if current_user.get("rol") == "pastor" and has_capability(current_user, CORE_GOVERNANCE_MANAGE):
+    if is_global_pastoral_authority(current_user):
         return current_user
     if current_user.get("rol") == "lider" and has_capability(current_user, CORE_ACCESS_MANAGE):
         return current_user
@@ -130,7 +131,7 @@ def require_access_manager(current_user: dict = Depends(get_current_user)) -> di
 def access_level(user: dict) -> str:
     if user.get("access_level"):
         return user["access_level"]
-    if user.get("rol") == "pastor":
+    if is_global_pastoral_authority(user):
         return "pastor"
     if user.get("rol") == "lider" and CORE_ACCESS_MANAGE in (user.get("capabilities") or []):
         return "coordinador_general"
@@ -154,7 +155,7 @@ def access_defaults(level: str, privilege_groups: Optional[list[str]] = None) ->
 
 
 def ensure_level_allowed(actor: dict, level: str, target: Optional[dict] = None) -> None:
-    if actor.get("rol") == "pastor":
+    if is_global_pastoral_authority(actor):
         return
     actor_level = actor.get("access_level") or "lider"
     allowed = {"coordinador_general": {"director", "lider", "persona"}, "director": {"secretario", "tesorero", "equipo", "persona"}}
@@ -165,7 +166,7 @@ def ensure_level_allowed(actor: dict, level: str, target: Optional[dict] = None)
 
 
 def ensure_privileges_allowed(actor: dict, groups: list[str]) -> None:
-    if actor.get("rol") == "pastor":
+    if is_global_pastoral_authority(actor):
         return
     if any(group in {"board", "finance"} for group in groups):
         raise HTTPException(status_code=403, detail="Solo el pastor puede conceder Junta o Finanzas")
@@ -246,7 +247,7 @@ async def integrity_snapshot() -> dict:
         "users_without_person": await db.users.count_documents({"$or": [{"person_id": {"$exists": False}}, {"person_id": None}]}),
         "legacy_people_without_person": await db.people.count_documents({"$or": [{"canonical_person_id": {"$exists": False}}, {"canonical_person_id": None}]}),
         "access_policy_outdated": await db.users.count_documents({"$or": [
-            {"access_policy_version": {"$ne": 14}},
+            {"access_policy_version": {"$ne": 15}},
             {"capabilities": {"$exists": False}},
             {"access_scope": {"$exists": False}},
         ]}),
@@ -308,7 +309,7 @@ async def run_migration(current_user: dict = Depends(require_governance)):
 
 @router.get("/users", response_model=UserAccessList)
 async def list_users(current_user: dict = Depends(require_access_manager)):
-    query = {} if current_user.get("rol") == "pastor" else {"$or": [{"_id": ObjectId(current_user["user_id"])}, {"parent_user_id": current_user["user_id"]}]}
+    query = {} if is_global_pastoral_authority(current_user) else {"$or": [{"_id": ObjectId(current_user["user_id"])}, {"parent_user_id": current_user["user_id"]}]}
     users = await db.users.find(query, {"password": 0}).sort([("rol", 1), ("nombre", 1)]).to_list(10000)
     return {"items": [serialize_user(user) for user in users]}
 
@@ -396,7 +397,7 @@ async def update_user_access(
     target = await db.users.find_one({"_id": ObjectId(user_id)})
     if not target:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
-    if current_user.get("rol") != "pastor" and target.get("parent_user_id") != current_user["user_id"]:
+    if not is_global_pastoral_authority(current_user) and target.get("parent_user_id") != current_user["user_id"]:
         raise HTTPException(status_code=403, detail="Solo puede administrar cuentas creadas directamente bajo su responsabilidad")
     requested_level = payload.access_level or payload.rol
     if not requested_level:
@@ -416,7 +417,7 @@ async def update_user_access(
     allowed = set(PERSON_DOMAIN_CAPABILITIES + PROCESS_CAPABILITIES + CELLULAR_CAPABILITIES + DOOR_BOARD_CAPABILITIES + FINANCE_CAPABILITIES + JOURNEY_GOVERNANCE_CAPABILITIES + [MEMBERSHIP_DOCUMENTS_MANAGE, BOARD_CONFIDENTIAL_ACCESS, PERSON_PASTORAL_NOTES_READ, CORE_GOVERNANCE_MANAGE, CORE_ACCESS_MANAGE])
     capabilities = defaults["capabilities"]
     if payload.capabilities is not None:
-        if current_user.get("rol") != "pastor":
+        if not is_global_pastoral_authority(current_user):
             raise HTTPException(status_code=403, detail="Solo el pastor puede personalizar capacidades")
         invalid = sorted(set(payload.capabilities) - allowed)
         if invalid:
@@ -439,7 +440,7 @@ async def update_user_access(
         "is_active": payload.is_active,
         "capabilities": capabilities,
         "access_scope": defaults["access_scope"],
-        "access_policy_version": 14,
+        "access_policy_version": 15,
         "updated_at": datetime.now(timezone.utc),
     }
     if changed:

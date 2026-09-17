@@ -102,6 +102,36 @@ async def test_core_access_contract_persists_and_revokes_delegated_capabilities(
 
 
 @pytest.mark.asyncio
+async def test_legacy_pastor_and_explicit_view_capabilities_can_open_new_modules():
+    await cleanup()
+    pastor_id, pastor_email = await create_user("Legacy Pastor", "pastor")
+    leader_person_id = await create_person("Viewer Leader")
+    leader_id, leader_email = await create_user("Viewer Leader", "lider", leader_person_id)
+    denied_person_id = await create_person("Denied Person")
+    denied_id, denied_email = await create_user("Denied Person", "persona", denied_person_id)
+    await server.db.users.update_one({"_id": ObjectId(pastor_id)}, {"$set": {"capabilities": [], "access_policy_version": 1}})
+    await server.db.users.update_one({"_id": ObjectId(leader_id)}, {"$set": {"capabilities": ["front_groups.view", "leadership.view"]}})
+    await server.db.users.update_one({"_id": ObjectId(denied_id)}, {"$set": {"capabilities": []}})
+    try:
+        for email in (pastor_email, leader_email):
+            client, headers = await auth_client(email)
+            try:
+                assert (await client.get("/api/front-groups", headers=headers)).status_code == 200
+                assert (await client.get("/api/leadership/requirements", headers=headers)).status_code == 200
+                assert (await client.get("/api/leadership/dashboard", headers=headers)).status_code == 200
+            finally:
+                await client.aclose()
+        denied_client, denied_headers = await auth_client(denied_email)
+        try:
+            assert (await denied_client.get("/api/front-groups", headers=denied_headers)).status_code == 403
+            assert (await denied_client.get("/api/leadership/requirements", headers=denied_headers)).status_code == 403
+        finally:
+            await denied_client.aclose()
+    finally:
+        await cleanup()
+
+
+@pytest.mark.asyncio
 async def test_four_entry_modes_preserve_origin_and_converge():
     await cleanup()
     _, pastor_email = await create_user("Entry Pastor", "pastor")

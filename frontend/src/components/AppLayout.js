@@ -14,12 +14,13 @@ import DisplayScaleToggle from './DisplayScaleToggle';
 import { ContextGuideButton } from './guides/ContextGuideButton';
 import { resolveRouteGuide } from './guides/guideRouteMap';
 import { BRAND } from '../config/brand';
+import { canViewFrontGroups, canViewLeadership, hasAnyCapability, isPastoralAuthority } from '../lib/accessControl';
 const LOGO_URL = LOGO_IGLESIA;
 
 // Menu items by role
 const getNavItems = (user) => {
   const rol = user?.rol;
-  if (rol === 'pastor') {
+  if (isPastoralAuthority(user)) {
     return [
       { to: '/dashboard-general', icon: Crown, label: 'Panel General', end: true },
       { to: '/nucleo', icon: DatabaseZap, label: 'Gobierno del Núcleo', testId: 'nav-core-governance' },
@@ -78,13 +79,17 @@ const getNavItems = (user) => {
     { to: '/presentacion', icon: Presentation, label: 'Manual de 7 Semanas' },
     { to: '/estadisticas', icon: BarChart3, label: 'Estadísticas' },
   ];
-  if ((user?.capabilities || []).includes('core.access.manage')) {
+  if (hasAnyCapability(user, ['core.access.manage'])) {
     items.splice(1, 0, { to: '/nucleo', icon: DatabaseZap, label: 'Gestión de accesos', testId: 'nav-core-governance' });
   }
-  if ((user?.capabilities || []).some((item) => ['finance.read', 'finance.manage'].includes(item)) && !items.some((item) => item.to === '/finanzas')) {
+  if (hasAnyCapability(user, ['finance.read', 'finance.manage']) && !items.some((item) => item.to === '/finanzas')) {
     items.splice(1, 0, { to: '/finanzas', icon: Landmark, label: 'Contabilidad y Finanzas', testId: 'nav-finance' });
   }
-  return items;
+  return items.filter((item) => (
+    item.to !== '/grupos-frontales' || canViewFrontGroups(user)
+  ) && (
+    item.to !== '/liderazgo' || canViewLeadership(user)
+  ));
 };
 
 const breadcrumbMap = {
@@ -133,14 +138,14 @@ function SidebarContent({ onClose, testIdPrefix = '' }) {
   const navItems = getNavItems(user);
 
   const getRolLabel = () => {
-    if (user?.rol === 'pastor') return 'Pastor (Acceso Maestro)';
+    if (isPastoralAuthority(user)) return 'Pastor (Acceso Maestro)';
     if (user?.access_level === 'coordinador_general') return 'Coordinador general';
     if (user?.rol === 'persona') return 'Consolidado';
     return 'Líder';
   };
 
   const getRolIcon = () => {
-    if (user?.rol === 'pastor') return <Crown className="w-4 h-4 text-yellow-500" />;
+    if (isPastoralAuthority(user)) return <Crown className="w-4 h-4 text-yellow-500" />;
     if (user?.rol === 'persona') return <Star className="w-4 h-4 text-[#C8A951]" />;
     return <Users className="w-4 h-4 text-[#1B2A4A]" />;
   };

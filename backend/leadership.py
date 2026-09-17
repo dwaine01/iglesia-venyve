@@ -7,7 +7,7 @@ from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from access_control import LEADERSHIP_PROMOTE, LEADERSHIP_REQUIREMENTS_MANAGE, PROCESSES_READ, has_capability
+from access_control import LEADERSHIP_PROMOTE, LEADERSHIP_REQUIREMENTS_MANAGE, LEADERSHIP_VIEW, has_capability, is_global_pastoral_authority
 from front_groups import assert_group_scope, group_in_scope
 from server import db, get_current_user
 
@@ -64,13 +64,13 @@ class PromotionInput(BaseModel):
 
 
 def require_read(current_user: dict = Depends(get_current_user)) -> dict:
-    if current_user.get("rol") != "pastor" and not has_capability(current_user, PROCESSES_READ):
+    if not is_global_pastoral_authority(current_user) and not any(has_capability(current_user, capability) for capability in (LEADERSHIP_VIEW, LEADERSHIP_PROMOTE, LEADERSHIP_REQUIREMENTS_MANAGE)):
         raise HTTPException(status_code=403, detail="Sin permiso para consultar Liderazgo")
     return current_user
 
 
 def require_requirements_manager(current_user: dict = Depends(get_current_user)) -> dict:
-    if current_user.get("rol") != "pastor" and not has_capability(current_user, LEADERSHIP_REQUIREMENTS_MANAGE):
+    if not is_global_pastoral_authority(current_user) and not has_capability(current_user, LEADERSHIP_REQUIREMENTS_MANAGE):
         raise HTTPException(status_code=403, detail="Sin permiso para configurar requisitos de liderazgo")
     return current_user
 
@@ -85,7 +85,7 @@ async def load_person(person_id: str) -> dict:
 
 
 async def assert_promotion_scope(person_id: str, front_group_id: Optional[str], current_user: dict) -> None:
-    if current_user.get("rol") == "pastor":
+    if is_global_pastoral_authority(current_user):
         if front_group_id:
             await assert_group_scope(front_group_id, current_user)
         return
@@ -169,7 +169,7 @@ async def remove_requirement(requirement_id: str, current_user: dict = Depends(r
 @router.put("/candidates/{person_id}/requirements/{requirement_id}", response_model=dict)
 async def record_requirement_evidence(person_id: str, requirement_id: str, payload: RequirementEvidence, current_user: dict = Depends(get_current_user)):
     await load_person(person_id)
-    if current_user.get("rol") != "pastor" and not has_capability(current_user, LEADERSHIP_PROMOTE):
+    if not is_global_pastoral_authority(current_user) and not has_capability(current_user, LEADERSHIP_PROMOTE):
         raise HTTPException(status_code=403, detail="Sin permiso para evaluar requisitos")
     await assert_promotion_scope(person_id, payload.front_group_id, current_user)
     requirement = await db.leadership_requirement_catalog.find_one({"requirement_id": requirement_id, "active": True})
@@ -186,7 +186,7 @@ async def record_requirement_evidence(person_id: str, requirement_id: str, paylo
 @router.get("/candidates/{person_id}/eligibility", response_model=dict)
 async def candidate_eligibility(person_id: str, front_group_id: Optional[str] = None, current_user: dict = Depends(require_read)):
     person = await load_person(person_id)
-    if current_user.get("rol") != "pastor" and current_user.get("person_id") != person_id:
+    if not is_global_pastoral_authority(current_user) and current_user.get("person_id") != person_id:
         if not front_group_id:
             raise HTTPException(status_code=403, detail="Indique un Grupo Frontal dentro de su ámbito")
         await assert_promotion_scope(person_id, front_group_id, current_user)
@@ -199,7 +199,7 @@ async def candidate_eligibility(person_id: str, front_group_id: Optional[str] = 
 async def promote_candidate(person_id: str, payload: PromotionInput, current_user: dict = Depends(get_current_user)):
     person = await load_person(person_id)
     await assert_promotion_scope(person_id, payload.front_group_id, current_user)
-    if current_user.get("rol") != "pastor" and not has_capability(current_user, LEADERSHIP_PROMOTE):
+    if not is_global_pastoral_authority(current_user) and not has_capability(current_user, LEADERSHIP_PROMOTE):
         raise HTTPException(status_code=403, detail="Sin permiso para promover liderazgo")
     current = await db.person_leadership_status.find_one({"person_id": person_id, "status": "leader"}, {"_id": 0})
     if current:
@@ -231,7 +231,7 @@ async def promote_candidate(person_id: str, payload: PromotionInput, current_use
 @router.get("/dashboard", response_model=dict)
 async def leadership_dashboard(current_user: dict = Depends(require_read)):
     group_query = {}
-    if current_user.get("rol") != "pastor":
+    if not is_global_pastoral_authority(current_user):
         group_ids = await db.front_group_assignments.distinct("front_group_id", {"person_id": current_user.get("person_id"), "role": "leader", "active": True})
         group_query["front_group_id"] = {"$in": group_ids}
     promotions = await db.leadership_promotions.find(group_query, {"_id": 0}).sort("approved_at", -1).to_list(1000)

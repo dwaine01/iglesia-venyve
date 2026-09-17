@@ -43,9 +43,11 @@ MEMBERSHIP_ACCEPTANCE_MANAGE = "membership.acceptance.manage"
 CONSOLIDATION_MENTOR_TRANSFER = "consolidation.mentor.transfer"
 CONSOLIDATION_RETREAT_CLOSE = "consolidation.retreat.close"
 FRONT_GROUPS_MANAGE = "front_groups.manage"
+FRONT_GROUPS_VIEW = "front_groups.view"
 MENTOR_QUALIFICATIONS_MANAGE = "mentor.qualifications.manage"
 LEADERSHIP_REQUIREMENTS_MANAGE = "leadership.requirements.manage"
 LEADERSHIP_PROMOTE = "leadership.promote"
+LEADERSHIP_VIEW = "leadership.view"
 PROCESSES_READ = "processes.read"
 PROCESSES_WRITE = "processes.write"
 PROCESSES_PARTICIPATE = "processes.participate"
@@ -87,8 +89,10 @@ JOURNEY_GOVERNANCE_CAPABILITIES = [
     MEMBERSHIP_ACCEPTANCE_MANAGE,
     CONSOLIDATION_MENTOR_TRANSFER,
     CONSOLIDATION_RETREAT_CLOSE,
+    FRONT_GROUPS_VIEW,
     FRONT_GROUPS_MANAGE,
     MENTOR_QUALIFICATIONS_MANAGE,
+    LEADERSHIP_VIEW,
     LEADERSHIP_REQUIREMENTS_MANAGE,
     LEADERSHIP_PROMOTE,
 ]
@@ -146,7 +150,7 @@ _ROLE_ACCESS_DEFAULTS = {
         "access_scope": {"persons": "all"},
     },
     "lider": {
-        "capabilities": [*PERSON_DOMAIN_CAPABILITIES, PROCESSES_READ, PROCESSES_WRITE, PROCESSES_PARTICIPATE, CELLULAR_READ, CELLULAR_WRITE, CELLULAR_ATTENDANCE, CELLULAR_NEEDS, CELLULAR_SENSITIVE_READ, DOORS_READ],
+        "capabilities": [*PERSON_DOMAIN_CAPABILITIES, PROCESSES_READ, PROCESSES_WRITE, PROCESSES_PARTICIPATE, FRONT_GROUPS_VIEW, LEADERSHIP_VIEW, CELLULAR_READ, CELLULAR_WRITE, CELLULAR_ATTENDANCE, CELLULAR_NEEDS, CELLULAR_SENSITIVE_READ, DOORS_READ],
         "access_scope": {"persons": "created_by"},
     },
     "persona": {
@@ -164,7 +168,7 @@ def access_defaults_for_role(role: str) -> dict:
             {"capabilities": [], "access_scope": {"persons": "none"}},
         )
     )
-    defaults["access_policy_version"] = 14
+    defaults["access_policy_version"] = 15
     return defaults
 
 
@@ -180,7 +184,18 @@ def normalized_access_scope(user: dict) -> dict:
     return value if isinstance(value, dict) else {}
 
 
+def is_global_pastoral_authority(user: dict) -> bool:
+    """Autoridad global reservada a cuentas pastorales, incluidas variantes legadas."""
+    roles = {
+        str(user.get("rol") or "").strip().lower(),
+        str(user.get("role") or "").strip().lower(),
+    }
+    access_level = str(user.get("access_level") or "").strip().lower()
+    return bool(roles & {"pastor", "pastora", "admin", "superadmin"}) or access_level == "pastor"
+
+
 def has_capability(user: dict, capability: str) -> bool:
+    """Las lecturas sensibles siempre requieren una concesión explícita."""
     return capability in normalized_capabilities(user)
 
 
@@ -226,9 +241,9 @@ async def ensure_access_defaults(db) -> None:
             {"$set": {"access_scope": defaults["access_scope"]}},
         )
         await db.users.update_many(
-            {"rol": role, "$or": [{"parent_user_id": {"$exists": False}}, {"access_policy_version": {"$lt": 14}}, {"access_policy_version": {"$exists": False}}]},
+            {"rol": role, "$or": [{"parent_user_id": {"$exists": False}}, {"access_policy_version": {"$lt": 15}}, {"access_policy_version": {"$exists": False}}]},
             {
                 "$addToSet": {"capabilities": {"$each": defaults["capabilities"]}},
-                "$set": {"access_policy_version": 14},
+                "$set": {"access_policy_version": 15},
             },
         )

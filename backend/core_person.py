@@ -23,6 +23,7 @@ from access_control import (
     PERSON_PROFILE_SENSITIVE_READ,
     authorize_person,
     can_access_person,
+    is_global_pastoral_authority,
     normalized_access_scope,
     normalized_capabilities,
 )
@@ -51,13 +52,13 @@ def _normalize(text: Optional[str]) -> str:
 
 
 def require_lider_o_pastor(current_user: dict = Depends(get_current_user)) -> dict:
-    if current_user.get("rol") not in ("lider", "pastor"):
+    if current_user.get("rol") != "lider" and not is_global_pastoral_authority(current_user):
         raise HTTPException(status_code=403, detail="No autorizado")
     return current_user
 
 
 def require_pastor(current_user: dict = Depends(get_current_user)) -> dict:
-    if current_user.get("rol") != "pastor":
+    if not is_global_pastoral_authority(current_user):
         raise HTTPException(status_code=403, detail="Solo Pastor/Pastora puede eliminar Personas del directorio")
     return current_user
 
@@ -312,7 +313,7 @@ async def archive_person(person_id: str, current_user: dict = Depends(require_pa
         {"person_id": person_id},
         {"_id": 1, "rol": 1},
     ).to_list(20)
-    if any(item.get("rol") == "pastor" for item in linked_users):
+    if any(item.get("rol") in {"pastor", "admin", "superadmin"} for item in linked_users):
         raise HTTPException(status_code=409, detail="No se puede eliminar el Perfil 360 de otra cuenta pastoral")
 
     now = now_utc()

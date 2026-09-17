@@ -46,3 +46,12 @@
 - Solo pastor administra reglas SLA y ejecuta migración.
 - Duplicar una inscripción activa equivalente debe retornar 409.
 - Proxy de imágenes requiere JWT, rechaza hosts no permitidos y no sigue redirecciones.
+
+## Consolidación v2 — autorización focal
+
+- Crear cuentas QA efímeras para autoridad pastoral, líder con capability y usuario sin permiso.
+- Confirmar JWT vigente mediante `GET /api/auth/me` usando `Authorization: Bearer <token>`.
+- Verificar acceso pastoral y delegado a `GET /api/front-groups`, `GET /api/leadership/requirements`, `GET /api/leadership/dashboard` y `GET /api/core/persons?limit=500`.
+- Verificar 403 para la cuenta sin `processes.read` ni permisos administrativos equivalentes.
+- Confirmar que Liderazgo y Grupos Frontales solo aparezcan en navegación cuando puedan consultarse.
+- Eliminar cuentas, Personas y registros QA al terminar; no persistir credenciales efímeras.

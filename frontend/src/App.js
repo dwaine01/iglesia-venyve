@@ -65,6 +65,7 @@ import BoardMeetingsPage from './pages/board/BoardMeetingsPage';
 import BoardMeetingDetailPage from './pages/board/BoardMeetingDetailPage';
 import BoardMinutesPage from './pages/board/BoardMinutesPage';
 import AppLayout from './components/AppLayout';
+import { canViewFrontGroups, canViewLeadership, hasAnyCapability, isPastoralAuthority } from './lib/accessControl';
 import './App.css';
 
 function ProtectedRoute({ children }) {
@@ -81,7 +82,7 @@ function PastorOnlyRoute({ children }) {
   const { user, loading } = useAuth();
   if (loading) return <div className="flex items-center justify-center min-h-screen"><div className="text-lg text-muted-foreground">Cargando...</div></div>;
   if (!user) return <Navigate to="/login" />;
-  if (user.rol !== 'pastor') return <Navigate to="/" />;
+  if (!isPastoralAuthority(user)) return <Navigate to="/" />;
   return children;
 }
 
@@ -90,7 +91,7 @@ function StaffRoute({ children }) {
   const { user, loading } = useAuth();
   if (loading) return <div className="flex items-center justify-center min-h-screen"><div className="text-lg text-muted-foreground">Cargando...</div></div>;
   if (!user) return <Navigate to="/login" />;
-  if (user.rol !== 'pastor' && user.rol !== 'lider') return <Navigate to="/" />;
+  if (!isPastoralAuthority(user) && user.rol !== 'lider') return <Navigate to="/" />;
   return children;
 }
 
@@ -98,7 +99,7 @@ function AccessManagerRoute({ children }) {
   const { user, loading } = useAuth();
   if (loading) return <div className="flex min-h-screen items-center justify-center">Cargando…</div>;
   if (!user) return <Navigate to="/login" replace />;
-  if (user.rol !== 'pastor' && !(user.capabilities || []).includes('core.access.manage')) return <Navigate to="/" replace />;
+  if (!hasAnyCapability(user, ['core.access.manage'])) return <Navigate to="/" replace />;
   return children;
 }
 
@@ -106,14 +107,22 @@ function FinanceRoute({ children }) {
   const { user, loading } = useAuth();
   if (loading) return <div className="flex min-h-screen items-center justify-center">Cargando…</div>;
   if (!user) return <Navigate to="/login" replace />;
-  if (user.rol !== 'pastor' && !(user.capabilities || []).some((item) => ['finance.read', 'finance.manage'].includes(item))) return <Navigate to="/" replace />;
+  if (!hasAnyCapability(user, ['finance.read', 'finance.manage'])) return <Navigate to="/" replace />;
+  return children;
+}
+
+function CapabilityRoute({ children, allowed }) {
+  const { user, loading } = useAuth();
+  if (loading) return <div className="flex min-h-screen items-center justify-center" data-testid="capability-route-loading">Cargando…</div>;
+  if (!user) return <Navigate to="/login" replace />;
+  if (!allowed(user)) return <Navigate to="/" replace />;
   return children;
 }
 
 // Redirect to correct dashboard based on role
 function RoleDashboard() {
   const { user } = useAuth();
-  if (user?.rol === 'pastor') return <Navigate to="/dashboard-general" />;
+  if (isPastoralAuthority(user)) return <Navigate to="/dashboard-general" />;
   if (user?.rol === 'persona') return <Navigate to="/procesos/dashboard" />;
   return <ProcessesDashboardPage />;
 }
@@ -145,8 +154,8 @@ function App() {
             <Route path="procesos/consolidacion" element={<ConsolidationPage />} />
             <Route path="procesos/consolidacion/:enrollmentId" element={<ConsolidationDetailPage />} />
             <Route path="procesos/discipulado" element={<DiscipleshipPage />} />
-            <Route path="grupos-frontales" element={<FrontGroupsPage />} />
-            <Route path="liderazgo" element={<LeadershipPage />} />
+            <Route path="grupos-frontales" element={<CapabilityRoute allowed={canViewFrontGroups}><FrontGroupsPage /></CapabilityRoute>} />
+            <Route path="liderazgo" element={<CapabilityRoute allowed={canViewLeadership}><LeadershipPage /></CapabilityRoute>} />
             <Route path="procesos/mentoria" element={<MentorshipPage />} />
             <Route path="procesos/cap" element={<CapPage />} />
             <Route path="celulas/dashboard" element={<CellularDashboardPage />} />

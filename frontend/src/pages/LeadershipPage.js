@@ -8,6 +8,8 @@ import { EligibilityPanel } from '../components/leadership/EligibilityPanel';
 import { LeadershipRequirementDialog } from '../components/leadership/LeadershipRequirementDialog';
 import { LeadershipRequirementRow } from '../components/leadership/LeadershipRequirementRow';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
+import { hasCapability } from '../lib/accessControl';
+import { apiErrorMessage } from '../lib/apiErrors';
 
 export default function LeadershipPage() {
   const { API, getAuthHeaders, user } = useAuth();
@@ -15,17 +17,17 @@ export default function LeadershipPage() {
   const [personId, setPersonId] = useState('');
   const [groupId, setGroupId] = useState('');
   const [eligibility, setEligibility] = useState(null);
-  const canManage = user?.rol === 'pastor' || (user?.capabilities || []).includes('leadership.requirements.manage');
+  const canManage = hasCapability(user, 'leadership.requirements.manage');
   const load = useCallback(async () => {
     const [people, groups, requirements, dashboard] = await Promise.all([
-      axios.get(`${API}/api/core/persons?limit=500`, getAuthHeaders()),
+      axios.get(`${API}/api/core/persons?limit=100`, getAuthHeaders()),
       axios.get(`${API}/api/front-groups`, getAuthHeaders()),
       axios.get(`${API}/api/leadership/requirements`, getAuthHeaders()),
       axios.get(`${API}/api/leadership/dashboard`, getAuthHeaders()),
     ]);
     setData({ people: people.data.items || [], groups: groups.data.items || [], requirements: requirements.data.items || [], dashboard: dashboard.data });
   }, [API, getAuthHeaders]);
-  useEffect(() => { load().catch(() => toast.error('No se pudo cargar Liderazgo')); }, [load]);
+  useEffect(() => { load().catch((error) => toast.error(apiErrorMessage(error, 'No se pudo cargar Liderazgo'))); }, [load]);
   const evaluate = useCallback(async () => {
     if (!personId) return setEligibility(null);
     const query = groupId ? `?front_group_id=${groupId}` : '';

@@ -12,6 +12,7 @@ from access_control import (
     PROCESSES_READ,
     PROCESSES_WRITE,
     has_capability,
+    is_global_pastoral_authority,
 )
 from consolidation_service import (
     assert_consolidation_scope,
@@ -80,7 +81,7 @@ def require_write(current_user: dict = Depends(get_current_user)) -> dict:
 
 
 def require_sensitive(current_user: dict, capability: str, message: str) -> None:
-    if current_user.get("rol") != "pastor" and not has_capability(current_user, capability):
+    if not is_global_pastoral_authority(current_user) and not has_capability(current_user, capability):
         raise HTTPException(status_code=403, detail=message)
 
 
@@ -93,7 +94,7 @@ async def load_scoped(enrollment_id: str, current_user: dict, leader_required: b
 @router.get("/dashboard", response_model=dict)
 async def consolidation_dashboard(current_user: dict = Depends(require_read)):
     query = {"process_key": "consolidation", "definition_version": 2}
-    if current_user.get("rol") != "pastor":
+    if not is_global_pastoral_authority(current_user):
         group_ids = await db.front_group_assignments.distinct("front_group_id", {"person_id": current_user.get("person_id"), "active": True})
         query["$or"] = [{"front_group_id": {"$in": group_ids}}, {"person_id": current_user.get("person_id")}, {"mentor_person_id": current_user.get("person_id")}]
     items = await db.process_enrollments.find(query, {"_id": 0}).to_list(10000)
@@ -136,8 +137,8 @@ async def consolidation_dashboard(current_user: dict = Depends(require_read)):
 async def create_intake(payload: ConsolidationIntake, current_user: dict = Depends(require_write)):
     person = await load_person(db, payload.person_id)
     if payload.front_group_id:
-        await assert_group_scope(payload.front_group_id, current_user, leader_required=current_user.get("rol") != "pastor")
-    elif current_user.get("rol") != "pastor" and current_user.get("person_id") != payload.person_id:
+        await assert_group_scope(payload.front_group_id, current_user, leader_required=not is_global_pastoral_authority(current_user))
+    elif not is_global_pastoral_authority(current_user) and current_user.get("person_id") != payload.person_id:
         raise HTTPException(status_code=403, detail="Un Líder de Grupo Frontal debe iniciar procesos dentro de su Grupo")
     if payload.entry_mode == "cell" and not payload.source_cell_id:
         raise HTTPException(status_code=422, detail="La entrada desde célula requiere identificar la célula de origen")
@@ -176,7 +177,7 @@ async def get_consolidation(enrollment_id: str, current_user: dict = Depends(req
 
 @router.post("/{enrollment_id}/start", response_model=dict)
 async def start_visitor_process(enrollment_id: str, payload: VisitorStart, current_user: dict = Depends(require_write)):
-    enrollment = await load_scoped(enrollment_id, current_user, leader_required=current_user.get("rol") != "pastor")
+    enrollment = await load_scoped(enrollment_id, current_user, leader_required=not is_global_pastoral_authority(current_user))
     if enrollment.get("current_stage_key") != "visitor_followup":
         raise HTTPException(status_code=409, detail="El seguimiento inicial ya fue cerrado")
     await assign_mentor(db, enrollment, payload.mentor_person_id, current_user["user_id"], "Respuesta positiva; inicia Consolidación")
