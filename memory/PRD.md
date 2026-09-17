@@ -383,8 +383,19 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - Cierre mensual: checklist integral, bloqueo de movimientos en período cerrado y reapertura pastoral con motivo/auditoría.
 - Certificación iteration 16 + self-test final: E2E real PASS, backend **4/4**, frontend **19/19**, build PASS, health 200, desktop/móvil sin overflow, GridFS/RBAC/auditoría PASS y **0 artefactos QA**.
 
+### P0 — Documentos oficiales de membresía — IMPLEMENTADO; arranque corregido 2026‑09‑17
+
+- Carnet CR80 y certificado oficial construidos con plantillas DOM/CSS/SVG, campos dinámicos, fotografía, vigencia, cargo y código QR de verificación pública.
+- Emisión vinculada exclusivamente a Persona 360, descarga PDF en frontend y endpoint público `/verificar/carnet/{token}` sin exponer contacto, dirección ni información financiera.
+- Acceso restringido mediante la capability explícita `membership.documents.manage`; Pastor/Pastora conserva la configuración institucional.
+- Corregido el bloqueo de producción `ModuleNotFoundError: No module named 'PIL'`: `backend/requirements.txt` ahora fija `pillow==12.3.0`, dependencia requerida por `membership_documents.py`.
+- Validación iteration 18: instalación virtual limpia, `pip check`, import de Pillow, import completo de `server`, regresión/E2E de membresía **5/5 PASS**, health público 200 y vista pública de token inválido PASS.
+- `.env` continúa excluido deliberadamente del contexto Docker para no incrustar secretos; Railway inyecta `MONGO_URL`, `DB_NAME`, JWT y CORS como variables runtime según `DEPLOYMENT.md`.
+- Pendiente P0: corregir el desacople `CoreGovernancePage` → `CoreAccessTable` (`users` frente a `items`) y alinear niveles/grupos del payload con `AccessUpdate` antes de certificar la delegación del permiso.
+
 ### P1/P2 — siguientes pasos y backlog
 
+- **P0 — Gobierno de accesos:** restaurar filas de `CoreAccessTable`, persistir concesión/revocación de `membership.documents.manage` y ejecutar regresión backend + frontend.
 - **P1 — Aceptación funcional del usuario:** revisar Mega‑Bloque G ya certificado con casos reales de la oficina de la iglesia y recopilar ajustes de política/terminología.
 - **P1 — Pushpay:** activar OAuth/sandbox, sincronización idempotente y mapeo contable únicamente después de recibir credenciales reales.
 - **P2 — Finanzas:** pulido visual y desminificación de páginas financieras según feedback, sin alterar contratos verificados.
@@ -394,11 +405,11 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 
 ## 12. Próximas tareas ejecutables
 
-1. Entregar la matriz final y Mega‑Bloque G al usuario para aceptación funcional con datos reales autorizados.
-2. Mantener Pushpay **MOCKED/BLOCKED** hasta recibir las credenciales sandbox.
-3. Al recibir credenciales, integrar Pushpay mediante playbook verificado, probar OAuth/webhooks y generar asientos balanceados idempotentes.
-4. Aplicar el pulido P2 de Finanzas y desminificar componentes one-line según feedback.
-5. Continuar con Mega‑Bloque E — Operaciones después de la aprobación funcional de Finanzas.
+1. Corregir y certificar `CoreGovernancePage/CoreAccessTable`, incluyendo persistencia real de `membership.documents.manage`.
+2. Entregar Documentos Oficiales de Membresía y Mega‑Bloque G al usuario para aceptación funcional con datos reales autorizados.
+3. Mantener Pushpay **MOCKED/BLOCKED** hasta recibir las credenciales sandbox.
+4. Al recibir credenciales, integrar Pushpay mediante playbook verificado, probar OAuth/webhooks y generar asientos balanceados idempotentes.
+5. Aplicar el pulido P2 de Finanzas y continuar con Mega‑Bloque E — Operaciones después de la aprobación funcional.
 
 ## 13. Restricciones vigentes
 
