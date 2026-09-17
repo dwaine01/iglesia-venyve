@@ -392,6 +392,8 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - Validación iteration 18: instalación virtual limpia, `pip check`, import de Pillow, import completo de `server`, regresión/E2E de membresía **5/5 PASS**, health público 200 y vista pública de token inválido PASS.
 - Corregido el segundo bloqueo de build frontend: `package.json` incluía `qrcode` pero el commit no contenía su resolución en `yarn.lock`, por lo que Railway abortaba con `--frozen-lockfile`.
 - Validación iteration 19: instalación Yarn desde carpeta vacía con `--frozen-lockfile` PASS, `qrcode@^1.5.4` resuelto a 1.5.4, build de producción PASS y ruta pública de verificación PASS.
+- Recurrencia investigada: la primera sincronización se generó correctamente en el working tree, pero `frontend/yarn.lock` quedó fuera del commit publicado; Railway volvió a construir el lockfile antiguo y reprodujo el mismo error.
+- Corrección versionada definitiva: `frontend/yarn.lock` contiene el bloque de `qrcode@^1.5.4` y sus dependencias transitivas; iteration 20 confirmó diff acotado `+89/-2`, instalación frozen limpia, build y ruta pública PASS.
 - `.env` continúa excluido deliberadamente del contexto Docker para no incrustar secretos; Railway inyecta `MONGO_URL`, `DB_NAME`, JWT y CORS como variables runtime según `DEPLOYMENT.md`.
 - Pendiente P0: corregir el desacople `CoreGovernancePage` → `CoreAccessTable` (`users` frente a `items`) y alinear niveles/grupos del payload con `AccessUpdate` antes de certificar la delegación del permiso.
 
