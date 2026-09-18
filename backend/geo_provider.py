@@ -11,8 +11,10 @@ import httpx
 
 CENSUS_URL = os.environ.get("CENSUS_GEOCODER_URL")
 CENSUS_BENCHMARK = os.environ.get("CENSUS_GEOCODER_BENCHMARK")
-if not CENSUS_URL or not CENSUS_BENCHMARK:
-    raise RuntimeError("CENSUS_GEOCODER_URL and CENSUS_GEOCODER_BENCHMARK are required")
+
+
+def geocoding_is_configured() -> bool:
+    return bool(CENSUS_URL and CENSUS_BENCHMARK)
 
 
 @dataclass
@@ -74,6 +76,8 @@ class CensusGeocodingProvider:
         self.client = client
 
     async def geocode(self, address: dict) -> GeocodeResult:
+        if not geocoding_is_configured():
+            return GeocodeResult(status="provider_error", provider_metadata={"error_type": "configuration_missing"})
         own_client = self.client is None
         client = self.client or httpx.AsyncClient(timeout=8)
         try:

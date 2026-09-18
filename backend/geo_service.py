@@ -10,11 +10,9 @@ from pymongo import ReturnDocument
 from geo_provider import get_geocoding_provider
 
 
-CHURCH_LAT = float(os.environ.get("GEO_CHURCH_LAT") or "")
-CHURCH_LNG = float(os.environ.get("GEO_CHURCH_LNG") or "")
-CHURCH_ADDRESS = os.environ.get("GEO_CHURCH_ADDRESS")
-if not CHURCH_ADDRESS:
-    raise RuntimeError("GEO_CHURCH_ADDRESS is required")
+CHURCH_LAT = float(os.environ.get("GEO_CHURCH_LAT") or "39.941105761181")
+CHURCH_LNG = float(os.environ.get("GEO_CHURCH_LNG") or "-83.089529154066")
+CHURCH_ADDRESS = os.environ.get("GEO_CHURCH_ADDRESS") or "640 Demorest Rd, Columbus, OH 43204"
 
 ADDRESS_FIELDS = {"linea1", "linea2", "sector", "ciudad", "provincia", "codigo_postal", "pais"}
 

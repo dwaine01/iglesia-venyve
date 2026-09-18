@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from access_control import GEO_MANAGE_LOCATIONS, GEO_VIEW_AGGREGATE, GEO_VIEW_PRECISE, has_capability, is_global_pastoral_authority
 from geo_queries import aggregate_features, cell_features, enrich_coverage, geographic_summary, person_features
+from geo_provider import geocoding_is_configured
 from geo_service import CHURCH_ADDRESS, CHURCH_LAT, CHURCH_LNG, archive_location, enqueue_backfill, enqueue_geo_job, now_utc, process_geo_job, process_geo_jobs, zones_geojson
 from server import db, get_current_user
 
@@ -91,7 +92,7 @@ async def geo_config(current_user: dict = Depends(require_any_geo)):
             "view_precise": is_global_pastoral_authority(current_user) or has_capability(current_user, GEO_VIEW_PRECISE),
             "manage_locations": is_global_pastoral_authority(current_user) or has_capability(current_user, GEO_MANAGE_LOCATIONS),
         },
-        "map_policy": {"aggregate_minimum": 3, "coverage_gap_miles": 3, "renderer": "maplibre", "tiles": "openstreetmap"},
+        "map_policy": {"aggregate_minimum": 3, "coverage_gap_miles": 3, "renderer": "maplibre", "tiles": "openstreetmap", "geocoding_configured": geocoding_is_configured()},
     }
 
 

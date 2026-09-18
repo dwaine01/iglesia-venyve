@@ -517,6 +517,17 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - Compatibilidad de despliegue cerrada: `maplibre-gl@4.7.1` y su parser fijado en `@mapbox/jsonlint-lines-primitives@2.0.2`; `yarn install --frozen-lockfile` pasa en Node 20 sin `--ignore-engines`.
 - Datos QA finales: cuentas, Personas, células, direcciones y revisiones efímeras eliminadas.
 
+### Hotfix de despliegue Mapa 360 — RESUELTO 2026‑09‑18
+
+- Corregido el crash de producción al importar `geo_provider.py` sin `CENSUS_GEOCODER_URL` o `CENSUS_GEOCODER_BENCHMARK`: la API completa ahora inicia y únicamente el proveedor Census queda marcado como no configurado.
+- El centro institucional aprobado tiene configuración segura de aplicación y ya no provoca un segundo crash cuando faltan `GEO_CHURCH_*` en un contenedor nuevo.
+- `/api/geo/config` informa `geocoding_configured`; Mapa 360 muestra una alerta clara y desactiva el backfill mientras el endpoint Census no esté configurado.
+- Corregido el segundo bloqueo Railway: `frontend/yarn.lock` regenerado y marcado explícitamente para incluir `maplibre-gl@4.7.1` y `@mapbox/jsonlint-lines-primitives@2.0.2`, compatible con Node 20.
+- Simulación exacta de producción PASS: import de `server` con todas las variables geo vacías, **349 rutas cargadas**, sin RuntimeError.
+- Instalación de imagen PASS: `yarn install --frozen-lockfile` sin `--ignore-engines`; Jest **22/22** y build de producción PASS.
+- `.env` permanece intencionalmente excluido de la imagen; producción debe inyectar variables desde su administrador de entorno. No se modificó `.dockerignore`.
+- Variables públicas para habilitar toda la función, sin API key: backend `CENSUS_GEOCODER_URL=https://geocoding.geo.census.gov/geocoder`, `CENSUS_GEOCODER_BENCHMARK=Public_AR_Current`; frontend `REACT_APP_MAP_TILE_URL=https://tile.openstreetmap.org/{z}/{x}/{y}.png`.
+
 ### P1/P2 — siguientes pasos y backlog
 
 - **P1 — Aceptación operativa:** validar Consolidación v2 con responsables reales, asignar `front_groups.view`/`leadership.view` y capacidades de gestión, y crear el primer Grupo Frontal de producción.
