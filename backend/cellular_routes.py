@@ -4,7 +4,7 @@ from typing import Literal, Optional
 from uuid import uuid4
 
 from bson import ObjectId
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from pydantic import BaseModel, Field, model_validator
 
 from access_control import (
@@ -32,6 +32,7 @@ from cellular_engine import (
     suggested_door,
 )
 from server import db, get_current_user
+from geo_service import archive_location, enqueue_geo_job, pending_geo_fields, process_geo_job
 
 router = APIRouter(prefix="/api/cellular", tags=["cellular"])
 PUBLIC_MEETING_FIELDS = {"meeting_id", "cell_id", "scheduled_at", "topic", "status"}
@@ -280,7 +281,10 @@ async def enrich_cell(cell: dict, include_sensitive_metrics: bool = True) -> dic
     for item in roles:
         role_items.append({**serialize(item), "person": await person_summary(db, item["person_id"])})
     network = await db.cell_networks.find_one({"network_id": cell["network_id"]}, {"_id": 0, "name": 1})
-    return {**serialize(cell), "network_name": network.get("name") if network else None, "metrics": metrics, "roles": role_items}
+    safe_cell = serialize(cell)
+    for field in ["location", "latitude", "longitude", "census_matched_address"]:
+        safe_cell.pop(field, None)
+    return {**safe_cell, "network_name": network.get("name") if network else None, "metrics": metrics, "roles": role_items}
 
 
 @router.get("/catalog", response_model=dict)
@@ -367,14 +371,16 @@ async def list_cells(network_id: Optional[str] = None, status_filter: Optional[s
 
 
 @router.post("/cells", status_code=status.HTTP_201_CREATED, response_model=dict)
-async def create_cell(payload: CellCreate, current_user: dict = Depends(require_write)):
+async def create_cell(payload: CellCreate, background_tasks: BackgroundTasks, current_user: dict = Depends(require_write)):
     if not await network_manageable(payload.network_id, current_user): raise HTTPException(status_code=403, detail="Sin alcance para crear células en esta red")
     if not await db.cell_networks.find_one({"network_id": payload.network_id, "status": "active"}): raise HTTPException(status_code=400, detail="Red no disponible")
     if payload.mother_cell_id and not await db.cells.find_one({"cell_id": payload.mother_cell_id}): raise HTTPException(status_code=400, detail="Célula madre no encontrada")
     cell_id = str(uuid4()); now = now_utc(); code = payload.code.strip().upper()
     if await db.cells.find_one({"code": code}): raise HTTPException(status_code=409, detail="Código de célula ya existe")
-    doc = {"_id": cell_id, "cell_id": cell_id, **payload.model_dump(), "opened_at": payload.opened_at.isoformat(), "code": code, "created_by_user_id": current_user["user_id"], "created_at": now, "updated_at": now}
+    doc = {"_id": cell_id, "cell_id": cell_id, **payload.model_dump(), "opened_at": payload.opened_at.isoformat(), "code": code, "created_by_user_id": current_user["user_id"], "created_at": now, "updated_at": now, **pending_geo_fields(1)}
     await db.cells.insert_one(doc); await record_cell_event(db, cell_id, current_user["user_id"], "cell_created", "Célula creada", payload.name)
+    job_id = await enqueue_geo_job(db, "cell", cell_id, 1, current_user["user_id"])
+    background_tasks.add_task(process_geo_job, db, job_id)
     return await enrich_cell({key: value for key, value in doc.items() if key != "_id"})
 
 
@@ -397,10 +403,20 @@ async def get_cell(cell_id: str, current_user: dict = Depends(require_read)):
 
 
 @router.put("/cells/{cell_id}", response_model=dict)
-async def update_cell(cell_id: str, payload: CellUpdate, current_user: dict = Depends(require_write)):
-    await ensure_cell_access(cell_id, current_user, True); update = payload.model_dump(exclude_none=True)
+async def update_cell(cell_id: str, payload: CellUpdate, background_tasks: BackgroundTasks, current_user: dict = Depends(require_write)):
+    existing = await ensure_cell_access(cell_id, current_user, True); update = payload.model_dump(exclude_none=True)
     if update.get("network_id") and not await network_manageable(update["network_id"], current_user): raise HTTPException(status_code=403, detail="Red fuera de alcance")
-    update["updated_at"] = now_utc(); await db.cells.update_one({"cell_id": cell_id}, {"$set": update})
+    address_changed = "address" in update and update["address"] != existing.get("address")
+    update["updated_at"] = now_utc()
+    if address_changed:
+        await archive_location(db, "cell", cell_id, existing, current_user["user_id"])
+        version = existing.get("address_version", 1) + 1
+        update.update(pending_geo_fields(version))
+        await db.cells.update_one({"cell_id": cell_id}, {"$set": update, "$unset": {"location": "", "latitude": "", "longitude": "", "zone_key": "", "census_matched_address": ""}})
+        job_id = await enqueue_geo_job(db, "cell", cell_id, version, current_user["user_id"])
+        background_tasks.add_task(process_geo_job, db, job_id)
+    else:
+        await db.cells.update_one({"cell_id": cell_id}, {"$set": update})
     await record_cell_event(db, cell_id, current_user["user_id"], "cell_updated", "Datos de célula actualizados")
     return await enrich_cell(await db.cells.find_one({"cell_id": cell_id}, {"_id": 0}))
 

@@ -25,3 +25,9 @@ export const canViewLeadership = (user) => hasAnyCapability(user, [
   'leadership.promote',
   'leadership.requirements.manage',
 ]);
+
+export const canViewGeo = (user) => hasAnyCapability(user, [
+  'geo.view_aggregate',
+  'geo.view_precise',
+  'geo.manage_locations',
+]);

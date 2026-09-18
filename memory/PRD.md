@@ -498,6 +498,25 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - Validación final: backend **137 passed, 3 skipped**; frontend **19/19 PASS**; build de producción PASS; health externo 200; iteration 24 backend/UI PASS; navegación y tareas verificadas en 1920×800 y 390×844 sin overflow.
 - Limpieza final confirmada: **0 Personas QA y 0 cuentas QA**.
 
+### Mapa 360 y autocompletado remoto — IMPLEMENTADO 2026‑09‑18
+
+- Nueva ruta privada `/mapas`, accesible desde **Mapa 360** en la navegación cuando el usuario tiene permiso geográfico.
+- Dos vistas principales: **Miembros y Personas** y **Células**, sobre MapLibre GL JS con mosaicos OpenStreetMap y centro institucional en 640 Demorest Rd, Columbus, OH 43204.
+- Modos interactivos Densidad, Clusters y Pines; hover/click de detalle, filtros por categoría, zona, etapa, Grupo Frontal, célula y período; comparación de 90 días por zona y señal de concentración sin célula cercana.
+- Cuatro zonas cardinales mutuamente exclusivas calculadas por bearing desde la iglesia: Norte, Este, Sur y Oeste.
+- Geocodificación automática server-side mediante **U.S. Census Geocoding Services API**, sin cuenta ni API key. Solo se consulta al crear o cambiar una dirección; abrir o filtrar el mapa usa las coordenadas persistidas en MongoDB.
+- Interfaz `GeocodingProvider` desacoplada para sustituir Census por otro proveedor sin reconstruir Mapa 360.
+- Persistencia versionada: GeoJSON 2dsphere, latitude/longitude, provider, timestamp, accuracy/confidence, `address_version`, zona, verificación y estado stale.
+- Cambiar una dirección archiva la ubicación anterior y genera un trabajo idempotente. Cambiar solo notas no geocodifica nuevamente. Un job antiguo no puede sobrescribir una versión nueva.
+- Cola **Ubicación necesita verificación** para cero/múltiples coincidencias, baja confianza o error. Personal con `geo.manage_locations` puede reintentar Census o mover el pin; una corrección manual tiene prioridad hasta que cambie la dirección.
+- Nuevas capabilities explícitas: `geo.view_aggregate`, `geo.view_precise`, `geo.manage_locations`. Los agregados aplican mínimo de privacidad y nunca incluyen nombre, teléfono, dirección o número de Persona; la vista precisa queda auditada y respeta scopes.
+- Perfil 360 muestra estado de geocodificación y zona sin exponer coordenadas en sus endpoints ordinarios. Las APIs celulares ordinarias tampoco devuelven lat/lng.
+- Consolidación ahora usa búsqueda remota con debounce por nombre, teléfono, correo o número VV, respeta scope y excluye automáticamente Personas archivadas o con Consolidación activa; se eliminó la limitación de las primeras 100 Personas.
+- Integración real Census verificada con la dirección institucional: HTTP 200 sin API key, un match, coordenadas persistidas, `address_version=2` y exactamente un job completado.
+- Validación final: backend **150 passed, 3 skipped**; contrato público Mapa 360 **10/10 PASS**; frontend **22/22 PASS**; build de producción PASS; health 200; UI desktop 1920×800 y móvil 390×844 sin overflow; iteration 25 UI PASS.
+- Compatibilidad de despliegue cerrada: `maplibre-gl@4.7.1` y su parser fijado en `@mapbox/jsonlint-lines-primitives@2.0.2`; `yarn install --frozen-lockfile` pasa en Node 20 sin `--ignore-engines`.
+- Datos QA finales: cuentas, Personas, células, direcciones y revisiones efímeras eliminadas.
+
 ### P1/P2 — siguientes pasos y backlog
 
 - **P1 — Aceptación operativa:** validar Consolidación v2 con responsables reales, asignar `front_groups.view`/`leadership.view` y capacidades de gestión, y crear el primer Grupo Frontal de producción.

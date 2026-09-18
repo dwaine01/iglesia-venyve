@@ -4,7 +4,7 @@ from typing import Literal, Optional
 
 from bson import ObjectId
 from bson.errors import InvalidId
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from pydantic import BaseModel, Field, field_validator
 
 from access_control import (
@@ -15,6 +15,7 @@ from access_control import (
     authorize_person,
 )
 from core_person import db, now_utc, require_person_profile_user
+from geo_service import ADDRESS_FIELDS, archive_location, enqueue_geo_job, pending_geo_fields, process_geo_job
 from person_profile_domains import record_activity
 
 router = APIRouter(prefix="/api/core/persons", tags=["person-contact-address"])
@@ -80,7 +81,7 @@ class AddressPayload(BaseModel):
     ciudad: str = Field(..., min_length=2, max_length=120)
     provincia: Optional[str] = Field(default=None, max_length=120)
     codigo_postal: Optional[str] = Field(default=None, max_length=30)
-    pais: str = Field(default="República Dominicana", min_length=2, max_length=120)
+    pais: str = Field(default="Estados Unidos", min_length=2, max_length=120)
     es_principal: bool = False
     notas: Optional[str] = Field(default=None, max_length=500)
 
@@ -157,9 +158,18 @@ def serialize_address(doc: dict) -> dict:
         "ciudad": doc["ciudad"],
         "provincia": doc.get("provincia"),
         "codigo_postal": doc.get("codigo_postal"),
-        "pais": doc.get("pais") or "República Dominicana",
+        "pais": doc.get("pais") or "Estados Unidos",
         "es_principal": bool(doc.get("es_principal")),
         "notas": doc.get("notas"),
+        "geocoding_status": doc.get("geocoding_status") or "pending",
+        "verification_status": doc.get("verification_status") or "pending",
+        "geocoding_accuracy": doc.get("geocoding_accuracy"),
+        "geocoding_confidence": doc.get("geocoding_confidence"),
+        "zone_key": doc.get("zone_key"),
+        "coordinates_stale": doc.get("coordinates_stale", True),
+        "address_version": doc.get("address_version", 1),
+        "geocoding_provider": doc.get("geocoding_provider"),
+        "geocoded_at": iso_z(doc["geocoded_at"]) if doc.get("geocoded_at") else None,
         "created_at": iso_z(doc["created_at"]),
         "updated_at": iso_z(doc["updated_at"]),
     }
@@ -290,6 +300,7 @@ async def list_addresses(person_id: str, current_user: dict = Depends(require_pe
 async def create_address(
     person_id: str,
     payload: AddressPayload,
+    background_tasks: BackgroundTasks,
     current_user: dict = Depends(require_person_profile_user),
 ):
     person = await load_person(person_id)
@@ -307,9 +318,12 @@ async def create_address(
         "created_by": current_user["user_id"],
         "created_at": now,
         "updated_at": now,
+        **pending_geo_fields(1),
     }
     result = await db.person_addresses.insert_one(doc)
     doc["_id"] = result.inserted_id
+    job_id = await enqueue_geo_job(db, "person_address", str(result.inserted_id), 1, current_user["user_id"])
+    background_tasks.add_task(process_geo_job, db, job_id)
     await record_activity(person_id, current_user, "direcciones", "created", "Dirección agregada")
     return serialize_address(doc)
 
@@ -319,6 +333,7 @@ async def update_address(
     person_id: str,
     address_id: str,
     payload: AddressUpdate,
+    background_tasks: BackgroundTasks,
     current_user: dict = Depends(require_person_profile_user),
 ):
     person = await load_person(person_id)
@@ -331,13 +346,25 @@ async def update_address(
     if not existing:
         raise HTTPException(status_code=404, detail="Direccion no encontrada")
     update = payload.model_dump(exclude_none=True)
+    address_changed = any(field in update and update[field] != existing.get(field) for field in ADDRESS_FIELDS)
     if update.get("es_principal") is True:
         await db.person_addresses.update_many(
             {"person_id": person_id, "_id": {"$ne": address_oid}},
             {"$set": {"es_principal": False}},
         )
     update["updated_at"] = now_utc()
-    await db.person_addresses.update_one({"_id": address_oid}, {"$set": update})
+    if address_changed:
+        await archive_location(db, "person_address", address_id, existing, current_user["user_id"])
+        version = existing.get("address_version", 1) + 1
+        update.update(pending_geo_fields(version))
+        await db.person_addresses.update_one(
+            {"_id": address_oid},
+            {"$set": update, "$unset": {"location": "", "latitude": "", "longitude": "", "zone_key": "", "census_matched_address": ""}},
+        )
+        job_id = await enqueue_geo_job(db, "person_address", address_id, version, current_user["user_id"])
+        background_tasks.add_task(process_geo_job, db, job_id)
+    else:
+        await db.person_addresses.update_one({"_id": address_oid}, {"$set": update})
     await _promote_address_if_needed(person_id)
     await record_activity(person_id, current_user, "direcciones", "updated", "Dirección actualizada")
     return serialize_address(await db.person_addresses.find_one({"_id": address_oid}))
@@ -358,6 +385,11 @@ async def delete_address(
     result = await db.person_addresses.delete_one({"_id": address_oid, "person_id": person_id})
     if not result.deleted_count:
         raise HTTPException(status_code=404, detail="Direccion no encontrada")
+    await db.geo_jobs.delete_many({"entity_type": "person_address", "entity_id": address_id})
+    await db.geo_review_queue.update_many(
+        {"entity_type": "person_address", "entity_id": address_id, "status": "open"},
+        {"$set": {"status": "cancelled", "resolved_at": now_utc()}},
+    )
     await _promote_address_if_needed(person_id)
     await record_activity(person_id, current_user, "direcciones", "deleted", "Dirección eliminada")
     return {"message": "Direccion eliminada"}

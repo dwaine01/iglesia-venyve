@@ -21,6 +21,9 @@ const delegatedCapabilities = [
   ['mentor.qualifications.manage', 'Calificar mentores LBS'],
   ['leadership.requirements.manage', 'Configurar requisitos'],
   ['leadership.promote', 'Promover liderazgo'],
+  ['geo.view_aggregate', 'Mapa 360 agregado'],
+  ['geo.view_precise', 'Mapa 360 con hogares'],
+  ['geo.manage_locations', 'Corregir ubicaciones'],
 ];
 
 const toggle = (items, value, checked) => checked

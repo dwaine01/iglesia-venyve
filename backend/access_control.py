@@ -48,6 +48,9 @@ MENTOR_QUALIFICATIONS_MANAGE = "mentor.qualifications.manage"
 LEADERSHIP_REQUIREMENTS_MANAGE = "leadership.requirements.manage"
 LEADERSHIP_PROMOTE = "leadership.promote"
 LEADERSHIP_VIEW = "leadership.view"
+GEO_VIEW_AGGREGATE = "geo.view_aggregate"
+GEO_VIEW_PRECISE = "geo.view_precise"
+GEO_MANAGE_LOCATIONS = "geo.manage_locations"
 PROCESSES_READ = "processes.read"
 PROCESSES_WRITE = "processes.write"
 PROCESSES_PARTICIPATE = "processes.participate"
@@ -95,6 +98,9 @@ JOURNEY_GOVERNANCE_CAPABILITIES = [
     LEADERSHIP_VIEW,
     LEADERSHIP_REQUIREMENTS_MANAGE,
     LEADERSHIP_PROMOTE,
+    GEO_VIEW_AGGREGATE,
+    GEO_VIEW_PRECISE,
+    GEO_MANAGE_LOCATIONS,
 ]
 
 PERSON_SELF_CAPABILITIES = [
@@ -168,7 +174,7 @@ def access_defaults_for_role(role: str) -> dict:
             {"capabilities": [], "access_scope": {"persons": "none"}},
         )
     )
-    defaults["access_policy_version"] = 15
+    defaults["access_policy_version"] = 16
     return defaults
 
 
@@ -241,9 +247,9 @@ async def ensure_access_defaults(db) -> None:
             {"$set": {"access_scope": defaults["access_scope"]}},
         )
         await db.users.update_many(
-            {"rol": role, "$or": [{"parent_user_id": {"$exists": False}}, {"access_policy_version": {"$lt": 15}}, {"access_policy_version": {"$exists": False}}]},
+            {"rol": role, "$or": [{"parent_user_id": {"$exists": False}}, {"access_policy_version": {"$lt": 16}}, {"access_policy_version": {"$exists": False}}]},
             {
                 "$addToSet": {"capabilities": {"$each": defaults["capabilities"]}},
-                "$set": {"access_policy_version": 15},
+                "$set": {"access_policy_version": 16},
             },
         )

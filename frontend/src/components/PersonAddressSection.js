@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import axios from 'axios';
-import { Building2, Home, MapPin, Pencil, Plus, Star, Trash2 } from 'lucide-react';
+import { Building2, CircleAlert, CircleCheck, Clock3, Home, MapPin, Pencil, Plus, Star, Trash2 } from 'lucide-react';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Card, CardContent } from './ui/card';
@@ -17,7 +17,7 @@ const EMPTY_ADDRESS = {
   ciudad: '',
   provincia: '',
   codigo_postal: '',
-  pais: 'República Dominicana',
+  pais: 'Estados Unidos',
   es_principal: false,
   notas: '',
 };
@@ -50,7 +50,7 @@ export default function PersonAddressSection({ personId, domain, API, getAuthHea
       ciudad: item.ciudad,
       provincia: item.provincia || '',
       codigo_postal: item.codigo_postal || '',
-      pais: item.pais || 'República Dominicana',
+      pais: item.pais || 'Estados Unidos',
       es_principal: item.es_principal,
       notas: item.notas || '',
     });
@@ -139,14 +139,20 @@ export default function PersonAddressSection({ personId, domain, API, getAuthHea
                     {[item.sector, item.ciudad, item.provincia].filter(Boolean).join(', ')}
                   </p>
                   <p className="mt-1 text-xs text-gray-500">{TYPE_LABELS[item.tipo]} · {item.pais}</p>
+                  <div className="mt-2 flex items-center gap-2 text-xs" data-testid={`address-geocoding-status-${item.address_id}`}>
+                    {item.verification_status === 'verified' && <><CircleCheck className="h-3.5 w-3.5 text-emerald-600" /><span className="text-emerald-700">Ubicación verificada · {item.zone_key || 'zona pendiente'}</span></>}
+                    {item.verification_status === 'manual_verified' && <><MapPin className="h-3.5 w-3.5 text-blue-600" /><span className="text-blue-700">Pin corregido manualmente · {item.zone_key || 'zona pendiente'}</span></>}
+                    {item.verification_status === 'needs_verification' && <><CircleAlert className="h-3.5 w-3.5 text-amber-600" /><span className="text-amber-700">Ubicación necesita verificación</span></>}
+                    {(!item.verification_status || item.verification_status === 'pending') && <><Clock3 className="h-3.5 w-3.5 text-slate-500" /><span className="text-slate-500">Geocodificación pendiente</span></>}
+                  </div>
                   {item.notas && <p className="mt-2 text-sm text-gray-600">{item.notas}</p>}
                 </div>
                 {canWrite && (
                   <div className="flex shrink-0 gap-1">
-                    <Button variant="ghost" size="icon" onClick={() => openEdit(item)} aria-label={`Editar ${item.linea1}`}>
+                    <Button variant="ghost" size="icon" onClick={() => openEdit(item)} aria-label={`Editar ${item.linea1}`} data-testid={`edit-address-${item.address_id}`}>
                       <Pencil className="h-4 w-4" />
                     </Button>
-                    <Button variant="ghost" size="icon" onClick={() => remove(item)} aria-label={`Eliminar ${item.linea1}`} className="text-red-600 hover:text-red-700">
+                    <Button variant="ghost" size="icon" onClick={() => remove(item)} aria-label={`Eliminar ${item.linea1}`} className="text-red-600 hover:text-red-700" data-testid={`delete-address-${item.address_id}`}>
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>

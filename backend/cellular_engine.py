@@ -4,6 +4,7 @@ from uuid import uuid4
 
 from bson import ObjectId
 
+from access_control import is_global_pastoral_authority
 from cellular_catalog import NEED_DOOR_MAP
 
 
@@ -54,7 +55,7 @@ async def person_summary(db, person_id: str | None) -> dict | None:
 
 async def cellular_scope(db, current_user: dict) -> dict:
     person_id = current_user.get("person_id")
-    if current_user.get("rol") == "pastor":
+    if is_global_pastoral_authority(current_user):
         return {"global": True, "network_ids": [], "cell_ids": [], "roles": ["pastor_principal"]}
     network_assignments = await db.cell_network_assignments.find(
         {"person_id": person_id, "active": True}, {"_id": 0}

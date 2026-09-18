@@ -247,7 +247,7 @@ async def integrity_snapshot() -> dict:
         "users_without_person": await db.users.count_documents({"$or": [{"person_id": {"$exists": False}}, {"person_id": None}]}),
         "legacy_people_without_person": await db.people.count_documents({"$or": [{"canonical_person_id": {"$exists": False}}, {"canonical_person_id": None}]}),
         "access_policy_outdated": await db.users.count_documents({"$or": [
-            {"access_policy_version": {"$ne": 15}},
+            {"access_policy_version": {"$ne": 16}},
             {"capabilities": {"$exists": False}},
             {"access_scope": {"$exists": False}},
         ]}),
@@ -440,7 +440,7 @@ async def update_user_access(
         "is_active": payload.is_active,
         "capabilities": capabilities,
         "access_scope": defaults["access_scope"],
-        "access_policy_version": 15,
+        "access_policy_version": 16,
         "updated_at": datetime.now(timezone.utc),
     }
     if changed:

@@ -1,7 +1,10 @@
 """API oficial de Consolidación v2: cuatro entradas, Fiesta, Retiro y Discipulado."""
 from datetime import datetime, timezone
 from typing import Literal, Optional
+import re
+import unicodedata
 
+from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
@@ -28,6 +31,7 @@ from consolidation_service import (
 from front_groups import assert_group_scope, group_in_scope
 from membership_documents import activate_membership_from_acceptance
 from process_engine import create_enrollment, now_utc, record_event, serialize
+from process_engine import access_person_ids
 from server import db, get_current_user
 
 
@@ -167,6 +171,41 @@ async def create_intake(payload: ConsolidationIntake, current_user: dict = Depen
         enrollment = await db.process_enrollments.find_one({"enrollment_id": enrollment["enrollment_id"]}, {"_id": 0})
         await assign_mentor(db, enrollment, payload.mentor_person_id, current_user["user_id"], "Asignación inicial")
     return await enrollment_detail(db, await db.process_enrollments.find_one({"enrollment_id": enrollment["enrollment_id"]}, {"_id": 0}))
+
+
+@router.get("/intake-candidates", response_model=dict)
+async def intake_candidates(search: str = "", limit: int = 20, current_user: dict = Depends(require_read)):
+    clean = search.strip()
+    if len(clean) < 2:
+        return {"items": [], "total": 0}
+    limit = max(1, min(limit, 30))
+    normalized = unicodedata.normalize("NFKD", clean).encode("ascii", "ignore").decode().lower()
+    normalized = re.sub(r"[^a-z0-9]+", " ", normalized).strip()
+    pattern = re.escape(clean)
+    contact_ids = await db.person_contacts.distinct("person_id", {"valor": {"$regex": pattern, "$options": "i"}})
+    query = {"status": {"$ne": "archived"}, "$or": [
+        {"search_key": {"$regex": re.escape(normalized)}},
+        {"person_number": {"$regex": pattern, "$options": "i"}},
+        {"nombre": {"$regex": pattern, "$options": "i"}},
+        {"apellido": {"$regex": pattern, "$options": "i"}},
+    ]}
+    valid_contact_ids = [ObjectId(item) for item in contact_ids if ObjectId.is_valid(item)]
+    if valid_contact_ids:
+        query["$or"].append({"_id": {"$in": valid_contact_ids}})
+    allowed = await access_person_ids(db, current_user)
+    if allowed is not None:
+        query["_id"] = {"$in": [ObjectId(item) for item in allowed if ObjectId.is_valid(item)]}
+    people = await db.persons.find(query, {"_id": 1, "person_number": 1, "nombre": 1, "apellido": 1}).sort([("nombre", 1), ("apellido", 1)]).limit(limit * 2).to_list(limit * 2)
+    person_ids = [str(item["_id"]) for item in people]
+    active_ids = set(await db.process_enrollments.distinct("person_id", {"process_key": "consolidation", "person_id": {"$in": person_ids}, "status": {"$in": ["planned", "active", "paused"]}}))
+    contacts = await db.person_contacts.find({"person_id": {"$in": person_ids}, "es_principal": True}, {"_id": 0, "person_id": 1, "valor": 1}).to_list(limit * 2)
+    phones = {item["person_id"]: item.get("valor") for item in contacts}
+    items = [{
+        "person_id": str(person["_id"]), "person_number": person.get("person_number"),
+        "name": f"{person.get('nombre', '')} {person.get('apellido', '')}".strip(),
+        "phone": phones.get(str(person["_id"])),
+    } for person in people if str(person["_id"]) not in active_ids][:limit]
+    return {"items": items, "total": len(items)}
 
 
 @router.get("/{enrollment_id}", response_model=dict)

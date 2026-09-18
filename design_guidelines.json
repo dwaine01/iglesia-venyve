@@ -1,7 +1,7 @@
 {
   "system_info": {
     "app_name": "Ven y Ve 360",
-    "module": "Mapa 360 & Geocodificación Privada / Comercial",
+    "module": "Mapa 360 & Geocodificación U.S. Census",
     "environment": "React JS (ES6/JSX), Tailwind CSS, Lucide React, MapLibre GL JS, Shadcn UI",
     "church_anchor_address": "640 DEMOREST RD COLUMBUS OHIO 43204",
     "file_type_extension": ".js"
@@ -45,7 +45,7 @@
   },
   "geocoding_backend_architecture": {
     "provider_interface": "GeocodingProvider (Interfaz desacoplada en backend)",
-    "primary_commercial_provider": "Mapbox Permanent Geocoding API (Permite almacenamiento indefinido de coordenadas lat/lng para analitica residencial)",
+    "primary_provider": "U.S. Census Geocoding Services API, sin cuenta ni API key; consulta server-side solo al crear o cambiar una direccion",
     "visual_map_layer": "MapLibre GL JS + OpenStreetMap tiles (Totalmente desacoplado del proveedor de geocodificacion)",
     "stored_fields": [
       "latitude",
@@ -56,39 +56,39 @@
       "address_version",
       "verification_status (VERIFIED | NEEDS_VERIFICATION | MANUAL_CORRECTED | OBSOLETE)"
     ],
-    "fallback_workflow": "Si la confianza es baja (< 0.75), la direccion es ambigua o no se obtienen resultados, se marca la ubicacion como NEEDS_VERIFICATION y se envia a la cola 'Ubicacion necesita verificacion' para correccion manual por personal con geo.manage_locations."
+    "fallback_workflow": "Si Census no devuelve coincidencia unica o la comparacion normalizada de numero, calle, estado y ZIP no alcanza confianza alta, la ubicacion pasa a NEEDS_VERIFICATION. La correccion manual prevalece mientras no cambie la direccion."
   },
   "quadrant_system": {
     "anchor_point": {
       "address": "640 DEMOREST RD COLUMBUS OHIO 43204",
-      "latitude": 39.9472,
-      "longitude": -83.0882
+      "latitude": 39.941105761181,
+      "longitude": -83.089529154066
     },
     "quadrants": [
       {
         "id": "NORTE",
         "name": "Cuadrante Norte (Demorest North)",
-        "condition": "lat >= 39.9472"
+        "condition": "bearing >= 315 o bearing < 45 desde la iglesia"
       },
       {
         "id": "SUR",
         "name": "Cuadrante Sur (Demorest South)",
-        "condition": "lat < 39.9472"
+        "condition": "bearing >= 135 y bearing < 225 desde la iglesia"
       },
       {
         "id": "ESTE",
         "name": "Cuadrante Este (Demorest East)",
-        "condition": "lng >= -83.0882"
+        "condition": "bearing >= 45 y bearing < 135 desde la iglesia"
       },
       {
         "id": "OESTE",
         "name": "Cuadrante Oeste (Demorest West)",
-        "condition": "lng < -83.0882"
+        "condition": "bearing >= 225 y bearing < 315 desde la iglesia"
       }
     ]
   },
   "tab_structure_and_routes": {
-    "route": "/mapa",
+    "route": "/mapas",
     "tabs": [
       {
         "id": "miembros",
@@ -99,18 +99,9 @@
         "id": "celulas",
         "label": "Red de Celulas y Grupos Frontales",
         "description": "Ubicacion de celulas activas, lideres, horarios, capacidad y zonas sin cobertura"
-      },
-      {
-        "id": "cola_verificacion",
-        "label": "Cola de Verificacion (Fallback Manual)",
-        "description": "Lista de direcciones con baja confianza o ambiguas para ajuste de pin manual"
-      },
-      {
-        "id": "comparativa_crecimiento",
-        "label": "Analitica y Crecimiento Geografico",
-        "description": "Heatmap comparativo entre periodos para responder donde abrir la proxima celula"
       }
-    ]
+    ],
+    "secondary_actions": ["Cola Ubicacion necesita verificacion", "Comparar 90 dias", "Geocodificar pendientes"]
   },
   "filter_controls": {
     "categories": [
@@ -150,12 +141,11 @@
   "testing_and_data_ids": {
     "rule": "Todo elemento interactivo debe incluir un data-testid en formato kebab-case.",
     "examples": [
-      "data-testid=\"mapa-tab-miembros\"",
-      "data-testid=\"mapa-tab-celulas\"",
-      "data-testid=\"mapa-tab-cola-verificacion\"",
-      "data-testid=\"mapa-filter-category-select\"",
-      "data-testid=\"mapa-heatmap-toggle-button\"",
-      "data-testid=\"mapa-manual-pin-save-button\"",
+      "data-testid=\"geo-people-tab\"",
+      "data-testid=\"geo-cells-tab\"",
+      "data-testid=\"geo-category-filter\"",
+      "data-testid=\"geo-mode-heatmap\"",
+      "data-testid=\"save-manual-location-button\"",
       "data-testid=\"consolidacion-autocomplete-input\""
     ]
   },

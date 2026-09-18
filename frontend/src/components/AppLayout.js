@@ -6,7 +6,7 @@ import { Separator } from './ui/separator';
 import {
   LayoutDashboard, BookOpen, Map, Calendar, Users, BarChart3, LogOut, Menu, ChevronRight,
   Crown, Star, Trophy, Presentation, NotebookPen, KeyRound, IdCard, Church, Search, DatabaseZap,
-  Activity, Award, BookHeart, Compass, HeartHandshake, Network, RadioTower, DoorOpen, Gavel, Landmark
+  Activity, Award, BookHeart, Compass, HeartHandshake, Network, RadioTower, DoorOpen, Gavel, Landmark, MapPinned
 } from 'lucide-react';
 
 import { LOGO_IGLESIA } from '../data/presentationData';
@@ -14,7 +14,7 @@ import DisplayScaleToggle from './DisplayScaleToggle';
 import { ContextGuideButton } from './guides/ContextGuideButton';
 import { resolveRouteGuide } from './guides/guideRouteMap';
 import { BRAND } from '../config/brand';
-import { canViewFrontGroups, canViewLeadership, hasAnyCapability, isPastoralAuthority } from '../lib/accessControl';
+import { canViewFrontGroups, canViewGeo, canViewLeadership, hasAnyCapability, isPastoralAuthority } from '../lib/accessControl';
 const LOGO_URL = LOGO_IGLESIA;
 
 // Menu items by role
@@ -29,6 +29,7 @@ const getNavItems = (user) => {
       { to: '/procesos/discipulado', icon: BookHeart, label: 'Educación / Discipulado', testId: 'nav-discipleship' },
       { to: '/grupos-frontales', icon: Network, label: 'Grupos Frontales', testId: 'nav-front-groups' },
       { to: '/liderazgo', icon: Award, label: 'Liderazgo', testId: 'nav-leadership' },
+      { to: '/mapas', icon: MapPinned, label: 'Mapa 360', testId: 'nav-geo-maps' },
       { to: '/procesos/mentoria', icon: HeartHandshake, label: 'Mentoría', testId: 'nav-mentorship' },
       { to: '/procesos/cap', icon: Compass, label: 'Encuentra tu lugar para servir', testId: 'nav-cap' },
       { to: '/celulas/dashboard', icon: RadioTower, label: 'Sistema Celular', testId: 'nav-cellular' },
@@ -65,6 +66,7 @@ const getNavItems = (user) => {
     { to: '/procesos/discipulado', icon: BookHeart, label: 'Educación / Discipulado', testId: 'nav-discipleship' },
     { to: '/grupos-frontales', icon: Network, label: 'Grupos Frontales', testId: 'nav-front-groups' },
     { to: '/liderazgo', icon: Award, label: 'Liderazgo', testId: 'nav-leadership' },
+    { to: '/mapas', icon: MapPinned, label: 'Mapa 360', testId: 'nav-geo-maps' },
     { to: '/procesos/mentoria', icon: HeartHandshake, label: 'Mentoría', testId: 'nav-mentorship' },
     { to: '/procesos/cap', icon: Compass, label: 'Encuentra tu lugar para servir', testId: 'nav-cap' },
     { to: '/celulas/dashboard', icon: RadioTower, label: 'Sistema Celular', testId: 'nav-cellular' },
@@ -89,6 +91,8 @@ const getNavItems = (user) => {
     item.to !== '/grupos-frontales' || canViewFrontGroups(user)
   ) && (
     item.to !== '/liderazgo' || canViewLeadership(user)
+  ) && (
+    item.to !== '/mapas' || canViewGeo(user)
   ));
 };
 
@@ -115,6 +119,7 @@ const breadcrumbMap = {
   '/procesos/discipulado': 'Educación / Discipulado',
   '/grupos-frontales': 'Grupos Frontales',
   '/liderazgo': 'Liderazgo',
+  '/mapas': 'Mapa 360',
   '/procesos/mentoria': 'Mentoría',
   '/procesos/cap': 'Encuentra tu lugar para servir',
   '/celulas/dashboard': 'Panel del Sistema Celular',

@@ -1,0 +1,8 @@
+import React from 'react';
+import { ArrowDownRight, ArrowUpRight, Minus } from 'lucide-react';
+
+const labels = { north: 'Norte', east: 'Este', south: 'Sur', west: 'Oeste' };
+export const GeoComparisonBand = ({ comparison }) => {
+  if (!comparison) return null;
+  return <section className="border bg-slate-950 p-4 text-white" data-testid="geo-comparison-band"><div className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-xs font-semibold uppercase text-amber-300">Comparación histórica</p><h2 className="font-['Spectral'] text-xl">Últimos {comparison.days} días vs. período anterior</h2></div><p className="text-sm">Total: <b>{comparison.current_total}</b> · Anterior: {comparison.previous_total}</p></div><div className="mt-4 grid grid-cols-2 gap-2 lg:grid-cols-4">{Object.entries(comparison.zones || {}).map(([zone, data]) => { const Icon = data.change > 0 ? ArrowUpRight : data.change < 0 ? ArrowDownRight : Minus; return <article key={zone} className="border border-white/15 p-3" data-testid={`geo-comparison-${zone}`}><span className="text-xs text-white/60">{labels[zone]}</span><div className="mt-1 flex items-center justify-between"><b className="text-xl">{data.current}</b><span className={data.change > 0 ? 'text-emerald-300' : data.change < 0 ? 'text-red-300' : 'text-white/60'}><Icon className="inline h-4 w-4" />{data.change > 0 ? '+' : ''}{data.change}</span></div></article>; })}</div></section>;
+};
