@@ -1,6 +1,4 @@
 import React, { useEffect, useRef } from 'react';
-import maplibregl from 'maplibre-gl';
-import 'maplibre-gl/dist/maplibre-gl.css';
 
 const TILE_URL = process.env.REACT_APP_MAP_TILE_URL;
 
@@ -13,10 +11,11 @@ const visibility = (map, mode) => {
 };
 
 export const GeoMapCanvas = ({ center, features = [], zones, mode, onSelect }) => {
+  const maplibregl = typeof window !== 'undefined' ? window.maplibregl : null;
   const containerRef = useRef(null); const mapRef = useRef(null); const featuresRef = useRef(features);
   useEffect(() => { featuresRef.current = features; }, [features]);
   useEffect(() => {
-    if (!center || mapRef.current || !containerRef.current) return undefined;
+    if (!maplibregl || !center || mapRef.current || !containerRef.current) return undefined;
     const map = new maplibregl.Map({
       container: containerRef.current, center: [center.longitude, center.latitude], zoom: 10.7,
       style: { version: 8, sources: { osm: { type: 'raster', tiles: [TILE_URL], tileSize: 256, attribution: '© OpenStreetMap contributors' } }, layers: [{ id: 'osm', type: 'raster', source: 'osm' }] },
@@ -62,7 +61,7 @@ export const GeoMapCanvas = ({ center, features = [], zones, mode, onSelect }) =
     });
     mapRef.current = map;
     return () => { popup.remove(); map.remove(); mapRef.current = null; };
-  }, [center]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [center, maplibregl]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const map = mapRef.current; if (!map?.isStyleLoaded()) return;
@@ -71,5 +70,6 @@ export const GeoMapCanvas = ({ center, features = [], zones, mode, onSelect }) =
   }, [features]);
   useEffect(() => { const map = mapRef.current; if (map?.isStyleLoaded()) visibility(map, mode); }, [mode]);
   useEffect(() => { const source = mapRef.current?.getSource('geo-zones'); if (source && zones) source.setData(zones); }, [zones]);
+  if (!maplibregl) return <div className="flex min-h-[420px] items-center justify-center border bg-amber-50 p-6 text-center text-sm text-amber-900" data-testid="geo-map-library-error">No se pudo cargar la biblioteca cartográfica local.</div>;
   return <div ref={containerRef} className="h-[58vh] min-h-[420px] w-full overflow-hidden border bg-slate-100 md:max-h-[760px]" data-testid="geo-map-canvas" aria-label="Mapa geográfico interactivo" />;
 };

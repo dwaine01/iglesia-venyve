@@ -514,7 +514,7 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - Consolidación ahora usa búsqueda remota con debounce por nombre, teléfono, correo o número VV, respeta scope y excluye automáticamente Personas archivadas o con Consolidación activa; se eliminó la limitación de las primeras 100 Personas.
 - Integración real Census verificada con la dirección institucional: HTTP 200 sin API key, un match, coordenadas persistidas, `address_version=2` y exactamente un job completado.
 - Validación final: backend **150 passed, 3 skipped**; contrato público Mapa 360 **10/10 PASS**; frontend **22/22 PASS**; build de producción PASS; health 200; UI desktop 1920×800 y móvil 390×844 sin overflow; iteration 25 UI PASS.
-- Compatibilidad de despliegue cerrada: `maplibre-gl@4.7.1` y su parser fijado en `@mapbox/jsonlint-lines-primitives@2.0.2`; `yarn install --frozen-lockfile` pasa en Node 20 sin `--ignore-engines`.
+- Compatibilidad de despliegue cerrada: MapLibre 4.7.1 se sirve como asset local versionado y ya no forma parte de `package.json`; el build no depende de que la plataforma incluya cambios de `yarn.lock`.
 - Datos QA finales: cuentas, Personas, células, direcciones y revisiones efímeras eliminadas.
 
 ### Hotfix de despliegue Mapa 360 — RESUELTO 2026‑09‑18
@@ -522,9 +522,10 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - Corregido el crash de producción al importar `geo_provider.py` sin `CENSUS_GEOCODER_URL` o `CENSUS_GEOCODER_BENCHMARK`: la API completa ahora inicia y únicamente el proveedor Census queda marcado como no configurado.
 - El centro institucional aprobado tiene configuración segura de aplicación y ya no provoca un segundo crash cuando faltan `GEO_CHURCH_*` en un contenedor nuevo.
 - `/api/geo/config` informa `geocoding_configured`; Mapa 360 muestra una alerta clara y desactiva el backfill mientras el endpoint Census no esté configurado.
-- Corregido el segundo bloqueo Railway: `frontend/yarn.lock` regenerado y marcado explícitamente para incluir `maplibre-gl@4.7.1` y `@mapbox/jsonlint-lines-primitives@2.0.2`, compatible con Node 20.
+- Corregido definitivamente el segundo bloqueo Railway: se retiraron `maplibre-gl` y `@mapbox/jsonlint-lines-primitives` de npm y MapLibre 4.7.1 quedó vendorizado en `frontend/public/vendor/`; por tanto, incluso si la automatización omite `yarn.lock`, `package.json` continúa siendo compatible con el lockfile publicado.
 - Simulación exacta de producción PASS: import de `server` con todas las variables geo vacías, **349 rutas cargadas**, sin RuntimeError.
-- Instalación de imagen PASS: `yarn install --frozen-lockfile` sin `--ignore-engines`; Jest **22/22** y build de producción PASS.
+- Instalación de imagen PASS: `yarn install --frozen-lockfile` con el lockfile actual **y también con el lockfile antiguo exacto de GitHub**; Jest **22/22** y build de producción PASS.
+- Runtime vendorizado PASS: `/vendor/maplibre-gl.js` HTTP 200 (803,086 bytes), `window.maplibregl.Map` disponible, canvas real en `/mapas`, escritorio 1920×800 y móvil 390×844 sin overflow.
 - `.env` permanece intencionalmente excluido de la imagen; producción debe inyectar variables desde su administrador de entorno. No se modificó `.dockerignore`.
 - Variables públicas para habilitar toda la función, sin API key: backend `CENSUS_GEOCODER_URL=https://geocoding.geo.census.gov/geocoder`, `CENSUS_GEOCODER_BENCHMARK=Public_AR_Current`; frontend `REACT_APP_MAP_TILE_URL=https://tile.openstreetmap.org/{z}/{x}/{y}.png`.
 
