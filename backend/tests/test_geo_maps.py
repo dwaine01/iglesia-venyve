@@ -8,7 +8,8 @@ from httpx import ASGITransport, AsyncClient
 
 import server
 from access_control import access_defaults_for_role
-from geo_provider import GeocodeResult, set_geocoding_provider_for_tests
+from geo_provider import FallbackGeocodingProvider, GeocodeResult, set_geocoding_provider_for_tests
+from geo_service import geographic_classification
 
 
 PASSWORD = "GeoMapsPass2026!"
@@ -26,6 +27,11 @@ class FakeGeocoder:
     async def geocode(self, address: dict) -> GeocodeResult:
         self.calls += 1
         return self.result
+
+
+class FixedProvider:
+    def __init__(self, result): self.result = result; self.calls = 0
+    async def geocode(self, address): self.calls += 1; return self.result
 
 
 async def create_user(role="pastor", capabilities=None):
@@ -102,6 +108,8 @@ async def test_address_geocodes_once_and_map_reads_persisted_coordinates():
         stored = await server.db.person_addresses.find_one({"_id": ObjectId(address_id)})
         assert stored["address_version"] == 2
         assert stored["verification_status"] == "verified"
+        assert stored["zone_number"] in {1, 2, 3, 4}
+        assert stored["subzone_key"] in {f"{number}-{letter}" for number in range(1, 5) for letter in "ABC"}
     finally:
         await client.aclose(); await cleanup()
 
@@ -154,3 +162,21 @@ async def test_geo_rbac_and_remote_intake_search():
         await denied.aclose()
     finally:
         await cleanup()
+
+
+@pytest.mark.asyncio
+async def test_census_falls_back_to_geocodio_before_manual_review():
+    census = FixedProvider(GeocodeResult(status="not_found", provider="census"))
+    geocodio = FixedProvider(GeocodeResult(status="matched", provider="geocodio", latitude=39.92, longitude=-83.2, confidence="high", confidence_score=0.99, accuracy="rooftop"))
+    result = await FallbackGeocodingProvider(census, geocodio).geocode({"street": "6553 Bellmouth Rd", "city": "Galloway", "state": "OH", "zip": "43119"})
+    assert result.status == "matched" and result.provider == "geocodio"
+    assert census.calls == 1 and geocodio.calls == 1
+    assert result.provider_metadata["attempted_providers"] == ["census", "geocodio"]
+
+
+def test_cardinal_zones_and_distance_subzones_are_mutually_exclusive():
+    examples = [(40.02, -83.08, 1), (39.95, -82.98, 2), (39.86, -83.08, 3), (39.95, -83.19, 4)]
+    for latitude, longitude, number in examples:
+        classification = geographic_classification(latitude, longitude)
+        assert classification["zone_number"] == number
+        assert classification["subzone_key"].startswith(f"{number}-")

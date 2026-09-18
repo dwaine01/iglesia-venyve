@@ -6,7 +6,8 @@ import { Separator } from './ui/separator';
 import {
   LayoutDashboard, BookOpen, Map, Calendar, Users, BarChart3, LogOut, Menu, ChevronRight,
   Crown, Star, Trophy, Presentation, NotebookPen, KeyRound, IdCard, Church, Search, DatabaseZap,
-  Activity, Award, BookHeart, Compass, HeartHandshake, Network, RadioTower, DoorOpen, Gavel, Landmark, MapPinned
+  Activity, Award, BookHeart, Compass, HeartHandshake, Network, RadioTower, DoorOpen, Gavel, Landmark, MapPinned,
+  PanelLeftClose, PanelLeftOpen
 } from 'lucide-react';
 
 import { LOGO_IGLESIA } from '../data/presentationData';
@@ -238,7 +239,9 @@ function SidebarContent({ onClose, testIdPrefix = '' }) {
 export default function AppLayout() {
   const { user } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [mapSidebarOpen, setMapSidebarOpen] = useState(false);
   const location = useLocation();
+  const isMapRoute = location.pathname === '/mapas';
   const routeGuideKey = resolveRouteGuide(location.pathname, user?.rol);
 
   const getBreadcrumb = () => {
@@ -262,20 +265,25 @@ export default function AppLayout() {
     document.title = `${BRAND.name} | ${currentBreadcrumb}`;
   }, [currentBreadcrumb]);
 
+  useEffect(() => {
+    if (isMapRoute) setMapSidebarOpen(false);
+  }, [isMapRoute]);
+
   return (
     <div className="flex h-screen overflow-hidden bg-background">
       {/* Desktop Sidebar */}
-      <aside className="hidden lg:flex lg:flex-col w-64 border-r border-border bg-card">
+      {(!isMapRoute || mapSidebarOpen) && <aside className="hidden lg:flex lg:w-64 lg:flex-col border-r border-border bg-card" data-testid="desktop-sidebar">
         <SidebarContent />
-      </aside>
+      </aside>}
 
       {mobileOpen && <div className="fixed inset-0 z-50 lg:hidden" data-testid="mobile-navigation-overlay"><button type="button" className="absolute inset-0 bg-black/45" onClick={() => setMobileOpen(false)} aria-label="Cerrar menú" data-testid="close-mobile-navigation-backdrop" /><aside id="mobile-navigation-sheet" className="relative h-full w-[85vw] max-w-xs bg-white shadow-2xl" data-testid="mobile-navigation-sheet" aria-label="Menú de navegación"><SidebarContent onClose={() => setMobileOpen(false)} testIdPrefix="mobile-" /></aside></div>}
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto">
+      <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
         {/* Top Bar: hamburger + breadcrumb + logo (mobile) */}
-        <div className="sticky top-0 z-20 bg-card/95 backdrop-blur-md border-b border-border">
+        <div className="z-20 shrink-0 border-b border-border bg-card/95 backdrop-blur-md">
           <div className="flex items-center gap-2 px-3 py-2.5 lg:px-6 lg:py-3">
+            {isMapRoute && <Button type="button" variant="ghost" size="icon" className="hidden h-9 w-9 shrink-0 lg:inline-flex" onClick={() => setMapSidebarOpen((value) => !value)} data-testid="toggle-map-sidebar-button" aria-label={mapSidebarOpen ? 'Ocultar menú lateral' : 'Mostrar menú lateral'}>{mapSidebarOpen ? <PanelLeftClose className="h-5 w-5" /> : <PanelLeftOpen className="h-5 w-5" />}</Button>}
             {/* Hamburger - solo mobile */}
             <Button
               type="button"
@@ -320,7 +328,9 @@ export default function AppLayout() {
           </div>
         </div>
 
-        <Outlet />
+        <div className={`min-h-0 flex-1 ${isMapRoute ? 'overflow-hidden' : 'overflow-y-auto'}`} data-testid="app-page-scroll-container">
+          <Outlet />
+        </div>
       </main>
     </div>
   );

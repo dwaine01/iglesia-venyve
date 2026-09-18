@@ -1,12 +1,13 @@
 """Consultas geográficas autorizadas y serializadores sin ObjectId."""
 import math
+import re
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 
 from bson import ObjectId
 
 from cellular_engine import cellular_scope
-from geo_service import zone_for
+from geo_service import geographic_classification
 from process_engine import access_person_ids
 
 
@@ -94,15 +95,19 @@ async def person_features(db, current_user: dict, filters: dict) -> list[dict]:
         cell_id = cell_by_person.get(person_id)
         if filters.get("cell_id") and cell_id != filters["cell_id"]: continue
         coordinates = address["location"]["coordinates"]
-        zone = address.get("zone_key") or zone_for(coordinates[1], coordinates[0])
+        classification = geographic_classification(coordinates[1], coordinates[0])
+        zone = address.get("zone_key") or classification["zone_key"]
+        subzone = address.get("subzone_key") or classification["subzone_key"]
         if filters.get("zone") and zone != filters["zone"]: continue
+        if filters.get("subzone") and subzone != filters["subzone"]: continue
         features.append({
             "type": "Feature", "geometry": {"type": "Point", "coordinates": coordinates},
             "properties": {
                 "entity_kind": "person", "entity_id": person_id,
                 "name": f"{person.get('nombre', '')} {person.get('apellido', '')}".strip(),
                 "person_number": person.get("person_number"), "phone": phone_by_person.get(person_id),
-                "address": _address_text(address), "zone": zone, "categories": sorted(categories),
+                "address": _address_text(address), "zone": zone, "zone_number": classification["zone_number"],
+                "subzone": subzone, "categories": sorted(categories),
                 "stage": stage, "front_group_id": group_id, "cell_id": cell_id,
                 "verification_status": address.get("verification_status"), "created_at": _iso(person.get("created_at")),
             },
@@ -128,19 +133,85 @@ async def cell_features(db, current_user: dict, filters: dict) -> list[dict]:
     features = []
     for cell in cells:
         coordinates = cell["location"]["coordinates"]
-        zone = cell.get("zone_key") or zone_for(coordinates[1], coordinates[0])
+        classification = geographic_classification(coordinates[1], coordinates[0])
+        zone = cell.get("zone_key") or classification["zone_key"]
+        subzone = cell.get("subzone_key") or classification["subzone_key"]
         if filters.get("zone") and zone != filters["zone"]: continue
+        if filters.get("subzone") and subzone != filters["subzone"]: continue
         features.append({
             "type": "Feature", "geometry": {"type": "Point", "coordinates": coordinates},
             "properties": {
                 "entity_kind": "cell", "entity_id": cell["cell_id"], "name": cell["name"],
                 "code": cell.get("code"), "address": cell.get("address"), "zone": zone,
+                "zone_number": classification["zone_number"], "subzone": subzone,
                 "leader": leaders.get(cell["cell_id"]), "meeting_day": cell.get("meeting_day"),
                 "meeting_time": cell.get("meeting_time"), "capacity": cell.get("capacity"),
                 "members": membership_counts[cell["cell_id"]], "status": cell.get("status"),
             },
         })
     return features
+
+
+async def front_group_centroid_features(db, current_user: dict, filters: dict) -> list[dict]:
+    source_filters = {"front_group_id": filters.get("front_group_id"), "zone": filters.get("zone"), "subzone": filters.get("subzone")}
+    people = await person_features(db, current_user, source_filters)
+    grouped = defaultdict(list)
+    for feature in people:
+        group_id = feature["properties"].get("front_group_id")
+        if group_id: grouped[group_id].append(feature)
+    group_ids = list(grouped)
+    groups = await db.front_groups.find({"front_group_id": {"$in": group_ids}, "status": "active"}, {"_id": 0, "front_group_id": 1, "name": 1, "linked_structures": 1, "converted_cell_id": 1}).to_list(10000)
+    output = []
+    for group in groups:
+        converted = group.get("converted_cell_id") or any(item.get("type") == "cell" for item in group.get("linked_structures", []))
+        if converted: continue
+        points = grouped[group["front_group_id"]]
+        longitude = sum(item["geometry"]["coordinates"][0] for item in points) / len(points)
+        latitude = sum(item["geometry"]["coordinates"][1] for item in points) / len(points)
+        classification = geographic_classification(latitude, longitude)
+        output.append({
+            "type": "Feature", "geometry": {"type": "Point", "coordinates": [longitude, latitude]},
+            "properties": {
+                "entity_kind": "front_group", "entity_id": group["front_group_id"], "name": group["name"],
+                "members": len(points), "zone": classification["zone_key"], "zone_number": classification["zone_number"],
+                "subzone": classification["subzone_key"], "centroid": True,
+            },
+        })
+    return output
+
+
+async def search_person_locations(db, current_user: dict, search: str, limit: int = 10) -> list[dict]:
+    allowed = await access_person_ids(db, current_user)
+    normalized = re.escape(" ".join(search.lower().split()))
+    escaped = re.escape(search)
+    query = {"status": {"$ne": "archived"}, "$or": [
+        {"search_key": {"$regex": normalized}},
+        {"nombre": {"$regex": escaped, "$options": "i"}},
+        {"apellido": {"$regex": escaped, "$options": "i"}},
+        {"person_number": {"$regex": escaped, "$options": "i"}},
+    ]}
+    if allowed is not None:
+        query["_id"] = {"$in": [ObjectId(item) for item in allowed if ObjectId.is_valid(item)]}
+    people = await db.persons.find(query, {"_id": 1, "person_number": 1, "nombre": 1, "apellido": 1}).sort([("nombre", 1), ("apellido", 1)]).limit(limit * 3).to_list(limit * 3)
+    person_ids = [str(item["_id"]) for item in people]
+    addresses = await db.person_addresses.find({"person_id": {"$in": person_ids}, "location.type": "Point", "coordinates_stale": {"$ne": True}, "verification_status": {"$in": ["verified", "manual_verified"]}}, {"_id": 0, "person_id": 1, "location": 1, "zone_key": 1, "subzone_key": 1}).sort("es_principal", -1).to_list(limit * 5)
+    by_person = {}
+    for item in addresses: by_person.setdefault(item["person_id"], item)
+    output = []
+    for person in people:
+        person_id = str(person["_id"]); address = by_person.get(person_id)
+        if not address: continue
+        longitude, latitude = address["location"]["coordinates"]; classification = geographic_classification(latitude, longitude)
+        output.append({
+            "person_id": person_id, "person_number": person.get("person_number"),
+            "name": f"{person.get('nombre', '')} {person.get('apellido', '')}".strip(),
+            "latitude": latitude, "longitude": longitude,
+            "zone": address.get("zone_key") or classification["zone_key"],
+            "zone_number": classification["zone_number"],
+            "subzone": address.get("subzone_key") or classification["subzone_key"],
+        })
+        if len(output) >= limit: break
+    return output
 
 
 def aggregate_features(features: list[dict], minimum: int = 3) -> list[dict]:
@@ -174,8 +245,9 @@ async def enrich_coverage(db, features: list[dict]) -> list[dict]:
 async def geographic_summary(db, current_user: dict) -> dict:
     people = await person_features(db, current_user, {})
     cells = await cell_features(db, current_user, {})
+    groups = await front_group_centroid_features(db, current_user, {})
     return {
-        "people_total": len(people), "cells_total": len(cells),
+        "people_total": len(people), "cells_total": len(cells), "front_groups_total": len(groups),
         "zones": {zone: {"people": sum(item["properties"]["zone"] == zone for item in people), "cells": sum(item["properties"]["zone"] == zone for item in cells)} for zone in ["north", "east", "south", "west"]},
         "review_total": await db.geo_review_queue.count_documents({"status": "open"}),
         "pending_total": await db.geo_jobs.count_documents({"status": {"$in": ["pending", "processing", "retry"]}}),

@@ -7,6 +7,7 @@ def test_server_imports_when_geo_environment_is_missing():
     environment = os.environ.copy()
     environment.update({
         "CENSUS_GEOCODER_URL": "", "CENSUS_GEOCODER_BENCHMARK": "",
+        "GEOCODIO_API_URL": "", "GEOCODIO_API_KEY": "",
         "GEO_CHURCH_ADDRESS": "", "GEO_CHURCH_LAT": "", "GEO_CHURCH_LNG": "",
     })
     result = subprocess.run(
