@@ -166,6 +166,8 @@ def serialize_address(doc: dict) -> dict:
         "geocoding_accuracy": doc.get("geocoding_accuracy"),
         "geocoding_confidence": doc.get("geocoding_confidence"),
         "zone_key": doc.get("zone_key"),
+        "zone_number": doc.get("zone_number"),
+        "subzone_key": doc.get("subzone_key"),
         "coordinates_stale": doc.get("coordinates_stale", True),
         "address_version": doc.get("address_version", 1),
         "geocoding_provider": doc.get("geocoding_provider"),
@@ -359,7 +361,7 @@ async def update_address(
         update.update(pending_geo_fields(version))
         await db.person_addresses.update_one(
             {"_id": address_oid},
-            {"$set": update, "$unset": {"location": "", "latitude": "", "longitude": "", "zone_key": "", "census_matched_address": ""}},
+            {"$set": update, "$unset": {"location": "", "latitude": "", "longitude": "", "zone_key": "", "zone_number": "", "subzone_key": "", "distance_from_church_miles": "", "census_matched_address": "", "geocoding_matched_address": ""}},
         )
         job_id = await enqueue_geo_job(db, "person_address", address_id, version, current_user["user_id"])
         background_tasks.add_task(process_geo_job, db, job_id)

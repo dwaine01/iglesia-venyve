@@ -140,8 +140,8 @@ export default function PersonAddressSection({ personId, domain, API, getAuthHea
                   </p>
                   <p className="mt-1 text-xs text-gray-500">{TYPE_LABELS[item.tipo]} · {item.pais}</p>
                   <div className="mt-2 flex items-center gap-2 text-xs" data-testid={`address-geocoding-status-${item.address_id}`}>
-                    {item.verification_status === 'verified' && <><CircleCheck className="h-3.5 w-3.5 text-emerald-600" /><span className="text-emerald-700">Ubicación verificada · {item.zone_key || 'zona pendiente'}</span></>}
-                    {item.verification_status === 'manual_verified' && <><MapPin className="h-3.5 w-3.5 text-blue-600" /><span className="text-blue-700">Pin corregido manualmente · {item.zone_key || 'zona pendiente'}</span></>}
+                    {item.verification_status === 'verified' && <><CircleCheck className="h-3.5 w-3.5 text-emerald-600" /><span className="text-emerald-700">Ubicación verificada · Zona {item.subzone_key || item.zone_number || 'pendiente'}</span></>}
+                    {item.verification_status === 'manual_verified' && <><MapPin className="h-3.5 w-3.5 text-blue-600" /><span className="text-blue-700">Pin corregido · Zona {item.subzone_key || item.zone_number || 'pendiente'}</span></>}
                     {item.verification_status === 'needs_verification' && <><CircleAlert className="h-3.5 w-3.5 text-amber-600" /><span className="text-amber-700">Ubicación necesita verificación</span></>}
                     {(!item.verification_status || item.verification_status === 'pending') && <><Clock3 className="h-3.5 w-3.5 text-slate-500" /><span className="text-slate-500">Geocodificación pendiente</span></>}
                   </div>

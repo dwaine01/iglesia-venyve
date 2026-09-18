@@ -532,6 +532,25 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - `Dockerfile.frontend` ahora declara `ARG REACT_APP_MAP_TILE_URL` y `ENV REACT_APP_MAP_TILE_URL=$REACT_APP_MAP_TILE_URL` antes de `RUN yarn build`.
 - Verificación exacta PASS: contrato/orden del Dockerfile validado, build CRA ejecutado con ambos build args y URL OSM encontrada dentro del chunk generado; auditoría de despliegue sin bloqueos.
 
+### Mapa 360 — experiencia geográfica v2 — IMPLEMENTADO 2026‑09‑18
+
+- Preservada la base de layout solicitada: `AppLayout` usa `main` flex-column/overflow-hidden, breadcrumb `shrink-0` y un wrapper del `Outlet` que mantiene scroll normal fuera de `/mapas`.
+- En `/mapas`, el sidebar desktop se oculta automáticamente y puede restaurarse/ocultarse con `toggle-map-sidebar-button`; el mapa usa todo el ancho disponible.
+- `GeoMapsPage` es una pantalla full-height: toolbar compacta de 72.5px en desktop, canvas 1920×644 y mapa móvil de más de 540px, sin overflow horizontal.
+- Toolbar única con tabs Personas/Células, modos Densidad/Clusters/Pines, métricas, filtros en popover, comparación, backfill, revisión y búsqueda por nombre/número VV.
+- Búsqueda remota protegida por `geo.view_precise`: debounce, respeto de scope, centrado `flyTo`, halo de resaltado y panel de detalle. Corregida la carrera que reabría resultados después de seleccionar.
+- Iglesia Ven y Ve es una fuente/capa fija independiente de filtros en 640 Demorest Rd, con pin carmesí grande y símbolo propio.
+- Pines estilo gota generados localmente y diferenciados: Persona ámbar, Célula verde, Grupo Frontal azul e Iglesia carmesí.
+- Grupos Frontales se representan por centroide de miembros autorizados, sin dirección física; si el grupo está convertido/vinculado a una Célula, el centroide desaparece y prevalece el pin real celular.
+- Zonas reforzadas visualmente: relleno 16%, límites 3.5px, cuatro colores y etiquetas Zona 1 Norte, Zona 2 Este, Zona 3 Sur y Zona 4 Oeste.
+- Añadidas 12 subzonas por distancia desde la iglesia: A=0–3 millas, B=3–6 millas, C=>6 millas. Dos anillos visibles y etiquetas 1-A…4-C; `zone_number`, `subzone_key` y distancia se persisten y migran para ubicaciones existentes.
+- Geocodificación automática encadenada mediante `GeocodingProvider`: Census primero y Geocodio como respaldo permanente; la cola manual queda solo si ambos fallan o la confianza es insuficiente.
+- Backfill reintenta estados históricos `not_found`, `ambiguous`, `needs_verification` y `provider_error`, y resuelve automáticamente revisiones cuando Geocodio encuentra coincidencia.
+- Integración real verificada con 6553 Bellmouth Rd: Census `not_found` → Geocodio `matched`, precisión `rooftop`, estado `verified`, proveedores intentados `[census, geocodio]`, subzona `4-B`.
+- La `GEOCODIO_API_KEY` permanece únicamente en backend; escaneo final del código/bundle frontend: **0 filtraciones**.
+- Pruebas finales: backend **157 passed, 3 skipped**, frontend **22/22**, build PASS, iteration 26 backend 19/19 y UI desktop/mobile PASS; dos selecciones móviles consecutivas confirmaron búsqueda→halo→detalle.
+- Variables backend necesarias en producción: `GEOCODIO_API_URL`, `GEOCODIO_API_KEY`, `GEOCODIO_TIMEOUT_SECONDS`; nunca exponerlas como `REACT_APP_*`.
+
 ### P1/P2 — siguientes pasos y backlog
 
 - **P1 — Aceptación operativa:** validar Consolidación v2 con responsables reales, asignar `front_groups.view`/`leadership.view` y capacidades de gestión, y crear el primer Grupo Frontal de producción.

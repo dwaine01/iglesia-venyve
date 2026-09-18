@@ -412,7 +412,7 @@ async def update_cell(cell_id: str, payload: CellUpdate, background_tasks: Backg
         await archive_location(db, "cell", cell_id, existing, current_user["user_id"])
         version = existing.get("address_version", 1) + 1
         update.update(pending_geo_fields(version))
-        await db.cells.update_one({"cell_id": cell_id}, {"$set": update, "$unset": {"location": "", "latitude": "", "longitude": "", "zone_key": "", "census_matched_address": ""}})
+        await db.cells.update_one({"cell_id": cell_id}, {"$set": update, "$unset": {"location": "", "latitude": "", "longitude": "", "zone_key": "", "zone_number": "", "subzone_key": "", "distance_from_church_miles": "", "census_matched_address": "", "geocoding_matched_address": ""}})
         job_id = await enqueue_geo_job(db, "cell", cell_id, version, current_user["user_id"])
         background_tasks.add_task(process_geo_job, db, job_id)
     else:

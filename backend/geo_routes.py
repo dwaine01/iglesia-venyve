@@ -7,9 +7,9 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, s
 from pydantic import BaseModel, Field
 
 from access_control import GEO_MANAGE_LOCATIONS, GEO_VIEW_AGGREGATE, GEO_VIEW_PRECISE, has_capability, is_global_pastoral_authority
-from geo_queries import aggregate_features, cell_features, enrich_coverage, geographic_summary, person_features
-from geo_provider import geocoding_is_configured
-from geo_service import CHURCH_ADDRESS, CHURCH_LAT, CHURCH_LNG, archive_location, enqueue_backfill, enqueue_geo_job, now_utc, process_geo_job, process_geo_jobs, zones_geojson
+from geo_queries import aggregate_features, cell_features, enrich_coverage, front_group_centroid_features, geographic_summary, person_features, search_person_locations
+from geo_provider import geocoding_is_configured, geocoding_providers_status
+from geo_service import CHURCH_ADDRESS, CHURCH_LAT, CHURCH_LNG, archive_location, enqueue_backfill, enqueue_geo_job, geographic_classification, now_utc, process_geo_job, process_geo_jobs, subzones_geojson, zones_geojson
 from server import db, get_current_user
 
 
@@ -25,6 +25,7 @@ class FeatureCollectionResponse(BaseModel):
 class GeoConfigResponse(BaseModel):
     center: dict
     zones: dict
+    subzones: dict
     permissions: dict
     map_policy: dict
 
@@ -32,6 +33,7 @@ class GeoConfigResponse(BaseModel):
 class GeoSummaryResponse(BaseModel):
     people_total: int
     cells_total: int
+    front_groups_total: int = 0
     zones: dict
     review_total: int
     pending_total: int
@@ -74,10 +76,10 @@ def require_any_geo(current_user: dict = Depends(get_current_user)) -> dict:
     return current_user
 
 
-def _filters(categories, stage, zone, front_group_id, cell_id, verification_status, period_start, period_end):
+def _filters(categories, stage, zone, subzone, front_group_id, cell_id, verification_status, period_start, period_end):
     return {
         "categories": [item for item in (categories or "").split(",") if item],
-        "stage": stage, "zone": zone, "front_group_id": front_group_id, "cell_id": cell_id,
+        "stage": stage, "zone": zone, "subzone": subzone, "front_group_id": front_group_id, "cell_id": cell_id,
         "verification_status": verification_status, "period_start": period_start, "period_end": period_end,
     }
 
@@ -87,12 +89,13 @@ async def geo_config(current_user: dict = Depends(require_any_geo)):
     return {
         "center": {"address": CHURCH_ADDRESS, "latitude": CHURCH_LAT, "longitude": CHURCH_LNG},
         "zones": zones_geojson(),
+        "subzones": subzones_geojson(),
         "permissions": {
             "view_aggregate": True,
             "view_precise": is_global_pastoral_authority(current_user) or has_capability(current_user, GEO_VIEW_PRECISE),
             "manage_locations": is_global_pastoral_authority(current_user) or has_capability(current_user, GEO_MANAGE_LOCATIONS),
         },
-        "map_policy": {"aggregate_minimum": 3, "coverage_gap_miles": 3, "renderer": "maplibre", "tiles": "openstreetmap", "geocoding_configured": geocoding_is_configured()},
+        "map_policy": {"aggregate_minimum": 3, "coverage_gap_miles": 3, "renderer": "maplibre", "tiles": "openstreetmap", "geocoding_configured": geocoding_is_configured(), "geocoding_providers": geocoding_providers_status(), "geocoding_order": ["census", "geocodio"]},
     }
 
 
@@ -113,12 +116,12 @@ async def geo_summary(current_user: dict = Depends(require_any_geo)):
 @router.get("/aggregate", response_model=FeatureCollectionResponse)
 async def aggregate_map(
     entity_kind: Literal["people", "cells"] = "people", categories: Optional[str] = None,
-    stage: Optional[str] = None, zone: Optional[str] = None, front_group_id: Optional[str] = None,
+    stage: Optional[str] = None, zone: Optional[str] = None, subzone: Optional[str] = None, front_group_id: Optional[str] = None,
     cell_id: Optional[str] = None, verification_status: Optional[str] = None,
     period_start: Optional[datetime] = None, period_end: Optional[datetime] = None,
     current_user: dict = Depends(require_any_geo),
 ):
-    filters = _filters(categories, stage, zone, front_group_id, cell_id, verification_status, period_start, period_end)
+    filters = _filters(categories, stage, zone, subzone, front_group_id, cell_id, verification_status, period_start, period_end)
     precise = await (person_features(db, current_user, filters) if entity_kind == "people" else cell_features(db, current_user, filters))
     features = aggregate_features(precise, 3 if entity_kind == "people" else 2)
     if entity_kind == "people": features = await enrich_coverage(db, features)
@@ -128,18 +131,28 @@ async def aggregate_map(
 @router.get("/precise", response_model=FeatureCollectionResponse)
 async def precise_map(
     entity_kind: Literal["people", "cells"] = "people", categories: Optional[str] = None,
-    stage: Optional[str] = None, zone: Optional[str] = None, front_group_id: Optional[str] = None,
+    stage: Optional[str] = None, zone: Optional[str] = None, subzone: Optional[str] = None, front_group_id: Optional[str] = None,
     cell_id: Optional[str] = None, verification_status: Optional[str] = None,
     period_start: Optional[datetime] = None, period_end: Optional[datetime] = None,
     current_user: dict = Depends(require_precise),
 ):
-    filters = _filters(categories, stage, zone, front_group_id, cell_id, verification_status, period_start, period_end)
-    features = await (person_features(db, current_user, filters) if entity_kind == "people" else cell_features(db, current_user, filters))
+    filters = _filters(categories, stage, zone, subzone, front_group_id, cell_id, verification_status, period_start, period_end)
+    if entity_kind == "people":
+        features = await person_features(db, current_user, filters)
+        features.extend(await front_group_centroid_features(db, current_user, filters))
+    else:
+        features = await cell_features(db, current_user, filters)
     await db.geo_audit_log.insert_one({
         "audit_id": f"view:{current_user['user_id']}:{now_utc().timestamp()}", "actor_user_id": current_user["user_id"],
         "action": "precise_map_view", "entity_kind": entity_kind, "result_count": len(features), "occurred_at": now_utc(),
     })
     return {"features": features, "meta": {"entity_kind": entity_kind, "privacy": "precise", "audited": True}}
+
+
+@router.get("/search", response_model=dict)
+async def search_locations(q: str = Query(min_length=2, max_length=120), limit: int = Query(default=10, ge=1, le=25), current_user: dict = Depends(require_precise)):
+    items = await search_person_locations(db, current_user, q, limit)
+    return {"items": items, "total": len(items)}
 
 
 @router.get("/comparison", response_model=dict)
@@ -203,11 +216,11 @@ async def resolve_location(review_id: str, payload: ManualLocation, current_user
     if not entity or entity.get("address_version", 1) != review["address_version"]:
         raise HTTPException(status_code=409, detail="La dirección cambió; vuelva a revisar la versión actual")
     await archive_location(db, review["entity_type"], review["entity_id"], entity, current_user["user_id"])
-    from geo_service import zone_for
     now = now_utc()
+    classification = geographic_classification(payload.latitude, payload.longitude)
     await collection.update_one(query, {"$set": {
         "location": {"type": "Point", "coordinates": [payload.longitude, payload.latitude]},
-        "latitude": payload.latitude, "longitude": payload.longitude, "zone_key": zone_for(payload.latitude, payload.longitude),
+        "latitude": payload.latitude, "longitude": payload.longitude, **classification,
         "geocoding_provider": "manual", "geocoding_source": "manual", "geocoded_at": now,
         "geocoding_accuracy": "manual", "geocoding_confidence": "verified", "geocoding_status": "geocoded",
         "verification_status": "manual_verified", "coordinates_stale": False, "manual_override": True,
