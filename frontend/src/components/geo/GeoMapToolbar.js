@@ -1,5 +1,5 @@
 import React from 'react';
-import { CircleAlert, Filter, Flame, Layers3, MapPin, Network, RefreshCw, Users } from 'lucide-react';
+import { CircleAlert, Edit3, Filter, Flame, Layers3, MapPin, Network, Presentation, RefreshCw, Users } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { Tabs, TabsList, TabsTrigger } from '../ui/tabs';
@@ -10,8 +10,8 @@ const countFilters = (filters) => Object.values(filters).filter(Boolean).length;
 
 export const GeoMapToolbar = ({
   kind, setKind, mode, setMode, filters, setFilters, catalog, summary, canViewPrecise, canManage,
-  providerConfigured, compare, setCompare, backfilling, onBackfill, onReview, onPersonSelect,
-}) => <header className="shrink-0 border-b bg-white px-2 py-2 shadow-sm" data-testid="geo-map-toolbar">
+  providerConfigured, compare, setCompare, backfilling, onBackfill, onReview, onPersonSelect, onEditSectors, onPresent,
+}) => <header className="relative z-40 shrink-0 overflow-visible border-b bg-white px-2 py-2 shadow-sm" data-testid="geo-map-toolbar">
   <div className="flex flex-wrap items-center gap-2">
     <div className="flex shrink-0 items-center gap-2 pr-1"><div className="flex h-9 w-9 items-center justify-center bg-slate-950 text-white"><MapPin className="h-5 w-5" /></div><div className="hidden xl:block"><h1 className="font-['Spectral'] text-xl font-semibold leading-none">Mapa 360</h1><p className="mt-1 text-[10px] uppercase text-amber-700">Columbus · 12 subzonas</p></div></div>
     <Tabs value={kind} onValueChange={setKind}><TabsList className="h-9 bg-slate-100" data-testid="geo-map-tabs"><TabsTrigger value="people" className="h-8 px-3" data-testid="geo-people-tab"><Users className="mr-1.5 h-3.5 w-3.5" />Personas</TabsTrigger><TabsTrigger value="cells" className="h-8 px-3" data-testid="geo-cells-tab"><Layers3 className="mr-1.5 h-3.5 w-3.5" />Células</TabsTrigger></TabsList></Tabs>
@@ -20,6 +20,8 @@ export const GeoMapToolbar = ({
     <div className="hidden shrink-0 items-center gap-1.5 2xl:flex" data-testid="geo-summary-compact"><span className="border px-2 py-1 text-xs"><b>{summary.people_total || 0}</b> personas</span><span className="border px-2 py-1 text-xs"><b>{summary.front_groups_total || 0}</b> grupos</span><span className="border px-2 py-1 text-xs"><b>{summary.cells_total || 0}</b> células</span></div>
     <Popover><PopoverTrigger asChild><Button variant="outline" size="sm" className="h-9" data-testid="open-geo-filters"><Filter className="h-4 w-4" /><span className="hidden lg:inline">Filtros</span>{countFilters(filters) > 0 && <span className="bg-amber-600 px-1.5 text-[10px] text-white">{countFilters(filters)}</span>}</Button></PopoverTrigger><PopoverContent align="end" className="w-[min(92vw,720px)] bg-white p-4"><GeoFilters filters={filters} setFilters={setFilters} catalog={catalog} /></PopoverContent></Popover>
     <Button variant={compare ? 'default' : 'outline'} size="sm" className="h-9" onClick={() => setCompare((value) => !value)} data-testid="toggle-geo-comparison"><Layers3 className="h-4 w-4" /><span className="hidden 2xl:inline">Comparar</span></Button>
+    <Button variant="outline" size="sm" className="h-9 border-slate-900 text-slate-900" onClick={onPresent} data-testid="open-geo-presentation"><Presentation className="h-4 w-4" /><span className="hidden xl:inline">Presentar</span></Button>
+    {canManage && <Button variant="outline" size="sm" className="h-9" onClick={onEditSectors} data-testid="open-geo-sector-editor"><Edit3 className="h-4 w-4" /><span className="hidden xl:inline">Sectores</span></Button>}
     {canManage && <Button variant="outline" size="sm" className="h-9" onClick={onBackfill} disabled={backfilling || !providerConfigured} data-testid="geo-backfill-button"><RefreshCw className={`h-4 w-4 ${backfilling ? 'animate-spin' : ''}`} /><span className="hidden 2xl:inline">Geocodificar</span></Button>}
     {canManage && <Button variant="outline" size="sm" className="h-9" onClick={onReview} data-testid="open-geo-review-button"><CircleAlert className="h-4 w-4" /><span className="hidden xl:inline">Verificar</span>{summary.review_total > 0 && <span className="text-xs">{summary.review_total}</span>}</Button>}
   </div>

@@ -1,15 +1,20 @@
 """Mapa 360: endpoints agregados, precisos y de verificación manual."""
 from datetime import datetime, timedelta, timezone
 from typing import Literal, Optional
+from uuid import uuid4
 
 from bson import ObjectId
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
+from pymongo import ReturnDocument
 
 from access_control import GEO_MANAGE_LOCATIONS, GEO_VIEW_AGGREGATE, GEO_VIEW_PRECISE, has_capability, is_global_pastoral_authority
-from geo_queries import aggregate_features, cell_features, enrich_coverage, front_group_centroid_features, geographic_summary, person_features, search_person_locations
+from geo_address import address_completeness_reasons, normalize_address_document
+from geo_queries import aggregate_features, cell_features, enrich_coverage, front_group_centroid_features, geographic_summary, household_features, person_features, search_person_locations
 from geo_provider import geocoding_is_configured, geocoding_providers_status
 from geo_service import CHURCH_ADDRESS, CHURCH_LAT, CHURCH_LNG, archive_location, enqueue_backfill, enqueue_geo_job, geographic_classification, now_utc, process_geo_job, process_geo_jobs, subzones_geojson, zones_geojson
+from geo_sector_service import point_in_polygon, reassign_sector_memberships, sector_assignment_fields, validate_polygon
+from process_engine import access_person_ids
 from server import db, get_current_user
 
 
@@ -56,6 +61,81 @@ class ManualLocation(BaseModel):
     reason: str = Field(min_length=3, max_length=1000)
 
 
+class SectorCreate(BaseModel):
+    zone_id: Literal["north", "east", "south", "west"]
+    name: Optional[str] = Field(default=None, max_length=120)
+    description: Optional[str] = Field(default=None, max_length=1000)
+    color: str = Field(default="#3B82F6", pattern=r"^#[0-9A-Fa-f]{6}$")
+    geometry: dict
+    allow_overlap: bool = False
+
+
+class SectorUpdate(BaseModel):
+    zone_id: Optional[Literal["north", "east", "south", "west"]] = None
+    name: Optional[str] = Field(default=None, min_length=2, max_length=120)
+    description: Optional[str] = Field(default=None, max_length=1000)
+    color: Optional[str] = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
+    geometry: Optional[dict] = None
+    status: Optional[Literal["active", "inactive"]] = None
+    allow_overlap: bool = False
+
+
+class SectorStats(BaseModel):
+    people_count: int = 0
+    households_count: int = 0
+    leaders_count: int = 0
+    cells_count: int = 0
+    suppressed: bool = False
+
+
+class SectorResponse(BaseModel):
+    sector_id: str
+    zone_id: str
+    zone_number: int
+    order: int
+    name: str
+    description: Optional[str] = None
+    color: str
+    geometry: dict
+    status: str
+    created_at: str
+    updated_at: str
+    created_by: str
+    updated_by: str
+    archived_at: Optional[str] = None
+    archived_by: Optional[str] = None
+    stats: SectorStats = Field(default_factory=SectorStats)
+
+
+class SectorListResponse(BaseModel):
+    items: list[SectorResponse]
+    total: int
+    privacy: str
+
+
+class GeocodingAuditIssue(BaseModel):
+    address_id: str
+    person_id: Optional[str] = None
+    reasons: list[str]
+    provider: Optional[str] = None
+    verification_status: Optional[str] = None
+    confidence_score: Optional[float] = None
+    accuracy: Optional[str] = None
+    sector_id: Optional[str] = None
+
+
+class GeocodingAuditResponse(BaseModel):
+    total_addresses: int
+    complete_addresses: int
+    verified_coordinates: int
+    review_required: int
+    low_confidence: int
+    without_sector: int
+    providers: dict
+    issues: list[GeocodingAuditIssue]
+    audited_at: str
+
+
 def require_geo(capability: str):
     def dependency(current_user: dict = Depends(get_current_user)) -> dict:
         if not is_global_pastoral_authority(current_user) and not has_capability(current_user, capability):
@@ -74,6 +154,71 @@ def require_any_geo(current_user: dict = Depends(get_current_user)) -> dict:
     if not is_global_pastoral_authority(current_user) and not allowed:
         raise HTTPException(status_code=403, detail="Sin permiso para abrir Mapa 360")
     return current_user
+
+
+ZONE_NUMBERS = {"north": 1, "east": 2, "south": 3, "west": 4}
+
+
+def _iso(value) -> str:
+    if isinstance(value, str):
+        return value
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.isoformat()
+
+
+def _sector_item(doc: dict, stats: Optional[dict] = None) -> dict:
+    return {
+        "sector_id": doc["sector_id"], "zone_id": doc["zone_id"], "zone_number": doc["zone_number"],
+        "order": doc["order"], "name": doc["name"], "description": doc.get("description"),
+        "color": doc["color"], "geometry": doc["geometry"], "status": doc["status"],
+        "created_at": _iso(doc["created_at"]), "updated_at": _iso(doc["updated_at"]),
+        "created_by": doc["created_by"], "updated_by": doc["updated_by"],
+        "archived_at": _iso(doc["archived_at"]) if doc.get("archived_at") else None,
+        "archived_by": doc.get("archived_by"), "stats": stats or {},
+    }
+
+
+async def _overlapping_sectors(zone_id: str, geometry: dict, exclude_sector_id: Optional[str] = None) -> list[dict]:
+    query = {"zone_id": zone_id, "status": "active", "geometry": {"$geoIntersects": {"$geometry": geometry}}}
+    if exclude_sector_id:
+        query["sector_id"] = {"$ne": exclude_sector_id}
+    return await db.geo_sectors.find(query, {"_id": 0, "sector_id": 1, "name": 1, "order": 1}).sort("order", 1).to_list(100)
+
+
+async def _sector_statistics(sectors: list[dict], current_user: dict, precise: bool) -> dict[str, dict]:
+    people = await person_features(db, current_user, {})
+    households = await household_features(db, current_user, people)
+    cells = await cell_features(db, current_user, {})
+    person_ids = [item["properties"]["entity_id"] for item in people]
+    leadership_docs = await db.person_leadership_status.find(
+        {"person_id": {"$in": person_ids}, "status": {"$nin": ["inactive", "revoked", "archived"]}},
+        {"_id": 0, "person_id": 1},
+    ).to_list(50000) if person_ids else []
+    leader_ids = {item["person_id"] for item in leadership_docs}
+    output = {}
+    for sector in sectors:
+        geometry = sector["geometry"]
+        sector_people = [item for item in people if point_in_polygon(*item["geometry"]["coordinates"], geometry)]
+        sector_households = [item for item in households if point_in_polygon(*item["geometry"]["coordinates"], geometry)]
+        sector_cells = [item for item in cells if point_in_polygon(*item["geometry"]["coordinates"], geometry)]
+        stats = {
+            "people_count": len(sector_people), "households_count": len(sector_households),
+            "leaders_count": sum(item["properties"]["entity_id"] in leader_ids for item in sector_people),
+            "cells_count": len(sector_cells), "suppressed": False,
+        }
+        if not precise and stats["people_count"] < 3:
+            stats.update({"people_count": 0, "households_count": 0, "leaders_count": 0, "suppressed": True})
+        output[sector["sector_id"]] = stats
+    return output
+
+
+async def _audit_sector_change(current_user: dict, action: str, sector_id: str, details: Optional[dict] = None) -> None:
+    await db.geo_audit_log.insert_one({
+        "audit_id": f"{action}:{sector_id}:{now_utc().timestamp()}", "actor_user_id": current_user["user_id"],
+        "action": action, "entity_type": "geo_sector", "entity_id": sector_id,
+        "details": details or {}, "occurred_at": now_utc(),
+    })
 
 
 def _filters(categories, stage, zone, subzone, front_group_id, cell_id, verification_status, period_start, period_end):
@@ -113,6 +258,149 @@ async def geo_summary(current_user: dict = Depends(require_any_geo)):
     return await geographic_summary(db, current_user)
 
 
+@router.get("/sectors", response_model=SectorListResponse)
+async def list_sectors(
+    zone_id: Optional[Literal["north", "east", "south", "west"]] = None,
+    include_inactive: bool = False,
+    current_user: dict = Depends(require_any_geo),
+):
+    can_manage = is_global_pastoral_authority(current_user) or has_capability(current_user, GEO_MANAGE_LOCATIONS)
+    query = {}
+    if zone_id: query["zone_id"] = zone_id
+    if not include_inactive or not can_manage: query["status"] = "active"
+    sectors = await db.geo_sectors.find(query, {"_id": 0}).sort([("zone_number", 1), ("order", 1)]).to_list(1000)
+    precise = is_global_pastoral_authority(current_user) or has_capability(current_user, GEO_VIEW_PRECISE)
+    stats = await _sector_statistics(sectors, current_user, precise)
+    return {"items": [_sector_item(item, stats.get(item["sector_id"])) for item in sectors], "total": len(sectors), "privacy": "precise" if precise else "aggregate"}
+
+
+@router.get("/sectors/locate", response_model=dict)
+async def locate_sector(
+    latitude: float = Query(ge=-90, le=90), longitude: float = Query(ge=-180, le=180),
+    current_user: dict = Depends(require_any_geo),
+):
+    classification = geographic_classification(latitude, longitude)
+    assignment = await sector_assignment_fields(db, latitude, longitude, classification["zone_key"])
+    return {"latitude": latitude, "longitude": longitude, **classification, **assignment}
+
+
+@router.get("/sectors/{sector_id}", response_model=SectorResponse)
+async def get_sector(sector_id: str, current_user: dict = Depends(require_any_geo)):
+    sector = await db.geo_sectors.find_one({"sector_id": sector_id, "status": {"$ne": "archived"}}, {"_id": 0})
+    if not sector: raise HTTPException(status_code=404, detail="Sector no encontrado")
+    precise = is_global_pastoral_authority(current_user) or has_capability(current_user, GEO_VIEW_PRECISE)
+    stats = await _sector_statistics([sector], current_user, precise)
+    return _sector_item(sector, stats[sector_id])
+
+
+@router.post("/sectors", response_model=SectorResponse, status_code=status.HTTP_201_CREATED)
+async def create_sector(payload: SectorCreate, current_user: dict = Depends(require_manage)):
+    try: geometry = validate_polygon(payload.geometry)
+    except ValueError as error: raise HTTPException(status_code=422, detail=str(error)) from error
+    conflicts = await _overlapping_sectors(payload.zone_id, geometry)
+    if conflicts and not payload.allow_overlap:
+        raise HTTPException(status_code=409, detail={"code": "SECTOR_OVERLAP", "message": "El polígono se superpone con sectores activos de la misma Zona", "conflicts": conflicts})
+    counter = await db.geo_sector_counters.find_one_and_update(
+        {"_id": payload.zone_id}, {"$inc": {"sequence": 1}, "$setOnInsert": {"created_at": now_utc()}},
+        upsert=True, return_document=ReturnDocument.AFTER,
+    )
+    order = counter["sequence"]; now = now_utc(); sector_id = str(uuid4())
+    doc = {
+        "sector_id": sector_id, "zone_id": payload.zone_id, "zone_number": ZONE_NUMBERS[payload.zone_id],
+        "order": order, "name": (payload.name or f"Sector {ZONE_NUMBERS[payload.zone_id]}-{order}").strip(),
+        "description": (payload.description or "").strip() or None, "color": payload.color.upper(),
+        "geometry": geometry, "status": "active", "created_at": now, "updated_at": now,
+        "created_by": current_user["user_id"], "updated_by": current_user["user_id"],
+    }
+    await db.geo_sectors.insert_one(doc)
+    await reassign_sector_memberships(db)
+    await _audit_sector_change(current_user, "sector_created", sector_id, {"zone_id": payload.zone_id, "overlap_authorized": bool(conflicts)})
+    return _sector_item(doc)
+
+
+@router.put("/sectors/{sector_id}", response_model=SectorResponse)
+async def update_sector(sector_id: str, payload: SectorUpdate, current_user: dict = Depends(require_manage)):
+    existing = await db.geo_sectors.find_one({"sector_id": sector_id, "status": {"$ne": "archived"}}, {"_id": 0})
+    if not existing: raise HTTPException(status_code=404, detail="Sector no encontrado")
+    update = payload.model_dump(exclude_none=True, exclude={"allow_overlap"})
+    zone_id = update.get("zone_id", existing["zone_id"])
+    geometry = existing["geometry"]
+    if "geometry" in update:
+        try: geometry = validate_polygon(update["geometry"])
+        except ValueError as error: raise HTTPException(status_code=422, detail=str(error)) from error
+        update["geometry"] = geometry
+    conflicts = await _overlapping_sectors(zone_id, geometry, sector_id)
+    if conflicts and update.get("status", existing["status"]) == "active" and not payload.allow_overlap:
+        raise HTTPException(status_code=409, detail={"code": "SECTOR_OVERLAP", "message": "El polígono se superpone con sectores activos de la misma Zona", "conflicts": conflicts})
+    if zone_id != existing["zone_id"]:
+        counter = await db.geo_sector_counters.find_one_and_update(
+            {"_id": zone_id}, {"$inc": {"sequence": 1}, "$setOnInsert": {"created_at": now_utc()}},
+            upsert=True, return_document=ReturnDocument.AFTER,
+        )
+        update.update({"zone_number": ZONE_NUMBERS[zone_id], "order": counter["sequence"]})
+    if "name" in update: update["name"] = update["name"].strip()
+    if "description" in update: update["description"] = update["description"].strip() or None
+    if "color" in update: update["color"] = update["color"].upper()
+    update.update({"updated_at": now_utc(), "updated_by": current_user["user_id"]})
+    result = await db.geo_sectors.find_one_and_update({"sector_id": sector_id}, {"$set": update}, return_document=ReturnDocument.AFTER, projection={"_id": 0})
+    await reassign_sector_memberships(db)
+    await _audit_sector_change(current_user, "sector_updated", sector_id, {"changed_fields": sorted(update), "overlap_authorized": bool(conflicts)})
+    return _sector_item(result)
+
+
+@router.delete("/sectors/{sector_id}", response_model=SectorResponse)
+async def deactivate_sector(sector_id: str, current_user: dict = Depends(require_manage)):
+    now = now_utc()
+    result = await db.geo_sectors.find_one_and_update(
+        {"sector_id": sector_id, "status": {"$ne": "archived"}},
+        {"$set": {"status": "inactive", "archived_at": now, "archived_by": current_user["user_id"], "updated_at": now, "updated_by": current_user["user_id"]}},
+        return_document=ReturnDocument.AFTER, projection={"_id": 0},
+    )
+    if not result: raise HTTPException(status_code=404, detail="Sector no encontrado")
+    await reassign_sector_memberships(db)
+    await _audit_sector_change(current_user, "sector_deactivated", sector_id)
+    return _sector_item(result)
+
+
+@router.get("/geocoding-audit", response_model=GeocodingAuditResponse)
+async def geocoding_audit(current_user: dict = Depends(require_manage)):
+    allowed = await access_person_ids(db, current_user)
+    query = {} if allowed is None else {"person_id": {"$in": list(allowed)}}
+    docs = await db.person_addresses.find(query, {
+        "_id": 1, "person_id": 1, "linea1": 1, "linea2": 1, "ciudad": 1, "provincia": 1, "codigo_postal": 1, "pais": 1,
+        "location": 1, "latitude": 1, "longitude": 1, "geocoding_provider": 1, "geocoding_confidence_score": 1,
+        "geocoding_accuracy": 1, "verification_status": 1, "sector_id": 1,
+    }).to_list(50000)
+    active_sector_count = await db.geo_sectors.count_documents({"status": "active"})
+    issues = []; providers = {}; complete = verified = low_confidence = without_sector = 0
+    broad_accuracy = {"place", "county", "state", "street_center", "intersection"}
+    for doc in docs:
+        reasons = address_completeness_reasons(doc); normalized = normalize_address_document(doc)
+        if normalized["address_complete"]: complete += 1
+        location = doc.get("location") or {}; coordinates = location.get("coordinates") or []
+        valid_coordinates = location.get("type") == "Point" and len(coordinates) == 2 and -180 <= coordinates[0] <= 180 and -90 <= coordinates[1] <= 90
+        if not valid_coordinates: reasons.append("coordinates_missing_or_invalid")
+        score = doc.get("geocoding_confidence_score")
+        accuracy = str(doc.get("geocoding_accuracy") or "unknown").lower()
+        if score is not None and score < 0.8: reasons.append("confidence_below_0_8"); low_confidence += 1
+        if accuracy in broad_accuracy: reasons.append(f"accuracy_type_{accuracy}")
+        if doc.get("verification_status") not in {"verified", "manual_verified"}: reasons.append("verification_required")
+        if valid_coordinates and doc.get("verification_status") in {"verified", "manual_verified"} and not reasons: verified += 1
+        if active_sector_count and valid_coordinates and not doc.get("sector_id"): reasons.append("sector_unassigned"); without_sector += 1
+        provider = doc.get("geocoding_provider") or "unknown"; providers[provider] = providers.get(provider, 0) + 1
+        if reasons:
+            issues.append({
+                "address_id": str(doc["_id"]), "person_id": doc.get("person_id"), "reasons": sorted(set(reasons)),
+                "provider": doc.get("geocoding_provider"), "verification_status": doc.get("verification_status"),
+                "confidence_score": score, "accuracy": doc.get("geocoding_accuracy"), "sector_id": doc.get("sector_id"),
+            })
+    return {
+        "total_addresses": len(docs), "complete_addresses": complete, "verified_coordinates": verified,
+        "review_required": len(issues), "low_confidence": low_confidence, "without_sector": without_sector,
+        "providers": providers, "issues": issues, "audited_at": now_utc().isoformat(),
+    }
+
+
 @router.get("/aggregate", response_model=FeatureCollectionResponse)
 async def aggregate_map(
     entity_kind: Literal["people", "cells"] = "people", categories: Optional[str] = None,
@@ -138,7 +426,8 @@ async def precise_map(
 ):
     filters = _filters(categories, stage, zone, subzone, front_group_id, cell_id, verification_status, period_start, period_end)
     if entity_kind == "people":
-        features = await person_features(db, current_user, filters)
+        people = await person_features(db, current_user, filters)
+        features = await household_features(db, current_user, people)
         features.extend(await front_group_centroid_features(db, current_user, filters))
     else:
         features = await cell_features(db, current_user, filters)
@@ -187,8 +476,11 @@ async def review_queue(current_user: dict = Depends(require_manage)):
 
 
 @router.post("/backfill", status_code=status.HTTP_202_ACCEPTED, response_model=dict)
-async def backfill_locations(background_tasks: BackgroundTasks, limit: int = Query(default=100, ge=1, le=1000), current_user: dict = Depends(require_manage)):
-    job_ids = await enqueue_backfill(db, current_user["user_id"], limit)
+async def backfill_locations(
+    background_tasks: BackgroundTasks, limit: int = Query(default=100, ge=1, le=1000),
+    include_verified: bool = Query(default=False), current_user: dict = Depends(require_manage),
+):
+    job_ids = await enqueue_backfill(db, current_user["user_id"], limit, include_verified=include_verified)
     background_tasks.add_task(process_geo_jobs, db, job_ids)
     return {"queued": len(job_ids), "status": "processing"}
 
@@ -218,6 +510,8 @@ async def resolve_location(review_id: str, payload: ManualLocation, current_user
     await archive_location(db, review["entity_type"], review["entity_id"], entity, current_user["user_id"])
     now = now_utc()
     classification = geographic_classification(payload.latitude, payload.longitude)
+    sector_fields = await sector_assignment_fields(db, payload.latitude, payload.longitude, classification["zone_key"])
+    normalized_fields = normalize_address_document(entity) if review["entity_type"] == "person_address" else {}
     await collection.update_one(query, {"$set": {
         "location": {"type": "Point", "coordinates": [payload.longitude, payload.latitude]},
         "latitude": payload.latitude, "longitude": payload.longitude, **classification,
@@ -225,6 +519,7 @@ async def resolve_location(review_id: str, payload: ManualLocation, current_user
         "geocoding_accuracy": "manual", "geocoding_confidence": "verified", "geocoding_status": "geocoded",
         "verification_status": "manual_verified", "coordinates_stale": False, "manual_override": True,
         "manual_override_reason": payload.reason, "manual_override_by_user_id": current_user["user_id"],
+        **normalized_fields, **sector_fields,
     }})
     await db.geo_review_queue.update_one({"review_id": review_id}, {"$set": {"status": "resolved", "resolution": "manual", "resolved_at": now, "resolved_by_user_id": current_user["user_id"]}})
     await db.geo_audit_log.insert_one({"audit_id": f"resolve:{review_id}:{now.timestamp()}", "actor_user_id": current_user["user_id"], "action": "manual_location_resolved", "entity_type": review["entity_type"], "entity_id": review["entity_id"], "reason": payload.reason, "occurred_at": now})

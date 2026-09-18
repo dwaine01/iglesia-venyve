@@ -551,9 +551,29 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - Pruebas finales: backend **157 passed, 3 skipped**, frontend **22/22**, build PASS, iteration 26 backend 19/19 y UI desktop/mobile PASS; dos selecciones móviles consecutivas confirmaron búsqueda→halo→detalle.
 - Variables backend necesarias en producción: `GEOCODIO_API_URL`, `GEOCODIO_API_KEY`, `GEOCODIO_TIMEOUT_SECONDS`; nunca exponerlas como `REACT_APP_*`.
 
+### Mapa Territorial 360 — sectores, hogares y Presentación 14×7 — IMPLEMENTADO 2026‑09‑18
+
+- Añadida normalización conservadora de direcciones físicas en `geo_address.py`: sufijos equivalentes (`Street`/`St`), mayúsculas y puntuación convergen; apartamento, suite, piso y unidad permanecen como hogares distintos.
+- La vista precisa ya no emite un pin por Persona: agrupa por `normalized_address_key`, integra `household_memberships` cuando existe un único domicilio inequívoco y devuelve únicamente residentes permitidos por el scope actual.
+- Geocodio mantiene el orden aprobado Census → Geocodio y exige dirección completa, ciudad/estado/ZIP coincidentes, score mínimo 0.8 y `accuracy_type` no amplio. Los resultados dudosos quedan en revisión con razones explícitas.
+- Nuevo endpoint administrativo `GET /api/geo/geocoding-audit` para inventariar completitud, coordenadas, proveedor, confidence/accuracy, revisiones y asignación territorial sin exponer la API key.
+- Nuevo Core `geo_sectors`: `sector_id`, `zone_id`, `zone_number`, `order`, nombre, notas, color, Polygon GeoJSON, estado, timestamps, autores y campos de archivo lógico.
+- CRUD sectorial: `GET|POST /api/geo/sectors`, `GET|PUT|DELETE /api/geo/sectors/{sector_id}` y `GET /api/geo/sectors/locate`. DELETE desactiva y conserva auditoría.
+- Validaciones: anillo cerrado, tres vértices distintos, rango geográfico, área no cero, sin autocruces y conflicto 409 ante superposición activa en la misma Zona; una excepción requiere confirmación explícita y queda auditada.
+- Índices MongoDB activos: `sector_id_1` unique, `zone_id_1_order_1` unique, `geometry_2dsphere`, `status_1_zone_id_1_order_1`; además, índices de `normalized_address_key` y `sector_id` en ubicaciones.
+- Point-in-polygon asigna `sector_id`, nombre y orden al geocodificar o corregir manualmente; crear, editar o desactivar sectores recalcula ubicaciones existentes. Las estadísticas de Personas, hogares, líderes y células se calculan dinámicamente, no se copian al Sector.
+- Editor administrativo no modal: crear → dibujar sobre calles → arrastrar vértices → revisar → nombrar → guardar; permite editar, borrar puntos, desactivar y confirmar solapamientos. Snap-to-roads permanece opcional y no bloqueante.
+- Presentación independiente con superficie desktop exacta 2:1, navegación Zona → Sector → Calles → Hogares, historial atrás/adelante, pantalla completa, métricas dinámicas, calles OSM y pines DOM de hogar con badge numérico.
+- Corregida búsqueda desktop/móvil mediante resultados portaleados sobre MapLibre; selección abre halo y panel de hogar/persona de forma determinista. El editor dejó de usar el overlay modal que impedía clicar calles.
+- Certificación final aislada: backend geo **26/26 PASS**, frontend Jest **22/22 PASS**, build producción PASS; recorridos reales de UI PASS en 1920×800 y 390×844, sin overflow; stage 2:1 verificado y pin agrupado con badge `2` visible.
+- Limpieza final: 0 usuarios/personas/sectores QA residuales. En esta base del fork existen actualmente **0 Personas, 0 direcciones y 0 Households reales**; por tanto, no se inventaron direcciones y la validación real masiva solicitada queda pendiente de conectar/cargar los datos autorizados. Census y Geocodio sí constan configurados.
+- Archivos principales: backend `geo_address.py`, `geo_sector_service.py`, `geo_provider.py`, `geo_service.py`, `geo_queries.py`, `geo_routes.py`; frontend `GeoMapCanvas.js`, `GeoSectorEditorDrawer.js`, `GeoPersonSearch.js`, `Presentation2To1Shell.js`, `GeoMapsPage.js`, `GeoMapToolbar.js`, `GeoDetailPanel.js`, `geoGeometry.js`, `App.css`; pruebas `test_geo_maps.py`, `test_iteration27_geo_public_manage_contract.py`, `ui_geo_fixture.py`.
+
 ### P1/P2 — siguientes pasos y backlog
 
 - **P1 — Aceptación operativa:** validar Consolidación v2 con responsables reales, asignar `front_groups.view`/`leadership.view` y capacidades de gestión, y crear el primer Grupo Frontal de producción.
+- **P0 — Validación territorial real:** conectar o cargar el dataset autorizado de Personas/direcciones/Households en este entorno y ejecutar auditoría + revalidación total; actualmente el dataset real está vacío.
+- **P1 — Mapa 360:** validar sectores dibujados por administradores sobre límites territoriales reales y decidir si Overpass snap-to-roads aporta precisión suficiente.
 - **P1 — Aceptación funcional del usuario:** revisar Mega‑Bloque G ya certificado con casos reales de la oficina de la iglesia y recopilar ajustes de política/terminología.
 - **P1 — Pushpay:** activar OAuth/sandbox, sincronización idempotente y mapeo contable únicamente después de recibir credenciales reales.
 - **P2 — Finanzas:** pulido visual y desminificación de páginas financieras según feedback, sin alterar contratos verificados.
@@ -563,11 +583,11 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 
 ## 12. Próximas tareas ejecutables
 
-1. Publicar la corrección RBAC/UX y ejecutar aceptación real: Liderazgo, Grupos Frontales, tareas inmediatas, cuatro puertas, Fiesta/firma, transferencia, Retiro, Discipulado y promoción scoped.
-2. Crear Grupos Frontales reales, asignar líderes/equipo/mentores y delegar capabilities desde Núcleo sin otorgar privilegios administrativos indebidos.
-3. Entregar Documentos Oficiales de Membresía y Mega‑Bloque G al usuario para aceptación funcional con datos reales autorizados.
-4. Mantener Pushpay **MOCKED/BLOCKED** hasta recibir las credenciales sandbox.
-5. Al recibir credenciales, integrar Pushpay mediante playbook verificado y continuar con Mega‑Bloque E después de la aceptación funcional.
+1. Conectar datos reales autorizados al entorno y ejecutar `geocoding-audit`, revalidación Census→Geocodio, agrupación Household y asignación point-in-polygon sin introducir fixtures QA.
+2. Dibujar y aprobar los sectores territoriales reales de cada Zona en el editor administrativo; validar solapamientos y estadísticas con responsables autorizados.
+3. Ejecutar aceptación física del Modo Presentación en la pantalla 14×7 y ajustar tamaños únicamente con feedback de distancia real.
+4. Publicar la corrección RBAC/UX y ejecutar aceptación real de Liderazgo, Grupos Frontales y procesos scoped.
+5. Mantener Pushpay **MOCKED/BLOCKED** hasta recibir las credenciales sandbox.
 
 ## 13. Restricciones vigentes
 
