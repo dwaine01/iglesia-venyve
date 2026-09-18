@@ -272,9 +272,9 @@ export default function AppLayout() {
       {mobileOpen && <div className="fixed inset-0 z-50 lg:hidden" data-testid="mobile-navigation-overlay"><button type="button" className="absolute inset-0 bg-black/45" onClick={() => setMobileOpen(false)} aria-label="Cerrar menú" data-testid="close-mobile-navigation-backdrop" /><aside id="mobile-navigation-sheet" className="relative h-full w-[85vw] max-w-xs bg-white shadow-2xl" data-testid="mobile-navigation-sheet" aria-label="Menú de navegación"><SidebarContent onClose={() => setMobileOpen(false)} testIdPrefix="mobile-" /></aside></div>}
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto">
+      <main className="flex flex-1 flex-col overflow-hidden">
         {/* Top Bar: hamburger + breadcrumb + logo (mobile) */}
-        <div className="sticky top-0 z-20 bg-card/95 backdrop-blur-md border-b border-border">
+        <div className="shrink-0 z-20 bg-card/95 backdrop-blur-md border-b border-border">
           <div className="flex items-center gap-2 px-3 py-2.5 lg:px-6 lg:py-3">
             {/* Hamburger - solo mobile */}
             <Button
@@ -320,7 +320,7 @@ export default function AppLayout() {
           </div>
         </div>
 
-        <Outlet />
+        <div className="flex-1 overflow-y-auto"><Outlet /></div>
       </main>
     </div>
   );
