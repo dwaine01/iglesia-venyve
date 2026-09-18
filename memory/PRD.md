@@ -528,6 +528,9 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - Runtime vendorizado PASS: `/vendor/maplibre-gl.js` HTTP 200 (803,086 bytes), `window.maplibregl.Map` disponible, canvas real en `/mapas`, escritorio 1920×800 y móvil 390×844 sin overflow.
 - `.env` permanece intencionalmente excluido de la imagen; producción debe inyectar variables desde su administrador de entorno. No se modificó `.dockerignore`.
 - Variables públicas para habilitar toda la función, sin API key: backend `CENSUS_GEOCODER_URL=https://geocoding.geo.census.gov/geocoder`, `CENSUS_GEOCODER_BENCHMARK=Public_AR_Current`; frontend `REACT_APP_MAP_TILE_URL=https://tile.openstreetmap.org/{z}/{x}/{y}.png`.
+- RCA producción confirmado en el bundle de `panel.iglesiavenyve.org`: Railway tenía la variable frontend, pero `Dockerfile.frontend` no la declaraba como build argument y CRA compilaba `REACT_APP_MAP_TILE_URL=undefined`.
+- `Dockerfile.frontend` ahora declara `ARG REACT_APP_MAP_TILE_URL` y `ENV REACT_APP_MAP_TILE_URL=$REACT_APP_MAP_TILE_URL` antes de `RUN yarn build`.
+- Verificación exacta PASS: contrato/orden del Dockerfile validado, build CRA ejecutado con ambos build args y URL OSM encontrada dentro del chunk generado; auditoría de despliegue sin bloqueos.
 
 ### P1/P2 — siguientes pasos y backlog
 
