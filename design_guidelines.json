@@ -1,102 +1,169 @@
 {
-  "project_name": "VEN Y VE 360 - Persona a Miembro y Líder",
-  "archetype": "ORGANIC_SWISS_HYBRID",
-  "theme": "light_default_with_dark_toggle",
-  "typography": {
-    "headings_font": "Spectral, Georgia, serif",
-    "body_font": "Inter, system-ui, sans-serif",
-    "mono_font": "JetBrains Mono, monospace",
-    "scale": {
-      "h1": "text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight font-serif",
-      "h2": "text-2xl sm:text-3xl font-semibold tracking-tight font-serif",
-      "h3": "text-xl sm:text-2xl font-medium tracking-tight font-serif",
-      "h4": "text-lg font-medium text-slate-800",
-      "body": "text-sm sm:text-base leading-relaxed text-slate-600",
-      "small": "text-xs text-slate-500 font-medium",
-      "overline": "text-xs font-semibold tracking-widest uppercase text-amber-700"
+  "system_info": {
+    "app_name": "Ven y Ve 360",
+    "module": "Mapa 360 & Geocodificación Privada / Comercial",
+    "environment": "React JS (ES6/JSX), Tailwind CSS, Lucide React, MapLibre GL JS, Shadcn UI",
+    "church_anchor_address": "640 DEMOREST RD COLUMBUS OHIO 43204",
+    "file_type_extension": ".js"
+  },
+  "brand_identity": {
+    "style_archetype": "Swiss Institutional & High-Contrast Ministerial SaaS",
+    "emotional_tone": "Autoridad ministerial, privacidad residencial estricta, precision analitica pastoral",
+    "primary_colors": {
+      "navy_dark": "#0B1428",
+      "navy_card": "#0F1A33",
+      "gold_accent": "#C8A951",
+      "gold_hover": "#D4B871",
+      "emerald_status": "#10B981",
+      "warning_amber": "#F59E0B",
+      "danger_red": "#EF4444",
+      "slate_light_bg": "#F8FAFC",
+      "border_hairline": "rgba(200, 169, 81, 0.25)"
+    },
+    "typography": {
+      "headings_font": "Spectral, serif",
+      "body_font": "IBM Plex Sans, sans-serif",
+      "rules": [
+        "Usar Spectral solo para titulos principales H1, H2, H3 y tarjetas de resumen ministerial.",
+        "Usar IBM Plex Sans para tablas, filtros, datos de geocodificacion, controles de mapa e inputs.",
+        "Prohibido usar Inter o Space Grotesk para titulos principales.",
+        "Todos los labels e indicadores numericos deben ser legibles y con excelente contraste."
+      ]
     }
   },
-  "colors": {
-    "palette": {
-      "primary": "#0F172A",
-      "primary_blue": "#1E3A8A",
-      "accent_gold": "#D97706",
-      "accent_gold_light": "#FEF3C7",
-      "success_green": "#059669",
-      "success_green_light": "#D1FAE5",
-      "warning_amber": "#D97706",
-      "danger_red": "#DC2626",
-      "surface_slate": "#F8FAFC",
-      "border_subtle": "#E2E8F0"
+  "rbac_privacy_architecture": {
+    "capabilities": {
+      "geo_view_aggregate": "Permite visualizar mapas de calor (heatmaps), metricas por cuadrantes (Norte, Sur, Este, Oeste), densidad por sectores y clustering de miembros sin revelar la direccion exacta ni la identidad.",
+      "geo_view_precise": "Permite abrir pines individuales de personas y celulas, ver nombres, numero de contacto, direccion residencial exacta y ficha 360.",
+      "geo_manage_locations": "Permite editar manualmente la ubicacion de un pin, resolver la cola de 'Ubicacion necesita verificacion', forzar re-geocodificacion y autorizar cambios de coordenadas."
     },
-    "doors": {
-      "oracion_invasion": { "bg": "bg-indigo-50 text-indigo-700 border-indigo-200", "icon": "Flame" },
-      "entrada_directa": { "bg": "bg-blue-50 text-blue-700 border-blue-200", "icon": "Building2" },
-      "entrada_celula": { "bg": "bg-emerald-50 text-emerald-700 border-emerald-200", "icon": "Users" },
-      "seguimiento_posterior": { "bg": "bg-amber-50 text-amber-700 border-amber-200", "icon": "Clock" }
-    },
-    "stages": {
-      "MCD": { "badge": "bg-sky-100 text-sky-800 border-sky-300", "label": "MCD - Mi Cita con Dios" },
-      "NPT": { "badge": "bg-cyan-100 text-cyan-800 border-cyan-300", "label": "NPT - Nuevo Paso con Todos" },
-      "FIESTA": { "badge": "bg-purple-100 text-purple-800 border-purple-300", "label": "Fiesta de Bienvenida (Parada Formal)" },
-      "LBS1": { "badge": "bg-amber-100 text-amber-800 border-amber-300", "label": "LBS 1 - Nivel Básico" },
-      "LBS2": { "badge": "bg-amber-100 text-amber-800 border-amber-300", "label": "LBS 2 - Nivel Intermedio" },
-      "LBS3": { "badge": "bg-amber-100 text-amber-800 border-amber-300", "label": "LBS 3 - Nivel Avanzado" },
-      "RETIRO": { "badge": "bg-emerald-100 text-emerald-800 border-emerald-300", "label": "Retiro Final y Graduación" }
-    }
-  },
-  "visual_enhancers": {
-    "borders": "1px solid #E2E8F0",
-    "shadows": "0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1)",
-    "glassmorphism": "backdrop-blur-md bg-white/80 border border-slate-200/60 shadow-sm",
-    "card_style": "bg-white border border-slate-200 rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow duration-200"
-  },
-  "grids_and_layouts": {
-    "dashboard_grid": "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4",
-    "bento_grid": "grid grid-cols-1 md:grid-cols-3 gap-6",
-    "modal_layout": "space-y-4 max-h-[85vh] overflow-y-auto pr-1"
-  },
-  "file_format_rules": {
-    "react_file_extension": ".js",
-    "use_tsx": false,
-    "note": "All frontend components must be saved with .js file extensions using JSX syntax."
-  },
-  "testing_requirements": {
-    "data_testid_mandatory": true,
-    "convention": "kebab-case role-based (e.g. data-testid=\"promote-leader-submit-button\")",
-    "required_locations": [
-      "All interactive buttons and navigation links",
-      "Form inputs, selects, switches, and textareas",
-      "Status badges and summary indicators",
-      "Table action buttons and rows",
-      "Modal triggers and dialog action buttons"
+    "privacy_rules": [
+      "Nunca exponer coordenadas exactas ni direcciones en endpoints publicos, QRs, certificados ni exportaciones sin la capability geo.view_precise.",
+      "Los mapas de calor y densidades deben calcularse mediante agregacion backend o desenfoque en la vista agregada.",
+      "Toda solicitud de geocodificacion residencial debe pasar por el backend seguro (GeocodingProvider) y nunca directamente desde el cliente web."
     ]
   },
-  "component_structure": {
-    "CoreAccessTable": "/app/frontend/src/components/core/CoreAccessTable.js",
-    "ConsolidationV2Shell": "/app/frontend/src/components/processes/ConsolidationV2Shell.js",
-    "FourDoorsIntakeDialog": "/app/frontend/src/components/processes/FourDoorsIntakeDialog.js",
-    "MentorTransferDialog": "/app/frontend/src/components/processes/MentorTransferDialog.js",
-    "MembershipAcceptanceDialog": "/app/frontend/src/components/membership/MembershipAcceptanceDialog.js",
-    "FrontGroupCatalog": "/app/frontend/src/components/cellular/FrontGroupCatalog.js",
-    "FrontGroupDetailDialog": "/app/frontend/src/components/cellular/FrontGroupDetailDialog.js",
-    "LeadershipPromotionDialog": "/app/frontend/src/components/processes/LeadershipPromotionDialog.js",
-    "Person360ProfileSummary": "/app/frontend/src/components/Profile360Summary.js"
+  "geocoding_backend_architecture": {
+    "provider_interface": "GeocodingProvider (Interfaz desacoplada en backend)",
+    "primary_commercial_provider": "Mapbox Permanent Geocoding API (Permite almacenamiento indefinido de coordenadas lat/lng para analitica residencial)",
+    "visual_map_layer": "MapLibre GL JS + OpenStreetMap tiles (Totalmente desacoplado del proveedor de geocodificacion)",
+    "stored_fields": [
+      "latitude",
+      "longitude",
+      "geocoding_provider",
+      "geocoded_at",
+      "accuracy_confidence",
+      "address_version",
+      "verification_status (VERIFIED | NEEDS_VERIFICATION | MANUAL_CORRECTED | OBSOLETE)"
+    ],
+    "fallback_workflow": "Si la confianza es baja (< 0.75), la direccion es ambigua o no se obtienen resultados, se marca la ubicacion como NEEDS_VERIFICATION y se envia a la cola 'Ubicacion necesita verificacion' para correccion manual por personal con geo.manage_locations."
   },
-  "instructions_to_main_agent": {
-    "priority_0": "Ensure CoreAccessTable & RBAC scoped authorization is intact and patched for Front Group leader scopes and Pastor permissions.",
-    "priority_1": "Implement Consolidated Intake v2 supporting all 4 Entry Doors: Oración e Invasión, Entrada Directa Iglesia, Célula, and Visitor Follow-up queue.",
-    "priority_2": "Build formal Welcome Party (Fiesta de Bienvenida) gate: mandatory mentor qualification evaluation for LBS and historical transfer modal when non-authorized.",
-    "priority_3": "Build explicit Membership Acceptance flow (Carta de Membresía) with authorized verifier, permanent membership code generation, and document issuance trigger.",
-    "priority_4": "Build Front Group (Grupo Frontal) independent structure catalog, scopes, statistics, team history, and process links.",
-    "priority_5": "Build 360 Platform Leadership Promotion modal with configurable criteria check (✓, ⚠, ✕), single-approval by Pastor OR Front Group Leader, without mutating users.role.",
-    "priority_6": "Integrate Retiro completion with Discipleship/Education handoff without purging consolidation log history."
+  "quadrant_system": {
+    "anchor_point": {
+      "address": "640 DEMOREST RD COLUMBUS OHIO 43204",
+      "latitude": 39.9472,
+      "longitude": -83.0882
+    },
+    "quadrants": [
+      {
+        "id": "NORTE",
+        "name": "Cuadrante Norte (Demorest North)",
+        "condition": "lat >= 39.9472"
+      },
+      {
+        "id": "SUR",
+        "name": "Cuadrante Sur (Demorest South)",
+        "condition": "lat < 39.9472"
+      },
+      {
+        "id": "ESTE",
+        "name": "Cuadrante Este (Demorest East)",
+        "condition": "lng >= -83.0882"
+      },
+      {
+        "id": "OESTE",
+        "name": "Cuadrante Oeste (Demorest West)",
+        "condition": "lng < -83.0882"
+      }
+    ]
   },
-  "UNIVERSAL_GUIDELINES_FOR_MAIN_AGENT": [
-    "Do NOT modify users.role when promoting a person to a ministerial leadership position.",
-    "Do NOT delete consolidation history upon mentor transfer or stage completion.",
-    "Do NOT use pure #000000 or full transparent headers.",
-    "DO include data-testid on all key buttons, inputs, tables, cards, and modal triggers.",
-    "DO maintain consistent Ven y Ve 360 styling with blue/gold/green badges, clean white cards, and clear Spectral serif section headers."
+  "tab_structure_and_routes": {
+    "route": "/mapa",
+    "tabs": [
+      {
+        "id": "miembros",
+        "label": "Mapa de Miembros y Personas",
+        "description": "Visualizacion geografica de miembros activos, nuevos, personas en consolidacion y discipulado"
+      },
+      {
+        "id": "celulas",
+        "label": "Red de Celulas y Grupos Frontales",
+        "description": "Ubicacion de celulas activas, lideres, horarios, capacidad y zonas sin cobertura"
+      },
+      {
+        "id": "cola_verificacion",
+        "label": "Cola de Verificacion (Fallback Manual)",
+        "description": "Lista de direcciones con baja confianza o ambiguas para ajuste de pin manual"
+      },
+      {
+        "id": "comparativa_crecimiento",
+        "label": "Analitica y Crecimiento Geografico",
+        "description": "Heatmap comparativo entre periodos para responder donde abrir la proxima celula"
+      }
+    ]
+  },
+  "filter_controls": {
+    "categories": [
+      "Miembros Activos",
+      "Nuevos Convertidos",
+      "Consolidacion (7 Semanas)",
+      "Grupos Frontales",
+      "Discipulado / CAP",
+      "Celulas Activas"
+    ],
+    "stages": [
+      "Inscrito",
+      "Semana 1-3",
+      "Semana 4-7",
+      "Consolidado",
+      "En Mentoría"
+    ],
+    "time_periods": [
+      "Ultimos 30 dias",
+      "Ultimo trimestre",
+      "Año actual",
+      "Comparar con periodo anterior"
+    ],
+    "status": [
+      "Geocodificado Verificado",
+      "Pendiente de Verificacion",
+      "Corregido Manualmente"
+    ]
+  },
+  "ui_components": {
+    "map_controls": "Controles flotantes con glassmorphism suave (no completamente transparente) para alternar entre Heatmap, Clustering y Pines individuales.",
+    "member_search_autocomplete": "Buscador remoto de personas en Consolidacion por nombre, telefono o numero VV excluyendo procesos activos.",
+    "verification_queue_drawer": "Panel lateral deslizable (Sheet) para re-geocodificar o arrastrar/fijar manualmente el pin en MapLibre.",
+    "quadrant_summary_cards": "Tarjetas superiores con conteo de personas y celulas por cuadrante (Norte, Sur, Este, Oeste).",
+    "growth_heatmap_toggle": "Selector de mapas de calor para identificar concentraciones de personas sin celula cercana."
+  },
+  "testing_and_data_ids": {
+    "rule": "Todo elemento interactivo debe incluir un data-testid en formato kebab-case.",
+    "examples": [
+      "data-testid=\"mapa-tab-miembros\"",
+      "data-testid=\"mapa-tab-celulas\"",
+      "data-testid=\"mapa-tab-cola-verificacion\"",
+      "data-testid=\"mapa-filter-category-select\"",
+      "data-testid=\"mapa-heatmap-toggle-button\"",
+      "data-testid=\"mapa-manual-pin-save-button\"",
+      "data-testid=\"consolidacion-autocomplete-input\""
+    ]
+  },
+  "instructions_to_main_agent": [
+    "Mantener la identidad visual existente Ven y Ve 360 con Spectral para titulos y paleta marino/dorado/verde.",
+    "Implementar la interfaz GeocodingProvider desacoplada de MapLibre GL JS.",
+    "Asegurar que las capacidades RBAC (geo.view_aggregate, geo.view_precise, geo.manage_locations) restrinjan los datos expuestos.",
+    "No usar fondos totalmente transparentes en overlays ni headers.",
+    "Proporcionar componentes en archivos .js (React JS)."
   ]
 }
