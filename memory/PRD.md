@@ -574,6 +574,25 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - Archivos principales: backend `geo_address.py`, `geo_sector_service.py`, `geo_provider.py`, `geo_service.py`, `geo_queries.py`, `geo_routes.py`; frontend `GeoMapCanvas.js`, `GeoSectorEditorDrawer.js`, `GeoPersonSearch.js`, `Presentation2To1Shell.js`, `GeoMapsPage.js`, `GeoMapToolbar.js`, `GeoDetailPanel.js`, `geoGeometry.js`, `App.css`; pruebas `test_geo_maps.py`, `test_iteration27_geo_public_manage_contract.py`, `ui_geo_fixture.py`.
 - **Única operación pendiente del administrador:** entrar a `/mapas` y crear/dibujar los sectores territoriales reales desde el editor.
 
+### MEMBRESÍA HISTÓRICA + MINICENSO EVANGELÍSTICO — IMPLEMENTADO 2026‑09‑19
+
+- **Alta Directa:** `POST /api/core/persons` acepta `preexisting_active_member` y número histórico opcional. Solo Pastor/Pastora o Coordinación General pueden usar el bypass; un payload forzado por Líder ordinario recibe 403.
+- La activación es idempotente y auditable: asigna o conserva `member_number`, marca membresía `active`, registra origen directo, habilita inmediatamente carnet/certificado y añade el privilegio de membresía a cuentas vinculadas.
+- Los números existentes admiten dígitos, letras y guiones. El Core valida conflictos antes de crear la Persona; además aplica compensación sobre Persona, contactos, registro, membresía y eventos si falla una activación, evitando altas parciales.
+- `PersonaNuevaPage` muestra el control **Miembro activo preexistente** exclusivamente a las dos autoridades autorizadas, permite conservar número previo y confirma el resultado en la ficha Persona 360.
+- **Importador DRY-RUN:** nueva ruta protegida `/personas/importar` y endpoint `POST /api/membership/import/dry-run`; acepta CSV y XLSX hasta 5 MiB/2,000 filas mediante `openpyxl`, sin SDK frontend adicional.
+- El análisis sugiere y permite corregir mapeo de 14 campos; normaliza nombres, teléfonos, correo y direcciones; detecta posibles duplicados por número VV, número de miembro, correo, teléfono y nombre+fecha; clasifica cada fila como Listo/Revisar/Error.
+- Hogares con dirección exacta común se devuelven como sugerencia `HH-*`; conflictos de nombre familiar y dirección quedan en revisión. No se crea ni fusiona ningún hogar durante el análisis.
+- Contrato no destructivo explícito: `dry_run=true`, `database_writes=0`; pruebas comparan conteos antes/después en Personas, membresías, hogares y membresías de hogar para CSV/XLSX.
+- **Minicenso:** colección `evangelism_targets` y eventos auditables con CRUD lógico bajo `/api/geo/evangelism`; todos los usuarios autenticados pueden registrar, asignar, actualizar y archivar casas sin obtener acceso a datos territoriales de Personas/Células.
+- Cada casa conserva dirección normalizada, Point GeoJSON cuando hay match, verificación, Zona/Subzona/Sector, idioma aparente, notas, responsable y ciclo `Detectada → Asignada → Visitada → Seguimiento → Conectada / No visitar`.
+- La pestaña **Casas por visitar** usa pines por estado, filtro, captura móvil y panel editable. Una lista accesible con `data-testid` por `target_id` abre también casas sin coordenadas y permite edición/archivo E2E sin depender de clics aproximados sobre WebGL.
+- Usuarios sin capacidades geo ven solamente Minicenso; Pastor/Liderazgo autorizado conserva Personas, Células, sectores y Presentación sin cambio de contratos privados.
+- Índices activos: `target_id` unique, dirección normalizada unique para activos, `location_2dsphere`, estado/fecha, responsable/estado y eventos por objetivo/fecha.
+- Certificación: backend focalizado e independiente **27/27 PASS** más regresión de rollback **3/3 PASS**; frontend **23/23 PASS** y build producción PASS; instalación backend limpia desde `requirements.txt` y `pip check` PASS; API pública health/config/import PASS.
+- UI verificada en 1920×800 y 390×844 sin overflow: CSV → mapeo → dashboard; Persona → registrar casa → lista determinista → panel → Visitada → guardar → reabrir → archivar. Hallazgo iteration 29 sobre testabilidad del pin quedó resuelto con la lista accesible.
+- Limpieza final local: `feature_users=0`, `feature_people=0`, `feature_targets=0`, `orphan_pub_numbers=0`. Producción no fue usada ni modificada.
+
 ### P1/P2 — siguientes pasos y backlog
 
 - **P1 — Aceptación operativa:** validar Consolidación v2 con responsables reales, asignar `front_groups.view`/`leadership.view` y capacidades de gestión, y crear el primer Grupo Frontal de producción.
@@ -589,8 +608,9 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 
 1. El administrador dibuja y aprueba los sectores territoriales reales de cada Zona en `/mapas`; el sistema recalcula asignaciones y estadísticas automáticamente.
 2. Ejecutar aceptación física del Modo Presentación en la pantalla 14×7 y ajustar tamaños únicamente con feedback de distancia real.
-3. Continuar con el siguiente módulo priorizado; Mapa Territorial 360 no requiere desarrollo P0 adicional.
+3. Entregar el padrón histórico real como CSV/XLSX para ejecutar primero el DRY-RUN, revisar duplicados/hogares y definir en una fase posterior el commit supervisado; el flujo actual nunca escribe.
 4. Mantener Pushpay **MOCKED/BLOCKED** hasta recibir las credenciales sandbox.
+5. Continuar con Mega‑Bloque E — Operaciones como siguiente módulo funcional priorizado.
 
 ## 13. Restricciones vigentes
 

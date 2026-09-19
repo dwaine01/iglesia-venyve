@@ -23,6 +23,7 @@ import { MembershipDocumentsSection } from '../components/membership/MembershipD
 import { PersonArchiveDialog } from '../components/PersonArchiveDialog';
 import { PersonJourneyStatusStrip } from '../components/PersonJourneyStatusStrip';
 import { toast } from 'sonner';
+import { canManageDirectMembership } from '../lib/accessControl';
 
 // P-001 Slice 2A - Person Profile 360 (shell full-screen).
 // Consume unicamente el read-model /api/core/persons/{id}/profile.
@@ -112,7 +113,7 @@ export default function PersonaPerfilPage() {
   const available = profile?.sections_available || ['resumen'];
   const planned = profile?.sections_planned || [];
   const canViewFinance = user?.rol === 'pastor' || (user?.capabilities || []).includes('finance.read');
-  const canManageMembershipDocuments = user?.rol === 'pastor' || (user?.capabilities || []).includes('membership.documents.manage');
+  const canManageMembershipDocuments = canManageDirectMembership(user) || (user?.capabilities || []).includes('membership.documents.manage');
   const canArchive = user?.rol === 'pastor' && user?.person_id !== personId && profile?.identity?.account_role !== 'pastor';
   const allSections = [
     'resumen', 'contacto', 'direcciones', 'household',

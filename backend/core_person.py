@@ -112,6 +112,8 @@ class PersonCreate(BaseModel):
     email: Optional[str] = None
     fecha_nacimiento: Optional[str] = None
     idempotency_key: str = Field(..., min_length=8)
+    preexisting_active_member: bool = False
+    existing_member_number: Optional[str] = Field(default=None, pattern=r"^[A-Za-z0-9-]{1,20}$")
 
 
 class DuplicateCheck(BaseModel):
@@ -205,9 +207,27 @@ async def check_duplicates(payload: DuplicateCheck, current_user: dict = Depends
 
 @router.post("/persons", status_code=201)
 async def create_person(payload: PersonCreate, current_user: dict = Depends(require_lider_o_pastor)):
+    if payload.preexisting_active_member:
+        from membership_documents import require_direct_membership_manager
+        require_direct_membership_manager(current_user)
     existing = await db.persons.find_one({"idempotency_key": payload.idempotency_key})
     if existing:
-        return serialize_person(existing)
+        response = serialize_person(existing)
+        if payload.preexisting_active_member:
+            from membership_documents import activate_preexisting_membership
+            membership, _ = await activate_preexisting_membership(
+                response,
+                current_user["user_id"],
+                payload.existing_member_number,
+            )
+            response["membership"] = {"status": membership["status"], "member_number": membership["member_number"], "direct": True}
+        return response
+    if payload.preexisting_active_member and payload.existing_member_number:
+        normalized_number = payload.existing_member_number.strip().upper()
+        normalized_number = normalized_number.zfill(5) if normalized_number.isdigit() else normalized_number
+        number_owner = await db.membership_number_registry.find_one({"member_number": normalized_number}, {"_id": 0, "person_id": 1})
+        if number_owner:
+            raise HTTPException(status_code=409, detail="El número de miembro ya está asignado")
 
     duplicate_payload = DuplicateCheck(
         nombre=payload.nombre,
@@ -260,7 +280,33 @@ async def create_person(payload: PersonCreate, current_user: dict = Depends(requ
             })
     if contact_docs:
         await db.person_contacts.insert_many(contact_docs)
-    return serialize_person(doc)
+    response = serialize_person(doc)
+    if payload.preexisting_active_member:
+        from membership_documents import activate_preexisting_membership
+        try:
+            membership, _ = await activate_preexisting_membership(
+                response,
+                current_user["user_id"],
+                payload.existing_member_number,
+            )
+        except Exception:
+            await db.membership_number_registry.delete_many({"person_id": person_id})
+            await db.membership_events.delete_many({"person_id": person_id})
+            await db.person_memberships.delete_many({"person_id": person_id})
+            await db.person_contacts.delete_many({"person_id": person_id})
+            await db.persons.delete_one({"_id": person_id, "idempotency_key": payload.idempotency_key})
+            raise
+        response["membership"] = {"status": membership["status"], "member_number": membership["member_number"], "direct": True}
+        await db.person_activity.insert_one({
+            "_id": str(uuid4()),
+            "person_id": person_id,
+            "domain": "membership",
+            "action": "direct_membership_activated",
+            "summary": "Membresía activa preexistente registrada; documentos habilitados",
+            "actor_user_id": current_user["user_id"],
+            "created_at": now,
+        })
+    return response
 
 
 @router.get("/persons/{person_id}")

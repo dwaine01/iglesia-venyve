@@ -1,4 +1,4 @@
-import { canViewGeo, hasCapability, isPastoralAuthority } from './accessControl';
+import { canManageDirectMembership, canUseTerritorialMap, canViewGeo, hasCapability, isPastoralAuthority } from './accessControl';
 
 describe('geo access control', () => {
   test('pastoral authority receives map access', () => {
@@ -12,7 +12,15 @@ describe('geo access control', () => {
     expect(hasCapability(user, 'geo.view_precise')).toBe(false);
   });
 
-  test('ordinary person cannot open geo maps', () => {
-    expect(canViewGeo({ rol: 'persona', capabilities: [] })).toBe(false);
+  test('ordinary person can open the evangelism map without territorial data', () => {
+    const user = { rol: 'persona', capabilities: [] };
+    expect(canViewGeo(user)).toBe(true);
+    expect(canUseTerritorialMap(user)).toBe(false);
+  });
+
+  test('direct membership is limited to pastor and general coordinator', () => {
+    expect(canManageDirectMembership({ rol: 'pastor' })).toBe(true);
+    expect(canManageDirectMembership({ rol: 'lider', access_level: 'coordinador_general' })).toBe(true);
+    expect(canManageDirectMembership({ rol: 'lider' })).toBe(false);
   });
 });

@@ -56,6 +56,7 @@ const getNavItems = (user) => {
       { to: '/procesos/mentoria', icon: HeartHandshake, label: 'Mi Mentoría' },
       { to: '/procesos/cap', icon: Compass, label: 'Mi lugar para servir' },
       { to: '/celulas/dashboard', icon: RadioTower, label: 'Mi Célula', testId: 'nav-cellular' },
+      { to: '/mapas', icon: MapPinned, label: 'Casas por visitar', testId: 'nav-geo-maps' },
     ];
   }
   
@@ -113,6 +114,7 @@ const breadcrumbMap = {
   '/ministerios': 'Ministerios',
   '/personas': 'Personas',
   '/personas/nueva': 'Nueva Persona',
+  '/personas/importar': 'Importar membresía',
   '/nucleo': 'Gobierno del Núcleo',
   '/procesos/dashboard': 'Panel de Procesos',
   '/procesos/7-semanas': 'Ley de las 7 Semanas',

@@ -26,8 +26,12 @@ export const canViewLeadership = (user) => hasAnyCapability(user, [
   'leadership.requirements.manage',
 ]);
 
-export const canViewGeo = (user) => hasAnyCapability(user, [
-  'geo.view_aggregate',
-  'geo.view_precise',
-  'geo.manage_locations',
+export const canViewGeo = (user) => Boolean(user);
+
+export const canUseTerritorialMap = (user) => hasAnyCapability(user, [
+  'geo.view_aggregate', 'geo.view_precise', 'geo.manage_locations',
 ]);
+
+export const canManageDirectMembership = (user) => (
+  isPastoralAuthority(user) || String(user?.access_level || '').toLowerCase() === 'coordinador_general'
+);

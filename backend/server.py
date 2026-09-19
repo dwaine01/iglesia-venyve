@@ -448,6 +448,8 @@ app.include_router(finance_expansion_router)
 
 from membership_documents import router as membership_documents_router, ensure_membership_documents
 app.include_router(membership_documents_router)
+from membership_import import router as membership_import_router
+app.include_router(membership_import_router)
 from front_groups import router as front_groups_router, ensure_front_group_indexes
 app.include_router(front_groups_router)
 from consolidation_v2 import router as consolidation_v2_router, ensure_indexes as consolidation_v2_ensure_indexes
@@ -500,6 +502,7 @@ from cellular_engine import ensure_cellular_indexes, migrate_cellular
 from cellular_routes import router as cellular_router
 from geo_routes import router as geo_router
 from geo_service import ensure_geo_indexes
+from evangelism_routes import router as evangelism_router, ensure_evangelism_indexes
 from module_guides import router as module_guides_router
 from door_board_catalog import seed_door_board_catalog
 from door_board_engine import ensure_door_board_indexes
@@ -508,6 +511,7 @@ from board_recording_routes import router as board_recording_router
 
 app.include_router(cellular_router)
 app.include_router(geo_router)
+app.include_router(evangelism_router)
 app.include_router(module_guides_router)
 app.include_router(door_board_router)
 app.include_router(board_recording_router)
@@ -619,6 +623,7 @@ async def startup():
     await seed_cellular_catalog(db)
     await ensure_cellular_indexes(db)
     await ensure_geo_indexes(db)
+    await ensure_evangelism_indexes()
     await migrate_cellular(db, "system:startup")
     await seed_door_board_catalog(db)
     await ensure_door_board_indexes(db)
