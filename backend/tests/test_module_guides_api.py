@@ -80,16 +80,16 @@ def _load_expected_module_keys() -> list[str]:
 
 
 # módulo: catálogo de guías
-def test_guides_catalog_lists_all_32_modules(api_client, pastor_token):
+def test_guides_catalog_lists_all_33_modules(api_client, pastor_token):
     base = _require_base_url()
     expected_keys = _load_expected_module_keys()
-    assert len(expected_keys) == 32
+    assert len(expected_keys) == 33
 
     response = api_client.get(f"{base}/api/guides", headers=_auth_headers(pastor_token))
     assert response.status_code == 200, response.text
     data = response.json()
     assert isinstance(data.get("items"), list)
-    assert len(data["items"]) == 32
+    assert len(data["items"]) == len(expected_keys)
 
     got_keys = sorted(item.get("module_key") for item in data["items"])
     assert got_keys == expected_keys

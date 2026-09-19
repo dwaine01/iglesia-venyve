@@ -612,6 +612,25 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - **Limpieza final local:** `qa_remaining=0`, `evangelism_targets=0`; 89 reservas contables huérfanas exclusivamente QA eliminadas. Producción no fue consultada ni modificada.
 - **P2 sin cambios:** la autoridad pastoral se revisará por intención de módulo; no se hizo sustitución masiva, especialmente en Finanzas.
 
+### MEGA‑BLOQUE E — OPERACIONES — COMPLETADO 2026‑09‑19
+
+- **Flujo cerrado:** crear evento → materializar ocurrencias → crear equipos/turnos → convocar voluntarios → registrar Personas/invitados → check-in → cerrar asistencia → consultar métricas.
+- **Recurrencia preparada para crecimiento:** eventos soportan `none/daily/weekly/monthly`, intervalo, días semanales, día mensual y final por cantidad/fecha/sin fecha. Ocurrencias usan IDs deterministas e idempotentes y pueden extenderse hasta 730 días sin rediseñar el modelo.
+- **Turnos únicos o recurrentes:** `single_occurrence` aplica a una fecha; `all_occurrences` materializa el turno en toda la serie y en ocurrencias futuras. Incluye rol, offsets, duración, cupos, instrucciones y relación opcional a Ministerio/Célula.
+- **Voluntariado:** asignación única por Persona/turno, estados invitado/confirmado/declinado/check-in/no-show, respuesta de la Persona y notificación interna auditable.
+- **Inscripciones:** Persona canónica o invitado, autoinscripción limitada al propio `person_id`, capacidad/waitlist y código `OP-*`; staff de check-in puede registrar invitados sin crear Personas duplicadas.
+- **Check-in móvil:** búsqueda por nombre/número VV, código de inscripción, número de miembro o QR HMAC del carnet; cámara mediante `BarcodeDetector` con fallback manual. `duplicate_key` e `idempotency_key` únicos evitan doble entrada por doble toque.
+- Cada check-in canónico actualiza inscripción, turno voluntario y `person_attendance` de Persona 360. Cierre congela métricas, completa turnos, marca no-show y bloquea nuevas entradas; un segundo cierre es idempotente.
+- **RBAC:** Pastor/`operations.manage` administra y cierra; Líder/`operations.checkin` registra entradas sin crear eventos; Persona/`operations.view|volunteer` consulta, se autoinscribe y responde solo sus convocatorias. Listados privados ocultan otros asistentes/contactos a cuentas básicas.
+- **Dashboard:** ocurrencias próximas, check-ins del día, voluntarios confirmados, cupos por cubrir y notificaciones internas.
+- **Archivos:** PDF/PNG/JPEG hasta 5 MiB en GridFS, magic bytes verificados, descarga autenticada, metadata vinculada al evento y limpieza ante fallo.
+- **Auditoría:** todos los writes relevantes generan `operation_audit_events`; índices únicos cubren ocurrencias, turno/Persona, inscripción/Persona, códigos y check-ins.
+- **Frontend:** rutas independientes `/operaciones`, `/operaciones/eventos`, detalle de evento, detalle de ocurrencia y check-in móvil; guía contextual agregada como módulo 33.
+- **Pruebas:** E2E backend específico 2/2 PASS; certificación independiente Iteración 31 9/9 PASS; recorrido UI público evento semanal→turno→invitado→check-in PASS.
+- **Regresión final:** backend **201 PASS**, 3 omitidas intencionalmente; frontend **24/24 PASS** y build PASS. Desktop 1920×800 y móvil 390×844 sin overflow ni errores de consola.
+- **Limpieza final local:** eventos, ocurrencias, turnos, asignaciones, inscripciones, check-ins, notificaciones y credenciales QA en cero. Producción no fue consultada ni modificada.
+- **Fuera de alcance preservado:** Pushpay continúa **MOCKED/BLOCKED**; no se añadió IA.
+
 ### P1/P2 — siguientes pasos y backlog
 
 - **P1 — Aceptación operativa:** validar Consolidación v2 con responsables reales, asignar `front_groups.view`/`leadership.view` y capacidades de gestión, y crear el primer Grupo Frontal de producción.
@@ -619,9 +638,9 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - **P1 — Aceptación funcional del usuario:** revisar Mega‑Bloque G ya certificado con casos reales de la oficina de la iglesia y recopilar ajustes de política/terminología.
 - **P1 — Pushpay:** activar OAuth/sandbox, sincronización idempotente y mapeo contable únicamente después de recibir credenciales reales.
 - **P2 — Finanzas:** pulido visual y desminificación de páginas financieras según feedback, sin alterar contratos verificados.
-- **P3 — Mega‑Bloque E — Operaciones:** eventos, check‑in, asistencia y voluntariado.
-- **P4 — Mega‑Bloque F — Cuidado:** casos pastorales, visitación y Operación 72.
-- **P5 — Mega‑Bloque H — Automatización + IA:** workflows, alertas, dashboards y asistente sobre datos autorizados.
+- **COMPLETADO — Mega‑Bloque E — Operaciones:** eventos, check‑in, asistencia y voluntariado.
+- **P3 — Mega‑Bloque F — Cuidado:** casos pastorales, visitación y Operación 72.
+- **P4 — Mega‑Bloque H — Automatización + IA:** workflows, alertas, dashboards y asistente sobre datos autorizados.
 
 ## 12. Próximas tareas ejecutables
 
@@ -629,7 +648,7 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 2. Ejecutar aceptación física del Modo Presentación en la pantalla 14×7 y ajustar tamaños únicamente con feedback de distancia real.
 3. Entregar el padrón histórico real como CSV/XLSX para ejecutar primero el DRY-RUN, revisar duplicados/hogares y definir en una fase posterior el commit supervisado; el flujo actual nunca escribe.
 4. Mantener Pushpay **MOCKED/BLOCKED** hasta recibir las credenciales sandbox.
-5. Continuar con Mega‑Bloque E — Operaciones como siguiente módulo funcional priorizado.
+5. Continuar con Mega‑Bloque F — Cuidado como siguiente módulo funcional priorizado.
 
 ## 13. Restricciones vigentes
 

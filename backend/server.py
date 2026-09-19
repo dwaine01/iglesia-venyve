@@ -503,6 +503,9 @@ from cellular_routes import router as cellular_router
 from geo_routes import router as geo_router
 from geo_service import ensure_geo_indexes
 from evangelism_routes import router as evangelism_router, ensure_evangelism_indexes
+from operations_events import router as operations_events_router
+from operations_participation import router as operations_participation_router
+from operations_engine import ensure_operations_indexes
 from module_guides import router as module_guides_router
 from door_board_catalog import seed_door_board_catalog
 from door_board_engine import ensure_door_board_indexes
@@ -512,6 +515,8 @@ from board_recording_routes import router as board_recording_router
 app.include_router(cellular_router)
 app.include_router(geo_router)
 app.include_router(evangelism_router)
+app.include_router(operations_events_router)
+app.include_router(operations_participation_router)
 app.include_router(module_guides_router)
 app.include_router(door_board_router)
 app.include_router(board_recording_router)
@@ -624,6 +629,7 @@ async def startup():
     await ensure_cellular_indexes(db)
     await ensure_geo_indexes(db)
     await ensure_evangelism_indexes()
+    await ensure_operations_indexes()
     await migrate_cellular(db, "system:startup")
     await seed_door_board_catalog(db)
     await ensure_door_board_indexes(db)

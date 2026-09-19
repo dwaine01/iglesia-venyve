@@ -19,6 +19,7 @@ from access_control import (
     FINANCE_CAPABILITIES,
     JOURNEY_GOVERNANCE_CAPABILITIES,
     MEMBERSHIP_DOCUMENTS_MANAGE,
+    OPERATIONS_CAPABILITIES,
     PROCESS_CAPABILITIES,
     PERSON_DOMAIN_CAPABILITIES,
     PERSON_PASTORAL_NOTES_READ,
@@ -414,7 +415,7 @@ async def update_user_access(
         if active_pastors <= 1:
             raise HTTPException(status_code=400, detail="Debe existir al menos un pastor activo")
     defaults = access_defaults(requested_level, requested_groups)
-    allowed = set(PERSON_DOMAIN_CAPABILITIES + PROCESS_CAPABILITIES + CELLULAR_CAPABILITIES + DOOR_BOARD_CAPABILITIES + FINANCE_CAPABILITIES + JOURNEY_GOVERNANCE_CAPABILITIES + [MEMBERSHIP_DOCUMENTS_MANAGE, BOARD_CONFIDENTIAL_ACCESS, PERSON_PASTORAL_NOTES_READ, CORE_GOVERNANCE_MANAGE, CORE_ACCESS_MANAGE])
+    allowed = set(PERSON_DOMAIN_CAPABILITIES + PROCESS_CAPABILITIES + CELLULAR_CAPABILITIES + DOOR_BOARD_CAPABILITIES + FINANCE_CAPABILITIES + JOURNEY_GOVERNANCE_CAPABILITIES + OPERATIONS_CAPABILITIES + [MEMBERSHIP_DOCUMENTS_MANAGE, BOARD_CONFIDENTIAL_ACCESS, PERSON_PASTORAL_NOTES_READ, CORE_GOVERNANCE_MANAGE, CORE_ACCESS_MANAGE])
     capabilities = defaults["capabilities"]
     if payload.capabilities is not None:
         if not is_global_pastoral_authority(current_user):
@@ -425,7 +426,7 @@ async def update_user_access(
         invalid = sorted(set(payload.capabilities) - allowed - legacy_existing)
         if invalid:
             raise HTTPException(status_code=400, detail=f"Capabilities inválidas: {', '.join(invalid)}")
-        customizable = set(JOURNEY_GOVERNANCE_CAPABILITIES + [MEMBERSHIP_DOCUMENTS_MANAGE])
+        customizable = set(JOURNEY_GOVERNANCE_CAPABILITIES + OPERATIONS_CAPABILITIES + [MEMBERSHIP_DOCUMENTS_MANAGE])
         non_customizable = sorted(set(payload.capabilities) - set(defaults["capabilities"]) - customizable - legacy_existing)
         if non_customizable:
             raise HTTPException(status_code=400, detail=f"Capabilities no personalizables para este nivel: {', '.join(non_customizable)}")

@@ -15,6 +15,11 @@ import PersonasListPage from './pages/PersonasListPage';
 import PersonaNuevaPage from './pages/PersonaNuevaPage';
 import PersonaPerfilPage from './pages/PersonaPerfilPage';
 import MembershipImportPage from './pages/MembershipImportPage';
+import OperationsDashboardPage from './pages/operations/OperationsDashboardPage';
+import OperationsEventsPage from './pages/operations/OperationsEventsPage';
+import OperationEventDetailPage from './pages/operations/OperationEventDetailPage';
+import OperationOccurrencePage from './pages/operations/OperationOccurrencePage';
+import OperationCheckInPage from './pages/operations/OperationCheckInPage';
 import MinisteriosPage from './pages/MinisteriosPage';
 import MinisterioDetailPage from './pages/MinisterioDetailPage';
 import DirectorioTalentosPage from './pages/DirectorioTalentosPage';
@@ -66,7 +71,7 @@ import BoardMeetingsPage from './pages/board/BoardMeetingsPage';
 import BoardMeetingDetailPage from './pages/board/BoardMeetingDetailPage';
 import BoardMinutesPage from './pages/board/BoardMinutesPage';
 import AppLayout from './components/AppLayout';
-import { canManageDirectMembership, canViewFrontGroups, canViewGeo, canViewLeadership, hasAnyCapability, isPastoralAuthority } from './lib/accessControl';
+import { canManageDirectMembership, canViewFrontGroups, canViewGeo, canViewLeadership, canViewOperations, hasAnyCapability, isPastoralAuthority } from './lib/accessControl';
 import './App.css';
 
 const GeoMapsPage = lazy(() => import('./pages/GeoMapsPage'));
@@ -201,6 +206,11 @@ function App() {
             <Route path="personas" element={<StaffRoute><PersonasListPage /></StaffRoute>} />
             <Route path="personas/nueva" element={<StaffRoute><PersonaNuevaPage /></StaffRoute>} />
             <Route path="personas/importar" element={<CapabilityRoute allowed={canManageDirectMembership}><MembershipImportPage /></CapabilityRoute>} />
+            <Route path="operaciones" element={<CapabilityRoute allowed={canViewOperations}><OperationsDashboardPage /></CapabilityRoute>} />
+            <Route path="operaciones/eventos" element={<CapabilityRoute allowed={canViewOperations}><OperationsEventsPage /></CapabilityRoute>} />
+            <Route path="operaciones/eventos/:eventId" element={<CapabilityRoute allowed={canViewOperations}><OperationEventDetailPage /></CapabilityRoute>} />
+            <Route path="operaciones/ocurrencias/:occurrenceId" element={<CapabilityRoute allowed={canViewOperations}><OperationOccurrencePage /></CapabilityRoute>} />
+            <Route path="operaciones/checkin/:occurrenceId" element={<CapabilityRoute allowed={canViewOperations}><OperationCheckInPage /></CapabilityRoute>} />
             <Route path="personas/:personId" element={<PersonaPerfilPage />} />
             <Route path="directorio" element={<DirectorioTalentosPage />} />
             <Route path="ministerios" element={<MinisteriosPage />} />

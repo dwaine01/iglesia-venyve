@@ -15,7 +15,7 @@ import DisplayScaleToggle from './DisplayScaleToggle';
 import { ContextGuideButton } from './guides/ContextGuideButton';
 import { resolveRouteGuide } from './guides/guideRouteMap';
 import { BRAND } from '../config/brand';
-import { canViewFrontGroups, canViewGeo, canViewLeadership, hasAnyCapability, isPastoralAuthority } from '../lib/accessControl';
+import { canViewFrontGroups, canViewGeo, canViewLeadership, canViewOperations, hasAnyCapability, isPastoralAuthority } from '../lib/accessControl';
 const LOGO_URL = LOGO_IGLESIA;
 
 // Menu items by role
@@ -31,6 +31,7 @@ const getNavItems = (user) => {
       { to: '/grupos-frontales', icon: Network, label: 'Grupos Frontales', testId: 'nav-front-groups' },
       { to: '/liderazgo', icon: Award, label: 'Liderazgo', testId: 'nav-leadership' },
       { to: '/mapas', icon: MapPinned, label: 'Mapa 360', testId: 'nav-geo-maps' },
+      { to: '/operaciones', icon: Calendar, label: 'Operaciones', testId: 'nav-operations' },
       { to: '/procesos/mentoria', icon: HeartHandshake, label: 'Mentoría', testId: 'nav-mentorship' },
       { to: '/procesos/cap', icon: Compass, label: 'Encuentra tu lugar para servir', testId: 'nav-cap' },
       { to: '/celulas/dashboard', icon: RadioTower, label: 'Sistema Celular', testId: 'nav-cellular' },
@@ -57,6 +58,7 @@ const getNavItems = (user) => {
       { to: '/procesos/cap', icon: Compass, label: 'Mi lugar para servir' },
       { to: '/celulas/dashboard', icon: RadioTower, label: 'Mi Célula', testId: 'nav-cellular' },
       { to: '/mapas', icon: MapPinned, label: 'Casas por visitar', testId: 'nav-geo-maps' },
+      { to: '/operaciones', icon: Calendar, label: 'Eventos y turnos', testId: 'nav-operations' },
     ];
   }
   
@@ -69,6 +71,7 @@ const getNavItems = (user) => {
     { to: '/grupos-frontales', icon: Network, label: 'Grupos Frontales', testId: 'nav-front-groups' },
     { to: '/liderazgo', icon: Award, label: 'Liderazgo', testId: 'nav-leadership' },
     { to: '/mapas', icon: MapPinned, label: 'Mapa 360', testId: 'nav-geo-maps' },
+    { to: '/operaciones', icon: Calendar, label: 'Operaciones', testId: 'nav-operations' },
     { to: '/procesos/mentoria', icon: HeartHandshake, label: 'Mentoría', testId: 'nav-mentorship' },
     { to: '/procesos/cap', icon: Compass, label: 'Encuentra tu lugar para servir', testId: 'nav-cap' },
     { to: '/celulas/dashboard', icon: RadioTower, label: 'Sistema Celular', testId: 'nav-cellular' },
@@ -95,6 +98,8 @@ const getNavItems = (user) => {
     item.to !== '/liderazgo' || canViewLeadership(user)
   ) && (
     item.to !== '/mapas' || canViewGeo(user)
+  ) && (
+    item.to !== '/operaciones' || canViewOperations(user)
   ));
 };
 
@@ -115,6 +120,8 @@ const breadcrumbMap = {
   '/personas': 'Personas',
   '/personas/nueva': 'Nueva Persona',
   '/personas/importar': 'Importar membresía',
+  '/operaciones': 'Operaciones',
+  '/operaciones/eventos': 'Eventos',
   '/nucleo': 'Gobierno del Núcleo',
   '/procesos/dashboard': 'Panel de Procesos',
   '/procesos/7-semanas': 'Ley de las 7 Semanas',
