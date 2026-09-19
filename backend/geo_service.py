@@ -258,6 +258,3 @@ async def ensure_geo_indexes(db) -> None:
     for collection_name in ("person_addresses", "cells"):
         scoped = [operation for name, operation in operations if name == collection_name]
         if scoped: await db[collection_name].bulk_write(scoped, ordered=False)
-    address_docs = await db.person_addresses.find({}, {"_id": 1, "linea1": 1, "linea2": 1, "ciudad": 1, "provincia": 1, "codigo_postal": 1, "pais": 1}).to_list(50000)
-    for doc in address_docs:
-        await db.person_addresses.update_one({"_id": doc["_id"]}, {"$set": normalize_address_document(doc)})

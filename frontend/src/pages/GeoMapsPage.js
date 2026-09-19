@@ -11,6 +11,7 @@ import { GeoMapCanvas } from '../components/geo/GeoMapCanvas';
 import { GeoMapToolbar } from '../components/geo/GeoMapToolbar';
 import { GeoReviewDialog } from '../components/geo/GeoReviewDialog';
 import { GeoSectorEditorDrawer } from '../components/geo/GeoSectorEditorDrawer';
+import { GeoUnlocatedDrawer } from '../components/geo/GeoUnlocatedDrawer';
 import { Presentation2To1Shell } from '../components/geo/Presentation2To1Shell';
 
 const emptyCatalog = { front_groups: [], cells: [], stages: [] };
@@ -24,6 +25,7 @@ export default function GeoMapsPage() {
   const [comparison, setComparison] = useState(null); const [compare, setCompare] = useState(false);
   const [selected, setSelected] = useState(null); const [selectedPersonId, setSelectedPersonId] = useState(null); const [focusTarget, setFocusTarget] = useState(null); const [focusGeometry, setFocusGeometry] = useState(null);
   const [reviewOpen, setReviewOpen] = useState(false); const [sectorEditorOpen, setSectorEditorOpen] = useState(false);
+  const [unlocatedOpen, setUnlocatedOpen] = useState(false);
   const [draftCoordinates, setDraftCoordinates] = useState([]); const [selectedVertex, setSelectedVertex] = useState(null); const [drawingSector, setDrawingSector] = useState(false);
   const [presentationMode, setPresentationMode] = useState(false); const [loading, setLoading] = useState(true);
   const [error, setError] = useState(''); const [backfilling, setBackfilling] = useState(false);
@@ -72,7 +74,7 @@ export default function GeoMapsPage() {
 
   if (presentationMode && config) return <Presentation2To1Shell config={config} sectors={sectors.filter((item) => item.status === 'active')} features={features} onExit={() => setPresentationMode(false)} />;
   return <main className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-[#F4F1EA]" data-testid="geo-maps-page">
-    <GeoMapToolbar kind={kind} setKind={setKind} mode={mode} setMode={setMode} filters={filters} setFilters={setFilters} catalog={catalog} summary={summary} canViewPrecise={canViewPrecise} canManage={canManage} providerConfigured={providerConfigured} compare={compare} setCompare={setCompare} backfilling={backfilling} onBackfill={backfill} onReview={() => setReviewOpen(true)} onPersonSelect={selectPerson} onEditSectors={() => setSectorEditorOpen(true)} onPresent={openPresentation} />
+    <GeoMapToolbar kind={kind} setKind={setKind} mode={mode} setMode={setMode} filters={filters} setFilters={setFilters} catalog={catalog} summary={summary} canViewPrecise={canViewPrecise} canManage={canManage} providerConfigured={providerConfigured} compare={compare} setCompare={setCompare} backfilling={backfilling} onBackfill={backfill} onReview={() => setReviewOpen(true)} onPersonSelect={selectPerson} onEditSectors={() => setSectorEditorOpen(true)} onPresent={openPresentation} onUnlocated={() => setUnlocatedOpen(true)} />
     <section className="relative min-h-0 flex-1 overflow-hidden bg-white" data-testid="geo-map-workspace">
       {loading && <div className="absolute inset-0 z-30 flex items-center justify-center bg-white/70" data-testid="geo-map-loading"><Loader2 className="h-7 w-7 animate-spin text-amber-700" /></div>}
       {error && <div className="absolute left-3 right-3 top-3 z-40 border border-red-200 bg-red-50 p-3 text-sm text-red-700" data-testid="geo-map-error-alert">{error}</div>}
@@ -84,5 +86,6 @@ export default function GeoMapsPage() {
     </section>
     {canManage && config && <GeoReviewDialog open={reviewOpen} onOpenChange={setReviewOpen} center={config.center} onResolved={refresh} />}
     {canManage && <GeoSectorEditorDrawer open={sectorEditorOpen} onOpenChange={setSectorEditorOpen} sectors={sectors.filter((item) => item.status === 'active')} draft={draftCoordinates} setDraft={setDraftCoordinates} selectedVertex={selectedVertex} setSelectedVertex={setSelectedVertex} onSaved={refresh} onFocusSector={focusSector} onDrawingChange={setDrawingSector} />}
+    {canManage && <GeoUnlocatedDrawer open={unlocatedOpen} onOpenChange={setUnlocatedOpen} />}
   </main>;
 }

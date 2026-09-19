@@ -291,6 +291,57 @@ async def search_person_locations(db, current_user: dict, search: str, limit: in
     return output
 
 
+async def unlocated_person_items(db, current_user: dict) -> list[dict]:
+    """Personas sin una ubicación propia o familiar inequívoca, respetando scope."""
+    allowed = await access_person_ids(db, current_user)
+    query = {"status": {"$ne": "archived"}, "is_archived": {"$ne": True}}
+    if allowed is not None:
+        query["_id"] = {"$in": [ObjectId(item) for item in allowed if ObjectId.is_valid(item)]}
+    people = await db.persons.find(query, {"_id": 1, "person_number": 1, "nombre": 1, "apellido": 1}).sort([("nombre", 1), ("apellido", 1)]).to_list(50000)
+    person_ids = [str(item["_id"]) for item in people]
+    addresses = await db.person_addresses.find({"person_id": {"$in": person_ids}}, {"_id": 0}).sort([("es_principal", -1), ("updated_at", -1)]).to_list(100000)
+    memberships = await db.household_memberships.find({"person_id": {"$in": person_ids}}, {"_id": 0, "person_id": 1, "household_id": 1}).to_list(50000)
+    household_ids = sorted({item["household_id"] for item in memberships})
+    all_household_members = await db.household_memberships.find({"household_id": {"$in": household_ids}}, {"_id": 0, "person_id": 1, "household_id": 1}).to_list(100000) if household_ids else []
+    household_person_ids = sorted({item["person_id"] for item in all_household_members})
+    household_addresses = await db.person_addresses.find({"person_id": {"$in": household_person_ids}}, {"_id": 0}).sort([("es_principal", -1), ("updated_at", -1)]).to_list(100000) if household_person_ids else []
+    addresses_by_person = defaultdict(list)
+    for item in addresses + household_addresses:
+        if item not in addresses_by_person[item["person_id"]]: addresses_by_person[item["person_id"]].append(item)
+    household_by_person = {item["person_id"]: item["household_id"] for item in memberships}
+    members_by_household = defaultdict(list)
+    for item in all_household_members: members_by_household[item["household_id"]].append(item["person_id"])
+
+    def usable(item):
+        return (item.get("location") or {}).get("type") == "Point" and item.get("coordinates_stale") is not True and item.get("verification_status") in {"verified", "manual_verified"}
+
+    output = []
+    for person in people:
+        person_id = str(person["_id"]); own = addresses_by_person.get(person_id, [])
+        if any(usable(item) for item in own): continue
+        household_id = household_by_person.get(person_id)
+        household_usable = [item for member_id in members_by_household.get(household_id, []) for item in addresses_by_person.get(member_id, []) if usable(item)]
+        household_keys = {normalize_address_document(item).get("normalized_address_key") for item in household_usable}
+        household_keys.discard(None)
+        if len(household_keys) == 1: continue
+        if not own and not household_id: reason = "no_address_or_household"
+        elif not own and household_id and not household_usable: reason = "household_without_location"
+        elif not own and len(household_keys) > 1: reason = "household_address_conflict"
+        else:
+            primary = own[0]
+            if not normalize_address_document(primary)["address_complete"]: reason = "incomplete_address"
+            elif primary.get("verification_status") == "needs_verification": reason = "verification_required"
+            elif primary.get("geocoding_status") in {"not_found", "provider_error", "ambiguous"}: reason = "geocoding_failed"
+            else: reason = "geocoding_pending"
+        output.append({
+            "person_id": person_id, "person_number": person.get("person_number"),
+            "name": f"{person.get('nombre', '')} {person.get('apellido', '')}".strip(),
+            "reason": reason, "has_address": bool(own), "has_household": bool(household_id),
+            "profile_path": f"/personas/{person_id}",
+        })
+    return output
+
+
 def aggregate_features(features: list[dict], minimum: int = 3) -> list[dict]:
     buckets = defaultdict(list)
     for feature in features:

@@ -10,7 +10,7 @@ from pymongo import ReturnDocument
 
 from access_control import GEO_MANAGE_LOCATIONS, GEO_VIEW_AGGREGATE, GEO_VIEW_PRECISE, has_capability, is_global_pastoral_authority
 from geo_address import address_completeness_reasons, normalize_address_document
-from geo_queries import aggregate_features, cell_features, enrich_coverage, front_group_centroid_features, geographic_summary, household_features, person_features, search_person_locations
+from geo_queries import aggregate_features, cell_features, enrich_coverage, front_group_centroid_features, geographic_summary, household_features, person_features, search_person_locations, unlocated_person_items
 from geo_provider import geocoding_is_configured, geocoding_providers_status
 from geo_service import CHURCH_ADDRESS, CHURCH_LAT, CHURCH_LNG, archive_location, enqueue_backfill, enqueue_geo_job, geographic_classification, now_utc, process_geo_job, process_geo_jobs, subzones_geojson, zones_geojson
 from geo_sector_service import point_in_polygon, reassign_sector_memberships, sector_assignment_fields, validate_polygon
@@ -42,6 +42,23 @@ class GeoSummaryResponse(BaseModel):
     zones: dict
     review_total: int
     pending_total: int
+    unlocated_total: int = 0
+
+
+class UnlocatedPerson(BaseModel):
+    person_id: str
+    person_number: Optional[str] = None
+    name: str
+    reason: str
+    has_address: bool
+    has_household: bool
+    profile_path: str
+
+
+class UnlocatedPeopleResponse(BaseModel):
+    items: list[UnlocatedPerson]
+    total: int
+    reasons: dict[str, int]
 
 
 class GeoCatalogResponse(BaseModel):
@@ -255,7 +272,18 @@ async def geo_catalog(current_user: dict = Depends(require_any_geo)):
 
 @router.get("/summary", response_model=GeoSummaryResponse)
 async def geo_summary(current_user: dict = Depends(require_any_geo)):
-    return await geographic_summary(db, current_user)
+    summary = await geographic_summary(db, current_user)
+    if is_global_pastoral_authority(current_user) or has_capability(current_user, GEO_MANAGE_LOCATIONS):
+        summary["unlocated_total"] = len(await unlocated_person_items(db, current_user))
+    return summary
+
+
+@router.get("/unlocated-persons", response_model=UnlocatedPeopleResponse)
+async def unlocated_people(current_user: dict = Depends(require_manage)):
+    items = await unlocated_person_items(db, current_user)
+    reasons = {}
+    for item in items: reasons[item["reason"]] = reasons.get(item["reason"], 0) + 1
+    return {"items": items, "total": len(items), "reasons": reasons}
 
 
 @router.get("/sectors", response_model=SectorListResponse)

@@ -1,5 +1,5 @@
 import React from 'react';
-import { CircleAlert, Edit3, Filter, Flame, Layers3, MapPin, Network, Presentation, RefreshCw, Users } from 'lucide-react';
+import { CircleAlert, Edit3, Filter, Flame, Layers3, MapPin, MapPinOff, Network, Presentation, RefreshCw, Users } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { Tabs, TabsList, TabsTrigger } from '../ui/tabs';
@@ -10,7 +10,7 @@ const countFilters = (filters) => Object.values(filters).filter(Boolean).length;
 
 export const GeoMapToolbar = ({
   kind, setKind, mode, setMode, filters, setFilters, catalog, summary, canViewPrecise, canManage,
-  providerConfigured, compare, setCompare, backfilling, onBackfill, onReview, onPersonSelect, onEditSectors, onPresent,
+  providerConfigured, compare, setCompare, backfilling, onBackfill, onReview, onPersonSelect, onEditSectors, onPresent, onUnlocated,
 }) => <header className="relative z-40 shrink-0 overflow-visible border-b bg-white px-2 py-2 shadow-sm" data-testid="geo-map-toolbar">
   <div className="flex flex-wrap items-center gap-2">
     <div className="flex shrink-0 items-center gap-2 pr-1"><div className="flex h-9 w-9 items-center justify-center bg-slate-950 text-white"><MapPin className="h-5 w-5" /></div><div className="hidden xl:block"><h1 className="font-['Spectral'] text-xl font-semibold leading-none">Mapa 360</h1><p className="mt-1 text-[10px] uppercase text-amber-700">Columbus · 12 subzonas</p></div></div>
@@ -22,6 +22,7 @@ export const GeoMapToolbar = ({
     <Button variant={compare ? 'default' : 'outline'} size="sm" className="h-9" onClick={() => setCompare((value) => !value)} data-testid="toggle-geo-comparison"><Layers3 className="h-4 w-4" /><span className="hidden 2xl:inline">Comparar</span></Button>
     <Button variant="outline" size="sm" className="h-9 border-slate-900 text-slate-900" onClick={onPresent} data-testid="open-geo-presentation"><Presentation className="h-4 w-4" /><span className="hidden xl:inline">Presentar</span></Button>
     {canManage && <Button variant="outline" size="sm" className="h-9" onClick={onEditSectors} data-testid="open-geo-sector-editor"><Edit3 className="h-4 w-4" /><span className="hidden xl:inline">Sectores</span></Button>}
+    {canManage && <Button variant="outline" size="sm" className="h-9 border-amber-400 bg-amber-50 text-amber-950" onClick={onUnlocated} data-testid="open-geo-unlocated"><MapPinOff className="h-4 w-4" /><span className="hidden xl:inline">Sin ubicación</span>{summary.unlocated_total > 0 && <span className="text-xs font-bold" data-testid="geo-unlocated-badge">{summary.unlocated_total}</span>}</Button>}
     {canManage && <Button variant="outline" size="sm" className="h-9" onClick={onBackfill} disabled={backfilling || !providerConfigured} data-testid="geo-backfill-button"><RefreshCw className={`h-4 w-4 ${backfilling ? 'animate-spin' : ''}`} /><span className="hidden 2xl:inline">Geocodificar</span></Button>}
     {canManage && <Button variant="outline" size="sm" className="h-9" onClick={onReview} data-testid="open-geo-review-button"><CircleAlert className="h-4 w-4" /><span className="hidden xl:inline">Verificar</span>{summary.review_total > 0 && <span className="text-xs">{summary.review_total}</span>}</Button>}
   </div>

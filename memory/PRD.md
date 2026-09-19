@@ -551,7 +551,7 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - Pruebas finales: backend **157 passed, 3 skipped**, frontend **22/22**, build PASS, iteration 26 backend 19/19 y UI desktop/mobile PASS; dos selecciones móviles consecutivas confirmaron búsqueda→halo→detalle.
 - Variables backend necesarias en producción: `GEOCODIO_API_URL`, `GEOCODIO_API_KEY`, `GEOCODIO_TIMEOUT_SECONDS`; nunca exponerlas como `REACT_APP_*`.
 
-### Mapa Territorial 360 — sectores, hogares y Presentación 14×7 — IMPLEMENTADO 2026‑09‑18
+### MAPA TERRITORIAL 360 — COMPLETADO TÉCNICAMENTE — 2026‑09‑19
 
 - Añadida normalización conservadora de direcciones físicas en `geo_address.py`: sufijos equivalentes (`Street`/`St`), mayúsculas y puntuación convergen; apartamento, suite, piso y unidad permanecen como hogares distintos.
 - La vista precisa ya no emite un pin por Persona: agrupa por `normalized_address_key`, integra `household_memberships` cuando existe un único domicilio inequívoco y devuelve únicamente residentes permitidos por el scope actual.
@@ -565,15 +565,19 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - Editor administrativo no modal: crear → dibujar sobre calles → arrastrar vértices → revisar → nombrar → guardar; permite editar, borrar puntos, desactivar y confirmar solapamientos. Snap-to-roads permanece opcional y no bloqueante.
 - Presentación independiente con superficie desktop exacta 2:1, navegación Zona → Sector → Calles → Hogares, historial atrás/adelante, pantalla completa, métricas dinámicas, calles OSM y pines DOM de hogar con badge numérico.
 - Corregida búsqueda desktop/móvil mediante resultados portaleados sobre MapLibre; selección abre halo y panel de hogar/persona de forma determinista. El editor dejó de usar el overlay modal que impedía clicar calles.
-- Certificación final aislada: backend geo **26/26 PASS**, frontend Jest **22/22 PASS**, build producción PASS; recorridos reales de UI PASS en 1920×800 y 390×844, sin overflow; stage 2:1 verificado y pin agrupado con badge `2` visible.
-- Limpieza final: 0 usuarios/personas/sectores QA residuales. En esta base del fork existen actualmente **0 Personas, 0 direcciones y 0 Households reales**; por tanto, no se inventaron direcciones y la validación real masiva solicitada queda pendiente de conectar/cargar los datos autorizados. Census y Geocodio sí constan configurados.
+- Alta/edición de dirección genera `normalized_address_key` y `address_complete` inmediatamente, antes de geocodificar; una edición invalida coordenadas, Zona y Sector antiguos, incrementa `address_version` y activa el job Census → Geocodio. No se ejecuta migración/backfill histórico desde startup.
+- Nuevo estado administrativo **⚠ Sin ubicación**: `GET /api/geo/unlocated-persons`, badge en toolbar y drawer scoped. Clasifica sin inventar datos: sin dirección/Hogar, Hogar sin ubicación, conflicto familiar, dirección incompleta, geocodificación fallida/pendiente o revisión requerida. Una Persona desaparece automáticamente al obtener ubicación propia o familiar inequívoca.
+- Crear, editar o desactivar un Sector ejecuta point-in-polygon sobre ubicaciones vigentes y actualiza `sector_id`; las estadísticas continúan calculándose desde Personas, Households, liderazgo y células reales.
+- Verificación read-only de producción confirmó que Personas creadas manualmente residen en `persons`, las direcciones en `person_addresses` y los hogares en `households/household_memberships`; Mapa 360 consume exactamente ese Core. La ausencia operativa actual es `geo_sectors`, no una desconexión de membresía.
+- Certificación final aislada: backend geo **29/29 PASS**, frontend Jest **22/22 PASS**, build producción PASS; iteration 28 sin bugs deterministas; recorridos UI desktop 1920×800 y móvil 390×844 PASS, sin overflow; cadena Sin ubicación → búsqueda → editor → guardar → Presentación PASS y stage 2:1 verificado.
+- Limpieza final: 0 usuarios/personas/sectores QA residuales en la base local. No se modificó producción, no se ejecutó backfill histórico y no se inventaron direcciones o sectores.
 - Archivos principales: backend `geo_address.py`, `geo_sector_service.py`, `geo_provider.py`, `geo_service.py`, `geo_queries.py`, `geo_routes.py`; frontend `GeoMapCanvas.js`, `GeoSectorEditorDrawer.js`, `GeoPersonSearch.js`, `Presentation2To1Shell.js`, `GeoMapsPage.js`, `GeoMapToolbar.js`, `GeoDetailPanel.js`, `geoGeometry.js`, `App.css`; pruebas `test_geo_maps.py`, `test_iteration27_geo_public_manage_contract.py`, `ui_geo_fixture.py`.
+- **Única operación pendiente del administrador:** entrar a `/mapas` y crear/dibujar los sectores territoriales reales desde el editor.
 
 ### P1/P2 — siguientes pasos y backlog
 
 - **P1 — Aceptación operativa:** validar Consolidación v2 con responsables reales, asignar `front_groups.view`/`leadership.view` y capacidades de gestión, y crear el primer Grupo Frontal de producción.
-- **P0 — Validación territorial real:** conectar o cargar el dataset autorizado de Personas/direcciones/Households en este entorno y ejecutar auditoría + revalidación total; actualmente el dataset real está vacío.
-- **P1 — Mapa 360:** validar sectores dibujados por administradores sobre límites territoriales reales y decidir si Overpass snap-to-roads aporta precisión suficiente.
+- **Operación administrativa — Mapa 360:** dibujar los sectores territoriales reales; snap-to-roads permanece P2/opcional y no bloqueante.
 - **P1 — Aceptación funcional del usuario:** revisar Mega‑Bloque G ya certificado con casos reales de la oficina de la iglesia y recopilar ajustes de política/terminología.
 - **P1 — Pushpay:** activar OAuth/sandbox, sincronización idempotente y mapeo contable únicamente después de recibir credenciales reales.
 - **P2 — Finanzas:** pulido visual y desminificación de páginas financieras según feedback, sin alterar contratos verificados.
@@ -583,11 +587,10 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 
 ## 12. Próximas tareas ejecutables
 
-1. Conectar datos reales autorizados al entorno y ejecutar `geocoding-audit`, revalidación Census→Geocodio, agrupación Household y asignación point-in-polygon sin introducir fixtures QA.
-2. Dibujar y aprobar los sectores territoriales reales de cada Zona en el editor administrativo; validar solapamientos y estadísticas con responsables autorizados.
-3. Ejecutar aceptación física del Modo Presentación en la pantalla 14×7 y ajustar tamaños únicamente con feedback de distancia real.
-4. Publicar la corrección RBAC/UX y ejecutar aceptación real de Liderazgo, Grupos Frontales y procesos scoped.
-5. Mantener Pushpay **MOCKED/BLOCKED** hasta recibir las credenciales sandbox.
+1. El administrador dibuja y aprueba los sectores territoriales reales de cada Zona en `/mapas`; el sistema recalcula asignaciones y estadísticas automáticamente.
+2. Ejecutar aceptación física del Modo Presentación en la pantalla 14×7 y ajustar tamaños únicamente con feedback de distancia real.
+3. Continuar con el siguiente módulo priorizado; Mapa Territorial 360 no requiere desarrollo P0 adicional.
+4. Mantener Pushpay **MOCKED/BLOCKED** hasta recibir las credenciales sandbox.
 
 ## 13. Restricciones vigentes
 
