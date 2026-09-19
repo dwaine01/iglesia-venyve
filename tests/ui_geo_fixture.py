@@ -12,6 +12,7 @@ sys.path.insert(0, "/app/backend")
 import server  # noqa: E402
 from access_control import access_defaults_for_role  # noqa: E402
 from geo_service import zone_for  # noqa: E402
+from geo_address import normalize_address_document  # noqa: E402
 
 
 EMAIL = "qa.geo.ui@example.com"
@@ -29,8 +30,18 @@ async def cleanup():
     await server.db.geo_review_queue.delete_many({"$or": [{"entity_id": {"$in": address_ids}}, {"entity_id": {"$regex": "^qa-geo-cell"}}]})
     await server.db.geo_location_history.delete_many({"$or": [{"entity_id": {"$in": address_ids}}, {"entity_id": {"$regex": "^qa-geo-cell"}}]})
     await server.db.geo_audit_log.delete_many({"actor_user_id": {"$in": user_ids}})
+    qa_sectors = await server.db.geo_sectors.find({"created_by": {"$in": user_ids}}, {"_id": 0, "zone_id": 1}).to_list(100)
+    await server.db.geo_sectors.delete_many({"created_by": {"$in": user_ids}})
+    for zone_id in {item["zone_id"] for item in qa_sectors}:
+        latest = await server.db.geo_sectors.find_one({"zone_id": zone_id}, {"_id": 0, "order": 1}, sort=[("order", -1)])
+        if latest: await server.db.geo_sector_counters.update_one({"_id": zone_id}, {"$set": {"sequence": latest["order"]}}, upsert=True)
+        else: await server.db.geo_sector_counters.delete_one({"_id": zone_id})
     for collection in ["person_addresses", "person_contacts", "person_memberships", "process_enrollments", "front_group_assignments", "cell_memberships", "cell_role_assignments"]:
         await server.db[collection].delete_many({"person_id": {"$in": person_ids}})
+    memberships = await server.db.household_memberships.find({"person_id": {"$in": person_ids}}, {"_id": 0, "household_id": 1}).to_list(100)
+    household_ids = list({item["household_id"] for item in memberships})
+    await server.db.household_memberships.delete_many({"person_id": {"$in": person_ids}})
+    await server.db.households.delete_many({"_id": {"$in": household_ids}})
     await server.db.cells.delete_many({"cell_id": {"$regex": "^qa-geo-cell"}})
     await server.db.front_groups.delete_many({"front_group_id": {"$regex": "^qa-geo-group"}})
     await server.db.persons.delete_many({"_id": {"$in": [item["_id"] for item in people]}})
@@ -58,16 +69,23 @@ async def setup():
     locations = [
         ("Ana Norte", 40.025, -83.08, 15), ("Luis Este", 39.96, -82.98, 40),
         ("Marta Sur", 39.86, -83.08, 70), ("Carlos Oeste", 39.95, -83.19, 110),
-        ("Elena Central", 39.945, -83.085, 8),
+        ("Elena Central", 40.025, -83.08, 8),
     ]
     person_ids = []; address_ids = []
     for index, (name, lat, lng, days) in enumerate(locations):
         first, last = name.split(" ", 1); person_id = ObjectId(); person_ids.append(str(person_id))
         await server.db.persons.insert_one({"_id": person_id, "person_number": f"VV-QM{index + 1:04d}", "nombre": first, "apellido": last, "search_key": name.lower(), "idempotency_key": f"qa:geo:{uuid.uuid4()}", "status": "active", "created_at": now - timedelta(days=days), "updated_at": now})
-        address = await server.db.person_addresses.insert_one({"person_id": str(person_id), "tipo": "casa", "linea1": f"{640 + index * 10} Demorest Rd", "ciudad": "Columbus", "provincia": "OH", "codigo_postal": "43204", "pais": "Estados Unidos", "es_principal": True, "created_at": now, "updated_at": now, **geo_fields(lat, lng)})
+        address_fields = {"linea1": "640 Demorest Rd" if index in {0, 4} else f"{640 + index * 10} Demorest Rd", "ciudad": "Columbus", "provincia": "OH", "codigo_postal": "43204", "pais": "Estados Unidos"}
+        address = await server.db.person_addresses.insert_one({"person_id": str(person_id), "tipo": "casa", **address_fields, **normalize_address_document(address_fields), "es_principal": True, "created_at": now, "updated_at": now, **geo_fields(lat, lng)})
         address_ids.append(str(address.inserted_id))
         await server.db.person_memberships.insert_one({"membership_id": str(uuid.uuid4()), "member_number": f"MBR-QG{index + 1:04d}", "person_id": str(person_id), "status": "active", "created_at": now})
         await server.db.front_group_assignments.insert_one({"assignment_id": str(uuid.uuid4()), "front_group_id": group_id, "person_id": str(person_id), "active": True, "created_at": now})
+    household_id = f"qa-household-{uuid.uuid4()}"
+    await server.db.households.insert_one({"_id": household_id, "nombre_hogar": "Hogar Norte QA", "created_at": now, "updated_at": now})
+    await server.db.household_memberships.insert_many([
+        {"_id": str(uuid.uuid4()), "household_id": household_id, "person_id": person_ids[0], "rol_en_hogar": "Responsable", "created_at": now},
+        {"_id": str(uuid.uuid4()), "household_id": household_id, "person_id": person_ids[4], "rol_en_hogar": "Integrante", "created_at": now},
+    ])
     search_id = ObjectId(); person_ids.append(str(search_id))
     await server.db.persons.insert_one({"_id": search_id, "person_number": "VV-QM9999", "nombre": "Josué", "apellido": "Rivera", "search_key": "josue rivera", "idempotency_key": f"qa:geo:{uuid.uuid4()}", "status": "active", "created_at": now, "updated_at": now})
     await server.db.person_contacts.insert_one({"person_id": str(search_id), "tipo": "telefono", "valor": "6145553600", "es_principal": True, "created_at": now, "updated_at": now})

@@ -1,6 +1,7 @@
 """Consultas geográficas autorizadas y serializadores sin ObjectId."""
 import math
 import re
+import hashlib
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 
@@ -9,6 +10,7 @@ from bson import ObjectId
 from cellular_engine import cellular_scope
 from geo_service import geographic_classification
 from process_engine import access_person_ids
+from geo_address import normalize_address_document
 
 
 def _iso(value) -> str | None:
@@ -68,6 +70,8 @@ async def person_features(db, current_user: dict, filters: dict) -> list[dict]:
     cell_memberships = await db.cell_memberships.find({"person_id": {"$in": person_ids}, "active": True, "membership_type": "primary"}, {"_id": 0}).to_list(30000)
     cell_by_person = {item["person_id"]: item["cell_id"] for item in cell_memberships}
     contacts = await db.person_contacts.find({"person_id": {"$in": person_ids}, "es_principal": True}, {"_id": 0, "person_id": 1, "valor": 1}).to_list(30000)
+    household_memberships = await db.household_memberships.find({"person_id": {"$in": person_ids}}, {"_id": 0, "person_id": 1, "household_id": 1, "rol_en_hogar": 1}).to_list(30000)
+    household_by_person = {item["person_id"]: item for item in household_memberships}
     phone_by_person = {item["person_id"]: item.get("valor") for item in contacts}
     requested_categories = set(filters.get("categories") or [])
     period_start, period_end = _as_datetime(filters.get("period_start")), _as_datetime(filters.get("period_end"))
@@ -100,6 +104,8 @@ async def person_features(db, current_user: dict, filters: dict) -> list[dict]:
         subzone = address.get("subzone_key") or classification["subzone_key"]
         if filters.get("zone") and zone != filters["zone"]: continue
         if filters.get("subzone") and subzone != filters["subzone"]: continue
+        normalized_address = normalize_address_document(address)
+        household_membership = household_by_person.get(person_id, {})
         features.append({
             "type": "Feature", "geometry": {"type": "Point", "coordinates": coordinates},
             "properties": {
@@ -110,9 +116,80 @@ async def person_features(db, current_user: dict, filters: dict) -> list[dict]:
                 "subzone": subzone, "categories": sorted(categories),
                 "stage": stage, "front_group_id": group_id, "cell_id": cell_id,
                 "verification_status": address.get("verification_status"), "created_at": _iso(person.get("created_at")),
+                "normalized_address_key": address.get("normalized_address_key") or normalized_address["normalized_address_key"],
+                "normalized_unit": address.get("normalized_unit") or normalized_address["normalized_unit"],
+                "household_id": household_membership.get("household_id"), "household_role": household_membership.get("rol_en_hogar"),
+                "sector_id": address.get("sector_id"), "sector_name": address.get("sector_name"), "sector_order": address.get("sector_order"),
             },
         })
     return features
+
+
+def _resident(feature: dict, address_inherited: bool = False) -> dict:
+    item = feature["properties"]
+    return {
+        "person_id": item["entity_id"], "name": item.get("name"), "person_number": item.get("person_number"),
+        "household_role": item.get("household_role"), "categories": item.get("categories", []),
+        "stage": item.get("stage"), "address_inherited": address_inherited,
+        "profile_path": f"/personas/{item['entity_id']}",
+    }
+
+
+async def household_features(db, current_user: dict, people: list[dict]) -> list[dict]:
+    """Un pin por dirección normalizada, enriquecido con Household cuando es inequívoco."""
+    grouped = defaultdict(list)
+    for feature in people:
+        item = feature["properties"]
+        key = item.get("normalized_address_key") or f"person:{item['entity_id']}"
+        grouped[key].append(feature)
+    household_ids = sorted({item["properties"].get("household_id") for item in people if item["properties"].get("household_id")})
+    memberships = await db.household_memberships.find({"household_id": {"$in": household_ids}}, {"_id": 0, "household_id": 1, "person_id": 1, "rol_en_hogar": 1}).to_list(50000) if household_ids else []
+    allowed = await access_person_ids(db, current_user)
+    member_ids = sorted({item["person_id"] for item in memberships if allowed is None or item["person_id"] in allowed})
+    extra_people = await db.persons.find({"_id": {"$in": [ObjectId(item) for item in member_ids if ObjectId.is_valid(item)]}, "status": {"$ne": "archived"}}, {"_id": 1, "nombre": 1, "apellido": 1, "person_number": 1}).to_list(50000) if member_ids else []
+    extra_by_id = {str(item["_id"]): item for item in extra_people}
+    feature_by_person = {item["properties"]["entity_id"]: item for item in people}
+    keys_by_household = defaultdict(set)
+    for key, items in grouped.items():
+        for item in items:
+            household_id = item["properties"].get("household_id")
+            if household_id: keys_by_household[household_id].add(key)
+    memberships_by_household = defaultdict(list)
+    for item in memberships: memberships_by_household[item["household_id"]].append(item)
+    output = []
+    for key, items in grouped.items():
+        household_ids_at_address = sorted({item["properties"].get("household_id") for item in items if item["properties"].get("household_id")})
+        residents = {_resident(item)["person_id"]: _resident(item) for item in items}
+        for household_id in household_ids_at_address:
+            if len(keys_by_household[household_id]) != 1:
+                continue
+            for membership in memberships_by_household[household_id]:
+                if membership["person_id"] in residents or membership["person_id"] not in extra_by_id:
+                    continue
+                person = extra_by_id[membership["person_id"]]
+                residents[membership["person_id"]] = {
+                    "person_id": membership["person_id"], "name": f"{person.get('nombre', '')} {person.get('apellido', '')}".strip(),
+                    "person_number": person.get("person_number"), "household_role": membership.get("rol_en_hogar"),
+                    "categories": [], "stage": None, "address_inherited": True,
+                    "profile_path": f"/personas/{membership['person_id']}",
+                }
+        first = items[0]; properties = first["properties"]
+        longitude = sum(item["geometry"]["coordinates"][0] for item in items) / len(items)
+        latitude = sum(item["geometry"]["coordinates"][1] for item in items) / len(items)
+        entity_id = f"household:{household_ids_at_address[0]}" if len(household_ids_at_address) == 1 else f"address:{hashlib.sha256(key.encode()).hexdigest()[:20]}"
+        output.append({
+            "type": "Feature", "geometry": {"type": "Point", "coordinates": [longitude, latitude]},
+            "properties": {
+                "entity_kind": "household", "entity_id": entity_id, "name": f"Hogar · {properties.get('address') or 'Dirección verificada'}",
+                "address": properties.get("address"), "resident_count": len(residents), "count": len(residents),
+                "residents": sorted(residents.values(), key=lambda item: (item.get("name") or "")), "household_ids": household_ids_at_address,
+                "normalized_address_key": key if not key.startswith("person:") else None,
+                "zone": properties.get("zone"), "zone_number": properties.get("zone_number"), "subzone": properties.get("subzone"),
+                "sector_id": properties.get("sector_id"), "sector_name": properties.get("sector_name"), "sector_order": properties.get("sector_order"),
+                "categories": sorted({category for item in items for category in item["properties"].get("categories", [])}),
+            },
+        })
+    return output
 
 
 async def cell_features(db, current_user: dict, filters: dict) -> list[dict]:
@@ -211,6 +288,57 @@ async def search_person_locations(db, current_user: dict, search: str, limit: in
             "subzone": address.get("subzone_key") or classification["subzone_key"],
         })
         if len(output) >= limit: break
+    return output
+
+
+async def unlocated_person_items(db, current_user: dict) -> list[dict]:
+    """Personas sin una ubicación propia o familiar inequívoca, respetando scope."""
+    allowed = await access_person_ids(db, current_user)
+    query = {"status": {"$ne": "archived"}, "is_archived": {"$ne": True}}
+    if allowed is not None:
+        query["_id"] = {"$in": [ObjectId(item) for item in allowed if ObjectId.is_valid(item)]}
+    people = await db.persons.find(query, {"_id": 1, "person_number": 1, "nombre": 1, "apellido": 1}).sort([("nombre", 1), ("apellido", 1)]).to_list(50000)
+    person_ids = [str(item["_id"]) for item in people]
+    addresses = await db.person_addresses.find({"person_id": {"$in": person_ids}}, {"_id": 0}).sort([("es_principal", -1), ("updated_at", -1)]).to_list(100000)
+    memberships = await db.household_memberships.find({"person_id": {"$in": person_ids}}, {"_id": 0, "person_id": 1, "household_id": 1}).to_list(50000)
+    household_ids = sorted({item["household_id"] for item in memberships})
+    all_household_members = await db.household_memberships.find({"household_id": {"$in": household_ids}}, {"_id": 0, "person_id": 1, "household_id": 1}).to_list(100000) if household_ids else []
+    household_person_ids = sorted({item["person_id"] for item in all_household_members})
+    household_addresses = await db.person_addresses.find({"person_id": {"$in": household_person_ids}}, {"_id": 0}).sort([("es_principal", -1), ("updated_at", -1)]).to_list(100000) if household_person_ids else []
+    addresses_by_person = defaultdict(list)
+    for item in addresses + household_addresses:
+        if item not in addresses_by_person[item["person_id"]]: addresses_by_person[item["person_id"]].append(item)
+    household_by_person = {item["person_id"]: item["household_id"] for item in memberships}
+    members_by_household = defaultdict(list)
+    for item in all_household_members: members_by_household[item["household_id"]].append(item["person_id"])
+
+    def usable(item):
+        return (item.get("location") or {}).get("type") == "Point" and item.get("coordinates_stale") is not True and item.get("verification_status") in {"verified", "manual_verified"}
+
+    output = []
+    for person in people:
+        person_id = str(person["_id"]); own = addresses_by_person.get(person_id, [])
+        if any(usable(item) for item in own): continue
+        household_id = household_by_person.get(person_id)
+        household_usable = [item for member_id in members_by_household.get(household_id, []) for item in addresses_by_person.get(member_id, []) if usable(item)]
+        household_keys = {normalize_address_document(item).get("normalized_address_key") for item in household_usable}
+        household_keys.discard(None)
+        if len(household_keys) == 1: continue
+        if not own and not household_id: reason = "no_address_or_household"
+        elif not own and household_id and not household_usable: reason = "household_without_location"
+        elif not own and len(household_keys) > 1: reason = "household_address_conflict"
+        else:
+            primary = own[0]
+            if not normalize_address_document(primary)["address_complete"]: reason = "incomplete_address"
+            elif primary.get("verification_status") == "needs_verification": reason = "verification_required"
+            elif primary.get("geocoding_status") in {"not_found", "provider_error", "ambiguous"}: reason = "geocoding_failed"
+            else: reason = "geocoding_pending"
+        output.append({
+            "person_id": person_id, "person_number": person.get("person_number"),
+            "name": f"{person.get('nombre', '')} {person.get('apellido', '')}".strip(),
+            "reason": reason, "has_address": bool(own), "has_household": bool(household_id),
+            "profile_path": f"/personas/{person_id}",
+        })
     return output
 
 

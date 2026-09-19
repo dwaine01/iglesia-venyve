@@ -9,6 +9,8 @@ from httpx import ASGITransport, AsyncClient
 import server
 from access_control import access_defaults_for_role
 from geo_provider import FallbackGeocodingProvider, GeocodeResult, set_geocoding_provider_for_tests
+from geo_address import normalize_address_document
+from geo_sector_service import point_in_polygon, validate_polygon
 from geo_service import geographic_classification
 
 
@@ -78,9 +80,15 @@ async def cleanup():
     await server.db.geo_audit_log.delete_many({"actor_user_id": {"$in": user_ids}})
     await server.db.person_addresses.delete_many({"person_id": {"$in": person_ids}})
     await server.db.person_contacts.delete_many({"person_id": {"$in": person_ids}})
+    memberships = await server.db.household_memberships.find({"person_id": {"$in": person_ids}}, {"_id": 0, "household_id": 1}).to_list(100)
+    household_ids = list({item["household_id"] for item in memberships})
+    await server.db.household_memberships.delete_many({"$or": [{"person_id": {"$in": person_ids}}, {"household_id": {"$in": household_ids}}]})
+    await server.db.households.delete_many({"_id": {"$in": household_ids}})
     await server.db.process_enrollments.delete_many({"person_id": {"$in": person_ids}})
     await server.db.persons.delete_many({"_id": {"$in": [item["_id"] for item in people]}})
     await server.db.users.delete_many({"email": {"$regex": "^qa\\.geo\\.test\\."}})
+    await server.db.geo_sectors.delete_many({"created_by": {"$in": user_ids}})
+    await server.db.geo_sector_counters.delete_many({})
     set_geocoding_provider_for_tests(None)
 
 
@@ -99,7 +107,7 @@ async def test_address_geocodes_once_and_map_reads_persisted_coordinates():
         address_id = created.json()["address_id"]
         precise = await client.get("/api/geo/precise?entity_kind=people", headers=headers)
         assert precise.status_code == 200, precise.text
-        assert any(item["properties"]["entity_id"] == person_id for item in precise.json()["features"])
+        assert any(any(resident["person_id"] == person_id for resident in item["properties"].get("residents", [])) for item in precise.json()["features"])
         assert fake.calls == 1
         notes = await client.put(f"/api/core/persons/{person_id}/addresses/{address_id}", json={"notas": "Sin cambiar domicilio"}, headers=headers)
         assert notes.status_code == 200 and fake.calls == 1
@@ -108,6 +116,8 @@ async def test_address_geocodes_once_and_map_reads_persisted_coordinates():
         stored = await server.db.person_addresses.find_one({"_id": ObjectId(address_id)})
         assert stored["address_version"] == 2
         assert stored["verification_status"] == "verified"
+        assert stored["normalized_address_key"]
+        assert stored["address_complete"] is True
         assert stored["zone_number"] in {1, 2, 3, 4}
         assert stored["subzone_key"] in {f"{number}-{letter}" for number in range(1, 5) for letter in "ABC"}
     finally:
@@ -180,3 +190,139 @@ def test_cardinal_zones_and_distance_subzones_are_mutually_exclusive():
         classification = geographic_classification(latitude, longitude)
         assert classification["zone_number"] == number
         assert classification["subzone_key"].startswith(f"{number}-")
+
+
+def test_address_normalization_groups_suffix_variants_but_preserves_units():
+    variants = [
+        {"linea1": "123 Main Street", "ciudad": "Columbus", "provincia": "OH", "codigo_postal": "43204"},
+        {"linea1": "123 MAIN ST.", "ciudad": "columbus", "provincia": "oh", "codigo_postal": "43204-1200"},
+    ]
+    keys = [normalize_address_document(item)["normalized_address_key"] for item in variants]
+    assert keys[0] == keys[1]
+    apt1 = normalize_address_document({**variants[0], "linea2": "Apt 1"})["normalized_address_key"]
+    apt2 = normalize_address_document({**variants[0], "linea2": "Apt 2"})["normalized_address_key"]
+    assert apt1 != apt2 and apt1 != keys[0]
+
+
+def test_polygon_validation_and_point_in_polygon():
+    geometry = {"type": "Polygon", "coordinates": [[[-83.10, 39.93], [-83.08, 39.93], [-83.08, 39.95], [-83.10, 39.95], [-83.10, 39.93]]]}
+    assert validate_polygon(geometry) == geometry
+    assert point_in_polygon(-83.09, 39.94, geometry)
+    assert not point_in_polygon(-83.2, 39.94, geometry)
+    with pytest.raises(ValueError):
+        validate_polygon({"type": "Polygon", "coordinates": [[[0, 0], [1, 1], [1, 0]]]})
+
+
+@pytest.mark.asyncio
+async def test_sector_crud_overlap_locate_and_soft_delete():
+    await cleanup(); _, email = await create_user(); client, headers = await client_for(email)
+    geometry = {"type": "Polygon", "coordinates": [[[-83.10, 39.93], [-83.08, 39.93], [-83.08, 39.95], [-83.10, 39.95], [-83.10, 39.93]]]}
+    try:
+        created = await client.post("/api/geo/sectors", json={"zone_id": "south", "name": "Sector Demorest", "color": "#2563EB", "geometry": geometry}, headers=headers)
+        assert created.status_code == 201, created.text
+        sector_id = created.json()["sector_id"]
+        assert created.json()["order"] == 1
+        located = await client.get("/api/geo/sectors/locate?latitude=39.94&longitude=-83.09", headers=headers)
+        assert located.status_code == 200 and located.json()["sector_id"] == sector_id
+        overlap = await client.post("/api/geo/sectors", json={"zone_id": "south", "name": "Conflicto", "geometry": geometry}, headers=headers)
+        assert overlap.status_code == 409 and overlap.json()["detail"]["code"] == "SECTOR_OVERLAP"
+        updated = await client.put(f"/api/geo/sectors/{sector_id}", json={"name": "Sector Oeste Uno"}, headers=headers)
+        assert updated.status_code == 200 and updated.json()["name"] == "Sector Oeste Uno"
+        removed = await client.delete(f"/api/geo/sectors/{sector_id}", headers=headers)
+        assert removed.status_code == 200 and removed.json()["status"] == "inactive"
+        active = await client.get("/api/geo/sectors", headers=headers)
+        assert active.status_code == 200 and all(item["sector_id"] != sector_id for item in active.json()["items"])
+    finally:
+        await client.aclose(); await cleanup()
+
+
+@pytest.mark.asyncio
+async def test_precise_map_groups_normalized_address_and_household_members():
+    await cleanup(); fake = FakeGeocoder(); set_geocoding_provider_for_tests(fake)
+    _, email = await create_user(); first = await create_person("HogarUno"); second = await create_person("HogarDos"); inherited = await create_person("HogarTres")
+    household_id = f"household-{uuid.uuid4()}"
+    await server.db.households.insert_one({"_id": household_id, "nombre_hogar": "Hogar QA", "created_at": datetime.now(timezone.utc), "updated_at": datetime.now(timezone.utc)})
+    await server.db.household_memberships.insert_many([
+        {"_id": str(uuid.uuid4()), "household_id": household_id, "person_id": first, "rol_en_hogar": "Responsable"},
+        {"_id": str(uuid.uuid4()), "household_id": household_id, "person_id": inherited, "rol_en_hogar": "Integrante"},
+    ])
+    client, headers = await client_for(email)
+    try:
+        for person_id, street in ((first, "123 Main Street"), (second, "123 MAIN ST.")):
+            response = await client.post(f"/api/core/persons/{person_id}/addresses", json={"tipo": "casa", "linea1": street, "ciudad": "Columbus", "provincia": "OH", "codigo_postal": "43204", "pais": "US", "es_principal": True}, headers=headers)
+            assert response.status_code == 201, response.text
+        precise = await client.get("/api/geo/precise?entity_kind=people", headers=headers)
+        assert precise.status_code == 200, precise.text
+        households = [item for item in precise.json()["features"] if item["properties"]["entity_kind"] == "household" and {first, second}.issubset({resident["person_id"] for resident in item["properties"].get("residents", [])})]
+        assert len(households) == 1
+        assert households[0]["properties"]["resident_count"] == 3
+        assert {item["person_id"] for item in households[0]["properties"]["residents"]} == {first, second, inherited}
+    finally:
+        await client.aclose(); await cleanup()
+
+
+@pytest.mark.asyncio
+async def test_unlocated_admin_flow_excludes_unambiguous_household_inheritance():
+    await cleanup(); fake = FakeGeocoder(); set_geocoding_provider_for_tests(fake)
+    _, email = await create_user(); located = await create_person("Located"); inherited = await create_person("Inherited"); missing = await create_person("Missing")
+    household_id = f"household-{uuid.uuid4()}"
+    await server.db.households.insert_one({"_id": household_id, "nombre_hogar": "Hogar QA", "created_at": datetime.now(timezone.utc), "updated_at": datetime.now(timezone.utc)})
+    await server.db.household_memberships.insert_many([
+        {"_id": str(uuid.uuid4()), "household_id": household_id, "person_id": located, "rol_en_hogar": "Responsable"},
+        {"_id": str(uuid.uuid4()), "household_id": household_id, "person_id": inherited, "rol_en_hogar": "Integrante"},
+    ])
+    client, headers = await client_for(email)
+    try:
+        created = await client.post(f"/api/core/persons/{located}/addresses", json={"tipo": "casa", "linea1": "640 Demorest Street", "ciudad": "Columbus", "provincia": "OH", "codigo_postal": "43204", "pais": "US", "es_principal": True}, headers=headers)
+        assert created.status_code == 201, created.text
+        response = await client.get("/api/geo/unlocated-persons", headers=headers)
+        assert response.status_code == 200, response.text
+        ids = {item["person_id"] for item in response.json()["items"]}
+        assert missing in ids
+        assert located not in ids and inherited not in ids
+        missing_item = next(item for item in response.json()["items"] if item["person_id"] == missing)
+        assert missing_item["reason"] == "no_address_or_household"
+        summary = await client.get("/api/geo/summary", headers=headers)
+        assert summary.status_code == 200 and summary.json()["unlocated_total"] >= 1
+    finally:
+        await client.aclose(); await cleanup()
+
+
+@pytest.mark.asyncio
+async def test_sector_creation_reassigns_existing_location_and_updates_stats():
+    await cleanup(); fake = FakeGeocoder(); set_geocoding_provider_for_tests(fake)
+    _, email = await create_user(); person_id = await create_person("SectorAuto")
+    client, headers = await client_for(email)
+    geometry = {"type": "Polygon", "coordinates": [[[-83.10, 39.93], [-83.08, 39.93], [-83.08, 39.95], [-83.10, 39.95], [-83.10, 39.93]]]}
+    zone_id = geographic_classification(fake.result.latitude, fake.result.longitude)["zone_key"]
+    try:
+        address = await client.post(f"/api/core/persons/{person_id}/addresses", json={"tipo": "casa", "linea1": "640 Demorest Rd", "ciudad": "Columbus", "provincia": "OH", "codigo_postal": "43204", "pais": "US", "es_principal": True}, headers=headers)
+        assert address.status_code == 201, address.text
+        created = await client.post("/api/geo/sectors", json={"zone_id": zone_id, "name": "Sector Automático", "geometry": geometry}, headers=headers)
+        assert created.status_code == 201, created.text
+        sector_id = created.json()["sector_id"]
+        stored = await server.db.person_addresses.find_one({"_id": ObjectId(address.json()["address_id"])})
+        assert stored["sector_id"] == sector_id
+        sectors = await client.get("/api/geo/sectors", headers=headers)
+        item = next(value for value in sectors.json()["items"] if value["sector_id"] == sector_id)
+        assert item["stats"]["people_count"] == 1
+        assert item["stats"]["households_count"] == 1
+    finally:
+        await client.aclose(); await cleanup()
+
+
+@pytest.mark.asyncio
+async def test_failed_geocoding_still_persists_normalization_without_coordinates():
+    await cleanup(); provider = FixedProvider(GeocodeResult(status="not_found", provider="census")); set_geocoding_provider_for_tests(provider)
+    _, email = await create_user(); person_id = await create_person("NormalizeForward")
+    client, headers = await client_for(email)
+    try:
+        created = await client.post(f"/api/core/persons/{person_id}/addresses", json={"tipo": "casa", "linea1": "123 Main Street", "linea2": "Apt 4", "ciudad": "Columbus", "provincia": "OH", "codigo_postal": "43204", "pais": "US"}, headers=headers)
+        assert created.status_code == 201, created.text
+        stored = await server.db.person_addresses.find_one({"_id": ObjectId(created.json()["address_id"])})
+        assert stored["normalized_address_key"].startswith("123 MAIN ST|APT 4|")
+        assert stored["address_complete"] is True
+        assert stored["verification_status"] == "needs_verification"
+        assert "location" not in stored
+    finally:
+        await client.aclose(); await cleanup()

@@ -16,6 +16,7 @@ from access_control import (
 )
 from core_person import db, now_utc, require_person_profile_user
 from geo_service import ADDRESS_FIELDS, archive_location, enqueue_geo_job, pending_geo_fields, process_geo_job
+from geo_address import normalize_address_document
 from person_profile_domains import record_activity
 
 router = APIRouter(prefix="/api/core/persons", tags=["person-contact-address"])
@@ -322,6 +323,7 @@ async def create_address(
         "updated_at": now,
         **pending_geo_fields(1),
     }
+    doc.update(normalize_address_document(doc))
     result = await db.person_addresses.insert_one(doc)
     doc["_id"] = result.inserted_id
     job_id = await enqueue_geo_job(db, "person_address", str(result.inserted_id), 1, current_user["user_id"])
@@ -359,9 +361,10 @@ async def update_address(
         await archive_location(db, "person_address", address_id, existing, current_user["user_id"])
         version = existing.get("address_version", 1) + 1
         update.update(pending_geo_fields(version))
+        update.update(normalize_address_document({**existing, **update}))
         await db.person_addresses.update_one(
             {"_id": address_oid},
-            {"$set": update, "$unset": {"location": "", "latitude": "", "longitude": "", "zone_key": "", "zone_number": "", "subzone_key": "", "distance_from_church_miles": "", "census_matched_address": "", "geocoding_matched_address": ""}},
+            {"$set": update, "$unset": {"location": "", "latitude": "", "longitude": "", "zone_key": "", "zone_number": "", "subzone_key": "", "distance_from_church_miles": "", "census_matched_address": "", "geocoding_matched_address": "", "sector_id": "", "sector_name": "", "sector_order": "", "sector_conflict_ids": "", "sector_assigned_at": ""}},
         )
         job_id = await enqueue_geo_job(db, "person_address", address_id, version, current_user["user_id"])
         background_tasks.add_task(process_geo_job, db, job_id)

@@ -1,3 +1,15 @@
+.geo-presentation-stage {
+  width: 100vw;
+  height: 100vh;
+}
+
+@media (min-width: 768px) {
+  .geo-presentation-stage {
+    width: min(100vw, 200vh);
+    height: min(100vh, 50vw);
+    aspect-ratio: 2 / 1;
+  }
+}
 /* App styles - enhanced with animations */
 .reading-content {
   max-width: 72ch;

@@ -1,153 +1,110 @@
 {
-  "brand_identity": {
-    "name": "Ven y Ve 360 - Mapa 360",
-    "emotional_archetype": "SWISS & HIGH-CONTRAST / PERFORMANCE PRO",
-    "theme": "Light",
-    "church_anchor_address": "640 Demorest Rd, Columbus, OH 43204",
-    "church_anchor_coordinates": [-83.0883, 39.9482]
+  "project_name": "Ven y Ve 360 - Geo Sector Editor & 14x7 Presentation Mode",
+  "app_type": "dashboard geográfico administrativo + presentation experience",
+  "design_archetype": "THE PERFORMANCE COMMAND CENTER (TACTICAL HIGH-CONTRAST + 2:1 GIANT SCREEN PRESENTATION)",
+  "emotional_tone": "Precise, Authoritative, High-Legibility, Energetic, Ultra-Clear, Command-Center",
+  "aspect_ratio_mode": {
+    "presentation": "14x7 feet (2:1 ratio) adaptative scaling container",
+    "admin": "Responsive standard desktop & mobile multi-panel layout"
   },
-  "instructions_to_main_agent": [
-    "Build directly on top of commit 414feba in AppLayout.js where <main> supports full height layout (<main className=\"flex flex-1 flex-col overflow-hidden\"> and <Outlet /> inside <div className=\"flex-1 overflow-y-auto\">). Do not revert this structure.",
-    "Implement full-screen map layout for /mapas: map container data-testid=\"geo-map-canvas\" occupies flex-1 h-full, with compressed top control bar.",
-    "Auto-hide sidebar (<aside>) in AppLayout on /mapas route, with floating or top-bar toggle button to reveal/collapse sidebar.",
-    "Place fixed Church anchor marker at 640 Demorest Rd, Columbus, OH 43204 (gold/red star-church pin), visible regardless of filters.",
-    "Use custom Google Maps style drop pins for items: Members/People (amber/blue), Front Groups (purple/centroid), Cells (green), Church (golden star).",
-    "Implement 4 cardinal zones (Zona 1 Norte, Zona 2 Este, Zona 3 Sur, Zona 4 Oeste) with 12 subzones based on distance from church anchor: A (0-3 mi), B (3-6 mi), C (>6 mi) (e.g., Zona 1-A, 1-B, 1-C). Make fill, borders, and labels distinctly visible.",
-    "Implement member/person name search box in top bar that centers and highlights member pin on selection.",
-    "Implement backend geocoding fallback chain in backend/geo_routes.py: Census API -> Geocodio API -> OSM Nominatim -> Manual review queue only as last resort.",
-    "Maintain high testability with data-testid attributes on all interactive elements, map controls, search inputs, tabs, and buttons."
-  ],
-  "UNIVERSAL GUIDELINES FOR MAIN AGENT": [
-    "Do not use generic centered layouts or unstyled default components.",
-    "Layered depth and clear contrast across controls, map overlays, floating panels, and status chips.",
-    "Ensure all interactive elements have hover, focus, and active states with proper contrast.",
-    "Never use AI assistant emoji characters (🤖, 🧠, 💡) for icons; use Lucide-react or custom SVG icons.",
-    "Avoid transition: all; use explicit property transitions like transition-colors or transition-transform.",
-    "Ensure all interactive elements and buttons include role-based data-testid attributes in kebab-case."
-  ],
   "typography": {
-    "heading_font": "Spectral, serif",
-    "body_font": "Inter, sans-serif",
-    "mono_font": "JetBrains Mono, monospace",
-    "scale": {
-      "h1": "text-2xl sm:text-3xl font-semibold tracking-tight",
-      "h2": "text-xl sm:text-2xl font-semibold tracking-tight",
-      "h3": "text-lg font-medium",
-      "body": "text-sm leading-relaxed",
-      "caption": "text-xs text-slate-500 font-mono"
+    "headings": {
+      "font_family": "Bebas Neue, Space Grotesk, sans-serif",
+      "h1_hero": "text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight uppercase",
+      "h2_section": "text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight",
+      "h3_subsection": "text-xl sm:text-2xl font-semibold tracking-normal",
+      "h4_card": "text-lg sm:text-xl font-bold"
+    },
+    "body": {
+      "font_family": "Inter, DM Sans, system-ui, sans-serif",
+      "size": "text-base sm:text-lg leading-relaxed font-normal"
+    },
+    "presentation_overlay": {
+      "font_family": "JetBrains Mono, Roboto Mono, monospace",
+      "badge_text": "text-xs sm:text-sm font-black tracking-wider uppercase",
+      "huge_metric": "text-5xl sm:text-6xl font-black text-amber-400 font-mono"
     }
   },
   "colors": {
-    "primary": "#0F172A",
-    "primary_foreground": "#FFFFFF",
-    "accent_gold": "#D97706",
-    "accent_green": "#059669",
-    "accent_purple": "#7C3AED",
-    "background": "#F8FAFC",
-    "surface": "#FFFFFF",
-    "border": "#E2E8F0",
-    "zones": {
-      "zona_1_norte": {
-        "fill": "rgba(59, 130, 246, 0.18)",
-        "stroke": "#2563EB",
-        "subzones": ["1-A", "1-B", "1-C"]
-      },
-      "zona_2_este": {
-        "fill": "rgba(16, 185, 129, 0.18)",
-        "stroke": "#059669",
-        "subzones": ["2-A", "2-B", "2-C"]
-      },
-      "zona_3_sur": {
-        "fill": "rgba(245, 158, 11, 0.18)",
-        "stroke": "#D97706",
-        "subzones": ["3-A", "3-B", "3-C"]
-      },
-      "zona_4_oeste": {
-        "fill": "rgba(139, 92, 246, 0.18)",
-        "stroke": "#7C3AED",
-        "subzones": ["4-A", "4-B", "4-C"]
-      }
-    },
-    "pins": {
-      "church": {
-        "bg": "#DC2626",
-        "border": "#FDE047",
-        "icon": "church_star",
-        "label": "Iglesia Ancla"
-      },
-      "persona": {
-        "bg": "#2563EB",
-        "border": "#FFFFFF",
-        "icon": "user",
-        "label": "Miembros / Personas"
-      },
-      "celula": {
-        "bg": "#059669",
-        "border": "#FFFFFF",
-        "icon": "home",
-        "label": "Células"
-      },
-      "grupo_frontal": {
-        "bg": "#7C3AED",
-        "border": "#FFFFFF",
-        "icon": "users_centroid",
-        "label": "Grupos Frontales"
-      }
+    "palette_name": "Tactical Neon & Midnight Slate",
+    "background_dark": "#0B0F17",
+    "background_card": "#131B2E",
+    "background_overlay": "rgba(11, 15, 23, 0.92)",
+    "border_color": "#2A364F",
+    "primary_brand": "#3B82F6",
+    "primary_brand_hover": "#2563EB",
+    "accent_highlight": "#F59E0B",
+    "accent_cyan": "#06B6D4",
+    "accent_emerald": "#10B981",
+    "dimmed_sector_fill": "rgba(30, 41, 59, 0.35)",
+    "active_sector_fill": "rgba(59, 130, 246, 0.45)",
+    "active_sector_stroke": "#60A5FA",
+    "zone_colors": {
+      "1_Norte": "#3B82F6",
+      "2_Este": "#10B981",
+      "3_Sur": "#F59E0B",
+      "4_Oeste": "#EC4899"
     }
   },
-  "layouts": {
-    "page_structure": "Full height 100vh layout with flex-col, top compact control bar (shrink-0), and map canvas occupying flex-1 relative overflow-hidden",
-    "top_bar": "Compact header containing Title, Person Search Input, Tabs (Personas, Células, Grupos), Filters Dropdown, Metric Summary Strip, and Action Buttons",
-    "sidebar_behavior": "Hidden on /mapas route via state in AppLayout or route detection, with a floating toggle button to show/hide sidebar navigation on demand"
+  "visual_enhancers": {
+    "glassmorphism": "backdrop-blur-xl bg-slate-950/80 border border-slate-700/60 shadow-2xl rounded-xl",
+    "tracing_beam": "relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-blue-500/20 before:to-amber-500/20 before:animate-pulse",
+    "high_contrast_presentation": "ring-2 ring-amber-400/80 shadow-[0_0_30px_rgba(245,158,11,0.3)]",
+    "pin_badge": "inline-flex items-center justify-center bg-amber-500 text-slate-950 font-black rounded-full text-xs px-2 py-0.5 border-2 border-slate-900 shadow-md transform translate-x-1/2 -translate-y-1/2"
   },
-  "component_name": {
-    "AppLayout": "frontend/src/components/AppLayout.js",
-    "GeoMapsPage": "frontend/src/pages/GeoMapsPage.js",
-    "GeoMapCanvas": "frontend/src/components/geo/GeoMapCanvas.js",
-    "GeoFilters": "frontend/src/components/geo/GeoFilters.js",
-    "GeoSummaryStrip": "frontend/src/components/geo/GeoSummaryStrip.js",
-    "GeoBackendRoutes": "backend/geo_routes.py"
+  "layout_hierarchy": {
+    "level_1": "Zona Oficial (1 Norte, 2 Este, 3 Sur, 4 Oeste)",
+    "level_2": "Sectores Personalizados Dibujados (S1, S2, S3... polígonos sobre calles reales)",
+    "level_3": "Calles Reales OSM & Nombres Visibles en Presentación",
+    "level_4": "Hogares (Pines con Badge de Residentes Totales)",
+    "level_5": "Personas y Líderes (Integrantes, Esposos, Hijos, Roles en la Célula)"
   },
-  "component_path": {
-    "app_layout": "frontend/src/components/AppLayout.js",
-    "geo_maps_page": "frontend/src/pages/GeoMapsPage.js",
-    "geo_map_canvas": "frontend/src/components/geo/GeoMapCanvas.js",
-    "geo_backend_routes": "backend/geo_routes.py"
-  },
-  "grids": {
-    "top_bar_grid": "grid grid-cols-1 lg:grid-cols-12 gap-2 items-center p-3 bg-white border-b border-slate-200 shadow-sm z-20",
-    "map_container": "relative w-full h-full min-h-0 flex-1 bg-slate-100"
-  },
-  "visual enhancers": {
-    "map_pins": "Custom SVG pin drops with inner white icon and shadow",
-    "zone_polygons": "MapLibre fill and line layers with distinct stroke widths (2px) and visible subzone labels",
-    "glassmorphism_floating_panels": "bg-white/90 backdrop-blur-md border border-slate-200 shadow-lg rounded-lg p-2"
-  },
-  "motion": {
-    "map_flyto": "Smooth camera transition when selecting a person from search or clicking a cell pin",
-    "sidebar_slide": "CSS transform transition duration-200 ease-in-out for sidebar toggle"
-  },
-  "accessibility": {
-    "contrast": "APCA & WCAG AA compliant text and controls against map backgrounds",
-    "keyboard_nav": "Full keyboard access for search input, filter selects, and map control buttons",
-    "test_ids": "Required data-testid on search input (geo-person-search-input), map canvas (geo-map-canvas), sidebar toggle (toggle-sidebar-button), and filter buttons"
-  },
-  "3d libraries": {
-    "map_engine": "MapLibre GL JS (3D pitch & terrain support ready)",
-    "usage": "2.5D building extrusion and vector tiles representation"
-  },
-  "media": {
-    "image_urls": [
-      {
-        "url": "https://images.unsplash.com/photo-1731984139947-4723fdd8f1ad?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1ODB8MHwxfHNlYXJjaHwxfHxjb2x1bWJ1cyUyMGNodXJjaCUyMG1hcCUyMGNvbW11bml0eXxlbnwwfHx8fDE3ODk3MzM2MjJ8MA&ixlib=rb-4.1.0&q=85",
-        "category": "church_interior",
-        "description": "Church sanctuary interior for brand hero assets"
-      },
-      {
-        "url": "https://images.pexels.com/photos/22763847/pexels-photo-22763847.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
-        "category": "map_exploration",
-        "description": "Cartography and map planning reference image"
-      }
-    ]
+  "key_components": [
+    {
+      "name": "GeoMapCanvas",
+      "path": "frontend/src/components/geo/GeoMapCanvas.js",
+      "description": "MapLibre canvas with high-contrast presentation mode layer dimming, vector fill opacity rules, household pins with badges, and sector polygon rendering"
+    },
+    {
+      "name": "GeoSectorEditorDrawer",
+      "path": "frontend/src/components/geo/GeoSectorEditorDrawer.js",
+      "description": "Toolbar & Drawer for polygon drawing, add/move/delete vertices, Overpass Snap-to-Roads, overlap warning, auto-numbering, color picker, and RBAC save"
+    },
+    {
+      "name": "Presentation2To1Shell",
+      "path": "frontend/src/components/geo/Presentation2To1Shell.js",
+      "description": "Adaptive 14x7 feet (2:1 aspect ratio) presentation wrapper with high-contrast controls, large dynamic sector summary card, zoom fitBounds triggers, and resident panel"
+    },
+    {
+      "name": "HouseholdResidentDialog",
+      "path": "frontend/src/components/geo/HouseholdResidentDialog.js",
+      "description": "Modal detailing all residents at a pin (husband, wife, children, leaders, roles, cellular network status)"
+    }
+  ],
+  "image_urls": [
+    {
+      "category": "map_presentation",
+      "url": "https://images.unsplash.com/photo-1584972191378-d70853fc47fc?crop=entropy&cs=srgb&fm=jpg&q=85",
+      "description": "High contrast vector map display with illuminated sector highlights"
+    },
+    {
+      "category": "command_center",
+      "url": "https://images.pexels.com/photos/6366444/pexels-photo-6366444.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "description": "Digital monitor with high density statistical presentation data"
+    }
+  ],
+  "instructions_to_main_agent": [
+    "Always maintain strict testability with data-testid on buttons, inputs, modals, map pins, and presentation toggles.",
+    "Ensure Presentation Mode respects the 2:1 aspect ratio container scaling with custom zoom controls for 14x7 ft screens.",
+    "When hovering or selecting a sector, dim all other sectors to 0.2 opacity while illuminating the active sector with 0.7 opacity and vibrant glowing borders.",
+    "When a household pin is clicked, display a detailed drawer/dialog showing every authorized resident residing at that coordinate rather than just one single person.",
+    "Support full CRUD for custom sectors with vertex dragging, snap-to-roads integration, Shapely validation backend contracts, and RBAC check.",
+    "Use sonner for notifications and toasts. Avoid raw JavaScript alert popups."
+  ],
+  "UNIVERSAL GUIDELINES FOR MAIN AGENT": {
+    "testing_attribute": "Every interactive element MUST have data-testid in kebab-case format.",
+    "header_transparency": "Headers and overlays MUST have backdrop-blur and a non-transparent background color (e.g. bg-slate-950/90).",
+    "toast_library": "Use sonner imported from src/components/ui/sonner.jsx or custom wrapper.",
+    "file_extension": "All React frontend files must use .js extension."
   }
 }

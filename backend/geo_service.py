@@ -8,6 +8,8 @@ from bson import ObjectId
 from pymongo import ReturnDocument, UpdateOne
 
 from geo_provider import get_geocoding_provider
+from geo_address import normalize_address_document
+from geo_sector_service import ensure_sector_indexes, sector_assignment_fields
 
 
 CHURCH_LAT = float(os.environ.get("GEO_CHURCH_LAT") or "39.941105761181")
@@ -179,6 +181,8 @@ async def process_geo_job(db, job_id: str) -> dict:
     query = {"_id": doc["_id"]}
     if result.status == "matched":
         classification = geographic_classification(result.latitude, result.longitude)
+        sector_fields = await sector_assignment_fields(db, result.latitude, result.longitude, classification["zone_key"])
+        normalized_fields = normalize_address_document(doc) if job["entity_type"] == "person_address" else {}
         fields = {
             "location": {"type": "Point", "coordinates": [result.longitude, result.latitude]},
             "latitude": result.latitude, "longitude": result.longitude,
@@ -190,6 +194,8 @@ async def process_geo_job(db, job_id: str) -> dict:
             "geocoding_source": "automatic", "census_benchmark": (result.provider_metadata or {}).get("benchmark"),
             "geocoding_matched_address": result.matched_address,
             "geocoding_attempted_providers": (result.provider_metadata or {}).get("attempted_providers", [result.provider]),
+            "geocoding_review_reasons": (result.provider_metadata or {}).get("review_reasons", []),
+            **normalized_fields, **sector_fields,
         }
         await (db.person_addresses if job["entity_type"] == "person_address" else db.cells).update_one(query, {"$set": fields})
         await db.geo_review_queue.update_many({"entity_type": job["entity_type"], "entity_id": job["entity_id"], "status": "open"}, {"$set": {"status": "resolved", "resolved_at": now_utc(), "resolution": "automatic"}})
@@ -206,10 +212,11 @@ async def process_geo_jobs(db, job_ids: list[str]) -> None:
         await process_geo_job(db, job_id)
 
 
-async def enqueue_backfill(db, actor_user_id: str, limit: int) -> list[str]:
+async def enqueue_backfill(db, actor_user_id: str, limit: int, include_verified: bool = False) -> list[str]:
     jobs = []
+    address_query = {} if include_verified else {"$or": [{"geocoding_status": {"$exists": False}}, {"geocoding_status": {"$in": ["pending", "provider_error", "not_found", "ambiguous", "needs_verification"]}}]}
     addresses = await db.person_addresses.find(
-        {"$or": [{"geocoding_status": {"$exists": False}}, {"geocoding_status": {"$in": ["pending", "provider_error", "not_found", "ambiguous", "needs_verification"]}}]},
+        address_query,
         {"_id": 1, "address_version": 1},
     ).limit(limit).to_list(limit)
     for item in addresses:
@@ -241,6 +248,7 @@ async def ensure_geo_indexes(db) -> None:
     await db.geo_review_queue.create_index([("status", 1), ("created_at", 1)])
     await db.geo_location_history.create_index([("entity_type", 1), ("entity_id", 1), ("address_version", -1)])
     await db.geo_audit_log.create_index([("actor_user_id", 1), ("occurred_at", -1)])
+    await ensure_sector_indexes(db)
     operations = []
     for collection_name in ("person_addresses", "cells"):
         docs = await db[collection_name].find({"location.type": "Point", "subzone_key": {"$exists": False}}, {"_id": 1, "location": 1}).limit(50000).to_list(50000)

@@ -8,6 +8,8 @@ from typing import Protocol
 
 import httpx
 
+from geo_address import address_completeness_reasons, normalize_address_document
+
 
 CENSUS_URL = os.environ.get("CENSUS_GEOCODER_URL")
 CENSUS_BENCHMARK = os.environ.get("CENSUS_GEOCODER_BENCHMARK")
@@ -63,12 +65,13 @@ def _address_text(address: dict) -> str:
     ] if value)
 
 
-def _census_confidence(address: dict, match: dict) -> tuple[float, str]:
+def _census_confidence(address: dict, match: dict) -> tuple[float, str, list[str]]:
     components = match.get("addressComponents") or {}
     number, street = _street_parts(address.get("street") or address.get("full_address") or "")
     returned_street = " ".join(filter(None, [components.get("preDirection"), components.get("streetName"), components.get("suffixType"), components.get("suffixDirection")]))
     expected_street, actual_street = _normalized(street), _normalized(returned_street)
     street_match = bool(expected_street and actual_street and (expected_street == actual_street or expected_street in actual_street or actual_street in expected_street))
+    city_match = _normalized(address.get("city")) == _normalized(components.get("city"))
     state_match = _normalized(address.get("state")) == _normalized(components.get("state"))
     expected_zip = _normalized(address.get("zip")); zip_match = not expected_zip or expected_zip == _normalized(components.get("zip"))
     house_match = False
@@ -77,8 +80,35 @@ def _census_confidence(address: dict, match: dict) -> tuple[float, str]:
         upper = str(components.get("toAddress") or "").replace("-", "")
         if lower.isdigit() and upper.isdigit():
             house_match = min(int(lower), int(upper)) <= int(number) <= max(int(lower), int(upper))
-    score = (0.35 if street_match else 0) + (0.2 if state_match else 0) + (0.25 if zip_match else 0) + (0.2 if house_match else 0)
-    return score, "high" if score >= 0.9 else "medium" if score >= 0.75 else "low"
+    score = (0.3 if street_match else 0) + (0.2 if house_match else 0) + (0.15 if city_match else 0) + (0.15 if state_match else 0) + (0.2 if zip_match else 0)
+    reasons = address_completeness_reasons(address)
+    if not street_match: reasons.append("street_mismatch")
+    if not house_match: reasons.append("house_number_unconfirmed")
+    if not city_match: reasons.append("city_mismatch")
+    if not state_match: reasons.append("state_mismatch")
+    if not zip_match: reasons.append("zip_mismatch")
+    return score, "high" if score >= 0.9 and not reasons else "medium" if score >= 0.75 else "low", reasons
+
+
+def _component(components: dict, *keys: str) -> str:
+    return next((str(components.get(key)) for key in keys if components.get(key) not in (None, "")), "")
+
+
+def _geocodio_reasons(address: dict, match: dict) -> list[str]:
+    reasons = address_completeness_reasons(address)
+    components = match.get("address_components") or {}
+    expected = normalize_address_document(address)
+    actual_city = _normalized(_component(components, "city", "county"))
+    actual_state = _normalized(_component(components, "state", "state_province"))
+    actual_zip = re.sub(r"\D", "", _component(components, "zip", "postal_code"))[:5]
+    if expected["normalized_city"] and _normalized(expected["normalized_city"]) != actual_city: reasons.append("city_mismatch")
+    if expected["normalized_state"] and _normalized(expected["normalized_state"]) != actual_state: reasons.append("state_mismatch")
+    if expected["normalized_zip"] and expected["normalized_zip"] != actual_zip: reasons.append("zip_mismatch")
+    accuracy_score = float(match.get("accuracy") or 0)
+    accuracy_type = str(match.get("accuracy_type") or "unknown").lower()
+    if accuracy_score < 0.8: reasons.append("accuracy_below_0_8")
+    if accuracy_type in {"place", "county", "state", "street_center", "intersection"}: reasons.append(f"accuracy_type_{accuracy_type}")
+    return sorted(set(reasons))
 
 
 class CensusGeocodingProvider:
@@ -105,14 +135,14 @@ class CensusGeocodingProvider:
                     response.raise_for_status(); matches = response.json().get("result", {}).get("addressMatches", [])
                     if not matches: return GeocodeResult(status="not_found", provider="census")
                     if len(matches) > 1: return GeocodeResult(status="ambiguous", provider="census", provider_metadata={"match_count": len(matches)})
-                    match = matches[0]; score, confidence = _census_confidence(address, match)
+                    match = matches[0]; score, confidence, reasons = _census_confidence(address, match)
                     coordinates = match.get("coordinates") or {}; tiger = match.get("tigerLine") or {}
                     return GeocodeResult(
                         status="matched" if confidence == "high" else "needs_verification",
                         latitude=float(coordinates["y"]), longitude=float(coordinates["x"]),
                         confidence=confidence, confidence_score=round(score, 3), accuracy="address_range_interpolated",
                         matched_address=match.get("matchedAddress"), provider_result_id=str(tiger.get("tigerLineId") or "") or None,
-                        provider_metadata={"benchmark": CENSUS_BENCHMARK, "side": tiger.get("side")}, provider="census",
+                        provider_metadata={"benchmark": CENSUS_BENCHMARK, "side": tiger.get("side"), "address_components": match.get("addressComponents") or {}, "review_reasons": reasons}, provider="census",
                     )
                 except (httpx.TimeoutException, httpx.NetworkError, httpx.HTTPStatusError, ValueError, KeyError) as error:
                     last_error = error
@@ -147,14 +177,15 @@ class GeocodioGeocodingProvider:
                     if not results: return GeocodeResult(status="not_found", provider="geocodio")
                     match = results[0]; location = match.get("location") or {}
                     accuracy_score = float(match.get("accuracy") or 0); accuracy_type = match.get("accuracy_type") or "unknown"
-                    confidence = "high" if accuracy_score >= 0.8 else "medium" if accuracy_score >= 0.65 else "low"
+                    reasons = _geocodio_reasons(address, match)
+                    confidence = "high" if accuracy_score >= 0.8 and not reasons else "medium" if accuracy_score >= 0.65 else "low"
                     return GeocodeResult(
-                        status="matched" if confidence == "high" else "needs_verification",
+                        status="matched" if confidence == "high" and not reasons else "needs_verification",
                         latitude=float(location["lat"]), longitude=float(location["lng"]), confidence=confidence,
                         confidence_score=round(accuracy_score, 3), accuracy=accuracy_type,
                         matched_address=match.get("formatted_address"),
                         provider_result_id=str(match.get("id") or match.get("formatted_address") or "") or None,
-                        provider_metadata={"accuracy_type": accuracy_type}, provider="geocodio",
+                        provider_metadata={"accuracy_type": accuracy_type, "address_components": match.get("address_components") or {}, "review_reasons": reasons}, provider="geocodio",
                     )
                 except (httpx.TimeoutException, httpx.NetworkError) as error:
                     last_error = error
