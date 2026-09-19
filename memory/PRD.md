@@ -647,7 +647,7 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - Frontend operativo en `/cuidado-pastoral`, casos, expediente, Operación 72 y visitas; desktop 1920×800 y móvil 390×844 certificados con overflow `[]`.
 - Certificación independiente Iteración 32: backend/frontend 100%, flujos Pastor/Líder, privacidad, Op72, visitas y build PASS. Regresión final completa: **210 PASS**, 3 omitidas intencionalmente; build PASS con warnings preexistentes de sourcemaps/bundle.
 - Limpieza final local: `care_ui_users=0`, `coreqa_users=0`, `care_cases=0`, `op72_records=0`, `finance_qa=0`. La cascada QA ahora incluye todas las colecciones de Cuidado.
-- Revisión visual del usuario queda pendiente en producción. Antes de publicar la versión candidata debe configurarse una clave AES‑256 base64-url segura para `PASTORAL_NOTES_ENCRYPTION_KEY`; no se ejecutará migración histórica durante esa revisión.
+- Versión candidata lista para producción: `PASTORAL_NOTES_ENCRYPTION_KEY` fue rotada a una clave AES‑256 base64-url válida, la bóveda responde `vault-ready` y el chequeo de publicación quedó **PASS sin bloqueadores**. Falta únicamente que el usuario pulse **Publish**; después se realizará la revisión visual en producción sin ejecutar migración histórica.
 
 ### P1/P2 — siguientes pasos y backlog
 
