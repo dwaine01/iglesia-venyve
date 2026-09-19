@@ -1,162 +1,276 @@
 {
-  "project_name": "Mega-Bloque E - Operaciones con Eventos, Voluntariado y Check-In Móvil",
-  "app_type": "hybrid_fullstack dashboard / mobile_web_app",
-  "design_philosophy": {
-    "archetype": "ORGANIC & EARTHY / SWISS HYBRID",
-    "tone": "Institucional, Cálido, Operativo, Tactil y Veloz",
-    "core_principles": [
-      "Operación en tiempo real sin fricción durante servicios y eventos masivos.",
-      "Integración visual sin rupturas con la identidad canónica del sistema (Spectral + IBM Plex Sans).",
-      "Experiencia táctil optimizada para móviles (voluntarios en puertas y servidores en movimiento).",
-      "Prevención activa de errores como el doble check-in y la asignación duplicada de turnos.",
-      "Visibilidad multi-dispositivo con soporte de proyección en pantallas grandes (Modo Proyector)."
-    ]
+  "project_name": "VEN Y VE 360 - Mega-Bloque F: Cuidado Pastoral",
+  "archetype": "ORGANIC & LUXURY INSTITUTIONAL (Navy & Dorado VaultLine)",
+  "version": "1.0.0",
+  "technology_stack": {
+    "framework": "React.js (JavaScript - .js files)",
+    "styling": "Tailwind CSS v3 + CSS Variables",
+    "components": "Shadcn/UI customized with institutional rules",
+    "icons": "Lucide React (@lucide-react / lucide-react)",
+    "animations": "Framer Motion + Tailwind keyframes",
+    "notifications": "Sonner"
   },
   "typography": {
-    "font_families": {
-      "headings": "Spectral, serif",
-      "body": "IBM Plex Sans, sans-serif",
-      "accent_script": "Dancing Script, cursive"
+    "headings": {
+      "family": "Spectral, serif",
+      "font_weights": {
+        "regular": 400,
+        "semibold": 600,
+        "bold": 700
+      },
+      "usage": "Use Spectral for all section headers, case titles, pastoral modal titles, and SLA counters.",
+      "hierarchy": {
+        "h1": "text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-slate-900 leading-tight",
+        "h2": "text-2xl sm:text-3xl font-semibold tracking-tight text-slate-800",
+        "h3": "text-xl sm:text-2xl font-semibold text-slate-800",
+        "h4": "text-lg font-medium text-slate-800"
+      }
     },
-    "hierarchy": {
-      "h1_hero": "text-3xl sm:text-4xl lg:text-5xl font-bold font-serif tracking-tight text-slate-900",
-      "h2_section": "text-xl sm:text-2xl lg:text-3xl font-semibold font-serif text-slate-800",
-      "h3_card": "text-lg sm:text-xl font-medium font-serif text-slate-900",
-      "body_base": "text-sm sm:text-base font-sans text-slate-700 leading-relaxed",
-      "small_label": "text-xs font-medium uppercase tracking-wider text-slate-500 font-sans",
-      "badge_metric": "text-2xl sm:text-3xl font-bold font-sans tracking-tight"
+    "body": {
+      "family": "IBM Plex Sans, sans-serif",
+      "font_weights": {
+        "regular": 400,
+        "medium": 500,
+        "semibold": 600
+      },
+      "usage": "Use IBM Plex Sans for body text, tables, form fields, timeline items, metadata, and badge counters.",
+      "hierarchy": {
+        "body_large": "text-base leading-relaxed text-slate-700",
+        "body_normal": "text-sm leading-normal text-slate-600",
+        "caption": "text-xs leading-normal text-slate-500 font-medium"
+      }
     }
   },
   "colors": {
-    "theme_mode": "light (con opción proyector / dark contrast)",
-    "palette": {
-      "background_canvas": "#FAF8F5 (hsl(40, 33%, 98%))",
-      "card_surface": "#FFFFFF (hsl(40, 33%, 99%))",
-      "primary_navy": "#1B2A4A (hsl(221, 46%, 20%))",
-      "primary_foreground": "#FAF8F5",
-      "accent_gold": "#C8A951 (hsl(43, 52%, 55%))",
-      "accent_teal": "#1FA6A0 (hsl(186, 55%, 38%))",
-      "border_subtle": "#E4DFD7 (hsl(40, 14%, 86%))",
-      "muted_bg": "#F3EFEA (hsl(40, 18%, 92%))",
-      "status_success": "#166534",
-      "status_success_bg": "#DCFCE7",
-      "status_warning": "#854D0E",
-      "status_warning_bg": "#FEF9C3",
-      "status_danger": "#991B1B",
-      "status_danger_bg": "#FEE2E2",
-      "status_info": "#1E40AF",
-      "status_info_bg": "#DBEAFE"
+    "primary_navy": {
+      "deep": "#0B1428",
+      "main": "#1B2A4A",
+      "light": "#2A3C64",
+      "subtle": "#F0F4F9"
+    },
+    "accent_gold": {
+      "main": "#C8A951",
+      "bright": "#D4AF37",
+      "dark": "#9A7E32",
+      "light": "#FDF9EE",
+      "border": "rgba(200, 169, 81, 0.35)"
+    },
+    "sla_indicators": {
+      "critical_24h": {
+        "bg": "#FEF2F2",
+        "border": "#FECACA",
+        "text": "#991B1B",
+        "accent": "#EF4444",
+        "glow": "0 0 12px rgba(239, 68, 68, 0.25)"
+      },
+      "urgent_72h": {
+        "bg": "#FFFBEB",
+        "border": "#FDE68A",
+        "text": "#92400E",
+        "accent": "#F59E0B",
+        "glow": "0 0 12px rgba(245, 158, 11, 0.2)"
+      },
+      "on_track": {
+        "bg": "#ECFDF5",
+        "border": "#A7F3D0",
+        "text": "#065F46",
+        "accent": "#10B981"
+      },
+      "resolved": {
+        "bg": "#F8FAFC",
+        "border": "#E2E8F0",
+        "text": "#475569",
+        "accent": "#64748B"
+      }
+    },
+    "confidential_vault": {
+      "vault_dark": "#0A1120",
+      "vault_card": "#111C30",
+      "gold_hairline": "rgba(200, 169, 81, 0.3)",
+      "text_encrypted": "#94A3B8"
     }
   },
-  "layouts_and_grids": {
-    "mobile_first_strategy": "Vista adaptable que pasa de columna única en móviles (modo escáner/puerta) a cuadrícula bento multifuncional en escritorio.",
-    "tablero_operativo_grid": "grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6",
-    "event_editor_layout": "grid-cols-1 lg:grid-cols-12 gap-6",
-    "checkin_mobile_layout": "max-w-md mx-auto p-4 space-y-4 shadow-xl bg-white rounded-2xl border border-slate-200"
-  },
-  "key_modules_blueprint": [
-    {
-      "name": "Tablero Operativo de Eventos y Ocurrencias",
-      "path": "/operaciones/tablero",
-      "description": "Panel central de control con métricas en tiempo real, próximas ocurrencias, estado de equipos y turnos descubiertos.",
-      "components": [
-        "MetricsHeaderCard (Asistencia total, Voluntarios confirmados, Check-in tasa, Alertas de vacantes)",
-        "UpcomingOccurrencesList (Filtros por fecha, ministerio, estado con badge de recurrencia)",
-        "QuickCheckInLauncher (Botón flotante y widget rápido para ingreso directo al modo escáner)"
-      ]
-    },
-    {
-      "name": "Gestión de Eventos y Recurrencia",
-      "path": "/operaciones/eventos",
-      "description": "Creación y edición de eventos únicos o recurrentes (semanal, quincenal, mensual) con materialización automática de ocurrencias.",
-      "components": [
-        "EventFormModal (Datos generales, lugar, tipo, ministerio asociado de Persona 360)",
-        "RecurrencePatternSelector (Días de la semana, intervalo, fecha fin o N repeticiones)",
-        "MaterializedOccurrencesTable (Detalle de fechas generadas con opción de cancelación individual)"
-      ]
-    },
-    {
-      "name": "Equipos y Turnos de Voluntariado",
-      "path": "/operaciones/equipos",
-      "description": "Definición de roles de voluntariado, convocatorias, turnos recurrentes y estado de confirmación de servidores.",
-      "components": [
-        "TeamRoleManager (Creación de roles: Bienvenida, Sonido, Medios, Seguridad)",
-        "ShiftAssignmentBoard (Matriz de turnos por ocurrencia con slots disponibles/ocupados)",
-        "VolunteerCalloutModal (Convocatoria masiva a miembros via notificaciones internas)"
-      ]
-    },
-    {
-      "name": "Modulo de Inscripciones y Asistentes",
-      "path": "/operaciones/inscripciones",
-      "description": "Registro previo e invitados vinculados a Persona 360 con generación de código QR individual.",
-      "components": [
-        "AttendeeLookupCombobox (Búsqueda en tiempo real con foto, RUT/ID y cédula)",
-        "GuestRegistrationForm (Registro rápido de invitados no registrados previa validación)",
-        "AttendeeStatusBadge (Inscrito, Confirmado, Presente, Ausente)"
-      ]
-    },
-    {
-      "name": "Módulo de Check-in Móvil Flexible",
-      "path": "/operaciones/checkin-movil",
-      "description": "Interfaz ultra-rápida de check-in para tablets/móviles con 3 modos: Búsqueda Manual, Cámara QR y Código de Miembro.",
-      "components": [
-        "MobileCheckInScanner (Cámara QR con alerta sonora/háptica y prevención de doble check-in)",
-        "ManualPersonaSearch (Autocompletado instantáneo por nombre/teléfono/cédula)",
-        "MemberCodeInput (Teclado numérico grande para ingreso rápido por ID de miembro)",
-        "AntiDuplicateToast (Alerta visual preventiva cuando un miembro ya registró ingreso)"
-      ]
-    },
-    {
-      "name": "Cierre de Asistencia y Métricas E2E",
-      "path": "/operaciones/asistencia/cierre",
-      "description": "Flujo de cierre oficial de la lista de asistencia, informe de ausencias, exportación e historial auditado.",
-      "components": [
-        "AttendanceClosingSummary (Comparativo proyectado vs real)",
-        "AuditLogTimeline (Registro inmutable de quién realizó el check-in, cambios de turno y cierres)",
-        "NotificationDispatchBadge (Notificaciones internas enviadas a servidores y coordinadores)"
-      ]
-    }
-  ],
-  "states_design": {
-    "empty_state": "Contenedor acolchado con borde punteado, ícono contextual en tono acento oro/azul, título Spectral mediano, descripción clara y botón de acción principal con data-testid.",
-    "loading_state": "Esqueletos animados con pulso suave (`animate-pulse`) conservando las dimensiones exactas de la tabla o tarjetas.",
-    "error_state": "Banner de advertencia en fondo carmesí claro (`bg-red-50 border-red-200`) con botón de reintento directo.",
-    "duplicate_prevented_state": "Modal/Toast animado con borde dorado/amarillo que muestra la hora exacta del check-in previo y la persona que procesó el registro."
-  },
-  "data_testid_conventions": {
-    "rule": "kebab-case basado en rol semántico",
-    "examples": [
-      "data-testid=\"event-create-button\"",
-      "data-testid=\"event-title-input\"",
-      "data-testid=\"recurrence-pattern-select\"",
-      "data-testid=\"occurrence-materialize-btn\"",
-      "data-testid=\"volunteer-assign-slot-btn\"",
-      "data-testid=\"checkin-search-input\"",
-      "data-testid=\"checkin-qr-scan-btn\"",
-      "data-testid=\"checkin-confirm-btn\"",
-      "data-testid=\"checkin-duplicate-warning\"",
-      "data-testid=\"attendance-close-session-btn\"",
-      "data-testid=\"metrics-total-attendance-card\""
+  "visual_privacy_and_rbac": {
+    "core_principle": "Zero Inference Visual Insulation (UI Anti-Leakage)",
+    "rules": [
+      {
+        "rule_id": "PRIVACY-01",
+        "name": "Strict Non-Inference for Unauthorized Users",
+        "description": "Users without Cuidado Pastoral permissions (pastoral_core or assigned_team) must NEVER see any indicator, badge, zero counter, empty timeline section, tab, or metadata that reveals or suggests the existence of a pastoral case or confidential note."
+      },
+      {
+        "rule_id": "PRIVACY-02",
+        "name": "Persona 360 Privacy Shield",
+        "description": "In Persona 360 profile view, the 'Cuidado Pastoral' tab or section badge is ONLY rendered if accessControl.hasPastoralAccess(user) evaluates to true. For unauthorized users, the UI renders as if the module does not exist. No 'Acceso Denegado' placeholder, no disabled button."
+      },
+      {
+        "rule_id": "PRIVACY-03",
+        "name": "Pastoral Vault Visual Partitioning",
+        "description": "Within Pastoral Care cases, notes are partitioned: 'pastoral_core' (pastors & general coordinators) can read/write encrypted pastoral vault notes; 'assigned_team' can view operational progress and public updates but NOT confidential vault notes."
+      },
+      {
+        "rule_id": "PRIVACY-04",
+        "name": "Audit Log Badge & Append-Only Indicator",
+        "description": "Vault notes show an explicit security badge: 'Bóveda Cifrada | Auditado'. Notes cannot be edited or deleted once created (append-only timeline with view audit tracking)."
+      }
     ]
+  },
+  "operacion_72_guidelines": {
+    "rules": [
+      "Operación 72 triggers automatically when a person accepts Jesus for the first time.",
+      "Single historical record per person_id with immutable original conversion date.",
+      "Re-entry logic: If a person returns after months or years, reactivate the existing record from the last completed valid stage without creating duplicate Person, expediente, or enrollment.",
+      "Timers: 24h assignment timer (Red SLA alert if unassigned) & 72h contact timer (Amber/Red SLA alert if uncontacted).",
+      "Distinct scope: Operación 72 = immediate contact response; Consolidación = formative process; Cuidado Pastoral = full case file and ongoing accompaniment."
+    ],
+    "ui_components": [
+      "SlaTimerCountdown: Real-time visual countdown with progress ring and SLA status color.",
+      "HistoricalStageTimeline: Interactive stage history showing completed, reactivated, and current active stages.",
+      "ReactivationAlertBanner: Gold badge indicating 'Expediente Histórico Reactivado (Continuación de última etapa validada)'."
+    ]
+  },
+  "navigation_and_routes": {
+    "base_path": "/cuidado-pastoral",
+    "routes": [
+      {
+        "path": "/cuidado-pastoral",
+        "component": "PastoralDashboardPage.js",
+        "title": "Tablero Confidencial de Cuidado Pastoral",
+        "data_testid": "route-pastoral-dashboard"
+      },
+      {
+        "path": "/cuidado-pastoral/casos",
+        "component": "PastoralCasesInboxPage.js",
+        "title": "Bandeja de Casos y Alertas SLA",
+        "data_testid": "route-pastoral-cases-inbox"
+      },
+      {
+        "path": "/cuidado-pastoral/casos/:caseId",
+        "component": "PastoralExpedienteDetailPage.js",
+        "title": "Expediente Pastoral y Bóveda Cifrada",
+        "data_testid": "route-pastoral-expediente-detail"
+      },
+      {
+        "path": "/cuidado-pastoral/operacion-72",
+        "component": "Operacion72DashboardPage.js",
+        "title": "Operación 72 - Respuesta Inmediata",
+        "data_testid": "route-operacion-72"
+      },
+      {
+        "path": "/cuidado-pastoral/visitas",
+        "component": "PastoralVisitsPage.js",
+        "title": "Agenda de Visitas por Hogar e Individual",
+        "data_testid": "route-pastoral-visits"
+      }
+    ]
+  },
+  "component_architecture": {
+    "page_containers": [
+      {
+        "name": "PastoralDashboardPage",
+        "file": "frontend/src/pages/pastoral/PastoralDashboardPage.js",
+        "description": "Confidential executive overview with metrics, active alerts, response performance, and household visit summary."
+      },
+      {
+        "name": "PastoralCasesInboxPage",
+        "file": "frontend/src/pages/pastoral/PastoralCasesInboxPage.js",
+        "description": "Operational inbox with strict filtering by SLA status, assigned team, severity, and stage filter."
+      },
+      {
+        "name": "PastoralExpedienteDetailPage",
+        "file": "frontend/src/pages/pastoral/PastoralExpedienteDetailPage.js",
+        "description": "Comprehensive expediente with case summary, encrypted pastoral notes vault (append-only), interaction timeline, and escalation control."
+      },
+      {
+        "name": "Operacion72DashboardPage",
+        "file": "frontend/src/pages/pastoral/Operacion72DashboardPage.js",
+        "description": "Immediate 72-hour contact engine showing active 24h/72h SLA countdowns, single historical record status, and reactivation history."
+      },
+      {
+        "name": "PastoralVisitsPage",
+        "file": "frontend/src/pages/pastoral/PastoralVisitsPage.js",
+        "description": "Visits dispatcher allowing grouping by household, multi-person scheduling, address mapping integration, and individual notes."
+      }
+    ],
+    "reusable_components": [
+      {
+        "name": "PastoralSlaBadge",
+        "file": "frontend/src/components/pastoral/PastoralSlaBadge.js",
+        "description": "Displays SLA alert level (24h Sin Asignar, 72h Sin Contacto, Próximo Paso Vencido, Urgente) with exact countdown."
+      },
+      {
+        "name": "PastoralVaultPanel",
+        "file": "frontend/src/components/pastoral/PastoralVaultPanel.js",
+        "description": "Encrypted append-only pastoral note box accessible only to pastoral_core users, complete with read audit log visual stamp."
+      },
+      {
+        "name": "HouseholdVisitsGroupCard",
+        "file": "frontend/src/components/pastoral/HouseholdVisitsGroupCard.js",
+        "description": "Renders family group home visits with collapsible individual member activity history."
+      },
+      {
+        "name": "Operacion72ReactivationBanner",
+        "file": "frontend/src/components/pastoral/Operacion72ReactivationBanner.js",
+        "description": "Displays single historical record notice when a person is reactivated from previous valid stage."
+      },
+      {
+        "name": "PastoralCaseEscalationDialog",
+        "file": "frontend/src/components/pastoral/PastoralCaseEscalationDialog.js",
+        "description": "Audited high-priority escalation modal to notify pastoral leadership immediately."
+      }
+    ]
+  },
+  "state_designs": {
+    "empty_state": {
+      "bg": "#FAF8F5",
+      "border": "1px dashed rgba(200, 169, 81, 0.4)",
+      "icon": "ShieldCheck",
+      "icon_color": "#C8A951",
+      "title": "No hay casos en esta bandeja",
+      "description": "Todos los casos pastoralmente asignados están al día en sus SLAs. El rebaño está atendido.",
+      "action_button": "Crear Nuevo Caso Pastoral"
+    },
+    "loading_state": {
+      "shimmer": "Background shimmer with Navy #1B2A4A pulser",
+      "text": "Desencriptando expediente confidencial...",
+      "spinner": "Golden ring loader with radial gold blur overlay"
+    },
+    "error_state": {
+      "bg": "#FEF2F2",
+      "border": "1px solid #FCA5A5",
+      "title": "Acceso Restringido o Error de Conexión",
+      "description": "Esta información está bajo protocolos de confidencialidad pastoral extrema o no se pudo cargar.",
+      "action_button": "Reintentar Autenticación Pastoral"
+    },
+    "unauthorized_state": {
+      "behavior": "Completely hidden from UI. No error box, no placeholder card, no inferrable tab. Component returns null."
+    }
   },
   "image_urls": [
     {
-      "category": "volunteers_team",
-      "url": "https://images.pexels.com/photos/6568957/pexels-photo-6568957.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
-      "description": "Voluntarios de servicio con gafetes promocionando la atención en puertas."
+      "category": "pastoral_hero",
+      "url": "https://images.pexels.com/photos/38786011/pexels-photo-38786011.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "description": "Gold communion tray with pastor and congregation background for institutional header"
     },
     {
-      "category": "event_gathering",
-      "url": "https://images.unsplash.com/photo-1609234656381-73e732808098?crop=entropy&cs=srgb&fm=jpg&q=85",
-      "description": "Asistentes y servidores en evento especial."
+      "category": "pastoral_community",
+      "url": "https://images.unsplash.com/flagged/photo-1551212696-dcb8e1ea4256?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1OTV8MHwxfHNlYXJjaHwxfHxwYXN0b3JhbCUyMGNhcmUlMjBDaHVyY2glMjBOYXZ5JTIwR29sZCUyMHBvcnRyYWl0JTIwYWJzdHJhY3R8ZW58MHx8fHwxNzg5ODQ3MzkxfDA&ixlib=rb-4.1.0&q=85",
+      "description": "Pastoral accompaniment and counseling portrait"
     }
   ],
   "instructions_to_main_agent": [
-    "Mantener la tipografía Spectral para todos los encabezados e IBM Plex Sans para textos y tablas.",
-    "Usar componentes de Shadcn (Dialog, Tabs, Badge, Select, Button, Table, DropdownMenu) pero con estilos personalizados acordes a la paleta azul marino y oro.",
-    "Asegurar que el check-in móvil funcione fluido en pantallas pequeñas con botones de tamaño accesible (mínimo 44px de alto).",
-    "Garantizar que no se permitan dobles registros de asistencia en una misma ocurrencia.",
-    "Integrar el estado de auditoría en todas las acciones de modificación o cierre de asistencia.",
-    "Incluir siempre los atributos data-testid en todos los botones, inputs y tarjetas clave."
-  ]
+    "1. Maintain strict compatibility with existing VEN Y VE 360 styling tokens (Navy #1B2A4A, Gold #C8A951, Spectral font for headers, IBM Plex Sans for body).",
+    "2. All files created under src/ must be JavaScript (.js) files.",
+    "3. ALWAYS implement data-testid on every interactive button, input, tab, badge, case row, and modal container (e.g. data-testid=\"op72-reactivate-btn\", data-testid=\"pastoral-vault-note-input\").",
+    "4. Enforce strict visual privacy: Wrap pastoral components in access checks (e.g., accessControl.hasPastoralAccess(user)). Unauthorized users MUST NOT see any pastoral UI or inferrable counters.",
+    "5. In Operación 72 views, ensure the single historical record badge and reactivation stage logic are clearly highlighted in the UI.",
+    "6. Use Sonner toasts for all action feedback (e.g. 'Nota pastoral cifrada y guardada en bóveda', 'Caso pastoral escalado con éxito').",
+    "7. Include comprehensive desktop and mobile responsive layouts for all 5 pastoral pages."
+  ],
+  "UNIVERSAL GUIDELINES FOR MAIN AGENT": {
+    "code_format": "JavaScript React (.js files)",
+    "testing_requirement": "All buttons, tabs, input elements, badges, timeline events, and card items MUST have data-testid attributes.",
+    "privacy_rule": "Strict anti-inference RBAC visual insulation. Never display empty pastoral tabs or counters to unauthorized users.",
+    "design_tokens": "Navy primary (#1B2A4A), Gold accent (#C8A951), White/Ivory surface (#FAF8F5), Red SLA (#EF4444), Amber SLA (#F59E0B), Emerald SLA (#10B981)."
+  }
 }

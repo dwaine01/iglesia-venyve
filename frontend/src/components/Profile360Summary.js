@@ -17,6 +17,7 @@ import {
   Phone,
   PlaneTakeoff,
   Sprout,
+  ShieldCheck,
   UserRound,
   UsersRound,
 } from 'lucide-react';
@@ -39,6 +40,7 @@ const ICONS = {
   household: UsersRound,
   asistencia: CalendarCheck2,
   historial: FileClock,
+  cuidado_pastoral: ShieldCheck,
 };
 
 const FALLBACK_ICONS = [Church, HeartHandshake, ClipboardList];

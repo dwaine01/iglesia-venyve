@@ -573,6 +573,15 @@ async def save_meeting_attendance(meeting_id: str, payload: AttendanceBulk, curr
         await db.person_attendance.update_one({"_id": attendance_id}, {"$set": person_doc, "$setOnInsert": {"_id": attendance_id}}, upsert=True)
     meeting_update = {"conversion_person_ids": payload.conversion_person_ids, "petitions": payload.petitions, "results": payload.results, "status": "completed" if payload.complete_meeting else "in_progress", "completed_at": now if payload.complete_meeting else None, "updated_at": now}
     await db.cell_meetings.update_one({"meeting_id": meeting_id}, {"$set": meeting_update})
+    if payload.conversion_person_ids:
+        from care_service import create_op72
+        for converted_person_id in payload.conversion_person_ids:
+            await create_op72(db, {
+                "person_id": converted_person_id,
+                "decision_at": meeting["scheduled_at"],
+                "source_type": "cell_meeting",
+                "source_id": meeting_id,
+            }, current_user)
     if payload.complete_meeting:
         await snapshot_cell_health(db, meeting["cell_id"], current_user["user_id"], meeting_id)
         await evaluate_multiplication(db, meeting["cell_id"], current_user["user_id"])

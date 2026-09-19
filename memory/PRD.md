@@ -631,15 +631,33 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - **Limpieza final local:** eventos, ocurrencias, turnos, asignaciones, inscripciones, check-ins, notificaciones y credenciales QA en cero. Producción no fue consultada ni modificada.
 - **Fuera de alcance preservado:** Pushpay continúa **MOCKED/BLOCKED**; no se añadió IA.
 
+### MEGA‑BLOQUE F — CUIDADO PASTORAL — IMPLEMENTADO Y CERTIFICADO 2026‑09‑19
+
+- Blueprint 1.1 aprobado y congelado en `memory/CARE_BLUEPRINT.md`: Cuidado administra expedientes, asignaciones, contactos, visitas y bóveda; Operación 72 responde inmediatamente; Consolidación conserva el proceso formativo. Solo comparten IDs y nunca notas.
+- Nueva API `/api/care/*` y colecciones separadas para casos, asignaciones, contactos, notas cifradas, Operación 72, visitas, participantes, alertas y auditoría. Índices únicos protegen `case_id`, `visit_id`, asignación primaria y `op72_records.person_id`.
+- Operación 72 conserva una sola primera conversión histórica por `person_id`; `first_conversion_at` es inmutable. Pausa y reactivación preservan inscripción, `current_stage_key`, tareas y progreso de Consolidación/7 Semanas, sin duplicar Persona, expediente ni proceso.
+- Reconciliación, restauración y regreso abren casos pastorales independientes, pero nunca otra Operación 72. El disparador celular `conversion_person_ids` crea/enlaza Op72 idempotentemente.
+- Estados controlados: Detectado, Asignado, Contactado, En seguimiento, Resuelto, Cerrado y Escalado. Urgencias escalan inmediatamente a autoridad pastoral sin retirar al responsable normal y auditan actor, fecha, destino y motivo.
+- Alertas idempotentes: 24h sin asignar, 72h sin contacto exitoso, próximo paso vencido y urgente. Dashboard, alertas y Perfil 360 nunca contienen notas o ciphertext.
+- Bóveda AES‑GCM con clave `PASTORAL_NOTES_ENCRYPTION_KEY`, notas append-only, adendas, visibilidad `pastoral_core/assigned_team` y auditoría por lectura. Sin clave, la bóveda falla cerrada y no guarda texto plano.
+- RBAC central de Cuidado: Pastor/Pastora y Coordinación General autorizada tienen scope global; equipo asignado solo accede a casos activos asignados y notas `assigned_team`; Persona recibe 403. IDs ajenos responden 404 para evitar inferencias.
+- Perfil 360 agrega la sección Cuidado únicamente si existe actividad y el usuario tiene permiso global o asignación sobre esa Persona. Usuarios no autorizados no reciben tarjeta, contador, timeline ni metadata.
+- Visitas individuales o por `household_id` canónico; una visita familiar conserva participante, resultado, próximo paso y caso individual. El resumen de hogar se cifra y no se copia a otros módulos.
+- Rollout conservador: producción inicia sin backfill. `/api/care/migrations/legacy/dry-run` solo cuenta y garantiza `writes_performed=false`; migrar notas/conversiones históricas requiere una aprobación posterior a la revisión real.
+- Frontend operativo en `/cuidado-pastoral`, casos, expediente, Operación 72 y visitas; desktop 1920×800 y móvil 390×844 certificados con overflow `[]`.
+- Certificación independiente Iteración 32: backend/frontend 100%, flujos Pastor/Líder, privacidad, Op72, visitas y build PASS. Regresión final completa: **210 PASS**, 3 omitidas intencionalmente; build PASS con warnings preexistentes de sourcemaps/bundle.
+- Limpieza final local: `care_ui_users=0`, `coreqa_users=0`, `care_cases=0`, `op72_records=0`, `finance_qa=0`. La cascada QA ahora incluye todas las colecciones de Cuidado.
+- Revisión visual del usuario queda pendiente en producción. Antes de publicar la versión candidata debe configurarse una clave AES‑256 base64-url segura para `PASTORAL_NOTES_ENCRYPTION_KEY`; no se ejecutará migración histórica durante esa revisión.
+
 ### P1/P2 — siguientes pasos y backlog
 
 - **P1 — Aceptación operativa:** validar Consolidación v2 con responsables reales, asignar `front_groups.view`/`leadership.view` y capacidades de gestión, y crear el primer Grupo Frontal de producción.
 - **Operación administrativa — Mapa 360:** dibujar los sectores territoriales reales; snap-to-roads permanece P2/opcional y no bloqueante.
-- **P1 — Aceptación funcional del usuario:** revisar Mega‑Bloque G ya certificado con casos reales de la oficina de la iglesia y recopilar ajustes de política/terminología.
+- **P1 — Aceptación funcional del usuario:** revisar Mega‑Bloque F en producción con casos reales autorizados y recopilar ajustes de política/terminología, sin ejecutar backfill histórico.
 - **P1 — Pushpay:** activar OAuth/sandbox, sincronización idempotente y mapeo contable únicamente después de recibir credenciales reales.
 - **P2 — Finanzas:** pulido visual y desminificación de páginas financieras según feedback, sin alterar contratos verificados.
 - **COMPLETADO — Mega‑Bloque E — Operaciones:** eventos, check‑in, asistencia y voluntariado.
-- **P3 — Mega‑Bloque F — Cuidado:** casos pastorales, visitación y Operación 72.
+- **COMPLETADO — Mega‑Bloque F — Cuidado:** casos pastorales, visitación, privacidad extrema y Operación 72 histórica única.
 - **P4 — Mega‑Bloque H — Automatización + IA:** workflows, alertas, dashboards y asistente sobre datos autorizados.
 
 ## 12. Próximas tareas ejecutables
@@ -648,7 +666,7 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 2. Ejecutar aceptación física del Modo Presentación en la pantalla 14×7 y ajustar tamaños únicamente con feedback de distancia real.
 3. Entregar el padrón histórico real como CSV/XLSX para ejecutar primero el DRY-RUN, revisar duplicados/hogares y definir en una fase posterior el commit supervisado; el flujo actual nunca escribe.
 4. Mantener Pushpay **MOCKED/BLOCKED** hasta recibir las credenciales sandbox.
-5. Continuar con Mega‑Bloque F — Cuidado como siguiente módulo funcional priorizado.
+5. Configurar `PASTORAL_NOTES_ENCRYPTION_KEY`, publicar la versión candidata de Mega‑Bloque F y realizar aceptación visual/operativa en producción sin migrar históricos.
 
 ## 13. Restricciones vigentes
 

@@ -38,6 +38,9 @@ def mongo_db():
     meeting_ids = database.cell_meetings.distinct("meeting_id", {"cell_id": {"$in": cell_ids}})
     need_ids = database.cell_needs.distinct("need_id", {"cell_id": {"$in": cell_ids}})
     door_case_ids = database.door_cases.distinct("case_id", {"source_type": "cell_need", "source_id": {"$in": need_ids}})
+    care_cases = list(database.pastoral_cases.find({"person_id": {"$in": person_ids}}, {"_id": 0, "case_id": 1}))
+    care_case_ids = [item["case_id"] for item in care_cases]
+    op72_ids = database.op72_records.distinct("op72_id", {"person_id": {"$in": person_ids}})
     for collection in ["cell_network_assignments"]: database[collection].delete_many({"network_id": {"$in": network_ids}})
     for collection in ["cell_role_assignments", "cell_memberships", "cell_followups", "cell_needs", "cell_health_snapshots", "cell_multiplication_reviews", "cell_timeline"]: database[collection].delete_many({"cell_id": {"$in": cell_ids}})
     database.cell_meeting_attendance.delete_many({"meeting_id": {"$in": meeting_ids}})
@@ -46,12 +49,20 @@ def mongo_db():
     database.door_case_events.delete_many({"case_id": {"$in": door_case_ids}})
     database.door_cases.delete_many({"case_id": {"$in": door_case_ids}})
     database.board_audit_events.delete_many({"$or": [{"entity_id": {"$in": door_case_ids}}, {"changes.need_id": {"$in": need_ids}}]})
+    database.pastoral_case_assignments.delete_many({"case_id": {"$in": care_case_ids}})
+    database.pastoral_contact_attempts.delete_many({"case_id": {"$in": care_case_ids}})
+    database.pastoral_case_notes.delete_many({"case_id": {"$in": care_case_ids}})
+    database.care_alerts.delete_many({"case_id": {"$in": care_case_ids}})
+    database.care_audit_events.delete_many({"entity_id": {"$in": [*care_case_ids, *op72_ids]}})
+    database.op72_records.delete_many({"person_id": {"$in": person_ids}})
+    database.pastoral_cases.delete_many({"case_id": {"$in": care_case_ids}})
     database.cell_assignment_events.delete_many({"$or": [{"cell_id": {"$in": cell_ids}}, {"person_id": {"$in": person_ids}}]})
     database.cell_multiplications.delete_many({"$or": [{"mother_cell_id": {"$in": cell_ids}}, {"daughter_cell_id": {"$in": cell_ids}}]})
     database.cells.delete_many({"cell_id": {"$in": cell_ids}}); database.cell_networks.delete_many({"network_id": {"$in": network_ids}})
     for collection in ["person_contacts", "person_activity", "process_enrollments", "process_stage_progress", "process_timeline", "process_alerts"]: database[collection].delete_many({"person_id": {"$in": person_ids}})
     database.persons.delete_many({"qa_run": RUN})
     assert database.cell_needs.count_documents({"need_id": {"$in": need_ids}}) == 0
+    assert database.op72_records.count_documents({"person_id": {"$in": person_ids}}) == 0
     client.close()
 
 

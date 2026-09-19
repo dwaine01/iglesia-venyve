@@ -16,6 +16,11 @@ import PersonaNuevaPage from './pages/PersonaNuevaPage';
 import PersonaPerfilPage from './pages/PersonaPerfilPage';
 import MembershipImportPage from './pages/MembershipImportPage';
 import OperationsDashboardPage from './pages/operations/OperationsDashboardPage';
+import PastoralDashboardPage from './pages/pastoral/PastoralDashboardPage';
+import PastoralCasesInboxPage from './pages/pastoral/PastoralCasesInboxPage';
+import PastoralExpedienteDetailPage from './pages/pastoral/PastoralExpedienteDetailPage';
+import Operacion72DashboardPage from './pages/pastoral/Operacion72DashboardPage';
+import PastoralVisitsPage from './pages/pastoral/PastoralVisitsPage';
 import OperationsEventsPage from './pages/operations/OperationsEventsPage';
 import OperationEventDetailPage from './pages/operations/OperationEventDetailPage';
 import OperationOccurrencePage from './pages/operations/OperationOccurrencePage';
@@ -71,7 +76,7 @@ import BoardMeetingsPage from './pages/board/BoardMeetingsPage';
 import BoardMeetingDetailPage from './pages/board/BoardMeetingDetailPage';
 import BoardMinutesPage from './pages/board/BoardMinutesPage';
 import AppLayout from './components/AppLayout';
-import { canManageDirectMembership, canViewFrontGroups, canViewGeo, canViewLeadership, canViewOperations, hasAnyCapability, isPastoralAuthority } from './lib/accessControl';
+import { canManageDirectMembership, canViewCare, canViewFrontGroups, canViewGeo, canViewLeadership, canViewOperations, hasAnyCapability, isPastoralAuthority } from './lib/accessControl';
 import './App.css';
 
 const GeoMapsPage = lazy(() => import('./pages/GeoMapsPage'));
@@ -211,6 +216,11 @@ function App() {
             <Route path="operaciones/eventos/:eventId" element={<CapabilityRoute allowed={canViewOperations}><OperationEventDetailPage /></CapabilityRoute>} />
             <Route path="operaciones/ocurrencias/:occurrenceId" element={<CapabilityRoute allowed={canViewOperations}><OperationOccurrencePage /></CapabilityRoute>} />
             <Route path="operaciones/checkin/:occurrenceId" element={<CapabilityRoute allowed={canViewOperations}><OperationCheckInPage /></CapabilityRoute>} />
+            <Route path="cuidado-pastoral" element={<CapabilityRoute allowed={canViewCare}><PastoralDashboardPage /></CapabilityRoute>} />
+            <Route path="cuidado-pastoral/casos" element={<CapabilityRoute allowed={canViewCare}><PastoralCasesInboxPage /></CapabilityRoute>} />
+            <Route path="cuidado-pastoral/casos/:caseId" element={<CapabilityRoute allowed={canViewCare}><PastoralExpedienteDetailPage /></CapabilityRoute>} />
+            <Route path="cuidado-pastoral/operacion-72" element={<CapabilityRoute allowed={canViewCare}><Operacion72DashboardPage /></CapabilityRoute>} />
+            <Route path="cuidado-pastoral/visitas" element={<CapabilityRoute allowed={canViewCare}><PastoralVisitsPage /></CapabilityRoute>} />
             <Route path="personas/:personId" element={<PersonaPerfilPage />} />
             <Route path="directorio" element={<DirectorioTalentosPage />} />
             <Route path="ministerios" element={<MinisteriosPage />} />

@@ -1,0 +1,35 @@
+import React, { useEffect, useState } from 'react';
+import axios from 'axios';
+import { AlertTriangle, ArrowRight, BellRing, CalendarDays, Clock3, Loader2, ShieldAlert, UsersRound } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
+import { apiErrorMessage } from '../../lib/apiErrors';
+import { PastoralCaseDialog } from '../../components/pastoral/PastoralCaseDialog';
+import { PastoralShell } from '../../components/pastoral/PastoralShell';
+import { alertLabel, careStatusLabel, dateTime, statusTone } from '../../lib/careLabels';
+
+const metricConfig = [
+  ['active_cases', 'Casos activos', UsersRound], ['urgent_cases', 'Urgentes', ShieldAlert],
+  ['open_alerts', 'Alertas abiertas', BellRing], ['op72_active', 'Operación 72 activa', Clock3],
+  ['upcoming_visits', 'Visitas próximas', CalendarDays],
+];
+
+export default function PastoralDashboardPage() {
+  const { API, getAuthHeaders } = useAuth(); const navigate = useNavigate(); const [data, setData] = useState(null); const [error, setError] = useState('');
+  const load = () => { setError(''); axios.get(`${API}/api/care/dashboard`, getAuthHeaders()).then((response) => setData(response.data)).catch((requestError) => setError(apiErrorMessage(requestError, 'No se pudo cargar Cuidado Pastoral'))); };
+  useEffect(load, [API, getAuthHeaders]);
+  const actions = data?.permissions?.manage ? <PastoralCaseDialog onCreated={(item) => navigate(`/cuidado-pastoral/casos/${item.case_id}`)} /> : null;
+  return <PastoralShell title="Cuidado Pastoral" description="Respuesta inmediata, acompañamiento y visitas bajo un expediente confidencial y auditado." actions={actions}>
+    {error && <div className="border border-red-200 bg-red-50 p-4 text-sm text-red-800" data-testid="pastoral-dashboard-error">{error}</div>}
+    {!data && !error && <div className="flex justify-center py-24" data-testid="pastoral-dashboard-loading"><Loader2 className="h-8 w-8 animate-spin text-[#9A7E32]" /></div>}
+    {data && <div className="space-y-8">
+      {!data.permissions?.vault_configured && <div className="flex gap-3 border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900" data-testid="pastoral-vault-configuration-alert"><AlertTriangle className="h-5 w-5 shrink-0" /><span>La bóveda permanece bloqueada hasta configurar su clave de cifrado. Los demás flujos pueden revisarse sin guardar notas en texto plano.</span></div>}
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5" aria-label="Indicadores pastorales">{metricConfig.map(([key, label, Icon]) => <div key={key} className="border bg-white p-4" data-testid={`pastoral-metric-${key}`}><div className="flex items-center justify-between"><span className="flex h-9 w-9 items-center justify-center bg-[#FDF9EE] text-[#9A7E32]"><Icon className="h-5 w-5" /></span><b className="font-['Spectral'] text-3xl text-[#0B1428]" data-testid={`pastoral-metric-${key}-value`}>{data.metrics[key] || 0}</b></div><p className="mt-3 text-xs font-semibold uppercase text-slate-500">{label}</p></div>)}</section>
+      <div className="grid min-w-0 gap-6 xl:grid-cols-[1.45fr_1fr]">
+        <section className="min-w-0 border bg-white" data-testid="pastoral-recent-cases-section"><header className="flex flex-wrap items-center justify-between gap-3 border-b p-4"><div className="min-w-0"><p className="text-xs font-bold uppercase text-[#9A7E32]">Expedientes</p><h2 className="font-['Spectral'] text-2xl font-semibold text-[#0B1428]">Actividad reciente</h2></div><Link to="/cuidado-pastoral/casos" className="shrink-0 text-sm font-semibold text-[#1B2A4A]" data-testid="pastoral-view-all-cases-link">Ver todos</Link></header><div className="min-w-0 divide-y">{data.recent_cases.length === 0 ? <p className="p-8 text-sm text-slate-500" data-testid="pastoral-cases-empty">No hay expedientes en esta bandeja.</p> : data.recent_cases.map((item) => <Link key={item.case_id} to={`/cuidado-pastoral/casos/${item.case_id}`} className="flex min-w-0 items-center gap-3 p-4 transition-colors hover:bg-[#FDF9EE]" data-testid={`pastoral-case-row-${item.case_id}`}><span className="min-w-0 flex-1"><b className="block truncate text-sm text-[#0B1428]" data-testid={`pastoral-case-person-${item.case_id}`}>{item.person?.name}</b><small className="mt-1 block truncate text-slate-500">{item.operational_summary || 'Expediente pastoral'}</small></span><span className={`shrink-0 border px-2 py-1 text-xs font-semibold ${statusTone(item.status)}`} data-testid={`pastoral-case-status-${item.case_id}`}>{careStatusLabel[item.status]}</span><ArrowRight className="hidden h-4 w-4 shrink-0 text-slate-400 sm:block" /></Link>)}</div></section>
+        <section className="min-w-0 border bg-white" data-testid="pastoral-alerts-section"><header className="border-b p-4"><p className="text-xs font-bold uppercase text-red-700">SLA pastoral</p><h2 className="font-['Spectral'] text-2xl font-semibold text-[#0B1428]">Alertas prioritarias</h2></header><div className="min-w-0 divide-y">{data.alerts.length === 0 ? <p className="p-8 text-sm text-slate-500" data-testid="pastoral-alerts-empty">Todos los compromisos están al día.</p> : data.alerts.map((item) => <Link key={item.alert_id} to={`/cuidado-pastoral/casos/${item.case_id}`} className="block min-w-0 p-4 hover:bg-red-50" data-testid={`pastoral-alert-${item.alert_id}`}><div className="flex min-w-0 items-start gap-3"><AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-red-600" /><div className="min-w-0"><b className="block break-words text-sm text-slate-900">{alertLabel[item.alert_type]}</b><p className="mt-1 break-words text-xs text-slate-500">Vence: {dateTime(item.due_at)}</p></div></div></Link>)}</div></section>
+      </div>
+      <section className="border bg-white" data-testid="pastoral-upcoming-visits-section"><header className="flex items-center justify-between border-b p-4"><h2 className="font-['Spectral'] text-2xl font-semibold text-[#0B1428]">Próximas visitas</h2><Link to="/cuidado-pastoral/visitas" className="text-sm font-semibold text-[#1B2A4A]" data-testid="pastoral-view-visits-link">Abrir agenda</Link></header><div className="grid gap-px bg-slate-200 sm:grid-cols-2 xl:grid-cols-3">{data.visits.length === 0 ? <p className="bg-white p-6 text-sm text-slate-500 sm:col-span-2 xl:col-span-3" data-testid="pastoral-visits-empty">No hay visitas programadas.</p> : data.visits.map((visit) => <div key={visit.visit_id} className="bg-white p-4" data-testid={`pastoral-visit-${visit.visit_id}`}><p className="text-xs font-semibold uppercase text-[#9A7E32]">{visit.household_id ? 'Visita por hogar' : 'Visita individual'}</p><b className="mt-1 block text-sm">{visit.purpose}</b><p className="mt-2 text-xs text-slate-500">{dateTime(visit.scheduled_at)}</p></div>)}</div></section>
+    </div>}
+  </PastoralShell>;
+}

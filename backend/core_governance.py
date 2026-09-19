@@ -13,6 +13,7 @@ from access_control import (
     BOARD_AI,
     BOARD_AUDIO,
     CELLULAR_CAPABILITIES,
+    CARE_CAPABILITIES,
     CORE_ACCESS_MANAGE,
     DOOR_BOARD_CAPABILITIES,
     CORE_GOVERNANCE_MANAGE,
@@ -102,7 +103,7 @@ class AccessUpdate(BaseModel):
     access_level: Optional[Literal["pastor", "coordinador_general", "director", "secretario", "tesorero", "equipo", "lider", "persona"]] = None
     is_active: bool
     capabilities: Optional[list[str]] = Field(default=None, max_length=100)
-    privilege_groups: Optional[list[Literal["membership", "board", "finance"]]] = None
+    privilege_groups: Optional[list[Literal["membership", "board", "finance", "care"]]] = None
 
 
 class UserAccessCreate(BaseModel):
@@ -112,7 +113,7 @@ class UserAccessCreate(BaseModel):
     access_level: Literal["pastor", "coordinador_general", "director", "secretario", "tesorero", "equipo", "lider", "persona"]
     access_title: Optional[str] = Field(default=None, max_length=120)
     organization_scope: Optional[dict] = None
-    privilege_groups: list[Literal["membership", "board", "finance"]] = []
+    privilege_groups: list[Literal["membership", "board", "finance", "care"]] = []
 
 
 def require_governance(current_user: dict = Depends(get_current_user)) -> dict:
@@ -143,6 +144,9 @@ def access_defaults(level: str, privilege_groups: Optional[list[str]] = None) ->
     role = "persona" if level == "persona" else "pastor" if level == "pastor" else "lider"
     defaults = access_defaults_for_role(role)
     groups = sorted(set(privilege_groups or ([] if level not in {"pastor", "coordinador_general"} else ["membership"])))
+    if level == "coordinador_general":
+        groups = sorted(set([*groups, "care"]))
+        defaults["capabilities"] = sorted(set([*defaults["capabilities"], *CARE_CAPABILITIES]))
     if level in {"coordinador_general", "director"}:
         defaults["capabilities"] = sorted(set([*defaults["capabilities"], CORE_ACCESS_MANAGE]))
     if "membership" not in groups:
@@ -169,8 +173,8 @@ def ensure_level_allowed(actor: dict, level: str, target: Optional[dict] = None)
 def ensure_privileges_allowed(actor: dict, groups: list[str]) -> None:
     if is_global_pastoral_authority(actor):
         return
-    if any(group in {"board", "finance"} for group in groups):
-        raise HTTPException(status_code=403, detail="Solo el pastor puede conceder Junta o Finanzas")
+    if any(group in {"board", "finance", "care"} for group in groups):
+        raise HTTPException(status_code=403, detail="Solo el pastor puede conceder Junta, Finanzas o Cuidado Pastoral")
     actor_groups = set(actor.get("privilege_groups") or [])
     if not set(groups).issubset(actor_groups):
         raise HTTPException(status_code=403, detail="Solo puede delegar privilegios que ya posee")
@@ -248,7 +252,7 @@ async def integrity_snapshot() -> dict:
         "users_without_person": await db.users.count_documents({"$or": [{"person_id": {"$exists": False}}, {"person_id": None}]}),
         "legacy_people_without_person": await db.people.count_documents({"$or": [{"canonical_person_id": {"$exists": False}}, {"canonical_person_id": None}]}),
         "access_policy_outdated": await db.users.count_documents({"$or": [
-            {"access_policy_version": {"$ne": 16}},
+            {"access_policy_version": {"$ne": 18}},
             {"capabilities": {"$exists": False}},
             {"access_scope": {"$exists": False}},
         ]}),
@@ -415,23 +419,21 @@ async def update_user_access(
         if active_pastors <= 1:
             raise HTTPException(status_code=400, detail="Debe existir al menos un pastor activo")
     defaults = access_defaults(requested_level, requested_groups)
-    allowed = set(PERSON_DOMAIN_CAPABILITIES + PROCESS_CAPABILITIES + CELLULAR_CAPABILITIES + DOOR_BOARD_CAPABILITIES + FINANCE_CAPABILITIES + JOURNEY_GOVERNANCE_CAPABILITIES + OPERATIONS_CAPABILITIES + [MEMBERSHIP_DOCUMENTS_MANAGE, BOARD_CONFIDENTIAL_ACCESS, PERSON_PASTORAL_NOTES_READ, CORE_GOVERNANCE_MANAGE, CORE_ACCESS_MANAGE])
+    allowed = set(PERSON_DOMAIN_CAPABILITIES + PROCESS_CAPABILITIES + CELLULAR_CAPABILITIES + DOOR_BOARD_CAPABILITIES + FINANCE_CAPABILITIES + JOURNEY_GOVERNANCE_CAPABILITIES + OPERATIONS_CAPABILITIES + CARE_CAPABILITIES + [MEMBERSHIP_DOCUMENTS_MANAGE, BOARD_CONFIDENTIAL_ACCESS, PERSON_PASTORAL_NOTES_READ, CORE_GOVERNANCE_MANAGE, CORE_ACCESS_MANAGE, "person.profile.read"])
     capabilities = defaults["capabilities"]
     if payload.capabilities is not None:
         if not is_global_pastoral_authority(current_user):
             raise HTTPException(status_code=403, detail="Solo el pastor puede personalizar capacidades")
         existing_capabilities = set(target.get("capabilities") or [])
-        current_defaults = set(access_defaults(target.get("access_level") or target.get("rol") or "persona", target.get("privilege_groups") or ["membership"])["capabilities"])
-        legacy_existing = existing_capabilities - current_defaults
-        invalid = sorted(set(payload.capabilities) - allowed - legacy_existing)
+        invalid = sorted(set(payload.capabilities) - allowed - existing_capabilities)
         if invalid:
             raise HTTPException(status_code=400, detail=f"Capabilities inválidas: {', '.join(invalid)}")
         customizable = set(JOURNEY_GOVERNANCE_CAPABILITIES + OPERATIONS_CAPABILITIES + [MEMBERSHIP_DOCUMENTS_MANAGE])
-        non_customizable = sorted(set(payload.capabilities) - set(defaults["capabilities"]) - customizable - legacy_existing)
+        non_customizable = sorted(set(payload.capabilities) - set(defaults["capabilities"]) - customizable - existing_capabilities)
         if non_customizable:
             raise HTTPException(status_code=400, detail=f"Capabilities no personalizables para este nivel: {', '.join(non_customizable)}")
-        preserved_legacy = set(payload.capabilities) & legacy_existing
-        capabilities = sorted(set(defaults["capabilities"]) | preserved_legacy | {item for item in payload.capabilities if item in customizable})
+        preserved_existing = set(payload.capabilities) & existing_capabilities
+        capabilities = sorted(set(defaults["capabilities"]) | preserved_existing | {item for item in payload.capabilities if item in customizable})
         if requested_role == "pastor" and CORE_GOVERNANCE_MANAGE not in capabilities:
             capabilities.append(CORE_GOVERNANCE_MANAGE)
     changed = (
@@ -448,7 +450,7 @@ async def update_user_access(
         "is_active": payload.is_active,
         "capabilities": capabilities,
         "access_scope": defaults["access_scope"],
-        "access_policy_version": 16,
+        "access_policy_version": 18,
         "updated_at": datetime.now(timezone.utc),
     }
     if changed:

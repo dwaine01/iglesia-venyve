@@ -77,9 +77,28 @@ async def qa_cleanup_plan(db) -> dict:
     user_ids = [str(item) for item in user_oids]
     person_oids = [item["_id"] for item in people]
     person_ids = [str(item) for item in person_oids]
+    care_cases = await db.pastoral_cases.find({"person_id": {"$in": person_ids}}, {"_id": 1, "case_id": 1}).to_list(100000)
+    care_case_ids = [item["case_id"] for item in care_cases]
+    op72_items = await db.op72_records.find({"person_id": {"$in": person_ids}}, {"_id": 1, "op72_id": 1}).to_list(100000)
+    note_items = await db.pastoral_case_notes.find({"case_id": {"$in": care_case_ids}}, {"_id": 1, "note_id": 1}).to_list(100000)
+    visit_participants = await db.pastoral_visitation_participants.find({"person_id": {"$in": person_ids}}, {"_id": 1, "visit_id": 1}).to_list(100000)
+    visit_ids = sorted({item["visit_id"] for item in visit_participants})
+    care_entity_ids = care_case_ids + [item["op72_id"] for item in op72_items] + [item["note_id"] for item in note_items] + visit_ids
+    care_queries = [
+        ("pastoral_case_assignments", {"case_id": {"$in": care_case_ids}}),
+        ("pastoral_contact_attempts", {"case_id": {"$in": care_case_ids}}),
+        ("pastoral_case_notes", {"case_id": {"$in": care_case_ids}}),
+        ("care_alerts", {"case_id": {"$in": care_case_ids}}),
+        ("op72_records", {"person_id": {"$in": person_ids}}),
+        ("pastoral_visitation_summaries", {"visit_id": {"$in": visit_ids}}),
+        ("pastoral_visitation_participants", {"visit_id": {"$in": visit_ids}}),
+        ("pastoral_visitations", {"visit_id": {"$in": visit_ids}}),
+        ("care_audit_events", {"$or": [{"entity_id": {"$in": care_entity_ids}}, {"actor_user_id": {"$in": user_ids}}]}),
+        ("pastoral_cases", {"case_id": {"$in": care_case_ids}}),
+    ]
     collections = []
     upload_ids = []
-    for collection_name, query in _queries(user_oids, user_ids, person_oids, person_ids):
+    for collection_name, query in [*care_queries, *_queries(user_oids, user_ids, person_oids, person_ids)]:
         docs = await db[collection_name].find(query, {"_id": 1}).to_list(100000)
         ids = [item["_id"] for item in docs]
         if collection_name == "person_photo_uploads":
