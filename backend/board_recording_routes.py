@@ -11,6 +11,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPExcepti
 from fastapi.responses import StreamingResponse
 from motor.motor_asyncio import AsyncIOMotorGridFSBucket
 from pydantic import BaseModel, Field
+from pymongo import ReturnDocument
 
 from access_control import DOORS_MANAGE
 from board_ai_provider import BoardAIProviderDegraded, BoardAIProviderUnavailable, get_board_ai_provider
@@ -127,6 +128,16 @@ async def complete_recording_upload(upload_id: str, payload: UploadComplete, bac
     if upload["status"] == "complete": return {"recording_id": str(upload["recording_id"]), "sha256": upload["sha256"], "bytes": upload["bytes"], "status": "ready"}
     if payload.duration_seconds > MAX_AUDIO_SECONDS: raise HTTPException(status_code=413, detail="Duración excedida")
     if upload["next_seq"] == 0: raise HTTPException(status_code=409, detail="No hay audio para finalizar")
+    finalization_token = str(uuid4()); claim_time = datetime.now(timezone.utc)
+    upload = await db.board_recording_uploads.find_one_and_update(
+        {"upload_id": upload_id, "owner_user_id": current_user["user_id"], "status": "uploading"},
+        {"$set": {"status": "finalizing", "finalization_token": finalization_token, "finalization_started_at": claim_time, "updated_at": claim_time}},
+        return_document=ReturnDocument.AFTER,
+    )
+    if not upload:
+        current = await db.board_recording_uploads.find_one({"upload_id": upload_id, "owner_user_id": current_user["user_id"]})
+        if current and current.get("status") == "complete": return {"recording_id": str(current["recording_id"]), "sha256": current["sha256"], "bytes": current["bytes"], "status": "ready"}
+        raise HTTPException(status_code=409, detail="La carga ya está siendo finalizada")
     recording_id = ObjectId(); target = recording_bucket().open_upload_stream_with_id(recording_id, f"board-{upload['meeting_id']}-{upload_id}.webm", metadata={"meeting_id": upload["meeting_id"], "owner_user_id": current_user["user_id"], "upload_id": upload_id, "immutable": True, "content_type": upload["content_type"], "bytes": upload["bytes"], "duration_seconds": payload.duration_seconds, "sha256": None, "status": "ready", "transcription_status": "queued", "created_at": datetime.now(timezone.utc)})
     digest = hashlib.sha256(); staging = stage_bucket()
     try:
@@ -143,10 +154,19 @@ async def complete_recording_upload(upload_id: str, payload: UploadComplete, bac
     except Exception:
         try: await target.abort()
         except Exception: pass
+        await db.board_recording_uploads.update_one({"upload_id": upload_id, "status": "finalizing", "finalization_token": finalization_token}, {"$set": {"status": "uploading", "updated_at": datetime.now(timezone.utc)}, "$unset": {"finalization_token": "", "finalization_started_at": ""}})
         raise
     sha = digest.hexdigest(); now = datetime.now(timezone.utc)
-    await db["board_recordings.files"].update_one({"_id": recording_id}, {"$set": {"metadata.sha256": sha}})
-    await db.board_recording_uploads.update_one({"upload_id": upload_id, "status": "uploading"}, {"$set": {"status": "complete", "recording_id": recording_id, "sha256": sha, "duration_seconds": payload.duration_seconds, "completed_at": now, "updated_at": now}})
+    try:
+        await db["board_recordings.files"].update_one({"_id": recording_id}, {"$set": {"metadata.sha256": sha}})
+        completed = await db.board_recording_uploads.update_one({"upload_id": upload_id, "status": "finalizing", "finalization_token": finalization_token}, {"$set": {"status": "complete", "recording_id": recording_id, "sha256": sha, "duration_seconds": payload.duration_seconds, "completed_at": now, "updated_at": now}, "$unset": {"finalization_token": "", "finalization_started_at": ""}})
+        if completed.modified_count != 1:
+            raise HTTPException(status_code=409, detail="Otra solicitud completó esta carga")
+    except Exception:
+        try: await recording_bucket().delete(recording_id)
+        except Exception: pass
+        await db.board_recording_uploads.update_one({"upload_id": upload_id, "status": "finalizing", "finalization_token": finalization_token}, {"$set": {"status": "uploading", "updated_at": datetime.now(timezone.utc)}, "$unset": {"finalization_token": "", "finalization_started_at": ""}})
+        raise
     staged = await db["board_recording_staging.files"].find({"metadata.upload_id": upload_id}, {"_id": 1}).to_list(10000)
     for item in staged: await staging.delete(item["_id"])
     provider = get_transcription_provider()

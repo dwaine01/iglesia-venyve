@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field, field_validator
 from pymongo import ReturnDocument
 
+from access_control import GEO_MANAGE_LOCATIONS, GEO_VIEW_PRECISE, has_capability, is_global_pastoral_authority
 from geo_address import normalize_address_document
 from geo_provider import geocoding_is_configured, get_geocoding_provider
 from geo_sector_service import sector_assignment_fields
@@ -39,6 +40,7 @@ class TargetCreate(BaseModel):
     zip: Optional[str] = Field(default=None, max_length=15)
     language: Language = "unknown"
     notes: Optional[str] = Field(default=None, max_length=1000)
+    pastoral_notes: Optional[str] = Field(default=None, max_length=2000)
     assigned_to_user_id: Optional[str] = None
 
     @field_validator("street_name", "city", "state")
@@ -46,7 +48,7 @@ class TargetCreate(BaseModel):
     def clean_required(cls, value: str) -> str:
         return value.strip()
 
-    @field_validator("address2", "zip", "notes")
+    @field_validator("address2", "zip", "notes", "pastoral_notes")
     @classmethod
     def clean_optional(cls, value: Optional[str]) -> Optional[str]:
         return _clean(value)
@@ -61,13 +63,14 @@ class TargetUpdate(BaseModel):
     zip: Optional[str] = Field(default=None, max_length=15)
     language: Optional[Language] = None
     notes: Optional[str] = Field(default=None, max_length=1000)
+    pastoral_notes: Optional[str] = Field(default=None, max_length=2000)
     status: Optional[TargetStatus] = None
     assigned_to_user_id: Optional[str] = None
 
 
 class TargetResponse(BaseModel):
     target_id: str
-    house_number: str
+    house_number: Optional[str] = None
     street_name: str
     address2: Optional[str] = None
     city: str
@@ -76,6 +79,7 @@ class TargetResponse(BaseModel):
     full_address: str
     language: str
     notes: Optional[str] = None
+    pastoral_notes: Optional[str] = None
     status: str
     assigned_to_user_id: Optional[str] = None
     assigned_to_name: Optional[str] = None
@@ -91,6 +95,9 @@ class TargetResponse(BaseModel):
     created_by_user_id: str
     created_at: str
     updated_at: str
+    can_view_precise: bool
+    can_view_pastoral_notes: bool
+    can_manage_details: bool
 
 
 def _iso(value) -> str:
@@ -99,23 +106,44 @@ def _iso(value) -> str:
     return value.isoformat()
 
 
-def _item(doc: dict) -> dict:
-    return {
+def _can_view_precise(doc: dict, current_user: dict) -> bool:
+    return bool(
+        is_global_pastoral_authority(current_user)
+        or has_capability(current_user, GEO_VIEW_PRECISE)
+        or current_user.get("user_id") in {doc.get("created_by_user_id"), doc.get("assigned_to_user_id")}
+    )
+
+
+def _can_manage_details(doc: dict, current_user: dict) -> bool:
+    return bool(
+        is_global_pastoral_authority(current_user)
+        or has_capability(current_user, GEO_MANAGE_LOCATIONS)
+        or current_user.get("user_id") in {doc.get("created_by_user_id"), doc.get("assigned_to_user_id")}
+    )
+
+
+def _item(doc: dict, current_user: dict) -> dict:
+    precise = _can_view_precise(doc, current_user); pastoral = is_global_pastoral_authority(current_user)
+    item = {
         "target_id": doc["target_id"], "house_number": doc["house_number"], "street_name": doc["street_name"],
         "address2": doc.get("address2"), "city": doc["city"], "state": doc["state"], "zip": doc.get("zip"),
-        "full_address": doc["full_address"], "language": doc.get("language", "unknown"), "notes": doc.get("notes"),
+        "full_address": doc["full_address"], "language": doc.get("language", "unknown"), "notes": doc.get("notes"), "pastoral_notes": doc.get("pastoral_notes") if pastoral else None,
         "status": doc["status"], "assigned_to_user_id": doc.get("assigned_to_user_id"), "assigned_to_name": doc.get("assigned_to_name"),
         "geocoding_status": doc.get("geocoding_status", "pending"), "verification_status": doc.get("verification_status", "pending"),
         "latitude": doc.get("latitude"), "longitude": doc.get("longitude"), "zone_key": doc.get("zone_key"),
         "zone_number": doc.get("zone_number"), "subzone_key": doc.get("subzone_key"), "sector_id": doc.get("sector_id"),
         "sector_name": doc.get("sector_name"), "created_by_user_id": doc["created_by_user_id"],
         "created_at": _iso(doc["created_at"]), "updated_at": _iso(doc["updated_at"]),
+        "can_view_precise": precise, "can_view_pastoral_notes": pastoral, "can_manage_details": _can_manage_details(doc, current_user),
     }
+    if not precise:
+        item.update({"house_number": None, "address2": None, "zip": None, "full_address": ", ".join(filter(None, [doc["street_name"], doc["city"], doc["state"]])), "latitude": None, "longitude": None})
+    return item
 
 
-def _feature(doc: dict) -> dict:
-    item = _item(doc)
-    return {"type": "Feature", "geometry": doc["location"], "properties": {"entity_kind": "evangelism_target", "entity_id": doc["target_id"], "name": doc["full_address"], "address": doc["full_address"], **item}}
+def _feature(doc: dict, current_user: dict) -> dict:
+    item = _item(doc, current_user)
+    return {"type": "Feature", "geometry": doc["location"], "properties": {"entity_kind": "evangelism_target", "entity_id": doc["target_id"], "name": item["full_address"], "address": item["full_address"], **item}}
 
 
 async def _assignee(user_id: Optional[str]) -> tuple[Optional[str], Optional[str]]:
@@ -159,15 +187,15 @@ async def _audit(target_id: str, current_user: dict, action: str, before: Option
 
 @router.get("/config", response_model=dict)
 async def evangelism_config(current_user: dict = Depends(get_current_user)):
-    return {"center": {"address": CHURCH_ADDRESS, "latitude": CHURCH_LAT, "longitude": CHURCH_LNG}, "zones": zones_geojson(), "subzones": subzones_geojson(), "permissions": {"view_aggregate": False, "view_precise": False, "manage_locations": False, "evangelism_manage": True}, "map_policy": {"geocoding_configured": geocoding_is_configured()}}
+    return {"center": {"address": CHURCH_ADDRESS, "latitude": CHURCH_LAT, "longitude": CHURCH_LNG}, "zones": zones_geojson(), "subzones": subzones_geojson(), "permissions": {"view_aggregate": False, "view_precise": has_capability(current_user, GEO_VIEW_PRECISE) or is_global_pastoral_authority(current_user), "manage_locations": has_capability(current_user, GEO_MANAGE_LOCATIONS) or is_global_pastoral_authority(current_user), "evangelism_manage": True, "view_pastoral_notes": is_global_pastoral_authority(current_user)}, "map_policy": {"geocoding_configured": geocoding_is_configured()}}
 
 
 @router.get("/assignees", response_model=dict)
 async def evangelism_assignees(q: Optional[str] = Query(default=None, max_length=80), current_user: dict = Depends(get_current_user)):
     query = {"is_active": {"$ne": False}}
     if q: query["nombre"] = {"$regex": re.escape(q), "$options": "i"}
-    users = await db.users.find(query, {"_id": 1, "nombre": 1, "access_title": 1, "rol": 1}).sort("nombre", 1).limit(200).to_list(200)
-    return {"items": [{"user_id": str(item["_id"]), "name": item.get("nombre") or "Usuario", "title": item.get("access_title") or item.get("rol") or "persona"} for item in users]}
+    users = await db.users.find(query, {"_id": 1, "nombre": 1}).sort("nombre", 1).limit(200).to_list(200)
+    return {"items": [{"user_id": str(item["_id"]), "name": item.get("nombre") or "Usuario"} for item in users]}
 
 
 @router.get("", response_model=dict)
@@ -178,12 +206,15 @@ async def list_evangelism_targets(target_status: Optional[TargetStatus] = Query(
     docs = await db.evangelism_targets.find(query, {"_id": 0}).sort("updated_at", -1).limit(5000).to_list(5000)
     counts = {key: 0 for key in ["detected", "assigned", "visited", "follow_up", "connected", "do_not_visit"]}
     for item in docs: counts[item["status"]] = counts.get(item["status"], 0) + 1
-    return {"type": "FeatureCollection", "features": [_feature(item) for item in docs if item.get("location")], "items": [_item(item) for item in docs], "meta": {"total": len(docs), "unlocated": sum(not item.get("location") for item in docs), "statuses": counts}}
+    visible_features = [_feature(item, current_user) for item in docs if item.get("location") and _can_view_precise(item, current_user)]
+    return {"type": "FeatureCollection", "features": visible_features, "items": [_item(item, current_user) for item in docs], "meta": {"total": len(docs), "unlocated": sum(not item.get("location") for item in docs), "restricted_precise": sum(bool(item.get("location")) and not _can_view_precise(item, current_user) for item in docs), "statuses": counts}}
 
 
 @router.post("", response_model=TargetResponse, status_code=status.HTTP_201_CREATED)
 async def create_evangelism_target(payload: TargetCreate, current_user: dict = Depends(get_current_user)):
     values = payload.model_dump(); assigned_id, assigned_name = await _assignee(values.pop("assigned_to_user_id"))
+    if values.get("pastoral_notes") and not is_global_pastoral_authority(current_user):
+        raise HTTPException(status_code=403, detail="Las notas pastorales están restringidas")
     address = _address_fields(values)
     existing = await db.evangelism_targets.find_one({"normalized_address_key": address["normalized_address_key"], "archived": {"$ne": True}}, {"_id": 0, "target_id": 1})
     if existing: raise HTTPException(status_code=409, detail="Esta casa ya está registrada en el Minicenso")
@@ -191,7 +222,7 @@ async def create_evangelism_target(payload: TargetCreate, current_user: dict = D
     doc = {"_id": target_id, "target_id": target_id, **values, **address, "assigned_to_user_id": assigned_id, "assigned_to_name": assigned_name, "status": "assigned" if assigned_id else "detected", "created_by_user_id": current_user["user_id"], "updated_by_user_id": current_user["user_id"], "created_at": now, "updated_at": now, "archived": False, **await _geocode(values)}
     await db.evangelism_targets.insert_one(doc)
     await _audit(target_id, current_user, "created", after={"status": doc["status"], "assigned_to_user_id": assigned_id})
-    return TargetResponse(**_item(doc))
+    return TargetResponse(**_item(doc, current_user))
 
 
 @router.patch("/{target_id}", response_model=TargetResponse)
@@ -199,6 +230,8 @@ async def update_evangelism_target(target_id: str, payload: TargetUpdate, curren
     existing = await db.evangelism_targets.find_one({"target_id": target_id, "archived": {"$ne": True}}, {"_id": 0})
     if not existing: raise HTTPException(status_code=404, detail="Casa del Minicenso no encontrada")
     update = payload.model_dump(exclude_unset=True)
+    if "pastoral_notes" in update and not is_global_pastoral_authority(current_user):
+        raise HTTPException(status_code=403, detail="Las notas pastorales están restringidas")
     if "assigned_to_user_id" in update:
         update["assigned_to_user_id"], update["assigned_to_name"] = await _assignee(update["assigned_to_user_id"])
         if update["assigned_to_user_id"] and "status" not in update and existing["status"] == "detected": update["status"] = "assigned"
@@ -206,6 +239,8 @@ async def update_evangelism_target(target_id: str, payload: TargetUpdate, curren
         raise HTTPException(status_code=422, detail="Seleccione a quién se asignará la visita")
     address_keys = {"house_number", "street_name", "address2", "city", "state", "zip"}
     if address_keys.intersection(update):
+        if not _can_manage_details(existing, current_user):
+            raise HTTPException(status_code=403, detail="La dirección precisa solo puede editarla el creador, responsable o autoridad geográfica")
         values = {**existing, **update}; address = _address_fields(values)
         duplicate = await db.evangelism_targets.find_one({"normalized_address_key": address["normalized_address_key"], "target_id": {"$ne": target_id}, "archived": {"$ne": True}}, {"_id": 0, "target_id": 1})
         if duplicate: raise HTTPException(status_code=409, detail="Otra casa ya usa esta dirección")
@@ -213,11 +248,14 @@ async def update_evangelism_target(target_id: str, payload: TargetUpdate, curren
     update.update({"updated_by_user_id": current_user["user_id"], "updated_at": now_utc()})
     result = await db.evangelism_targets.find_one_and_update({"target_id": target_id}, {"$set": update}, return_document=ReturnDocument.AFTER, projection={"_id": 0})
     await _audit(target_id, current_user, "updated", before={"status": existing.get("status"), "assigned_to_user_id": existing.get("assigned_to_user_id")}, after={"status": result.get("status"), "assigned_to_user_id": result.get("assigned_to_user_id")})
-    return TargetResponse(**_item(result))
+    return TargetResponse(**_item(result, current_user))
 
 
 @router.delete("/{target_id}", response_model=dict)
 async def archive_evangelism_target(target_id: str, current_user: dict = Depends(get_current_user)):
+    target = await db.evangelism_targets.find_one({"target_id": target_id, "archived": {"$ne": True}}, {"_id": 0})
+    if not target: raise HTTPException(status_code=404, detail="Casa del Minicenso no encontrada")
+    if not _can_manage_details(target, current_user): raise HTTPException(status_code=403, detail="Solo creador, responsable o autoridad geográfica puede archivar")
     result = await db.evangelism_targets.update_one({"target_id": target_id, "archived": {"$ne": True}}, {"$set": {"archived": True, "archived_at": now_utc(), "archived_by_user_id": current_user["user_id"], "updated_at": now_utc()}})
     if result.modified_count != 1: raise HTTPException(status_code=404, detail="Casa del Minicenso no encontrada")
     await _audit(target_id, current_user, "archived")

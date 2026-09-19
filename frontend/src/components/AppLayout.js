@@ -7,7 +7,7 @@ import {
   LayoutDashboard, BookOpen, Map, Calendar, Users, BarChart3, LogOut, Menu, ChevronRight,
   Crown, Star, Trophy, Presentation, NotebookPen, KeyRound, IdCard, Church, Search, DatabaseZap,
   Activity, Award, BookHeart, Compass, HeartHandshake, Network, RadioTower, DoorOpen, Gavel, Landmark, MapPinned,
-  PanelLeftClose, PanelLeftOpen
+  PanelLeftClose, PanelLeftOpen, ShieldCheck
 } from 'lucide-react';
 
 import { LOGO_IGLESIA } from '../data/presentationData';
@@ -15,7 +15,7 @@ import DisplayScaleToggle from './DisplayScaleToggle';
 import { ContextGuideButton } from './guides/ContextGuideButton';
 import { resolveRouteGuide } from './guides/guideRouteMap';
 import { BRAND } from '../config/brand';
-import { canViewFrontGroups, canViewGeo, canViewLeadership, hasAnyCapability, isPastoralAuthority } from '../lib/accessControl';
+import { canViewCare, canViewFrontGroups, canViewGeo, canViewLeadership, canViewOperations, hasAnyCapability, isPastoralAuthority } from '../lib/accessControl';
 const LOGO_URL = LOGO_IGLESIA;
 
 // Menu items by role
@@ -31,6 +31,8 @@ const getNavItems = (user) => {
       { to: '/grupos-frontales', icon: Network, label: 'Grupos Frontales', testId: 'nav-front-groups' },
       { to: '/liderazgo', icon: Award, label: 'Liderazgo', testId: 'nav-leadership' },
       { to: '/mapas', icon: MapPinned, label: 'Mapa 360', testId: 'nav-geo-maps' },
+      { to: '/operaciones', icon: Calendar, label: 'Operaciones', testId: 'nav-operations' },
+      { to: '/cuidado-pastoral', icon: ShieldCheck, label: 'Cuidado Pastoral', testId: 'nav-pastoral-care' },
       { to: '/procesos/mentoria', icon: HeartHandshake, label: 'Mentoría', testId: 'nav-mentorship' },
       { to: '/procesos/cap', icon: Compass, label: 'Encuentra tu lugar para servir', testId: 'nav-cap' },
       { to: '/celulas/dashboard', icon: RadioTower, label: 'Sistema Celular', testId: 'nav-cellular' },
@@ -57,6 +59,7 @@ const getNavItems = (user) => {
       { to: '/procesos/cap', icon: Compass, label: 'Mi lugar para servir' },
       { to: '/celulas/dashboard', icon: RadioTower, label: 'Mi Célula', testId: 'nav-cellular' },
       { to: '/mapas', icon: MapPinned, label: 'Casas por visitar', testId: 'nav-geo-maps' },
+      { to: '/operaciones', icon: Calendar, label: 'Eventos y turnos', testId: 'nav-operations' },
     ];
   }
   
@@ -69,6 +72,8 @@ const getNavItems = (user) => {
     { to: '/grupos-frontales', icon: Network, label: 'Grupos Frontales', testId: 'nav-front-groups' },
     { to: '/liderazgo', icon: Award, label: 'Liderazgo', testId: 'nav-leadership' },
     { to: '/mapas', icon: MapPinned, label: 'Mapa 360', testId: 'nav-geo-maps' },
+    { to: '/operaciones', icon: Calendar, label: 'Operaciones', testId: 'nav-operations' },
+    { to: '/cuidado-pastoral', icon: ShieldCheck, label: 'Cuidado Pastoral', testId: 'nav-pastoral-care' },
     { to: '/procesos/mentoria', icon: HeartHandshake, label: 'Mentoría', testId: 'nav-mentorship' },
     { to: '/procesos/cap', icon: Compass, label: 'Encuentra tu lugar para servir', testId: 'nav-cap' },
     { to: '/celulas/dashboard', icon: RadioTower, label: 'Sistema Celular', testId: 'nav-cellular' },
@@ -95,6 +100,10 @@ const getNavItems = (user) => {
     item.to !== '/liderazgo' || canViewLeadership(user)
   ) && (
     item.to !== '/mapas' || canViewGeo(user)
+  ) && (
+    item.to !== '/operaciones' || canViewOperations(user)
+  ) && (
+    item.to !== '/cuidado-pastoral' || canViewCare(user)
   ));
 };
 
@@ -115,6 +124,12 @@ const breadcrumbMap = {
   '/personas': 'Personas',
   '/personas/nueva': 'Nueva Persona',
   '/personas/importar': 'Importar membresía',
+  '/operaciones': 'Operaciones',
+  '/operaciones/eventos': 'Eventos',
+  '/cuidado-pastoral': 'Cuidado Pastoral',
+  '/cuidado-pastoral/casos': 'Casos pastorales',
+  '/cuidado-pastoral/operacion-72': 'Operación 72',
+  '/cuidado-pastoral/visitas': 'Visitas pastorales',
   '/nucleo': 'Gobierno del Núcleo',
   '/procesos/dashboard': 'Panel de Procesos',
   '/procesos/7-semanas': 'Ley de las 7 Semanas',
@@ -258,6 +273,7 @@ export default function AppLayout() {
     if (path.startsWith('/lider/')) return 'Panel del Líder';
     if (path.startsWith('/celulas/')) return 'Sistema Celular';
     if (path.startsWith('/puertas/')) return 'Sistema de las 9 Puertas';
+    if (path.startsWith('/cuidado-pastoral/casos/')) return 'Expediente pastoral';
     if (path.startsWith('/junta/reuniones/')) return 'Reunión de Junta';
     return 'Página';
   };

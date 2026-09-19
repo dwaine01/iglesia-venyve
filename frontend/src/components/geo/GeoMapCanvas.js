@@ -35,6 +35,21 @@ const createLabelImage = (text, color, compact = false) => {
   return context.getImageData(0, 0, canvas.width, canvas.height);
 };
 
+const imageKey = (value) => String(value || '').replace(/[^a-z0-9-]+/gi, '-').toLowerCase();
+const createCountImage = (text) => {
+  const canvas = document.createElement('canvas'); canvas.width = 64; canvas.height = 64;
+  const context = canvas.getContext('2d'); context.fillStyle = '#FFFFFF'; context.strokeStyle = 'rgba(15,23,42,.7)'; context.lineWidth = 5;
+  context.font = '800 28px sans-serif'; context.textAlign = 'center'; context.textBaseline = 'middle'; context.strokeText(text, 32, 33); context.fillText(text, 32, 33);
+  return context.getImageData(0, 0, 64, 64);
+};
+
+const registerSectorImages = (map, sectors) => {
+  (sectors || []).forEach((sector) => {
+    const id = `sector-label-${imageKey(sector.sector_id)}`;
+    if (!map.hasImage(id)) map.addImage(id, createLabelImage(sector.name || 'Sector', sector.color || '#1B2A4A', true), { pixelRatio: 2 });
+  });
+};
+
 const registerImages = (map) => {
   const images = {
     'pin-household': createPinImage('household', '#B7791F'), 'pin-cell': createPinImage('cell', '#2F6B4F'),
@@ -46,11 +61,13 @@ const registerImages = (map) => {
   Object.entries(images).forEach(([id, image]) => { if (!map.hasImage(id)) map.addImage(id, image, { pixelRatio: 2 }); });
   [[1, 'Zona 1 · Norte', zoneColors.north], [2, 'Zona 2 · Este', zoneColors.east], [3, 'Zona 3 · Sur', zoneColors.south], [4, 'Zona 4 · Oeste', zoneColors.west]].forEach(([number, label, color]) => map.addImage(`zone-label-${number}`, createLabelImage(label, color), { pixelRatio: 2 }));
   [1, 2, 3, 4].forEach((number) => ['A', 'B', 'C'].forEach((letter) => map.addImage(`subzone-label-${number}-${letter.toLowerCase()}`, createLabelImage(`${number}-${letter}`, '#1B2A4A', true), { pixelRatio: 2 })));
+  for (let count = 1; count <= 99; count += 1) map.addImage(`count-${count}`, createCountImage(String(count)), { pixelRatio: 2 });
+  map.addImage('count-99-plus', createCountImage('99+'), { pixelRatio: 2 });
 };
 
 const sectorCollection = (sectors) => ({
   type: 'FeatureCollection',
-  features: (sectors || []).map((sector) => ({ type: 'Feature', geometry: sector.geometry, properties: { ...sector, geometry: undefined, stats: JSON.stringify(sector.stats || {}) } })),
+  features: (sectors || []).map((sector) => ({ type: 'Feature', geometry: sector.geometry, properties: { ...sector, label_icon: `sector-label-${imageKey(sector.sector_id)}`, geometry: undefined, stats: JSON.stringify(sector.stats || {}) } })),
 });
 
 const draftCollections = (coordinates) => {
@@ -108,6 +125,7 @@ export const GeoMapCanvas = ({
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
     map.on('load', () => {
       registerImages(map);
+      registerSectorImages(map, valuesRef.current.sectors);
       map.addSource('geo-zones', { type: 'geojson', data: zones || emptyCollection() });
       map.addLayer({ id: 'geo-zones-fill', type: 'fill', source: 'geo-zones', filter: ['==', ['get', 'feature_type'], 'zone'], paint: { 'fill-color': ['match', ['get', 'zone'], 'north', zoneColors.north, 'east', zoneColors.east, 'south', zoneColors.south, zoneColors.west], 'fill-opacity': 0.13 } });
       map.addLayer({ id: 'geo-zones-line', type: 'line', source: 'geo-zones', filter: ['==', ['get', 'feature_type'], 'zone'], paint: { 'line-color': ['match', ['get', 'zone'], 'north', zoneColors.north, 'east', zoneColors.east, 'south', zoneColors.south, zoneColors.west], 'line-opacity': 0.92, 'line-width': 3.5 } });
@@ -118,7 +136,7 @@ export const GeoMapCanvas = ({
       map.addSource('geo-sectors', { type: 'geojson', data: sectorCollection(valuesRef.current.sectors) });
       map.addLayer({ id: 'geo-sectors-fill', type: 'fill', source: 'geo-sectors', paint: { 'fill-color': ['get', 'color'], 'fill-opacity': ['case', ['==', ['get', 'sector_id'], selectedSectorId || ''], 0.48, 0.22] } });
       map.addLayer({ id: 'geo-sectors-line', type: 'line', source: 'geo-sectors', paint: { 'line-color': ['get', 'color'], 'line-width': ['case', ['==', ['get', 'sector_id'], selectedSectorId || ''], 5, 3], 'line-opacity': 0.96 } });
-      map.addLayer({ id: 'geo-sector-labels', type: 'symbol', source: 'geo-sectors', layout: { 'text-field': ['get', 'name'], 'text-size': 15, 'text-allow-overlap': false }, paint: { 'text-color': '#0B0F17', 'text-halo-color': '#FFFFFF', 'text-halo-width': 2 } });
+      map.addLayer({ id: 'geo-sector-labels', type: 'symbol', source: 'geo-sectors', layout: { 'icon-image': ['get', 'label_icon'], 'icon-allow-overlap': false } });
       const regular = valuesRef.current.features.filter((item) => item.properties?.entity_kind !== 'front_group');
       const groups = valuesRef.current.features.filter((item) => item.properties?.entity_kind === 'front_group');
       map.addSource('geo-raw', { type: 'geojson', data: { type: 'FeatureCollection', features: regular } });
@@ -130,12 +148,13 @@ export const GeoMapCanvas = ({
       map.addSource('geo-sector-draft-vertices', { type: 'geojson', data: emptyCollection() });
       map.addLayer({ id: 'geo-heatmap', type: 'heatmap', source: 'geo-raw', maxzoom: 16, paint: { 'heatmap-weight': ['interpolate', ['linear'], ['coalesce', ['get', 'resident_count'], ['get', 'count'], 1], 1, 0.2, 20, 1], 'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 8, 0.8, 14, 2], 'heatmap-color': ['interpolate', ['linear'], ['heatmap-density'], 0, 'rgba(27,107,147,0)', 0.25, '#87B9A4', 0.5, '#E8C35A', 0.75, '#D97706', 1, '#9F1239'], 'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 8, 18, 14, 38], 'heatmap-opacity': 0.82 } });
       map.addLayer({ id: 'geo-clusters', type: 'circle', source: 'geo-clustered', filter: ['has', 'point_count'], paint: { 'circle-color': '#1B2A4A', 'circle-radius': ['step', ['get', 'point_count'], 18, 20, 24, 75, 31], 'circle-stroke-color': '#fff', 'circle-stroke-width': 2 } });
-      map.addLayer({ id: 'geo-cluster-count', type: 'symbol', source: 'geo-clustered', filter: ['has', 'point_count'], layout: { 'text-field': ['get', 'point_count_abbreviated'], 'text-size': 12 }, paint: { 'text-color': '#fff' } });
+      const countIcon = (property) => ['case', ['>', ['get', property], 99], 'count-99-plus', ['concat', 'count-', ['to-string', ['get', property]]]];
+      map.addLayer({ id: 'geo-cluster-count', type: 'symbol', source: 'geo-clustered', filter: ['has', 'point_count'], layout: { 'icon-image': countIcon('point_count'), 'icon-size': 0.5, 'icon-allow-overlap': true } });
       const evangelismIcon = ['match', ['get', 'status'], 'assigned', 'pin-ev-assigned', 'visited', 'pin-ev-visited', 'follow_up', 'pin-ev-follow-up', 'connected', 'pin-ev-connected', 'do_not_visit', 'pin-ev-do-not-visit', 'pin-ev-detected'];
       const iconExpression = ['match', ['get', 'entity_kind'], 'cell', 'pin-cell', 'evangelism_target', evangelismIcon, 'pin-household'];
       map.addLayer({ id: 'geo-unclustered', type: 'symbol', source: 'geo-clustered', filter: ['!', ['has', 'point_count']], layout: { 'icon-image': iconExpression, 'icon-anchor': 'bottom', 'icon-allow-overlap': true } });
       map.addLayer({ id: 'geo-pins', type: 'symbol', source: 'geo-raw', layout: { 'icon-image': iconExpression, 'icon-anchor': 'bottom', 'icon-allow-overlap': true } });
-      map.addLayer({ id: 'geo-household-counts', type: 'symbol', source: 'geo-raw', filter: ['==', ['get', 'entity_kind'], 'household'], layout: { 'text-field': ['to-string', ['get', 'resident_count']], 'text-size': 14, 'text-offset': [0, -2.05], 'text-allow-overlap': true }, paint: { 'text-color': '#FFFFFF', 'text-halo-color': '#6B3D00', 'text-halo-width': 1 } });
+      map.addLayer({ id: 'geo-household-counts', type: 'symbol', source: 'geo-raw', filter: ['==', ['get', 'entity_kind'], 'household'], layout: { 'icon-image': countIcon('resident_count'), 'icon-size': 0.45, 'icon-offset': [0, -52], 'icon-allow-overlap': true } });
       map.addLayer({ id: 'geo-front-group-pins', type: 'symbol', source: 'geo-front-groups', layout: { 'icon-image': 'pin-front-group', 'icon-anchor': 'bottom', 'icon-allow-overlap': true } });
       map.addLayer({ id: 'geo-church-anchor', type: 'symbol', source: 'geo-anchor', layout: { 'icon-image': 'pin-church', 'icon-anchor': 'bottom', 'icon-allow-overlap': true } });
       map.addLayer({ id: 'geo-search-halo', type: 'circle', source: 'geo-search-highlight', paint: { 'circle-radius': 24, 'circle-color': 'rgba(255,255,255,0)', 'circle-stroke-color': '#E11D48', 'circle-stroke-width': 5 } });
@@ -186,7 +205,7 @@ export const GeoMapCanvas = ({
     map.getSource('geo-raw')?.setData(data); map.getSource('geo-clustered')?.setData(data); map.getSource('geo-front-groups')?.setData({ type: 'FeatureCollection', features: groups });
     if (presentationLevel === 'households') renderPresentationMarkers(map, maplibregl, features, onSelect, presentationMarkersRef);
   }, [features, maplibregl, onSelect, presentationLevel]);
-  useEffect(() => { const source = mapRef.current?.getSource('geo-sectors'); if (source) source.setData(sectorCollection(sectors)); }, [sectors]);
+  useEffect(() => { const map = mapRef.current; const source = map?.getSource('geo-sectors'); if (source) { registerSectorImages(map, sectors); source.setData(sectorCollection(sectors)); } }, [sectors]);
   useEffect(() => {
     const map = mapRef.current; if (!map?.isStyleLoaded()) return;
     if (map.getLayer('geo-sectors-fill')) map.setPaintProperty('geo-sectors-fill', 'fill-opacity', ['case', ['==', ['get', 'sector_id'], selectedSectorId || ''], 0.48, 0.22]);

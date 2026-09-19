@@ -7,6 +7,25 @@ from uuid import uuid4
 from bson import ObjectId
 
 
+class IdentityConflictError(ValueError):
+    def __init__(self, message: str, conflict_id: str, candidate_ids: list[str]):
+        super().__init__(message)
+        self.conflict_id = conflict_id
+        self.candidate_ids = candidate_ids
+
+
+async def _record_identity_conflict(db, source_type: str, source_id: str, match_type: str, match_value: str, candidates: list[dict]) -> IdentityConflictError:
+    conflict_id = f"{source_type}:{source_id}:{match_type}"
+    candidate_ids = [str(item["_id"]) for item in candidates]
+    now = utc_now()
+    await db.identity_conflicts.update_one(
+        {"_id": conflict_id},
+        {"$set": {"conflict_id": conflict_id, "source_type": source_type, "source_id": source_id, "match_type": match_type, "match_value": match_value, "candidate_person_ids": candidate_ids, "status": "open", "updated_at": now}, "$setOnInsert": {"created_at": now}},
+        upsert=True,
+    )
+    return IdentityConflictError("Existen varias Personas candidatas; el vínculo requiere revisión", conflict_id, candidate_ids)
+
+
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -92,6 +111,8 @@ async def _find_person_for_user(db, user: dict) -> dict | None:
         }).limit(2).to_list(2)
         if len(candidates) == 1:
             return candidates[0]
+        if len(candidates) > 1:
+            raise await _record_identity_conflict(db, "user", user_id, "email", email.lower(), candidates)
     return None
 
 
@@ -189,6 +210,8 @@ async def sync_legacy_person_to_canonical(db, legacy: dict, actor_id: str) -> tu
         }).limit(2).to_list(2)
         if len(candidates) == 1:
             person = candidates[0]
+        elif len(candidates) > 1:
+            raise await _record_identity_conflict(db, "legacy_people", legacy_id, "phone", legacy["telefono"], candidates)
     created = False
     now = utc_now()
     nombre, apellido = split_name(legacy.get("nombre", ""))

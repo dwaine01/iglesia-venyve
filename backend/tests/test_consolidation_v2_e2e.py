@@ -8,7 +8,7 @@ from httpx import ASGITransport, AsyncClient
 
 import server
 from access_control import access_defaults_for_role
-from qa_demo_cleanup import delete_qa_artifacts
+from qa_demo_cleanup import delete_qa_artifacts, qa_preview
 
 
 PASSWORD = "JourneyV2Pass123!"
@@ -69,7 +69,8 @@ async def complete_stage(client: AsyncClient, headers: dict, enrollment_id: str,
 
 
 async def cleanup():
-    await delete_qa_artifacts(server.db)
+    preview = await qa_preview(server.db)
+    await delete_qa_artifacts(server.db, preview["preview_token"], preview["confirmation_phrase"])
 
 
 @pytest.mark.asyncio
@@ -200,7 +201,8 @@ async def test_fiesta_membership_retreat_discipleship_and_scoped_leadership():
         assert closed.json()["discipleship"]["process_key"] == "discipleship"
         discipleship_id = closed.json()["discipleship"]["enrollment_id"]
         await server.db.process_enrollments.update_one({"enrollment_id": discipleship_id}, {"$set": {"status": "completed", "completed_at": datetime.now(timezone.utc)}})
-        await server.db.cap_assessments.insert_one({"_id": str(uuid.uuid4()), "person_id": candidate_person_id, "status": "completed", "selected_door_key": "service"})
+        cap_id = str(uuid.uuid4())
+        await server.db.cap_assessments.insert_one({"_id": cap_id, "cap_id": cap_id, "person_id": candidate_person_id, "status": "completed", "selected_door_key": "service"})
         await server.db.ministry_assignments.insert_one({"_id": str(uuid.uuid4()), "person_id": candidate_person_id, "activo": True, "ministry_id": "qa-service", "role": "server"})
 
         leader_client, leader_headers = await auth_client(front_leader_email)

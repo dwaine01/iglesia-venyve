@@ -68,6 +68,19 @@ DOORS_WRITE = "doors.write"
 DOORS_MANAGE = "doors.manage"
 BOARD_AUDIO = "board.audio.manage"
 BOARD_AI = "board.ai.generate"
+OPERATIONS_VIEW = "operations.view"
+OPERATIONS_MANAGE = "operations.manage"
+OPERATIONS_CHECKIN = "operations.checkin"
+OPERATIONS_VOLUNTEER = "operations.volunteer"
+OPERATIONS_REPORTS = "operations.reports"
+OPERATIONS_CAPABILITIES = [OPERATIONS_VIEW, OPERATIONS_MANAGE, OPERATIONS_CHECKIN, OPERATIONS_VOLUNTEER, OPERATIONS_REPORTS]
+CARE_ASSIGNED_READ = "care.assigned.read"
+CARE_ASSIGNED_WRITE = "care.assigned.write"
+CARE_MANAGE = "care.manage"
+CARE_CONFIDENTIAL_READ = "care.confidential.read"
+CARE_CONFIDENTIAL_WRITE = "care.confidential.write"
+CARE_AUDIT_READ = "care.audit.read"
+CARE_CAPABILITIES = [CARE_ASSIGNED_READ, CARE_ASSIGNED_WRITE, CARE_MANAGE, CARE_CONFIDENTIAL_READ, CARE_CONFIDENTIAL_WRITE, CARE_AUDIT_READ]
 
 CELLULAR_CAPABILITIES = [
     CELLULAR_READ,
@@ -152,15 +165,15 @@ PERSON_DOMAIN_CAPABILITIES = [
 
 _ROLE_ACCESS_DEFAULTS = {
     "pastor": {
-        "capabilities": [*PERSON_DOMAIN_CAPABILITIES, *PROCESS_CAPABILITIES, *CELLULAR_CAPABILITIES, *DOOR_BOARD_CAPABILITIES, *FINANCE_CAPABILITIES, *JOURNEY_GOVERNANCE_CAPABILITIES, MEMBERSHIP_DOCUMENTS_MANAGE, PERSON_PASTORAL_NOTES_READ, CORE_GOVERNANCE_MANAGE, CORE_ACCESS_MANAGE],
+        "capabilities": [*PERSON_DOMAIN_CAPABILITIES, *PROCESS_CAPABILITIES, *CELLULAR_CAPABILITIES, *DOOR_BOARD_CAPABILITIES, *FINANCE_CAPABILITIES, *JOURNEY_GOVERNANCE_CAPABILITIES, *OPERATIONS_CAPABILITIES, *CARE_CAPABILITIES, MEMBERSHIP_DOCUMENTS_MANAGE, PERSON_PASTORAL_NOTES_READ, CORE_GOVERNANCE_MANAGE, CORE_ACCESS_MANAGE],
         "access_scope": {"persons": "all"},
     },
     "lider": {
-        "capabilities": [*PERSON_DOMAIN_CAPABILITIES, PROCESSES_READ, PROCESSES_WRITE, PROCESSES_PARTICIPATE, FRONT_GROUPS_VIEW, LEADERSHIP_VIEW, CELLULAR_READ, CELLULAR_WRITE, CELLULAR_ATTENDANCE, CELLULAR_NEEDS, CELLULAR_SENSITIVE_READ, DOORS_READ],
+        "capabilities": [*PERSON_DOMAIN_CAPABILITIES, PROCESSES_READ, PROCESSES_WRITE, PROCESSES_PARTICIPATE, FRONT_GROUPS_VIEW, LEADERSHIP_VIEW, CELLULAR_READ, CELLULAR_WRITE, CELLULAR_ATTENDANCE, CELLULAR_NEEDS, CELLULAR_SENSITIVE_READ, DOORS_READ, OPERATIONS_VIEW, OPERATIONS_CHECKIN, OPERATIONS_VOLUNTEER, CARE_ASSIGNED_READ, CARE_ASSIGNED_WRITE],
         "access_scope": {"persons": "created_by"},
     },
     "persona": {
-        "capabilities": PERSON_SELF_CAPABILITIES,
+        "capabilities": [*PERSON_SELF_CAPABILITIES, OPERATIONS_VIEW, OPERATIONS_VOLUNTEER],
         "access_scope": {"persons": "self"},
     },
 }
@@ -174,7 +187,7 @@ def access_defaults_for_role(role: str) -> dict:
             {"capabilities": [], "access_scope": {"persons": "none"}},
         )
     )
-    defaults["access_policy_version"] = 16
+    defaults["access_policy_version"] = 18
     return defaults
 
 
@@ -247,9 +260,15 @@ async def ensure_access_defaults(db) -> None:
             {"$set": {"access_scope": defaults["access_scope"]}},
         )
         await db.users.update_many(
-            {"rol": role, "$or": [{"parent_user_id": {"$exists": False}}, {"access_policy_version": {"$lt": 16}}, {"access_policy_version": {"$exists": False}}]},
+            {"rol": role, "$or": [{"parent_user_id": {"$exists": False}}, {"access_policy_version": {"$lt": 18}}, {"access_policy_version": {"$exists": False}}]},
             {
                 "$addToSet": {"capabilities": {"$each": defaults["capabilities"]}},
-                "$set": {"access_policy_version": 16},
+                "$set": {"access_policy_version": 18},
             },
         )
+    await db.users.update_many({"rol": "persona"}, {"$addToSet": {"capabilities": {"$each": [OPERATIONS_VIEW, OPERATIONS_VOLUNTEER]}}})
+    await db.users.update_many({"rol": "lider"}, {"$addToSet": {"capabilities": {"$each": [OPERATIONS_VIEW, OPERATIONS_CHECKIN, OPERATIONS_VOLUNTEER]}}})
+    await db.users.update_many(
+        {"$or": [{"access_level": "coordinador_general"}, {"rol": "lider", "capabilities": CORE_ACCESS_MANAGE}]},
+        {"$addToSet": {"capabilities": {"$each": CARE_CAPABILITIES}, "privilege_groups": "care"}, "$set": {"access_scope.persons": "all", "access_policy_version": 18}},
+    )

@@ -76,7 +76,11 @@ async def test_pastor_cleans_qa_demo_and_preserves_real_records():
             summary = await client.get("/api/core/persons/qa-demo/summary", headers=headers)
             assert summary.status_code == 200
             assert summary.json()["qa_persons"] >= 1
-            cleaned = await client.delete("/api/core/persons/qa-demo", headers=headers)
+            assert summary.json()["affected_by_collection"].get("finance_settings") is None
+            rejected = await client.request("DELETE", "/api/core/persons/qa-demo", headers=headers, json={"preview_token": summary.json()["preview_token"], "confirmation_phrase": "ELIMINAR QA INCORRECTO"})
+            assert rejected.status_code == 422
+            assert await server.db.persons.find_one({"_id": qa_person_id}) is not None
+            cleaned = await client.request("DELETE", "/api/core/persons/qa-demo", headers=headers, json={"preview_token": summary.json()["preview_token"], "confirmation_phrase": summary.json()["confirmation_phrase"]})
             assert cleaned.status_code == 200, cleaned.text
             assert cleaned.json()["deleted_documents"] >= 3
         assert await server.db.persons.find_one({"_id": qa_person_id}) is None
@@ -84,7 +88,7 @@ async def test_pastor_cleans_qa_demo_and_preserves_real_records():
         assert await server.db.person_contacts.find_one({"person_id": str(qa_person_id)}) is None
         assert await server.db.persons.find_one({"_id": real_person_id}) is not None
         settings = await server.db.finance_settings.find_one({"_id": "primary"})
-        assert "updated_by_user_id" not in settings
+        assert settings["updated_by_user_id"] == str(qa_user_id)
     finally:
         await cleanup_spec_artifacts()
 
@@ -110,6 +114,6 @@ async def test_non_pastor_cannot_preview_or_clean_qa_demo():
             assert login.status_code == 200, login.text
             headers = {"Authorization": f"Bearer {login.json()['token']}"}
             assert (await client.get("/api/core/persons/qa-demo/summary", headers=headers)).status_code == 403
-            assert (await client.delete("/api/core/persons/qa-demo", headers=headers)).status_code == 403
+            assert (await client.request("DELETE", "/api/core/persons/qa-demo", headers=headers, json={"preview_token": "x" * 30, "confirmation_phrase": "ELIMINAR QA 1"})).status_code == 403
     finally:
         await cleanup_spec_artifacts()

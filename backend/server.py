@@ -22,7 +22,7 @@ from access_control import (
     normalized_access_scope,
     normalized_capabilities,
 )
-from canonical_identity import ensure_user_person_link, migrate_core_identity, sync_legacy_person_to_canonical
+from canonical_identity import IdentityConflictError, ensure_user_person_link, migrate_core_identity, sync_legacy_person_to_canonical
 
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), ".env"), override=False)
 
@@ -503,18 +503,26 @@ from cellular_routes import router as cellular_router
 from geo_routes import router as geo_router
 from geo_service import ensure_geo_indexes
 from evangelism_routes import router as evangelism_router, ensure_evangelism_indexes
+from operations_events import router as operations_events_router
+from operations_participation import router as operations_participation_router
+from operations_engine import ensure_operations_indexes
 from module_guides import router as module_guides_router
 from door_board_catalog import seed_door_board_catalog
 from door_board_engine import ensure_door_board_indexes
 from door_board_routes import router as door_board_router
 from board_recording_routes import router as board_recording_router
+from care_routes import router as care_router
+from care_service import ensure_care_indexes
 
 app.include_router(cellular_router)
 app.include_router(geo_router)
 app.include_router(evangelism_router)
+app.include_router(operations_events_router)
+app.include_router(operations_participation_router)
 app.include_router(module_guides_router)
 app.include_router(door_board_router)
 app.include_router(board_recording_router)
+app.include_router(care_router)
 
 
 # --- Default Checklists ---
@@ -624,9 +632,11 @@ async def startup():
     await ensure_cellular_indexes(db)
     await ensure_geo_indexes(db)
     await ensure_evangelism_indexes()
+    await ensure_operations_indexes()
     await migrate_cellular(db, "system:startup")
     await seed_door_board_catalog(db)
     await ensure_door_board_indexes(db)
+    await ensure_care_indexes(db)
     print("Core Person (P-001) indexes created")
 
 
@@ -798,8 +808,10 @@ async def register(user: UserRegister):
             raise HTTPException(status_code=400, detail="Este codigo ya fue utilizado")
 
         expires_at = invite.get("expires_at")
-        if expires_at and datetime.now(timezone.utc) > expires_at.replace(tzinfo=timezone.utc) if expires_at.tzinfo is None else datetime.now(timezone.utc) > expires_at:
-            raise HTTPException(status_code=400, detail="Este codigo ha caducado")
+        if expires_at:
+            normalized_expiry = expires_at.replace(tzinfo=timezone.utc) if expires_at.tzinfo is None else expires_at
+            if datetime.now(timezone.utc) > normalized_expiry:
+                raise HTTPException(status_code=400, detail="Este codigo ha caducado")
 
         # Crear usuario con rol y leader_id del codigo
         assigned_rol = invite["role_to_assign"]
@@ -851,7 +863,13 @@ async def register(user: UserRegister):
         user_id = str(result.inserted_id)
 
     # ---------- Inicialización canónica común ----------
-    canonical_person_id, _ = await ensure_user_person_link(db, user_id, user_id)
+    try:
+        canonical_person_id, _ = await ensure_user_person_link(db, user_id, user_id)
+    except IdentityConflictError as exc:
+        await db.users.delete_one({"_id": ObjectId(user_id)})
+        if code_clean:
+            await db.invite_codes.update_one({"_id": invite["_id"], "used_by_user_id": user_id}, {"$unset": {"used_at": "", "used_by_user_id": ""}})
+        raise HTTPException(status_code=409, detail={"message": str(exc), "conflict_id": exc.conflict_id})
     if assigned_rol == "persona" and assigned_leader_id:
         leader = await db.users.find_one({"_id": ObjectId(assigned_leader_id)}, {"_id": 0, "person_id": 1})
         from process_engine import create_enrollment
@@ -2025,7 +2043,11 @@ async def create_pastor(data: dict, authorization: Optional[str] = Header(None))
         "created_by": payload["user_id"],
     }
     result = await db.users.insert_one(doc)
-    person_id, _ = await ensure_user_person_link(db, str(result.inserted_id), payload["user_id"])
+    try:
+        person_id, _ = await ensure_user_person_link(db, str(result.inserted_id), payload["user_id"])
+    except IdentityConflictError as exc:
+        await db.users.delete_one({"_id": result.inserted_id})
+        raise HTTPException(status_code=409, detail={"message": str(exc), "conflict_id": exc.conflict_id})
     return {
         "_id": str(result.inserted_id),
         "nombre": nombre,

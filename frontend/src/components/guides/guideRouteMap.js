@@ -17,6 +17,8 @@ const exact = {
   '/introduccion': 'seven_weeks_manual',
   '/mapa': 'seven_weeks_manual',
   '/mi-progreso': 'personal_progress',
+  '/operaciones': 'operations_dashboard',
+  '/operaciones/eventos': 'operations_dashboard',
 };
 
 export const resolveRouteGuide = (pathname, role) => {
@@ -26,6 +28,7 @@ export const resolveRouteGuide = (pathname, role) => {
     return 'processes_dashboard';
   }
   if (exact[pathname]) return exact[pathname];
+  if (pathname.startsWith('/operaciones/')) return 'operations_dashboard';
   if (/^\/procesos\/7-semanas\/[^/]+$/.test(pathname)) return 'processes_seven_weeks_detail';
   if (/^\/personas\/[^/]+$/.test(pathname)) return 'person_profile';
   if (/^\/ministerios\/[^/]+$/.test(pathname)) return 'ministry_detail';

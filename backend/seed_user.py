@@ -3,7 +3,7 @@ import asyncio
 import os
 import bcrypt
 from motor.motor_asyncio import AsyncIOMotorClient
-from datetime import datetime
+from datetime import datetime, timezone
 from access_control import access_defaults_for_role
 
 MONGO_URL = os.environ.get("MONGO_URL")
@@ -76,27 +76,44 @@ DEFAULT_CHECKLISTS = {
     ],
 }
 
+def validate_seed_environment() -> dict:
+    environment = os.environ.get("APP_ENV")
+    if environment not in {"development", "test"} or os.environ.get("ALLOW_DEV_SEED") != "true":
+        raise RuntimeError("seed_user.py está bloqueado fuera de development/test con ALLOW_DEV_SEED=true")
+    required = {name: os.environ.get(name) for name in ["DEV_SEED_EMAIL", "DEV_SEED_PASSWORD", "DEV_SEED_NAME", "DEV_SEED_ROLE"]}
+    missing = [name for name, value in required.items() if not value]
+    if missing:
+        raise RuntimeError(f"Faltan variables de seed: {', '.join(missing)}")
+    if required["DEV_SEED_ROLE"] not in {"persona", "lider"}:
+        raise RuntimeError("DEV_SEED_ROLE solo permite persona o lider")
+    if len(required["DEV_SEED_PASSWORD"]) < 12 or required["DEV_SEED_PASSWORD"].lower() in {"admin123", "password123", "changeme123"}:
+        raise RuntimeError("DEV_SEED_PASSWORD debe ser única y tener al menos 12 caracteres")
+    return required
+
+
 async def seed():
+    settings = validate_seed_environment()
     client = AsyncIOMotorClient(MONGO_URL)
     db = client[DB_NAME]
     
     # Check if test user exists
-    existing = await db.users.find_one({"email": "admin@venyve.com"})
+    email = settings["DEV_SEED_EMAIL"].strip().lower()
+    existing = await db.users.find_one({"email": email})
     if existing:
         print("Test user already exists")
         return
     
     # Create test user
-    hashed = bcrypt.hashpw("admin123".encode(), bcrypt.gensalt())
+    hashed = bcrypt.hashpw(settings["DEV_SEED_PASSWORD"].encode(), bcrypt.gensalt())
     user_doc = {
-        "nombre": "Pastora Carmen",
-        "email": "admin@venyve.com",
+        "nombre": settings["DEV_SEED_NAME"].strip(),
+        "email": email,
         "password": hashed.decode(),
-        "rol": "lider",
-        **access_defaults_for_role("lider"),
+        "rol": settings["DEV_SEED_ROLE"],
+        **access_defaults_for_role(settings["DEV_SEED_ROLE"]),
         "is_active": True,
         "token_version": 1,
-        "created_at": datetime.utcnow(),
+        "created_at": datetime.now(timezone.utc),
     }
     result = await db.users.insert_one(user_doc)
     user_id = str(result.inserted_id)
@@ -107,7 +124,7 @@ async def seed():
             "user_id": user_id,
             "semana": semana,
             "tareas": tareas,
-            "updated_at": datetime.utcnow(),
+            "updated_at": datetime.now(timezone.utc),
         })
     
     # Initialize progress
@@ -119,10 +136,10 @@ async def seed():
             "personas_contactadas": 0,
             "personas_ganadas": 0,
             "oraciones_realizadas": 0,
-            "updated_at": datetime.utcnow(),
+            "updated_at": datetime.now(timezone.utc),
         })
     
-    print(f"Test user created: admin@venyve.com / admin123")
+    print(f"Test user created: {email} (password not displayed)")
     client.close()
 
 if __name__ == "__main__":

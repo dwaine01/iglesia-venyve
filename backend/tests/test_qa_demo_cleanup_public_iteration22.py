@@ -49,7 +49,7 @@ async def test_qa_demo_summary_and_cleanup_roles_and_preservation():
     leader_headers = {"Authorization": f"Bearer {leader_token}"}
     leader_preview = requests.get(f"{BASE_URL}/api/core/persons/qa-demo/summary", headers=leader_headers, timeout=20)
     assert leader_preview.status_code == 403
-    leader_cleanup = requests.delete(f"{BASE_URL}/api/core/persons/qa-demo", headers=leader_headers, timeout=20)
+    leader_cleanup = requests.delete(f"{BASE_URL}/api/core/persons/qa-demo", headers=leader_headers, json={"preview_token": "x" * 30, "confirmation_phrase": "ELIMINAR QA 1"}, timeout=20)
     assert leader_cleanup.status_code == 403
 
     pastor_headers = {"Authorization": f"Bearer {pastor_token}"}
@@ -61,7 +61,7 @@ async def test_qa_demo_summary_and_cleanup_roles_and_preservation():
     assert preview_data["total"] == preview_data["qa_users"] + preview_data["qa_persons"]
     assert preview_data["total"] >= 1
 
-    cleanup = requests.delete(f"{BASE_URL}/api/core/persons/qa-demo", headers=pastor_headers, timeout=30)
+    cleanup = requests.delete(f"{BASE_URL}/api/core/persons/qa-demo", headers=pastor_headers, json={"preview_token": preview_data["preview_token"], "confirmation_phrase": preview_data["confirmation_phrase"]}, timeout=30)
     assert cleanup.status_code == 200, cleanup.text
     cleanup_data = cleanup.json()
     assert isinstance(cleanup_data.get("deleted_documents"), int)
@@ -83,4 +83,4 @@ async def test_qa_demo_summary_and_cleanup_roles_and_preservation():
 
     settings = await server.db.finance_settings.find_one({"_id": "primary"})
     assert settings is not None
-    assert settings.get("updated_by_user_id") != payload["qa_user_id"]
+    assert settings.get("updated_by_user_id") == payload["qa_user_id"]

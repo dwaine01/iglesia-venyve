@@ -1,4 +1,4 @@
-import { canManageDirectMembership, canUseTerritorialMap, canViewGeo, hasCapability, isPastoralAuthority } from './accessControl';
+import { canCheckInOperations, canManageDirectMembership, canManageOperations, canUseTerritorialMap, canViewGeo, canViewOperations, hasCapability, isPastoralAuthority } from './accessControl';
 
 describe('geo access control', () => {
   test('pastoral authority receives map access', () => {
@@ -22,5 +22,12 @@ describe('geo access control', () => {
     expect(canManageDirectMembership({ rol: 'pastor' })).toBe(true);
     expect(canManageDirectMembership({ rol: 'lider', access_level: 'coordinador_general' })).toBe(true);
     expect(canManageDirectMembership({ rol: 'lider' })).toBe(false);
+  });
+
+  test('operations separates viewing, check-in and management', () => {
+    expect(canViewOperations({ rol: 'persona', capabilities: ['operations.view'] })).toBe(true);
+    expect(canCheckInOperations({ rol: 'lider', capabilities: ['operations.view', 'operations.checkin'] })).toBe(true);
+    expect(canManageOperations({ rol: 'lider', capabilities: ['operations.checkin'] })).toBe(false);
+    expect(canManageOperations({ rol: 'pastor', capabilities: [] })).toBe(true);
   });
 });

@@ -46,6 +46,7 @@ from process_engine import create_enrollment, evaluate_alerts
 router = APIRouter(prefix="/api/core/persons", tags=["person-profile-domains"])
 MAX_PHOTO_BYTES = 5 * 1024 * 1024
 PHOTO_CHUNK_BYTES = 512 * 1024
+PHOTO_UPLOAD_TTL_SECONDS = 60 * 60
 ALLOWED_PHOTO_TYPES = {"image/jpeg", "image/png", "image/webp"}
 
 def iso_z(value: Optional[datetime]) -> Optional[str]:
@@ -241,6 +242,19 @@ class PhotoUploadInit(BaseModel):
         if value not in ALLOWED_PHOTO_TYPES:
             raise ValueError("Formato de imagen no permitido")
         return value
+
+
+async def cleanup_abandoned_photo_uploads() -> dict:
+    now = now_utc(); cutoff = now - timedelta(seconds=PHOTO_UPLOAD_TTL_SECONDS)
+    expired = await db.person_photo_uploads.find({"$or": [{"expires_at": {"$lte": now}}, {"expires_at": {"$exists": False}, "created_at": {"$lte": cutoff}}]}, {"_id": 1}).to_list(100000)
+    expired_ids = [str(item["_id"]) for item in expired]
+    deleted_chunks = 0
+    if expired_ids:
+        deleted_chunks += (await db.person_photo_chunks.delete_many({"upload_id": {"$in": expired_ids}})).deleted_count
+        await db.person_photo_uploads.delete_many({"_id": {"$in": expired_ids}})
+    active_ids = await db.person_photo_uploads.distinct("_id")
+    deleted_chunks += (await db.person_photo_chunks.delete_many({"upload_id": {"$nin": [str(item) for item in active_ids]}})).deleted_count
+    return {"expired_uploads": len(expired_ids), "deleted_chunks": deleted_chunks}
 
 
 
@@ -486,7 +500,9 @@ async def init_photo_upload(
     expected_chunks = (payload.total_size + PHOTO_CHUNK_BYTES - 1) // PHOTO_CHUNK_BYTES
     if payload.total_chunks != expected_chunks:
         raise HTTPException(status_code=400, detail="Cantidad de fragmentos invalida")
+    await cleanup_abandoned_photo_uploads()
     upload_id = str(uuid4())
+    created_at = now_utc(); expires_at = created_at + timedelta(seconds=PHOTO_UPLOAD_TTL_SECONDS)
     await db.person_photo_uploads.insert_one({
         "_id": upload_id,
         "person_id": person_id,
@@ -494,7 +510,8 @@ async def init_photo_upload(
         "total_size": payload.total_size,
         "total_chunks": payload.total_chunks,
         "created_by": current_user["user_id"],
-        "created_at": now_utc(),
+        "created_at": created_at,
+        "expires_at": expires_at,
     })
     return {"upload_id": upload_id, "chunk_size": PHOTO_CHUNK_BYTES}
 
@@ -516,9 +533,12 @@ async def upload_photo_chunk(
     chunk = await request.body()
     if not chunk or len(chunk) > PHOTO_CHUNK_BYTES:
         raise HTTPException(status_code=400, detail="Tamaño de fragmento invalido")
+    expires_at = upload.get("expires_at") or upload["created_at"] + timedelta(seconds=PHOTO_UPLOAD_TTL_SECONDS)
+    if not upload.get("expires_at"):
+        await db.person_photo_uploads.update_one({"_id": upload_id}, {"$set": {"expires_at": expires_at}})
     await db.person_photo_chunks.update_one(
         {"_id": f"{upload_id}:{chunk_index}"},
-        {"$set": {"upload_id": upload_id, "index": chunk_index, "data": Binary(chunk)}},
+        {"$set": {"upload_id": upload_id, "index": chunk_index, "data": Binary(chunk), "expires_at": expires_at}},
         upsert=True,
     )
     return {"chunk_index": chunk_index, "received": len(chunk)}
@@ -871,6 +891,7 @@ async def list_process_connectors(person_id: str, current_user: dict = Depends(r
 
 
 async def ensure_indexes() -> None:
+    await cleanup_abandoned_photo_uploads()
     await db.person_households.create_index("person_id", unique=True)
     await db.person_family.create_index([("person_id", 1), ("created_at", 1)])
     await db.person_arrivals.create_index("person_id", unique=True)
@@ -878,5 +899,9 @@ async def ensure_indexes() -> None:
     await db.person_notes.create_index([("person_id", 1), ("created_at", -1)])
     await db.person_activity.create_index([("person_id", 1), ("created_at", -1)])
     await db.person_photos.create_index("person_id", unique=True)
-    await db.person_photo_uploads.create_index("created_at", expireAfterSeconds=3600)
+    upload_indexes = await db.person_photo_uploads.index_information()
+    if "created_at_1" in upload_indexes and upload_indexes["created_at_1"].get("expireAfterSeconds") is not None:
+        await db.person_photo_uploads.drop_index("created_at_1")
+    await db.person_photo_uploads.create_index("expires_at", expireAfterSeconds=0)
     await db.person_photo_chunks.create_index("upload_id")
+    await db.person_photo_chunks.create_index("expires_at", expireAfterSeconds=0)

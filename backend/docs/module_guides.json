@@ -512,6 +512,23 @@
       "steps": ["Verifica consentimiento", "Corrige Speaker → Persona", "Corrige texto", "Regenera derivados", "Revisa minuta"],
       "good_practices": ["Nunca grabes ocultamente", "Conserva original y versiones", "No uses IA para evaluar carácter"],
       "next": "Secretaría compara fuentes y presenta la minuta para aprobación."
+    },
+    "operations_dashboard": {
+      "version": "1.0.0",
+      "title": "Operaciones · Eventos y asistencia",
+      "purpose": "Coordinar eventos únicos o recurrentes, equipos voluntarios, inscripciones y check-in sin duplicar Personas.",
+      "result": "Cada ocurrencia cierra con responsables, asistencia, métricas y auditoría verificables.",
+      "flow": ["Crear evento o serie", "Materializar ocurrencias y turnos", "Convocar voluntarios", "Registrar asistentes", "Abrir check-in", "Cerrar asistencia", "Consultar métricas"],
+      "roles": ["Pastor/gestor: crea y cierra", "Líder de check-in: registra entradas", "Persona: se inscribe y responde convocatorias"],
+      "states": ["Borrador", "Publicado", "Programado", "Check-in abierto", "Cerrado", "Cancelado"],
+      "steps": ["Confirma fecha y recurrencia", "Cubre turnos antes de abrir puertas", "Busca Persona antes de registrar invitado", "Usa QR o código cuando exista", "Revisa métricas antes de cerrar"],
+      "inputs": ["Persona 360", "Evento y recurrencia", "Turnos", "Inscripciones", "Check-ins"],
+      "outputs": ["Ocurrencias materializadas", "Cobertura de equipos", "Asistencia cerrada", "Métricas operativas"],
+      "connections": [{"module": "Persona 360", "impact": "Cada asistencia y voluntariado usa person_id canónico."}, {"module": "Ministerios y Células", "impact": "Los turnos pueden relacionarse con equipos existentes."}],
+      "common_errors": ["Crear otra Persona en check-in", "Duplicar entrada por doble toque", "Cerrar antes de revisar voluntarios y asistentes"],
+      "good_practices": ["Diseñar recurrencia desde el inicio", "Confirmar turnos", "Usar cierre operativo"],
+      "next": "Las métricas alimentan planificación y el historial de asistencia de Persona 360.",
+      "tour_steps": [{"target": "operations-page-title", "title": "Centro operativo", "body": "Empieza por próximas ocurrencias y cupos sin cubrir."}, {"target": "operations-metrics", "title": "Pulso del día", "body": "Check-ins y cobertura se actualizan desde hechos reales."}]
     }
   }
 }

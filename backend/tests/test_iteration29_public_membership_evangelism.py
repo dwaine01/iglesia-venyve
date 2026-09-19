@@ -1,5 +1,6 @@
 import io
 import os
+import subprocess
 import uuid
 
 import pytest
@@ -13,6 +14,13 @@ BASE_URL = (os.environ.get("REACT_APP_BACKEND_URL") or FRONTEND_ENV.get("REACT_A
 
 PASTOR_EMAIL = "qa.features.pastor@example.com"
 PERSONA_EMAIL = "qa.features.persona@example.com"
+
+
+@pytest.fixture(scope="module", autouse=True)
+def membership_evangelism_fixture():
+    subprocess.run(["python", "/app/tests/ui_membership_evangelism_fixture.py", "setup"], check=True, capture_output=True, text=True)
+    yield
+    subprocess.run(["python", "/app/tests/ui_membership_evangelism_fixture.py", "cleanup"], check=True, capture_output=True, text=True)
 PASSWORD = "FeatureFlow2026!"
 
 

@@ -35,3 +35,10 @@ export const canUseTerritorialMap = (user) => hasAnyCapability(user, [
 export const canManageDirectMembership = (user) => (
   isPastoralAuthority(user) || String(user?.access_level || '').toLowerCase() === 'coordinador_general'
 );
+
+export const canViewOperations = (user) => Boolean(user) && (isPastoralAuthority(user) || hasCapability(user, 'operations.view'));
+export const canManageOperations = (user) => isPastoralAuthority(user) || hasCapability(user, 'operations.manage');
+export const canCheckInOperations = (user) => canManageOperations(user) || hasCapability(user, 'operations.checkin');
+export const canViewCare = (user) => Boolean(user) && (isPastoralAuthority(user) || hasAnyCapability(user, ['care.assigned.read', 'care.manage']));
+export const canManageCare = (user) => isPastoralAuthority(user) || hasCapability(user, 'care.manage');
+export const canReadCareVault = (user) => isPastoralAuthority(user) || hasCapability(user, 'care.confidential.read');

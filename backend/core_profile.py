@@ -33,6 +33,7 @@ from access_control import (
 from person_domains import address_items, contact_items
 from person_profile_domains import profile_domain_snapshot
 from person_core_expansion import age_info
+from care_service import has_care_entry, profile_care_section
 
 router = APIRouter(prefix="/api/core", tags=["core-profile"])
 
@@ -443,6 +444,11 @@ async def get_person_profile(person_id: str, current_user: dict = Depends(requir
 
     for key, label in PLANNED_DOMAINS:
         domain_sections.append(built_sections.get(key) or _unavailable_section(key, label))
+
+    if has_care_entry(current_user):
+        care_section = await profile_care_section(db, person_id, current_user)
+        if care_section:
+            domain_sections.append(care_section)
 
     journey_status = None
     if has_capability(current_user, PROCESSES_READ):

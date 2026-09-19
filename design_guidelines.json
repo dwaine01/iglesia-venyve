@@ -1,150 +1,276 @@
 {
-  "project_title": "Iglesia Conexión Columbus - Membresía 360 & Minicenso de Evangelismo",
-  "app_type": "hybrid_fullstack",
-  "archetype": "ORGANIC & SACRED PRECISION",
-  "theme": {
-    "default": "light",
-    "toggle_supported": true,
-    "rationale": "Unites warm alabaster and slate tones for high legibility in pastoral admin dashboards with crisp emerald and vibrant amber badges for map census pins."
+  "project_name": "VEN Y VE 360 - Mega-Bloque F: Cuidado Pastoral",
+  "archetype": "ORGANIC & LUXURY INSTITUTIONAL (Navy & Dorado VaultLine)",
+  "version": "1.0.0",
+  "technology_stack": {
+    "framework": "React.js (JavaScript - .js files)",
+    "styling": "Tailwind CSS v3 + CSS Variables",
+    "components": "Shadcn/UI customized with institutional rules",
+    "icons": "Lucide React (@lucide-react / lucide-react)",
+    "animations": "Framer Motion + Tailwind keyframes",
+    "notifications": "Sonner"
   },
   "typography": {
-    "font_family_heading": "Outfit, sans-serif",
-    "font_family_body": "Plus Jakarta Sans, sans-serif",
-    "font_family_mono": "JetBrains Mono, monospace",
-    "heading_styles": {
-      "h1": "font-extrabold text-3xl sm:text-4xl lg:text-5xl tracking-tight text-slate-900 dark:text-slate-100",
-      "h2": "font-bold text-2xl sm:text-3xl tracking-tight text-slate-900 dark:text-slate-100",
-      "h3": "font-semibold text-xl sm:text-2xl text-slate-800 dark:text-slate-200",
-      "h4": "font-semibold text-lg sm:text-xl text-slate-800 dark:text-slate-200",
-      "overline": "text-xs font-bold uppercase tracking-[0.2em] text-amber-600 dark:text-amber-400"
+    "headings": {
+      "family": "Spectral, serif",
+      "font_weights": {
+        "regular": 400,
+        "semibold": 600,
+        "bold": 700
+      },
+      "usage": "Use Spectral for all section headers, case titles, pastoral modal titles, and SLA counters.",
+      "hierarchy": {
+        "h1": "text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-slate-900 leading-tight",
+        "h2": "text-2xl sm:text-3xl font-semibold tracking-tight text-slate-800",
+        "h3": "text-xl sm:text-2xl font-semibold text-slate-800",
+        "h4": "text-lg font-medium text-slate-800"
+      }
     },
-    "body_styles": {
-      "default": "text-sm sm:text-base text-slate-600 dark:text-slate-300 leading-relaxed",
-      "muted": "text-xs sm:text-sm text-slate-500 dark:text-slate-400"
+    "body": {
+      "family": "IBM Plex Sans, sans-serif",
+      "font_weights": {
+        "regular": 400,
+        "medium": 500,
+        "semibold": 600
+      },
+      "usage": "Use IBM Plex Sans for body text, tables, form fields, timeline items, metadata, and badge counters.",
+      "hierarchy": {
+        "body_large": "text-base leading-relaxed text-slate-700",
+        "body_normal": "text-sm leading-normal text-slate-600",
+        "caption": "text-xs leading-normal text-slate-500 font-medium"
+      }
     }
   },
   "colors": {
-    "primary": {
-      "slate_deep": "#0F172A",
-      "emerald_sacred": "#059669",
-      "amber_warm": "#D97706"
+    "primary_navy": {
+      "deep": "#0B1428",
+      "main": "#1B2A4A",
+      "light": "#2A3C64",
+      "subtle": "#F0F4F9"
     },
-    "accents": {
-      "blue_lake": "#2563EB",
-      "purple_royal": "#7C3AED",
-      "rose_heart": "#E11D48"
+    "accent_gold": {
+      "main": "#C8A951",
+      "bright": "#D4AF37",
+      "dark": "#9A7E32",
+      "light": "#FDF9EE",
+      "border": "rgba(200, 169, 81, 0.35)"
     },
-    "neutrals": {
-      "bg_light": "#F8FAFC",
-      "card_light": "#FFFFFF",
-      "border_light": "#E2E8F0",
-      "bg_dark": "#0B1120",
-      "card_dark": "#1E293B",
-      "border_dark": "#334155"
+    "sla_indicators": {
+      "critical_24h": {
+        "bg": "#FEF2F2",
+        "border": "#FECACA",
+        "text": "#991B1B",
+        "accent": "#EF4444",
+        "glow": "0 0 12px rgba(239, 68, 68, 0.25)"
+      },
+      "urgent_72h": {
+        "bg": "#FFFBEB",
+        "border": "#FDE68A",
+        "text": "#92400E",
+        "accent": "#F59E0B",
+        "glow": "0 0 12px rgba(245, 158, 11, 0.2)"
+      },
+      "on_track": {
+        "bg": "#ECFDF5",
+        "border": "#A7F3D0",
+        "text": "#065F46",
+        "accent": "#10B981"
+      },
+      "resolved": {
+        "bg": "#F8FAFC",
+        "border": "#E2E8F0",
+        "text": "#475569",
+        "accent": "#64748B"
+      }
     },
-    "status_badges": {
-      "active_preexisting": "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800",
-      "in_process": "bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300 border border-amber-300 dark:border-amber-800",
-      "detected": "bg-purple-100 text-purple-800 dark:bg-purple-950/70 dark:text-purple-300 border border-purple-300 dark:border-purple-800",
-      "assigned": "bg-blue-100 text-blue-800 dark:bg-blue-950/70 dark:text-blue-300 border border-blue-300 dark:border-blue-800",
-      "visited": "bg-teal-100 text-teal-800 dark:bg-teal-950/70 dark:text-teal-300 border border-teal-300 dark:border-teal-800",
-      "connected": "bg-emerald-500 text-white font-semibold shadow-sm"
+    "confidential_vault": {
+      "vault_dark": "#0A1120",
+      "vault_card": "#111C30",
+      "gold_hairline": "rgba(200, 169, 81, 0.3)",
+      "text_encrypted": "#94A3B8"
     }
   },
-  "spacing_and_layout": {
-    "generous_spacing": "p-4 sm:p-6 lg:p-8 space-y-6 lg:space-y-8",
-    "card_padding": "p-5 sm:p-6",
-    "bento_grid": "grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 lg:gap-6",
-    "hero_span": "col-span-full md:col-span-2 lg:col-span-3 row-span-2",
-    "sidebar_layout": "flex flex-col md:flex-row min-h-screen bg-slate-50 dark:bg-slate-950"
+  "visual_privacy_and_rbac": {
+    "core_principle": "Zero Inference Visual Insulation (UI Anti-Leakage)",
+    "rules": [
+      {
+        "rule_id": "PRIVACY-01",
+        "name": "Strict Non-Inference for Unauthorized Users",
+        "description": "Users without Cuidado Pastoral permissions (pastoral_core or assigned_team) must NEVER see any indicator, badge, zero counter, empty timeline section, tab, or metadata that reveals or suggests the existence of a pastoral case or confidential note."
+      },
+      {
+        "rule_id": "PRIVACY-02",
+        "name": "Persona 360 Privacy Shield",
+        "description": "In Persona 360 profile view, the 'Cuidado Pastoral' tab or section badge is ONLY rendered if accessControl.hasPastoralAccess(user) evaluates to true. For unauthorized users, the UI renders as if the module does not exist. No 'Acceso Denegado' placeholder, no disabled button."
+      },
+      {
+        "rule_id": "PRIVACY-03",
+        "name": "Pastoral Vault Visual Partitioning",
+        "description": "Within Pastoral Care cases, notes are partitioned: 'pastoral_core' (pastors & general coordinators) can read/write encrypted pastoral vault notes; 'assigned_team' can view operational progress and public updates but NOT confidential vault notes."
+      },
+      {
+        "rule_id": "PRIVACY-04",
+        "name": "Audit Log Badge & Append-Only Indicator",
+        "description": "Vault notes show an explicit security badge: 'Bóveda Cifrada | Auditado'. Notes cannot be edited or deleted once created (append-only timeline with view audit tracking)."
+      }
+    ]
   },
-  "components_and_ui": {
-    "header": "sticky top-0 z-50 backdrop-blur-md bg-white/80 dark:bg-slate-900/80 border-b border-slate-200 dark:border-slate-800 px-4 py-3",
-    "cards": "bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm hover:shadow-md transition-shadow",
-    "buttons": "inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 disabled:pointer-events-none disabled:opacity-50",
-    "forms": "space-y-4 rounded-xl border border-slate-200 dark:border-slate-800 p-6 bg-white dark:bg-slate-900 shadow-sm",
-    "tables": "w-full text-left text-sm border-collapse rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800",
-    "modal_dialog": "fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4",
-    "map_container": "relative h-[650px] w-full rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-inner"
+  "operacion_72_guidelines": {
+    "rules": [
+      "Operación 72 triggers automatically when a person accepts Jesus for the first time.",
+      "Single historical record per person_id with immutable original conversion date.",
+      "Re-entry logic: If a person returns after months or years, reactivate the existing record from the last completed valid stage without creating duplicate Person, expediente, or enrollment.",
+      "Timers: 24h assignment timer (Red SLA alert if unassigned) & 72h contact timer (Amber/Red SLA alert if uncontacted).",
+      "Distinct scope: Operación 72 = immediate contact response; Consolidación = formative process; Cuidado Pastoral = full case file and ongoing accompaniment."
+    ],
+    "ui_components": [
+      "SlaTimerCountdown: Real-time visual countdown with progress ring and SLA status color.",
+      "HistoricalStageTimeline: Interactive stage history showing completed, reactivated, and current active stages.",
+      "ReactivationAlertBanner: Gold badge indicating 'Expediente Histórico Reactivado (Continuación de última etapa validada)'."
+    ]
   },
-  "key_business_logics": {
-    "direct_membership": {
-      "roles_allowed": ["Pastor/Máster", "Coordinador General", "Privilegiado Directo"],
-      "action": "Check 'Miembro activo preexistente' in registration or CSV import",
-      "outcomes": [
-        "Skips onboarding process pipeline",
-        "Requires immediate input of existing Membership Number (e.g. COL-2024-8849)",
-        "Instant unlocking of digital Membership Card (Carnet) and Official Certificate"
-      ]
+  "navigation_and_routes": {
+    "base_path": "/cuidado-pastoral",
+    "routes": [
+      {
+        "path": "/cuidado-pastoral",
+        "component": "PastoralDashboardPage.js",
+        "title": "Tablero Confidencial de Cuidado Pastoral",
+        "data_testid": "route-pastoral-dashboard"
+      },
+      {
+        "path": "/cuidado-pastoral/casos",
+        "component": "PastoralCasesInboxPage.js",
+        "title": "Bandeja de Casos y Alertas SLA",
+        "data_testid": "route-pastoral-cases-inbox"
+      },
+      {
+        "path": "/cuidado-pastoral/casos/:caseId",
+        "component": "PastoralExpedienteDetailPage.js",
+        "title": "Expediente Pastoral y Bóveda Cifrada",
+        "data_testid": "route-pastoral-expediente-detail"
+      },
+      {
+        "path": "/cuidado-pastoral/operacion-72",
+        "component": "Operacion72DashboardPage.js",
+        "title": "Operación 72 - Respuesta Inmediata",
+        "data_testid": "route-operacion-72"
+      },
+      {
+        "path": "/cuidado-pastoral/visitas",
+        "component": "PastoralVisitsPage.js",
+        "title": "Agenda de Visitas por Hogar e Individual",
+        "data_testid": "route-pastoral-visits"
+      }
+    ]
+  },
+  "component_architecture": {
+    "page_containers": [
+      {
+        "name": "PastoralDashboardPage",
+        "file": "frontend/src/pages/pastoral/PastoralDashboardPage.js",
+        "description": "Confidential executive overview with metrics, active alerts, response performance, and household visit summary."
+      },
+      {
+        "name": "PastoralCasesInboxPage",
+        "file": "frontend/src/pages/pastoral/PastoralCasesInboxPage.js",
+        "description": "Operational inbox with strict filtering by SLA status, assigned team, severity, and stage filter."
+      },
+      {
+        "name": "PastoralExpedienteDetailPage",
+        "file": "frontend/src/pages/pastoral/PastoralExpedienteDetailPage.js",
+        "description": "Comprehensive expediente with case summary, encrypted pastoral notes vault (append-only), interaction timeline, and escalation control."
+      },
+      {
+        "name": "Operacion72DashboardPage",
+        "file": "frontend/src/pages/pastoral/Operacion72DashboardPage.js",
+        "description": "Immediate 72-hour contact engine showing active 24h/72h SLA countdowns, single historical record status, and reactivation history."
+      },
+      {
+        "name": "PastoralVisitsPage",
+        "file": "frontend/src/pages/pastoral/PastoralVisitsPage.js",
+        "description": "Visits dispatcher allowing grouping by household, multi-person scheduling, address mapping integration, and individual notes."
+      }
+    ],
+    "reusable_components": [
+      {
+        "name": "PastoralSlaBadge",
+        "file": "frontend/src/components/pastoral/PastoralSlaBadge.js",
+        "description": "Displays SLA alert level (24h Sin Asignar, 72h Sin Contacto, Próximo Paso Vencido, Urgente) with exact countdown."
+      },
+      {
+        "name": "PastoralVaultPanel",
+        "file": "frontend/src/components/pastoral/PastoralVaultPanel.js",
+        "description": "Encrypted append-only pastoral note box accessible only to pastoral_core users, complete with read audit log visual stamp."
+      },
+      {
+        "name": "HouseholdVisitsGroupCard",
+        "file": "frontend/src/components/pastoral/HouseholdVisitsGroupCard.js",
+        "description": "Renders family group home visits with collapsible individual member activity history."
+      },
+      {
+        "name": "Operacion72ReactivationBanner",
+        "file": "frontend/src/components/pastoral/Operacion72ReactivationBanner.js",
+        "description": "Displays single historical record notice when a person is reactivated from previous valid stage."
+      },
+      {
+        "name": "PastoralCaseEscalationDialog",
+        "file": "frontend/src/components/pastoral/PastoralCaseEscalationDialog.js",
+        "description": "Audited high-priority escalation modal to notify pastoral leadership immediately."
+      }
+    ]
+  },
+  "state_designs": {
+    "empty_state": {
+      "bg": "#FAF8F5",
+      "border": "1px dashed rgba(200, 169, 81, 0.4)",
+      "icon": "ShieldCheck",
+      "icon_color": "#C8A951",
+      "title": "No hay casos en esta bandeja",
+      "description": "Todos los casos pastoralmente asignados están al día en sus SLAs. El rebaño está atendido.",
+      "action_button": "Crear Nuevo Caso Pastoral"
     },
-    "new_member_process": {
-      "pipeline_steps": [
-        "Fiesta / Reunión de Bienvenida (Activation as Member)",
-        "LBS (Línea de Vida/Liderazgo) Course Completion",
-        "Retiro de Liberación & Sanidad (Delivery of Carnet & Physical Certificate)",
-        "Ceremonia de Membresía Domingo (Public Blessing & Induction)"
-      ]
+    "loading_state": {
+      "shimmer": "Background shimmer with Navy #1B2A4A pulser",
+      "text": "Desencriptando expediente confidencial...",
+      "spinner": "Golden ring loader with radial gold blur overlay"
     },
-    "mass_csv_importer": {
-      "features": ["Column Auto-Mapping", "Dry-Run Simulation Mode", "Duplicate Detection", "Household/Family grouping", "Audit Log Output"]
+    "error_state": {
+      "bg": "#FEF2F2",
+      "border": "1px solid #FCA5A5",
+      "title": "Acceso Restringido o Error de Conexión",
+      "description": "Esta información está bajo protocolos de confidencialidad pastoral extrema o no se pudo cargar.",
+      "action_button": "Reintentar Autenticación Pastoral"
     },
-    "map_360_sections": {
-      "tab_1": "Miembros y Líderes (Active Members & Servants)",
-      "tab_2": "Células / Grupos en Casa (Home Groups & Ministries)",
-      "tab_3": "Casas por Visitar (Minicenso de Hispanos Columbus OH)"
-    },
-    "minicenso_field_tool": {
-      "mobile_quick_capture": "Captura rápida móvil de Calle + Número de Casa + Notas (no sensibles) + Idioma Aparented",
-      "statuses": ["Detectada", "Asignada", "Visitada", "Seguimiento", "Conectada", "No Visitar"],
-      "geocoding": "Automatic latitude/longitude lookup in Columbus, OH"
+    "unauthorized_state": {
+      "behavior": "Completely hidden from UI. No error box, no placeholder card, no inferrable tab. Component returns null."
     }
   },
   "image_urls": [
     {
-      "category": "columbus_skyline",
-      "url": "https://images.pexels.com/photos/8331320/pexels-photo-8331320.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
-      "description": "View of Columbus skyline with modern skyscrapers and green park along the river."
+      "category": "pastoral_hero",
+      "url": "https://images.pexels.com/photos/38786011/pexels-photo-38786011.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "description": "Gold communion tray with pastor and congregation background for institutional header"
     },
     {
-      "category": "columbus_architecture",
-      "url": "https://images.unsplash.com/photo-1494303110424-f25a258d2e4b?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NjZ8MHwxfHNlYXJjaHxfHxjb2x1bWJ1cyUyMG9oaW8lMjBza3lsaW5lJTIwbW9kZXJuJTIwY2h1cmNoJTIwY29tbXVuaXR5JTIwbWFwfGVufDB8fHx8MTc4OTc5Mzk2OXww&ixlib=rb-4.1.0&q=85",
-      "description": "Columbus skyline aerial view"
-    },
-    {
-      "category": "map_pins_evangelism",
-      "url": "https://images.pexels.com/photos/8828593/pexels-photo-8828593.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
-      "description": "Close-up of pins on map highlighting outreach locations."
-    },
-    {
-      "category": "mobile_field_capture",
-      "url": "https://images.unsplash.com/photo-1604357209793-fca5dca89f97?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NTJ8MHwxfHNlYXJjaHwxfHxtYXAlMjBuYXZpZ2F0aW9uJTIwR1BTJTIwbG9jYXRpb24lMjBwaW5zJTIwcm91dGV8ZW58MHx8fHwxNzg5NzkzOTc1fDA&ixlib=rb-4.1.0&q=85",
-      "description": "Mobile device with GPS location pins for field workers."
+      "category": "pastoral_community",
+      "url": "https://images.unsplash.com/flagged/photo-1551212696-dcb8e1ea4256?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1OTV8MHwxfHNlYXJjaHwxfHxwYXN0b3JhbCUyMGNhcmUlMjBDaHVyY2glMjBOYXZ5JTIwR29sZCUyMHBvcnRyYWl0JTIwYWJzdHJhY3R8ZW58MHx8fHwxNzg5ODQ3MzkxfDA&ixlib=rb-4.1.0&q=85",
+      "description": "Pastoral accompaniment and counseling portrait"
     }
   ],
-  "testing_requirements": {
-    "mandatory_data_testid": true,
-    "pattern": "data-testid=\"[action]-[entity]-[element]\"",
-    "examples": [
-      "data-testid=\"toggle-direct-membership-checkbox\"",
-      "data-testid=\"input-membership-number\"",
-      "data-testid=\"btn-dry-run-import\"",
-      "data-testid=\"tab-map-casas-visitar\"",
-      "data-testid=\"btn-quick-add-house\"",
-      "data-testid=\"select-house-status\""
-    ]
-  },
   "instructions_to_main_agent": [
-    "Ensure the direct membership logic is fully audited and available for privileged roles (Pastor/Máster, Coordinador General).",
-    "Include a smooth CSV/XLSX mass importer with Dry-Run mode to safely import existing 130-150 active members.",
-    "The 360 Map must feature 3 distinct tabs: 1. Miembros & Líderes, 2. Células / Grupos, 3. Casas por visitar (Minicenso Columbus, OH).",
-    "Provide quick mobile house intake form with street name & house number, auto-geocoding simulation for Columbus OH streets, and assignment flow to leaders.",
-    "Add digital Member ID Card (Carnet) and Certificate viewer with instant PDF/Image download preview for direct members and process-completed members.",
-    "All interactive controls must have crisp data-testid attributes."
+    "1. Maintain strict compatibility with existing VEN Y VE 360 styling tokens (Navy #1B2A4A, Gold #C8A951, Spectral font for headers, IBM Plex Sans for body).",
+    "2. All files created under src/ must be JavaScript (.js) files.",
+    "3. ALWAYS implement data-testid on every interactive button, input, tab, badge, case row, and modal container (e.g. data-testid=\"op72-reactivate-btn\", data-testid=\"pastoral-vault-note-input\").",
+    "4. Enforce strict visual privacy: Wrap pastoral components in access checks (e.g., accessControl.hasPastoralAccess(user)). Unauthorized users MUST NOT see any pastoral UI or inferrable counters.",
+    "5. In Operación 72 views, ensure the single historical record badge and reactivation stage logic are clearly highlighted in the UI.",
+    "6. Use Sonner toasts for all action feedback (e.g. 'Nota pastoral cifrada y guardada en bóveda', 'Caso pastoral escalado con éxito').",
+    "7. Include comprehensive desktop and mobile responsive layouts for all 5 pastoral pages."
   ],
-  "UNIVERSAL_GUIDELINES_FOR_MAIN_AGENT": {
-    "avoid_ai_slop": "Do not center align app container. Avoid generic blue gradients.",
-    "spacing": "Use 2x-3x generous spacing padding (p-6, p-8) to keep interfaces breathable.",
-    "interactivity": "Use micro-animations for tab changes, map pin selections, modal dialogs, and toast notifications (Sonner).",
-    "contrast": "Ensure text contrast meets APCA/WCAG standards with explicit hover text colors."
+  "UNIVERSAL GUIDELINES FOR MAIN AGENT": {
+    "code_format": "JavaScript React (.js files)",
+    "testing_requirement": "All buttons, tabs, input elements, badges, timeline events, and card items MUST have data-testid attributes.",
+    "privacy_rule": "Strict anti-inference RBAC visual insulation. Never display empty pastoral tabs or counters to unauthorized users.",
+    "design_tokens": "Navy primary (#1B2A4A), Gold accent (#C8A951), White/Ivory surface (#FAF8F5), Red SLA (#EF4444), Amber SLA (#F59E0B), Emerald SLA (#10B981)."
   }
 }

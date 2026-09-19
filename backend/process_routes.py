@@ -389,9 +389,23 @@ async def update_enrollment(enrollment_id: str, payload: EnrollmentUpdate, curre
         current = await db.process_stage_progress.find_one({"enrollment_id": enrollment_id, "stage_key": enrollment["current_stage_key"]})
         if current and current.get("status") == "locked":
             await db.process_stage_progress.update_one({"_id": current["_id"]}, {"$set": {"status": "open", "opened_at": now_utc()}})
+    if update.get("status") == "paused" and enrollment.get("status") == "active":
+        update["paused_at"] = now_utc()
+        update["pause_reason"] = payload.result or payload.next_action or "Proceso pausado"
+    if update.get("status") == "active" and enrollment.get("status") == "paused":
+        update["reactivated_at"] = now_utc()
+        update["reactivation_reason"] = payload.result or payload.next_action or "La Persona regresó al proceso"
     update.update({"last_activity_at": now_utc(), "updated_at": now_utc()})
-    await db.process_enrollments.update_one({"enrollment_id": enrollment_id}, {"$set": update})
-    await record_event(db, enrollment, current_user["user_id"], "updated", "Inscripción actualizada", payload.next_action or payload.status or "")
+    mongo_update = {"$set": update}
+    if update.get("status") == "active" and enrollment.get("status") == "paused":
+        mongo_update["$inc"] = {"reactivation_count": 1}
+    await db.process_enrollments.update_one({"enrollment_id": enrollment_id}, mongo_update)
+    if update.get("status") == "paused" and enrollment.get("status") == "active":
+        await record_event(db, enrollment, current_user["user_id"], "paused", "Proceso pausado sin perder progreso", update.get("pause_reason", ""))
+    elif update.get("status") == "active" and enrollment.get("status") == "paused":
+        await record_event(db, enrollment, current_user["user_id"], "reactivated", "Proceso reactivado desde la última etapa válida", f"Continúa en {enrollment.get('current_stage_key')}")
+    else:
+        await record_event(db, enrollment, current_user["user_id"], "updated", "Inscripción actualizada", payload.next_action or payload.status or "")
     await evaluate_alerts(db)
     return await enrich_enrollment(await db.process_enrollments.find_one({"enrollment_id": enrollment_id}, {"_id": 0}))
 

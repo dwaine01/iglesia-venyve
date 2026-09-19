@@ -10,10 +10,15 @@ from httpx import ASGITransport, AsyncClient
 
 import server
 from access_control import access_defaults_for_role
-from qa_demo_cleanup import delete_qa_artifacts
+from qa_demo_cleanup import delete_qa_artifacts, qa_preview
 
 
 PASSWORD = "CatalogGateV2!2026"
+
+
+async def cleanup_qa():
+    preview = await qa_preview(server.db)
+    await delete_qa_artifacts(server.db, preview["preview_token"], preview["confirmation_phrase"])
 
 
 async def create_person(label: str) -> str:
@@ -70,7 +75,7 @@ async def auth_headers(email: str) -> dict:
 # módulo: catálogo operativo sin el escritor legado de 7 Semanas
 @pytest.mark.asyncio
 async def test_catalog_exposes_consolidation_v2_discipleship_and_required_formation_modules():
-    await delete_qa_artifacts(server.db)
+    await cleanup_qa()
     pastor_email = await create_user("Catalog Pastor", "pastor")
     headers = await auth_headers(pastor_email)
     client = AsyncClient(transport=ASGITransport(app=server.app), base_url="http://test")
@@ -84,13 +89,13 @@ async def test_catalog_exposes_consolidation_v2_discipleship_and_required_format
         assert consolidation["version"] == 2
     finally:
         await client.aclose()
-        await delete_qa_artifacts(server.db)
+        await cleanup_qa()
 
 
 # módulo: bloqueo de inscripción genérica en seven_weeks y consolidation
 @pytest.mark.asyncio
 async def test_generic_enrollment_endpoint_blocks_seven_weeks_and_consolidation():
-    await delete_qa_artifacts(server.db)
+    await cleanup_qa()
     pastor_email = await create_user("Enrollment Pastor", "pastor")
     person_id = await create_person("Enrollment Candidate")
     headers = await auth_headers(pastor_email)
@@ -112,4 +117,4 @@ async def test_generic_enrollment_endpoint_blocks_seven_weeks_and_consolidation(
         assert blocked_consolidation.status_code == 409, blocked_consolidation.text
     finally:
         await client.aclose()
-        await delete_qa_artifacts(server.db)
+        await cleanup_qa()
