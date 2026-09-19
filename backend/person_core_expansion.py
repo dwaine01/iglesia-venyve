@@ -5,7 +5,7 @@ and structured talents remain separate domains; neither is embedded in persons.
 """
 import re
 import unicodedata
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Literal, Optional
 from uuid import uuid4
 
@@ -530,61 +530,96 @@ async def search_directory(
     ministry_role_id: Optional[str] = None,
     membership_status: Optional[str] = None,
     limit: int = Query(default=50, ge=1, le=100),
+    page: int = Query(default=1, ge=1),
     current_user: dict = Depends(require_person_profile_user),
 ):
     if not has_capability(current_user, PERSON_DIRECTORY_SEARCH):
         raise HTTPException(status_code=403, detail="Directorio interno restringido")
     if membership_status:
         raise HTTPException(status_code=409, detail="Módulo de Membresía aún no disponible")
-    ministry_person_ids = None
+    age_policy = await db.person_settings.find_one({"_id": "age_policy"}, {"_id": 0, "rules": 1})
+    age_rules = (age_policy or {}).get("rules") or DEFAULT_AGE_RULES
+    person_id_filters = []
     if ministry_id or ministry_role_id:
         assignment_query = {"activo": True}
         if ministry_id:
             assignment_query["ministry_id"] = ministry_id
         if ministry_role_id:
             assignment_query["role_id"] = ministry_role_id
-        ministry_person_ids = set(
-            await db.ministry_assignments.distinct("person_id", assignment_query)
-        )
+        person_id_filters.append(set(await db.ministry_assignments.distinct("person_id", assignment_query)))
+    if talent_id or occupation_id or skill_id:
+        talent_query = {}
+        if talent_id:
+            talent_query["$or"] = [{"ocupacion_principal_id": talent_id}, {"habilidad_ids": talent_id}]
+        if occupation_id:
+            talent_query["ocupacion_principal_id"] = occupation_id
+        if skill_id:
+            talent_query["habilidad_ids"] = skill_id
+        person_id_filters.append(set(str(item) for item in await db.person_talents.distinct("_id", talent_query)))
     query = {"is_archived": {"$ne": True}}
     if genero:
         query["genero"] = genero
-    candidates = await db.persons.find(query).sort([("apellido", 1), ("nombre", 1)]).limit(500).to_list(500)
+    if age_group:
+        rule = next((item for item in age_rules if item.get("key") == age_group), None)
+        if rule:
+            today = date.today()
+            def years_ago(years: int) -> date:
+                try: return today.replace(year=today.year - years)
+                except ValueError: return today.replace(year=today.year - years, day=28)
+            oldest = years_ago(int(rule["max_age"]) + 1) + timedelta(days=1)
+            youngest = years_ago(int(rule["min_age"]))
+            query["fecha_nacimiento"] = {"$gte": oldest.isoformat(), "$lte": youngest.isoformat()}
+        else:
+            query["_id"] = {"$in": []}
+    needle = normalize(q)
+    if needle:
+        catalog_ids = [
+            str(item["_id"]) async for item in db.talent_catalog.find(
+                {"activo": True, "nombre": {"$regex": re.escape(q), "$options": "i"}}, {"_id": 1}
+            )
+        ]
+        related_ids = set()
+        if catalog_ids:
+            related_ids.update(str(item) for item in await db.person_talents.distinct("_id", {"$or": [{"ocupacion_principal_id": {"$in": catalog_ids}}, {"habilidad_ids": {"$in": catalog_ids}}]}))
+        ministry_ids = [str(item["_id"]) async for item in db.ministry_catalog.find({"activo": True, "nombre": {"$regex": re.escape(q), "$options": "i"}}, {"_id": 1})]
+        role_ids = [str(item["_id"]) async for item in db.ministry_roles.find({"activo": True, "nombre": {"$regex": re.escape(q), "$options": "i"}}, {"_id": 1})]
+        if ministry_ids or role_ids:
+            assignment_match = {"activo": True, "$or": []}
+            if ministry_ids: assignment_match["$or"].append({"ministry_id": {"$in": ministry_ids}})
+            if role_ids: assignment_match["$or"].append({"role_id": {"$in": role_ids}})
+            related_ids.update(await db.ministry_assignments.distinct("person_id", assignment_match))
+        text_or = [
+            {"search_key": {"$regex": re.escape(needle)}},
+            {"person_number": {"$regex": re.escape(q), "$options": "i"}},
+        ]
+        related_oids = [ObjectId(item) for item in related_ids if ObjectId.is_valid(item)]
+        if related_oids: text_or.append({"_id": {"$in": related_oids}})
+        query["$or"] = text_or
+    scope = current_user.get("access_scope", {}).get("persons", "none")
+    if scope != "all":
+        scope_or = []
+        if scope == "created_by":
+            scope_or.extend([{"created_by": current_user.get("user_id")}, {"auth_user_id": current_user.get("user_id")}])
+            assigned = await db.process_enrollments.distinct("person_id", {"$or": [{"responsible_person_id": current_user.get("person_id")}, {"mentor_person_id": current_user.get("person_id")} ]}) if current_user.get("person_id") else []
+            scope_or.extend([{"_id": {"$in": [ObjectId(item) for item in assigned if ObjectId.is_valid(item)]}}] if assigned else [])
+        elif scope == "assigned":
+            scope_or.append({"_id": {"$in": [ObjectId(item) for item in current_user.get("access_scope", {}).get("person_ids", []) if ObjectId.is_valid(item)]}})
+        if current_user.get("person_id") and ObjectId.is_valid(current_user["person_id"]):
+            scope_or.append({"_id": ObjectId(current_user["person_id"])})
+        if current_user.get("user_id"): scope_or.append({"auth_user_id": current_user["user_id"]})
+        query = {"$and": [query, {"$or": scope_or or [{"_id": {"$in": []}}]}]}
+    for person_ids in person_id_filters:
+        query = {"$and": [query, {"_id": {"$in": [ObjectId(item) for item in person_ids if ObjectId.is_valid(item)]}}]}
+    total = await db.persons.count_documents(query)
+    candidates = await db.persons.find(query).sort([("apellido", 1), ("nombre", 1), ("_id", 1)]).skip((page - 1) * limit).limit(limit).to_list(limit)
     candidate_ids = [str(person["_id"]) for person in candidates]
     talents_by_person = await directory_talent_snapshots(candidate_ids)
     ministries_by_person = await directory_ministry_snapshots(candidate_ids)
-    age_policy = await db.person_settings.find_one({"_id": "age_policy"})
-    age_rules = (age_policy or {}).get("rules") or DEFAULT_AGE_RULES
-    needle = normalize(q)
     results = []
     for person in candidates:
         person["person_id"] = str(person["_id"])
-        if ministry_person_ids is not None and person["person_id"] not in ministry_person_ids:
-            continue
-        if not can_access_person(current_user, person):
-            continue
         talents = talents_by_person[person["person_id"]]
         ministries = ministries_by_person[person["person_id"]]
-        talent_ids = [
-            talents["ocupacion_principal"]["talent_id"] if talents["ocupacion_principal"] else None,
-            *[item["talent_id"] for item in talents["habilidades"]],
-        ]
-        occupation_talent_id = (
-            talents["ocupacion_principal"]["talent_id"]
-            if talents["ocupacion_principal"]
-            else None
-        )
-        skill_ids = [item["talent_id"] for item in talents["habilidades"]]
-        searchable = normalize(
-            " ".join([
-                person.get("nombre", ""), person.get("apellido", ""),
-                person.get("person_number", ""),
-                *([talents["ocupacion_principal"]["nombre"]] if talents["ocupacion_principal"] else []),
-                *[item["nombre"] for item in talents["habilidades"]],
-                *[item["ministry_name"] for item in ministries],
-                *[item["role_name"] for item in ministries],
-            ])
-        )
         calculated_age = calculate_age(person.get("fecha_nacimiento"))
         matched_age_rule = next(
             (
@@ -598,21 +633,11 @@ async def search_directory(
             "age_group": matched_age_rule.get("key") if matched_age_rule else None,
             "age_group_label": matched_age_rule.get("label") if matched_age_rule else None,
         }
-        if needle and needle not in searchable:
-            continue
-        if talent_id and talent_id not in talent_ids:
-            continue
-        if occupation_id and occupation_talent_id != occupation_id:
-            continue
-        if skill_id and skill_id not in skill_ids:
-            continue
-        if age_group and age["age_group"] != age_group:
-            continue
         results.append(await serialize_person_brief(person, talents, age, ministries))
     return {
-        "items": results[:limit],
-        "total": len(results),
-        "has_more": len(results) > limit,
+        "items": results,
+        "total": total,
+        "has_more": page * limit < total,
         "membership_filter_available": False,
     }
 

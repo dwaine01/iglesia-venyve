@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from typing import Optional
 from uuid import uuid4
 
+import jwt
 from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel, Field
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -27,7 +28,7 @@ from access_control import (
     normalized_access_scope,
     normalized_capabilities,
 )
-from qa_demo_cleanup import delete_qa_artifacts, qa_summary
+from qa_demo_cleanup import delete_qa_artifacts, qa_preview
 
 MONGO_URL = os.environ.get("MONGO_URL")
 DB_NAME = os.environ.get("DB_NAME")
@@ -133,6 +134,12 @@ class QaDemoSummaryResponse(BaseModel):
     qa_users: int
     qa_persons: int
     total: int
+    affected_documents: int
+    affected_by_collection: dict[str, int]
+    samples_by_collection: dict[str, list[str]]
+    confirmation_phrase: str
+    preview_token: str
+    expires_in_seconds: int
 
 
 class QaDemoCleanupResponse(BaseModel):
@@ -140,6 +147,11 @@ class QaDemoCleanupResponse(BaseModel):
     qa_persons: int
     deleted_documents: int
     deleted_by_collection: dict[str, int]
+
+
+class QaDemoCleanupRequest(BaseModel):
+    preview_token: str = Field(min_length=20)
+    confirmation_phrase: str = Field(min_length=5, max_length=100)
 
 
 @router.get("/persons")
@@ -294,7 +306,7 @@ async def create_person(payload: PersonCreate, current_user: dict = Depends(requ
             await db.membership_events.delete_many({"person_id": person_id})
             await db.person_memberships.delete_many({"person_id": person_id})
             await db.person_contacts.delete_many({"person_id": person_id})
-            await db.persons.delete_one({"_id": person_id, "idempotency_key": payload.idempotency_key})
+            await db.persons.delete_one({"_id": result.inserted_id, "idempotency_key": payload.idempotency_key})
             raise
         response["membership"] = {"status": membership["status"], "member_number": membership["member_number"], "direct": True}
         await db.person_activity.insert_one({
@@ -328,12 +340,22 @@ async def get_person(person_id: str, current_user: dict = Depends(require_lider_
 
 @router.get("/persons/qa-demo/summary", response_model=QaDemoSummaryResponse)
 async def get_qa_demo_summary(current_user: dict = Depends(require_pastor)):
-    return QaDemoSummaryResponse(**await qa_summary(db))
+    return QaDemoSummaryResponse(**await qa_preview(db))
 
 
 @router.delete("/persons/qa-demo", response_model=QaDemoCleanupResponse)
-async def cleanup_qa_demo(current_user: dict = Depends(require_pastor)):
-    return QaDemoCleanupResponse(**await delete_qa_artifacts(db))
+async def cleanup_qa_demo(payload: QaDemoCleanupRequest, current_user: dict = Depends(require_pastor)):
+    try:
+        result = await delete_qa_artifacts(db, payload.preview_token, payload.confirmation_phrase)
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=409, detail="La vista previa venció; genere una nueva")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=409, detail="La vista previa no es válida")
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    return QaDemoCleanupResponse(**result)
 
 
 @router.delete("/persons/{person_id}", response_model=PersonArchiveResponse)

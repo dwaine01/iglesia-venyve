@@ -26,7 +26,7 @@ from access_control import (
     has_capability,
     is_global_pastoral_authority,
 )
-from canonical_identity import ensure_user_person_link, migrate_core_identity
+from canonical_identity import IdentityConflictError, ensure_user_person_link, migrate_core_identity
 from server import db, get_current_user
 
 router = APIRouter(prefix="/api/core/governance", tags=["core-governance"])
@@ -419,11 +419,18 @@ async def update_user_access(
     if payload.capabilities is not None:
         if not is_global_pastoral_authority(current_user):
             raise HTTPException(status_code=403, detail="Solo el pastor puede personalizar capacidades")
-        invalid = sorted(set(payload.capabilities) - allowed)
+        existing_capabilities = set(target.get("capabilities") or [])
+        current_defaults = set(access_defaults(target.get("access_level") or target.get("rol") or "persona", target.get("privilege_groups") or ["membership"])["capabilities"])
+        legacy_existing = existing_capabilities - current_defaults
+        invalid = sorted(set(payload.capabilities) - allowed - legacy_existing)
         if invalid:
             raise HTTPException(status_code=400, detail=f"Capabilities inválidas: {', '.join(invalid)}")
         customizable = set(JOURNEY_GOVERNANCE_CAPABILITIES + [MEMBERSHIP_DOCUMENTS_MANAGE])
-        capabilities = sorted(set(defaults["capabilities"] + [item for item in payload.capabilities if item in customizable]))
+        non_customizable = sorted(set(payload.capabilities) - set(defaults["capabilities"]) - customizable - legacy_existing)
+        if non_customizable:
+            raise HTTPException(status_code=400, detail=f"Capabilities no personalizables para este nivel: {', '.join(non_customizable)}")
+        preserved_legacy = set(payload.capabilities) & legacy_existing
+        capabilities = sorted(set(defaults["capabilities"]) | preserved_legacy | {item for item in payload.capabilities if item in customizable})
         if requested_role == "pastor" and CORE_GOVERNANCE_MANAGE not in capabilities:
             capabilities.append(CORE_GOVERNANCE_MANAGE)
     changed = (
@@ -446,7 +453,10 @@ async def update_user_access(
     if changed:
         update["token_version"] = target.get("token_version", 1) + 1
     await db.users.update_one({"_id": target["_id"]}, {"$set": update})
-    await ensure_user_person_link(db, user_id, current_user["user_id"])
+    try:
+        await ensure_user_person_link(db, user_id, current_user["user_id"])
+    except IdentityConflictError as exc:
+        raise HTTPException(status_code=409, detail={"message": str(exc), "conflict_id": exc.conflict_id})
     updated = await db.users.find_one({"_id": target["_id"]}, {"password": 0})
     return serialize_user(updated)
 

@@ -593,6 +593,25 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - UI verificada en 1920×800 y 390×844 sin overflow: CSV → mapeo → dashboard; Persona → registrar casa → lista determinista → panel → Visitada → guardar → reabrir → archivar. Hallazgo iteration 29 sobre testabilidad del pin quedó resuelto con la lista accesible.
 - Limpieza final local: `feature_users=0`, `feature_people=0`, `feature_targets=0`, `orphan_pub_numbers=0`. Producción no fue usada ni modificada.
 
+### FASE DE ESTABILIZACIÓN — COMPLETADA 2026‑09‑19
+
+- **Limpieza QA/demo P0:** el escaneo transversal fue reemplazado por una allowlist explícita de colecciones y campos de propiedad directa. Nunca se elimina un documento real por una mención incidental a una cuenta QA.
+- `GET /api/core/persons/qa-demo/summary` produce DRY-RUN por colección, ejemplos, frase exacta y token JWT por cinco minutos. `DELETE` exige token + frase y rechaza preview vencido, alterado o desactualizado.
+- **Multiplicación celular P0:** `create_cell_record` quedó desacoplado de FastAPI; la aprobación valida líder/transferidos, crea hija, genealogía, rol y membresías, y solo entonces programa geo. Una excepción compensa hija y reactiva membresías previas.
+- **Membresía directa P0:** rollback usa el `inserted_id` ObjectId y compensa registro, eventos, membresía, contactos y Persona; una falla forzada confirma cero Personas fantasma.
+- **Identidad canónica:** múltiples coincidencias crean `identity_conflicts` y detienen el vínculo. El registro público revierte cuenta e invitación; nunca crea una tercera Persona.
+- **Directorio:** búsqueda/filtros se ejecutan en MongoDB con `page/limit`, orden estable y total; conserva talentos/ministerios y encuentra Personas posteriores a los primeros 500 registros.
+- **Finanzas:** `entry_number` usa contador atómico y reserva única en `finance_entry_number_registry`; el índice único se instala si el historial no tiene duplicados. No se migraron asientos existentes y partida doble permanece verde.
+- **Gobierno/RBAC:** rechaza capabilities nuevas no personalizables, conserva capabilities legadas solicitadas y permite retirar las derivadas de grupos; ya no responde éxito si descartaría un valor.
+- **Invitaciones:** `expires_at=None` funciona sin 500 y las vencidas siguen rechazadas. `seed_user.py` queda bloqueado fuera de development/test y exige credenciales fuertes explícitas por entorno; nunca fue ejecutado contra producción.
+- **Grabaciones y fotos:** finalize de Junta adquiere estado atómico y deja un solo archivo; los uploads/chunks de fotos comparten TTL y la limpieza elimina vencidos/huérfanos conservando activos.
+- **Minicenso:** todos los autenticados mantienen registrar/asignar/estado. Roster devuelve solo `user_id + name`; ubicación precisa se limita a creador/responsable/GEO_VIEW_PRECISE; `pastoral_notes` queda separado y reservado a autoridad pastoral.
+- **Frontend:** diálogo QA exige preview/frase; Minicenso explica ubicaciones protegidas. MapLibre genera etiquetas/contadores locales en canvas, sin `text-field` ni dependencia glyph; diálogo de captura incluye descripción accesible.
+- **Pruebas específicas:** P0 4 PASS; P1 Core/Auth/Finanzas 7 PASS; uploads/privacidad 3 PASS; certificación independiente Iteración 30 **18/18 PASS**.
+- **Regresión final:** backend 186 PASS + pública aislada 8 PASS = **194 PASS**, 3 omitidas intencionalmente; frontend **23/23 PASS** y build PASS. UI 1920×800/390×844 sin overflow; consola sin errores glyph ni warnings de descripción.
+- **Limpieza final local:** `qa_remaining=0`, `evangelism_targets=0`; 89 reservas contables huérfanas exclusivamente QA eliminadas. Producción no fue consultada ni modificada.
+- **P2 sin cambios:** la autoridad pastoral se revisará por intención de módulo; no se hizo sustitución masiva, especialmente en Finanzas.
+
 ### P1/P2 — siguientes pasos y backlog
 
 - **P1 — Aceptación operativa:** validar Consolidación v2 con responsables reales, asignar `front_groups.view`/`leadership.view` y capacidades de gestión, y crear el primer Grupo Frontal de producción.

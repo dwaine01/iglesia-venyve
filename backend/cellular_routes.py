@@ -370,8 +370,8 @@ async def list_cells(network_id: Optional[str] = None, status_filter: Optional[s
     return {"items": [await enrich_cell(doc, include_sensitive) for doc in docs], "total": len(docs)}
 
 
-@router.post("/cells", status_code=status.HTTP_201_CREATED, response_model=dict)
-async def create_cell(payload: CellCreate, background_tasks: BackgroundTasks, current_user: dict = Depends(require_write)):
+async def create_cell_record(payload: CellCreate, current_user: dict) -> tuple[dict, str]:
+    """Servicio interno sin dependencias FastAPI; la ruta decide cómo ejecutar el job."""
     if not await network_manageable(payload.network_id, current_user): raise HTTPException(status_code=403, detail="Sin alcance para crear células en esta red")
     if not await db.cell_networks.find_one({"network_id": payload.network_id, "status": "active"}): raise HTTPException(status_code=400, detail="Red no disponible")
     if payload.mother_cell_id and not await db.cells.find_one({"cell_id": payload.mother_cell_id}): raise HTTPException(status_code=400, detail="Célula madre no encontrada")
@@ -380,8 +380,14 @@ async def create_cell(payload: CellCreate, background_tasks: BackgroundTasks, cu
     doc = {"_id": cell_id, "cell_id": cell_id, **payload.model_dump(), "opened_at": payload.opened_at.isoformat(), "code": code, "created_by_user_id": current_user["user_id"], "created_at": now, "updated_at": now, **pending_geo_fields(1)}
     await db.cells.insert_one(doc); await record_cell_event(db, cell_id, current_user["user_id"], "cell_created", "Célula creada", payload.name)
     job_id = await enqueue_geo_job(db, "cell", cell_id, 1, current_user["user_id"])
+    return await enrich_cell({key: value for key, value in doc.items() if key != "_id"}), job_id
+
+
+@router.post("/cells", status_code=status.HTTP_201_CREATED, response_model=dict)
+async def create_cell(payload: CellCreate, background_tasks: BackgroundTasks, current_user: dict = Depends(require_write)):
+    cell, job_id = await create_cell_record(payload, current_user)
     background_tasks.add_task(process_geo_job, db, job_id)
-    return await enrich_cell({key: value for key, value in doc.items() if key != "_id"})
+    return cell
 
 
 @router.get("/cells/{cell_id}", response_model=dict)
@@ -689,7 +695,7 @@ async def list_multiplication_reviews(current_user: dict = Depends(require_read)
 
 
 @router.put("/multiplication/reviews/{review_id}", response_model=dict)
-async def review_multiplication(review_id: str, payload: MultiplicationAction, current_user: dict = Depends(require_multiply)):
+async def review_multiplication(review_id: str, payload: MultiplicationAction, background_tasks: BackgroundTasks, current_user: dict = Depends(require_multiply)):
     review = await db.cell_multiplication_reviews.find_one({"review_id": review_id})
     if not review: raise HTTPException(status_code=404, detail="Revisión no encontrada")
     await ensure_cell_access(review["cell_id"], current_user, True)
@@ -701,16 +707,36 @@ async def review_multiplication(review_id: str, payload: MultiplicationAction, c
         return serialize(await db.cell_multiplication_reviews.find_one({"review_id": review_id}, {"_id": 0}))
     if not payload.daughter_cell or not payload.daughter_leader_person_id: raise HTTPException(status_code=400, detail="Aprobación requiere célula hija y líder")
     if payload.daughter_cell.mother_cell_id not in {None, mother["cell_id"]}: raise HTTPException(status_code=400, detail="La genealogía debe apuntar a la célula madre revisada")
-    daughter_payload = payload.daughter_cell.model_copy(update={"mother_cell_id": mother["cell_id"], "network_id": mother["network_id"]})
-    daughter = await create_cell(daughter_payload, current_user)
-    await assign_cell_role(daughter["cell_id"], CellRoleCreate(person_id=payload.daughter_leader_person_id, role="cell_leader"), current_user)
-    transferred = []
+    await ensure_staff(payload.daughter_leader_person_id)
     for person_id in payload.transferred_person_ids:
         await ensure_person(person_id)
-        membership = await add_membership(daughter["cell_id"], MembershipCreate(person_id=person_id, source="multiplication"), current_user, review_id)
-        transferred.append(membership["membership_id"])
-    multiplication_id = str(uuid4()); record = {"_id": multiplication_id, "multiplication_id": multiplication_id, "review_id": review_id, "mother_cell_id": mother["cell_id"], "daughter_cell_id": daughter["cell_id"], "leader_person_id": payload.daughter_leader_person_id, "transferred_person_ids": payload.transferred_person_ids, "transferred_membership_ids": transferred, "approved_by_user_id": current_user["user_id"], "multiplied_at": now}
-    await db.cell_multiplications.insert_one(record); await db.cell_multiplication_reviews.update_one({"_id": review["_id"]}, {"$set": {"status": "approved", "decision": "approve", "reason": payload.reason, "multiplication_id": multiplication_id, "decided_by_user_id": current_user["user_id"], "updated_at": now}})
+    daughter_payload = payload.daughter_cell.model_copy(update={"mother_cell_id": mother["cell_id"], "network_id": mother["network_id"]})
+    prior_memberships = await db.cell_memberships.find({"person_id": {"$in": payload.transferred_person_ids}, "membership_type": "primary", "active": True}, {"_id": 0, "membership_id": 1}).to_list(1000)
+    daughter = None; job_id = None; multiplication_id = str(uuid4())
+    try:
+        daughter, job_id = await create_cell_record(daughter_payload, current_user)
+        await assign_cell_role(daughter["cell_id"], CellRoleCreate(person_id=payload.daughter_leader_person_id, role="cell_leader"), current_user)
+        transferred = []
+        for person_id in payload.transferred_person_ids:
+            membership = await add_membership(daughter["cell_id"], MembershipCreate(person_id=person_id, source="multiplication"), current_user, review_id)
+            transferred.append(membership["membership_id"])
+        record = {"_id": multiplication_id, "multiplication_id": multiplication_id, "review_id": review_id, "mother_cell_id": mother["cell_id"], "daughter_cell_id": daughter["cell_id"], "leader_person_id": payload.daughter_leader_person_id, "transferred_person_ids": payload.transferred_person_ids, "transferred_membership_ids": transferred, "approved_by_user_id": current_user["user_id"], "multiplied_at": now}
+        await db.cell_multiplications.insert_one(record)
+        await db.cell_multiplication_reviews.update_one({"_id": review["_id"]}, {"$set": {"status": "approved", "decision": "approve", "reason": payload.reason, "multiplication_id": multiplication_id, "decided_by_user_id": current_user["user_id"], "updated_at": now}})
+    except Exception:
+        if daughter:
+            daughter_id = daughter["cell_id"]
+            await db.cell_memberships.delete_many({"cell_id": daughter_id, "assignment_source_id": review_id})
+            prior_ids = [item["membership_id"] for item in prior_memberships]
+            if prior_ids:
+                await db.cell_memberships.update_many({"membership_id": {"$in": prior_ids}}, {"$set": {"active": True, "left_at": None, "exit_reason": None, "updated_at": now_utc()}})
+            await db.cell_role_assignments.delete_many({"cell_id": daughter_id})
+            await db.cell_timeline.delete_many({"cell_id": daughter_id})
+            await db.geo_jobs.delete_many({"entity_kind": "cell", "entity_id": daughter_id})
+            await db.cells.delete_one({"cell_id": daughter_id})
+        await db.cell_multiplications.delete_one({"multiplication_id": multiplication_id})
+        raise
+    background_tasks.add_task(process_geo_job, db, job_id)
     await record_cell_event(db, mother["cell_id"], current_user["user_id"], "multiplication_approved", "Multiplicación aprobada", daughter["name"])
     return {"review": serialize(await db.cell_multiplication_reviews.find_one({"review_id": review_id}, {"_id": 0})), "multiplication": serialize(record), "daughter_cell": daughter}
 

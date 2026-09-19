@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from fastapi import HTTPException
+from pymongo import ReturnDocument
 
 from access_control import FINANCE_MANAGE, FINANCE_READ
 from server import db
@@ -63,11 +64,26 @@ async def ensure_open_period(entry_date: str) -> None:
         )
 
 
+async def reserve_entry_number(entry_id: str) -> int:
+    latest = await db.finance_journal_entries.find({"entry_number": {"$type": "number"}}, {"_id": 0, "entry_number": 1}).sort("entry_number", -1).limit(1).to_list(1)
+    highest = int(latest[0]["entry_number"]) if latest else 0
+    await db.counters.update_one({"_id": "finance_entry_number"}, {"$max": {"seq": highest}}, upsert=True)
+    counter = await db.counters.find_one_and_update({"_id": "finance_entry_number"}, {"$inc": {"seq": 1}}, return_document=ReturnDocument.AFTER)
+    entry_number = int(counter["seq"])
+    await db.finance_entry_number_registry.insert_one({"_id": str(entry_number), "entry_number": entry_number, "entry_id": entry_id, "reserved_at": now_utc()})
+    return entry_number
+
+
 async def create_journal(user_id: str, entry_date: str, memo: str, source_type: str, source_id: str, lines: list[dict], status: str = "draft") -> dict:
     await ensure_open_period(entry_date)
-    debit, credit = await validate_lines(lines); entry_id = str(uuid4()); now = now_utc()
-    doc = {"_id": entry_id, "entry_id": entry_id, "entry_number": await db.finance_journal_entries.count_documents({}) + 1, "entry_date": entry_date, "memo": memo, "source_type": source_type, "source_id": source_id, "status": status, "lines": lines, "total_debit_cents": debit, "total_credit_cents": credit, "prepared_by_user_id": user_id, "reviewed_by_user_id": None, "approved_by_user_id": None, "submitted_at": now if status == "submitted" else None, "reviewed_at": None, "approved_at": None, "posted_at": None, "created_at": now, "updated_at": now}
-    await db.finance_journal_entries.insert_one(doc); await audit(user_id, "journal_created", "journal_entry", entry_id, {"source_type": source_type, "source_id": source_id, "total_cents": debit}); return serialize(doc)
+    debit, credit = await validate_lines(lines); entry_id = str(uuid4()); now = now_utc(); entry_number = await reserve_entry_number(entry_id)
+    doc = {"_id": entry_id, "entry_id": entry_id, "entry_number": entry_number, "entry_date": entry_date, "memo": memo, "source_type": source_type, "source_id": source_id, "status": status, "lines": lines, "total_debit_cents": debit, "total_credit_cents": credit, "prepared_by_user_id": user_id, "reviewed_by_user_id": None, "approved_by_user_id": None, "submitted_at": now if status == "submitted" else None, "reviewed_at": None, "approved_at": None, "posted_at": None, "created_at": now, "updated_at": now}
+    try:
+        await db.finance_journal_entries.insert_one(doc)
+    except Exception:
+        await db.finance_entry_number_registry.delete_one({"_id": str(entry_number), "entry_id": entry_id})
+        raise
+    await audit(user_id, "journal_created", "journal_entry", entry_id, {"source_type": source_type, "source_id": source_id, "total_cents": debit}); return serialize(doc)
 
 
 async def ensure_indexes_and_seed():
@@ -75,6 +91,10 @@ async def ensure_indexes_and_seed():
     await db.finance_accounts.create_index("account_id", unique=True); await db.finance_accounts.create_index("code", unique=True)
     await db.finance_periods.create_index([("year", 1), ("month", 1)], unique=True)
     await db.finance_journal_entries.create_index("entry_id", unique=True)
+    duplicate_number = await db.finance_journal_entries.aggregate([{"$group": {"_id": "$entry_number", "count": {"$sum": 1}}}, {"$match": {"_id": {"$ne": None}, "count": {"$gt": 1}}}, {"$limit": 1}]).to_list(1)
+    if not duplicate_number:
+        await db.finance_journal_entries.create_index("entry_number", unique=True)
+    await db.finance_entry_number_registry.create_index("entry_number", unique=True)
     external_index = "source_1_external_transaction_id_1"
     existing_indexes = await db.finance_contributions.index_information()
     if external_index in existing_indexes and not existing_indexes[external_index].get("partialFilterExpression"):

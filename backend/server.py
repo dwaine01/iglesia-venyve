@@ -22,7 +22,7 @@ from access_control import (
     normalized_access_scope,
     normalized_capabilities,
 )
-from canonical_identity import ensure_user_person_link, migrate_core_identity, sync_legacy_person_to_canonical
+from canonical_identity import IdentityConflictError, ensure_user_person_link, migrate_core_identity, sync_legacy_person_to_canonical
 
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), ".env"), override=False)
 
@@ -798,8 +798,10 @@ async def register(user: UserRegister):
             raise HTTPException(status_code=400, detail="Este codigo ya fue utilizado")
 
         expires_at = invite.get("expires_at")
-        if expires_at and datetime.now(timezone.utc) > expires_at.replace(tzinfo=timezone.utc) if expires_at.tzinfo is None else datetime.now(timezone.utc) > expires_at:
-            raise HTTPException(status_code=400, detail="Este codigo ha caducado")
+        if expires_at:
+            normalized_expiry = expires_at.replace(tzinfo=timezone.utc) if expires_at.tzinfo is None else expires_at
+            if datetime.now(timezone.utc) > normalized_expiry:
+                raise HTTPException(status_code=400, detail="Este codigo ha caducado")
 
         # Crear usuario con rol y leader_id del codigo
         assigned_rol = invite["role_to_assign"]
@@ -851,7 +853,13 @@ async def register(user: UserRegister):
         user_id = str(result.inserted_id)
 
     # ---------- Inicialización canónica común ----------
-    canonical_person_id, _ = await ensure_user_person_link(db, user_id, user_id)
+    try:
+        canonical_person_id, _ = await ensure_user_person_link(db, user_id, user_id)
+    except IdentityConflictError as exc:
+        await db.users.delete_one({"_id": ObjectId(user_id)})
+        if code_clean:
+            await db.invite_codes.update_one({"_id": invite["_id"], "used_by_user_id": user_id}, {"$unset": {"used_at": "", "used_by_user_id": ""}})
+        raise HTTPException(status_code=409, detail={"message": str(exc), "conflict_id": exc.conflict_id})
     if assigned_rol == "persona" and assigned_leader_id:
         leader = await db.users.find_one({"_id": ObjectId(assigned_leader_id)}, {"_id": 0, "person_id": 1})
         from process_engine import create_enrollment
@@ -2025,7 +2033,11 @@ async def create_pastor(data: dict, authorization: Optional[str] = Header(None))
         "created_by": payload["user_id"],
     }
     result = await db.users.insert_one(doc)
-    person_id, _ = await ensure_user_person_link(db, str(result.inserted_id), payload["user_id"])
+    try:
+        person_id, _ = await ensure_user_person_link(db, str(result.inserted_id), payload["user_id"])
+    except IdentityConflictError as exc:
+        await db.users.delete_one({"_id": result.inserted_id})
+        raise HTTPException(status_code=409, detail={"message": str(exc), "conflict_id": exc.conflict_id})
     return {
         "_id": str(result.inserted_id),
         "nombre": nombre,

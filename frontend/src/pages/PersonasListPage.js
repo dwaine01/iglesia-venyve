@@ -34,6 +34,7 @@ export default function PersonasListPage() {
   const [cleanupOpen, setCleanupOpen] = useState(false);
   const [cleaningQa, setCleaningQa] = useState(false);
   const [cleanupError, setCleanupError] = useState('');
+  const [cleanupPhrase, setCleanupPhrase] = useState('');
 
   const fetchPersons = useCallback(async (search) => {
     setLoading(true);
@@ -85,6 +86,14 @@ export default function PersonasListPage() {
 
   useEffect(() => { loadQaSummary(); }, [loadQaSummary]);
 
+  const openQaCleanup = async () => {
+    setCleanupError(''); setCleanupPhrase('');
+    try {
+      const response = await axios.get(`${API}/api/core/persons/qa-demo/summary`, getAuthHeaders());
+      setQaSummary(response.data); setCleanupOpen(true);
+    } catch (requestError) { setCleanupError(requestError?.response?.data?.detail || 'No se pudo generar la vista previa QA.'); }
+  };
+
   useEffect(() => {
     const timer = setTimeout(() => fetchPersons(query.trim()), 300);
     return () => clearTimeout(timer);
@@ -96,10 +105,11 @@ export default function PersonasListPage() {
     setCleaningQa(true);
     setCleanupError('');
     try {
-      const response = await axios.delete(`${API}/api/core/persons/qa-demo`, getAuthHeaders());
+      const response = await axios.delete(`${API}/api/core/persons/qa-demo`, { ...getAuthHeaders(), data: { preview_token: qaSummary.preview_token, confirmation_phrase: cleanupPhrase } });
       toast.success(`${response.data.deleted_documents} artefactos QA eliminados`);
       setCleanupOpen(false);
-      setQaSummary({ qa_users: 0, qa_persons: 0, total: 0 });
+      setQaSummary({ qa_users: 0, qa_persons: 0, total: 0, affected_documents: 0, affected_by_collection: {} });
+      setCleanupPhrase('');
       await fetchPersons(query.trim());
     } catch (requestError) {
       setCleanupError(requestError?.response?.data?.detail || 'No se pudieron eliminar las muestras QA.');
@@ -125,7 +135,7 @@ export default function PersonasListPage() {
             {canManageDirectMembership(user) && <Button variant="outline" onClick={() => navigate('/personas/importar')} className="bg-white" data-testid="membership-import-open-button"><Upload className="h-4 w-4" />Importar membresía</Button>}
             {user?.rol === 'pastor' && qaSummary?.total > 0 && <Button
               variant="outline"
-              onClick={() => { setCleanupError(''); setCleanupOpen(true); }}
+              onClick={openQaCleanup}
               className="border-red-200 bg-white text-red-700 hover:bg-red-50 hover:text-red-800"
               data-testid="qa-demo-cleanup-button"
             >
@@ -146,6 +156,8 @@ export default function PersonasListPage() {
           open={cleanupOpen}
           onOpenChange={setCleanupOpen}
           summary={qaSummary}
+          phrase={cleanupPhrase}
+          setPhrase={setCleanupPhrase}
           busy={cleaningQa}
           error={cleanupError}
           onConfirm={cleanupQaDemo}
