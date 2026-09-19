@@ -677,3 +677,11 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - No usar datos estáticos del manual como fuente operativa.
 - Toda nueva interacción o dato crítico debe incluir `data-testid` único.
 - Frontend usa `REACT_APP_BACKEND_URL`; backend usa prefijo `/api` y variables de entorno obligatorias.
+
+### MEGA‑BLOQUE G — Grupos Frontales recursivos (implementado 2026-09-19)
+- Contrato congelado en `memory/FRONT_GROUPS_BLUEPRINT.md`: árbol ilimitado, rol dual canónico, trabajo descendente y reportes ascendentes.
+- Fase 0: 20 Grupos QA archivados sin hard delete; IDs, historial y auditoría preservados. No quedan Grupos reales activos ni credenciales QA.
+- Núcleo: padre/raíz/ancestros, prevención de ciclos, scope de subárbol y RBAC por rama.
+- Operación: trabajo delegable, rotación semanal auditable, autoridad de Consolidación, vínculo configurable Célula ↔ Grupo y continuidad del expediente.
+- Integraciones: Persona 360, Op. 72 única, Ley de 7 Semanas como proceso y Mapa 360/Invasiones reutilizados con botón “Crear invasión”.
+- UI y certificación: panel recursivo y mesa semanal; build exitoso, 29 pruebas críticas y desktop/móvil sin overflow. Iteración 33 corregida y revalidada.

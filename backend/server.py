@@ -452,6 +452,12 @@ from membership_import import router as membership_import_router
 app.include_router(membership_import_router)
 from front_groups import router as front_groups_router, ensure_front_group_indexes
 app.include_router(front_groups_router)
+from front_group_work import router as front_group_work_router, ensure_front_group_work_indexes
+app.include_router(front_group_work_router)
+from front_group_routing import router as front_group_routing_router, ensure_front_group_routing_indexes
+app.include_router(front_group_routing_router)
+from front_group_reports import router as front_group_reports_router, ensure_front_group_report_indexes
+app.include_router(front_group_reports_router)
 from consolidation_v2 import router as consolidation_v2_router, ensure_indexes as consolidation_v2_ensure_indexes
 app.include_router(consolidation_v2_router)
 from leadership import router as leadership_router, ensure_leadership_indexes_and_seed
@@ -623,6 +629,9 @@ async def startup():
     await seed_process_catalog(db)
     await ensure_process_indexes(db)
     await ensure_front_group_indexes()
+    await ensure_front_group_work_indexes()
+    await ensure_front_group_routing_indexes()
+    await ensure_front_group_report_indexes()
     await consolidation_v2_ensure_indexes()
     await ensure_leadership_indexes_and_seed()
     await migrate_historical_consolidation(db)

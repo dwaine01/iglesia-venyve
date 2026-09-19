@@ -6,7 +6,7 @@ from bson import ObjectId
 from fastapi import HTTPException
 
 from front_groups import group_in_scope
-from access_control import is_global_pastoral_authority
+from access_control import CONSOLIDATION_ASSIGN, has_capability, is_global_pastoral_authority
 from process_engine import create_enrollment, get_definition, now_utc, record_event, serialize
 
 
@@ -38,7 +38,7 @@ async def load_consolidation(db, enrollment_id: str) -> dict:
 
 
 async def assert_consolidation_scope(db, enrollment: dict, current_user: dict, leader_required: bool = False) -> None:
-    if is_global_pastoral_authority(current_user):
+    if is_global_pastoral_authority(current_user) or has_capability(current_user, CONSOLIDATION_ASSIGN):
         return
     group_id = enrollment.get("front_group_id")
     if group_id and await group_in_scope(group_id, current_user, leader_required):
@@ -97,6 +97,7 @@ async def assign_mentor(db, enrollment: dict, mentor_person_id: str, actor_user_
         "reason": reason,
         "transfer": transfer,
         "active": True,
+        "archived": False,
         "started_at": now,
         "ended_at": None,
         "assigned_by_user_id": actor_user_id,
@@ -116,6 +117,7 @@ async def mentor_qualification(db, person_id: str, front_group_id: str | None) -
     return await db.mentor_qualifications.find_one({
         "person_id": person_id,
         "active": True,
+        "archived": {"$ne": True},
         "can_teach_lbs": True,
         "$or": [{"front_group_id": front_group_id}, {"front_group_id": None}],
         "$and": [{"$or": [{"valid_until": None}, {"valid_until": {"$gte": now}}]}],

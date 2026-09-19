@@ -42,8 +42,11 @@ MEMBERSHIP_DOCUMENTS_MANAGE = "membership.documents.manage"
 MEMBERSHIP_ACCEPTANCE_MANAGE = "membership.acceptance.manage"
 CONSOLIDATION_MENTOR_TRANSFER = "consolidation.mentor.transfer"
 CONSOLIDATION_RETREAT_CLOSE = "consolidation.retreat.close"
+CONSOLIDATION_ASSIGN = "consolidation.assign"
 FRONT_GROUPS_MANAGE = "front_groups.manage"
 FRONT_GROUPS_VIEW = "front_groups.view"
+FRONT_GROUP_WORK_ASSIGN = "front_groups.work.assign"
+FRONT_GROUP_ROTATION_MANAGE = "front_groups.rotation.manage"
 MENTOR_QUALIFICATIONS_MANAGE = "mentor.qualifications.manage"
 LEADERSHIP_REQUIREMENTS_MANAGE = "leadership.requirements.manage"
 LEADERSHIP_PROMOTE = "leadership.promote"
@@ -105,8 +108,11 @@ JOURNEY_GOVERNANCE_CAPABILITIES = [
     MEMBERSHIP_ACCEPTANCE_MANAGE,
     CONSOLIDATION_MENTOR_TRANSFER,
     CONSOLIDATION_RETREAT_CLOSE,
+    CONSOLIDATION_ASSIGN,
     FRONT_GROUPS_VIEW,
     FRONT_GROUPS_MANAGE,
+    FRONT_GROUP_WORK_ASSIGN,
+    FRONT_GROUP_ROTATION_MANAGE,
     MENTOR_QUALIFICATIONS_MANAGE,
     LEADERSHIP_VIEW,
     LEADERSHIP_REQUIREMENTS_MANAGE,
@@ -169,7 +175,7 @@ _ROLE_ACCESS_DEFAULTS = {
         "access_scope": {"persons": "all"},
     },
     "lider": {
-        "capabilities": [*PERSON_DOMAIN_CAPABILITIES, PROCESSES_READ, PROCESSES_WRITE, PROCESSES_PARTICIPATE, FRONT_GROUPS_VIEW, LEADERSHIP_VIEW, CELLULAR_READ, CELLULAR_WRITE, CELLULAR_ATTENDANCE, CELLULAR_NEEDS, CELLULAR_SENSITIVE_READ, DOORS_READ, OPERATIONS_VIEW, OPERATIONS_CHECKIN, OPERATIONS_VOLUNTEER, CARE_ASSIGNED_READ, CARE_ASSIGNED_WRITE],
+        "capabilities": [*PERSON_DOMAIN_CAPABILITIES, PROCESSES_READ, PROCESSES_WRITE, PROCESSES_PARTICIPATE, FRONT_GROUPS_VIEW, FRONT_GROUP_WORK_ASSIGN, LEADERSHIP_VIEW, CELLULAR_READ, CELLULAR_WRITE, CELLULAR_ATTENDANCE, CELLULAR_NEEDS, CELLULAR_SENSITIVE_READ, DOORS_READ, OPERATIONS_VIEW, OPERATIONS_CHECKIN, OPERATIONS_VOLUNTEER, CARE_ASSIGNED_READ, CARE_ASSIGNED_WRITE],
         "access_scope": {"persons": "created_by"},
     },
     "persona": {
@@ -187,7 +193,7 @@ def access_defaults_for_role(role: str) -> dict:
             {"capabilities": [], "access_scope": {"persons": "none"}},
         )
     )
-    defaults["access_policy_version"] = 18
+    defaults["access_policy_version"] = 19
     return defaults
 
 
@@ -260,15 +266,15 @@ async def ensure_access_defaults(db) -> None:
             {"$set": {"access_scope": defaults["access_scope"]}},
         )
         await db.users.update_many(
-            {"rol": role, "$or": [{"parent_user_id": {"$exists": False}}, {"access_policy_version": {"$lt": 18}}, {"access_policy_version": {"$exists": False}}]},
+            {"rol": role, "$or": [{"parent_user_id": {"$exists": False}}, {"access_policy_version": {"$lt": 19}}, {"access_policy_version": {"$exists": False}}]},
             {
                 "$addToSet": {"capabilities": {"$each": defaults["capabilities"]}},
-                "$set": {"access_policy_version": 18},
+                "$set": {"access_policy_version": 19},
             },
         )
     await db.users.update_many({"rol": "persona"}, {"$addToSet": {"capabilities": {"$each": [OPERATIONS_VIEW, OPERATIONS_VOLUNTEER]}}})
     await db.users.update_many({"rol": "lider"}, {"$addToSet": {"capabilities": {"$each": [OPERATIONS_VIEW, OPERATIONS_CHECKIN, OPERATIONS_VOLUNTEER]}}})
     await db.users.update_many(
         {"$or": [{"access_level": "coordinador_general"}, {"rol": "lider", "capabilities": CORE_ACCESS_MANAGE}]},
-        {"$addToSet": {"capabilities": {"$each": CARE_CAPABILITIES}, "privilege_groups": "care"}, "$set": {"access_scope.persons": "all", "access_policy_version": 18}},
+        {"$addToSet": {"capabilities": {"$each": CARE_CAPABILITIES}, "privilege_groups": "care"}, "$set": {"access_scope.persons": "all", "access_policy_version": 19}},
     )

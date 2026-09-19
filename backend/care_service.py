@@ -174,6 +174,18 @@ async def create_op72(db, payload: dict, user: dict) -> tuple[dict, bool]:
     decision_at = decision_at.replace(microsecond=(decision_at.microsecond // 1000) * 1000)
     op72_id = str(uuid4())
     enrollment = await ensure_op72_consolidation(db, payload["person_id"], user["user_id"], op72_id)
+    source_cell_id = None; front_group_id = None; routing_source = None
+    if payload.get("source_type") == "cell_meeting" and payload.get("source_id"):
+        meeting = await db.cell_meetings.find_one({"meeting_id": payload["source_id"]}, {"_id": 0, "cell_id": 1})
+        source_cell_id = (meeting or {}).get("cell_id")
+        if source_cell_id:
+            link = await db.cell_front_group_links.find_one({"cell_id": source_cell_id, "active": True, "route_conversions": True}, {"_id": 0})
+            if link:
+                front_group_id = link.get("front_group_id"); routing_source = "cell_policy"
+    elif payload.get("source_type") == "evangelism_target" and payload.get("source_id"):
+        target = await db.evangelism_targets.find_one({"target_id": payload["source_id"], "archived": {"$ne": True}}, {"_id": 0, "front_group_id": 1})
+        if target and target.get("front_group_id"):
+            front_group_id = target["front_group_id"]; routing_source = "invasion_origin"
     case = await create_case_record(db, {
         "person_id": payload["person_id"], "case_type": "first_conversion", "priority": "high",
         "source_type": payload["source_type"], "source_id": payload.get("source_id") or op72_id,
@@ -185,6 +197,8 @@ async def create_op72(db, payload: dict, user: dict) -> tuple[dict, bool]:
         "_id": op72_id, "op72_id": op72_id, "person_id": payload["person_id"],
         "case_id": case["case_id"], "first_conversion_at": decision_at,
         "source_type": payload["source_type"], "source_id": payload.get("source_id"),
+        "source_cell_id": source_cell_id, "front_group_id": front_group_id,
+        "routing_source": routing_source,
         "assignment_deadline_at": decision_at + timedelta(hours=24),
         "contact_deadline_at": decision_at + timedelta(hours=72),
         "first_contact_at": None, "status": "active", "window_status": "open",
@@ -199,6 +213,14 @@ async def create_op72(db, payload: dict, user: dict) -> tuple[dict, bool]:
         existing = await db.op72_records.find_one({"person_id": payload["person_id"]}, {"_id": 0})
         return serialize(existing), False
     await db.pastoral_cases.update_one({"case_id": case["case_id"]}, {"$set": {"op72_id": op72_id, "consolidation_enrollment_id": enrollment.get("enrollment_id"), "updated_at": now}})
+    if source_cell_id or front_group_id:
+        enrollment_update = {"updated_at": now}
+        if source_cell_id and not enrollment.get("source_cell_id"): enrollment_update["source_cell_id"] = source_cell_id
+        if front_group_id: enrollment_update.update({"front_group_id": front_group_id, "routing_decision": {"recommended_group_id": front_group_id, "assigned_group_id": front_group_id, "mode": routing_source, "confirmed": True, "manual_override": False}})
+        await db.process_enrollments.update_one({"enrollment_id": enrollment["enrollment_id"]}, {"$set": enrollment_update})
+    if front_group_id:
+        from front_group_work import create_source_work_assignment
+        await create_source_work_assignment(source_type="op72", source_id=op72_id, source_sub_id=None, title="Operación 72 — contacto inicial", description="Realizar contacto dentro de la ventana operacional. No incluye notas de Cuidado Pastoral.", assigned_group_id=front_group_id, assigned_person_id=None, priority="urgent", due_at=decision_at + timedelta(hours=72), actor_user_id=user["user_id"], reason=f"Enrutamiento por {routing_source}")
     await record_audit(db, user, "op72_created", "op72", op72_id, {"person_id": payload["person_id"], "first_conversion_at": decision_at, "consolidation_enrollment_id": enrollment.get("enrollment_id")})
     result = serialize(doc); result["case"] = await enrich_case(db, await db.pastoral_cases.find_one({"case_id": case["case_id"]}, {"_id": 0}), user)
     return result, True
@@ -417,6 +439,7 @@ async def ensure_care_indexes(db) -> None:
     await db.op72_records.create_index("op72_id", unique=True)
     await db.op72_records.create_index("person_id", unique=True)
     await db.op72_records.create_index([("status", 1), ("contact_deadline_at", 1)])
+    await db.op72_records.create_index([("front_group_id", 1), ("status", 1)])
     await db.pastoral_visitations.create_index("visit_id", unique=True)
     await db.pastoral_visitations.create_index([("household_id", 1), ("scheduled_at", 1)])
     await db.pastoral_visitation_participants.create_index([("visit_id", 1), ("person_id", 1)], unique=True)

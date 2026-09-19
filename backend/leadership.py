@@ -201,7 +201,7 @@ async def promote_candidate(person_id: str, payload: PromotionInput, current_use
     await assert_promotion_scope(person_id, payload.front_group_id, current_user)
     if not is_global_pastoral_authority(current_user) and not has_capability(current_user, LEADERSHIP_PROMOTE):
         raise HTTPException(status_code=403, detail="Sin permiso para promover liderazgo")
-    current = await db.person_leadership_status.find_one({"person_id": person_id, "status": "leader"}, {"_id": 0})
+    current = await db.person_leadership_status.find_one({"person_id": person_id, "status": "leader", "archived": {"$ne": True}}, {"_id": 0})
     if current:
         raise HTTPException(status_code=409, detail="La Persona ya tiene estatus ministerial de Líder")
     snapshot = await eligibility_snapshot(person_id, payload.front_group_id)
@@ -234,6 +234,7 @@ async def leadership_dashboard(current_user: dict = Depends(require_read)):
     if not is_global_pastoral_authority(current_user):
         group_ids = await db.front_group_assignments.distinct("front_group_id", {"person_id": current_user.get("person_id"), "role": "leader", "active": True})
         group_query["front_group_id"] = {"$in": group_ids}
+    group_query["archived"] = {"$ne": True}
     promotions = await db.leadership_promotions.find(group_query, {"_id": 0}).sort("approved_at", -1).to_list(1000)
     return {"leaders_total": await db.person_leadership_status.count_documents({"status": "leader", **group_query}), "promotions": serialize(promotions[:50]), "promotions_total": len(promotions)}
 

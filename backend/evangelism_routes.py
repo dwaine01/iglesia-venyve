@@ -9,7 +9,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field, field_validator
 from pymongo import ReturnDocument
 
-from access_control import GEO_MANAGE_LOCATIONS, GEO_VIEW_PRECISE, has_capability, is_global_pastoral_authority
+from access_control import FRONT_GROUP_WORK_ASSIGN, GEO_MANAGE_LOCATIONS, GEO_VIEW_PRECISE, has_capability, is_global_pastoral_authority
+from front_group_tree import descendant_group_ids, group_in_scope, load_group
 from geo_address import normalize_address_document
 from geo_provider import geocoding_is_configured, get_geocoding_provider
 from geo_sector_service import sector_assignment_fields
@@ -42,6 +43,8 @@ class TargetCreate(BaseModel):
     notes: Optional[str] = Field(default=None, max_length=1000)
     pastoral_notes: Optional[str] = Field(default=None, max_length=2000)
     assigned_to_user_id: Optional[str] = None
+    front_group_id: Optional[str] = None
+    invasion_reference: Optional[str] = Field(default=None, max_length=120)
 
     @field_validator("street_name", "city", "state")
     @classmethod
@@ -66,6 +69,8 @@ class TargetUpdate(BaseModel):
     pastoral_notes: Optional[str] = Field(default=None, max_length=2000)
     status: Optional[TargetStatus] = None
     assigned_to_user_id: Optional[str] = None
+    front_group_id: Optional[str] = None
+    invasion_reference: Optional[str] = Field(default=None, max_length=120)
 
 
 class TargetResponse(BaseModel):
@@ -83,6 +88,8 @@ class TargetResponse(BaseModel):
     status: str
     assigned_to_user_id: Optional[str] = None
     assigned_to_name: Optional[str] = None
+    front_group_id: Optional[str] = None
+    invasion_reference: Optional[str] = None
     geocoding_status: str
     verification_status: str
     latitude: Optional[float] = None
@@ -129,6 +136,7 @@ def _item(doc: dict, current_user: dict) -> dict:
         "address2": doc.get("address2"), "city": doc["city"], "state": doc["state"], "zip": doc.get("zip"),
         "full_address": doc["full_address"], "language": doc.get("language", "unknown"), "notes": doc.get("notes"), "pastoral_notes": doc.get("pastoral_notes") if pastoral else None,
         "status": doc["status"], "assigned_to_user_id": doc.get("assigned_to_user_id"), "assigned_to_name": doc.get("assigned_to_name"),
+        "front_group_id": doc.get("front_group_id"), "invasion_reference": doc.get("invasion_reference"),
         "geocoding_status": doc.get("geocoding_status", "pending"), "verification_status": doc.get("verification_status", "pending"),
         "latitude": doc.get("latitude"), "longitude": doc.get("longitude"), "zone_key": doc.get("zone_key"),
         "zone_number": doc.get("zone_number"), "subzone_key": doc.get("subzone_key"), "sector_id": doc.get("sector_id"),
@@ -199,10 +207,11 @@ async def evangelism_assignees(q: Optional[str] = Query(default=None, max_length
 
 
 @router.get("", response_model=dict)
-async def list_evangelism_targets(target_status: Optional[TargetStatus] = Query(default=None, alias="status"), assigned_to_user_id: Optional[str] = None, current_user: dict = Depends(get_current_user)):
+async def list_evangelism_targets(target_status: Optional[TargetStatus] = Query(default=None, alias="status"), assigned_to_user_id: Optional[str] = None, front_group_id: Optional[str] = None, current_user: dict = Depends(get_current_user)):
     query = {"archived": {"$ne": True}}
     if target_status: query["status"] = target_status
     if assigned_to_user_id: query["assigned_to_user_id"] = assigned_to_user_id
+    if front_group_id: query["front_group_id"] = {"$in": await descendant_group_ids(db, front_group_id)}
     docs = await db.evangelism_targets.find(query, {"_id": 0}).sort("updated_at", -1).limit(5000).to_list(5000)
     counts = {key: 0 for key in ["detected", "assigned", "visited", "follow_up", "connected", "do_not_visit"]}
     for item in docs: counts[item["status"]] = counts.get(item["status"], 0) + 1
@@ -213,6 +222,11 @@ async def list_evangelism_targets(target_status: Optional[TargetStatus] = Query(
 @router.post("", response_model=TargetResponse, status_code=status.HTTP_201_CREATED)
 async def create_evangelism_target(payload: TargetCreate, current_user: dict = Depends(get_current_user)):
     values = payload.model_dump(); assigned_id, assigned_name = await _assignee(values.pop("assigned_to_user_id"))
+    if values.get("front_group_id"):
+        await load_group(db, values["front_group_id"])
+        allowed = is_global_pastoral_authority(current_user) or has_capability(current_user, GEO_MANAGE_LOCATIONS) or (has_capability(current_user, FRONT_GROUP_WORK_ASSIGN) and await group_in_scope(db, values["front_group_id"], current_user, leader_required=True))
+        if not allowed:
+            raise HTTPException(status_code=403, detail="No puede crear una invasión para este Grupo Frontal")
     if values.get("pastoral_notes") and not is_global_pastoral_authority(current_user):
         raise HTTPException(status_code=403, detail="Las notas pastorales están restringidas")
     address = _address_fields(values)
@@ -221,7 +235,16 @@ async def create_evangelism_target(payload: TargetCreate, current_user: dict = D
     now = now_utc(); target_id = str(uuid4())
     doc = {"_id": target_id, "target_id": target_id, **values, **address, "assigned_to_user_id": assigned_id, "assigned_to_name": assigned_name, "status": "assigned" if assigned_id else "detected", "created_by_user_id": current_user["user_id"], "updated_by_user_id": current_user["user_id"], "created_at": now, "updated_at": now, "archived": False, **await _geocode(values)}
     await db.evangelism_targets.insert_one(doc)
-    await _audit(target_id, current_user, "created", after={"status": doc["status"], "assigned_to_user_id": assigned_id})
+    await _audit(target_id, current_user, "created", after={"status": doc["status"], "assigned_to_user_id": assigned_id, "front_group_id": doc.get("front_group_id"), "invasion_reference": doc.get("invasion_reference")})
+    if doc.get("front_group_id"):
+        from front_group_work import create_source_work_assignment
+        assigned_person_id = None
+        if assigned_id:
+            account = await db.users.find_one({"_id": ObjectId(assigned_id)}, {"_id": 0, "person_id": 1})
+            candidate_person_id = (account or {}).get("person_id")
+            if candidate_person_id and await db.front_group_assignments.find_one({"front_group_id": doc["front_group_id"], "person_id": candidate_person_id, "active": True}, {"_id": 1}):
+                assigned_person_id = candidate_person_id
+        await create_source_work_assignment(source_type="evangelism_target", source_id=target_id, source_sub_id=None, title=f"Visitar {doc['full_address']}", description="Invasión creada desde el panel del Grupo Frontal.", assigned_group_id=doc["front_group_id"], assigned_person_id=assigned_person_id, priority="normal", due_at=None, actor_user_id=current_user["user_id"], reason="Crear invasión")
     return TargetResponse(**_item(doc, current_user))
 
 
@@ -230,6 +253,10 @@ async def update_evangelism_target(target_id: str, payload: TargetUpdate, curren
     existing = await db.evangelism_targets.find_one({"target_id": target_id, "archived": {"$ne": True}}, {"_id": 0})
     if not existing: raise HTTPException(status_code=404, detail="Casa del Minicenso no encontrada")
     update = payload.model_dump(exclude_unset=True)
+    if "front_group_id" in update and update["front_group_id"]:
+        await load_group(db, update["front_group_id"])
+        if not is_global_pastoral_authority(current_user) and not has_capability(current_user, GEO_MANAGE_LOCATIONS) and not await group_in_scope(db, update["front_group_id"], current_user, leader_required=True):
+            raise HTTPException(status_code=403, detail="Grupo Frontal fuera de su rama")
     if "pastoral_notes" in update and not is_global_pastoral_authority(current_user):
         raise HTTPException(status_code=403, detail="Las notas pastorales están restringidas")
     if "assigned_to_user_id" in update:
@@ -268,5 +295,6 @@ async def ensure_evangelism_indexes() -> None:
     await db.evangelism_targets.create_index([("location", "2dsphere")], sparse=True)
     await db.evangelism_targets.create_index([("status", 1), ("updated_at", -1)])
     await db.evangelism_targets.create_index([("assigned_to_user_id", 1), ("status", 1)])
+    await db.evangelism_targets.create_index([("front_group_id", 1), ("status", 1), ("updated_at", -1)])
     await db.evangelism_target_events.create_index("event_id", unique=True)
     await db.evangelism_target_events.create_index([("target_id", 1), ("occurred_at", -1)])

@@ -27,9 +27,12 @@ from access_control import (
     PERSON_PROFILE_SENSITIVE_READ,
     PERSON_PROFILE_WRITE,
     PROCESSES_READ,
+    FRONT_GROUPS_VIEW,
     can_access_person,
     has_capability,
+    is_global_pastoral_authority,
 )
+from front_group_tree import readable_group_ids
 from person_domains import address_items, contact_items
 from person_profile_domains import profile_domain_snapshot
 from person_core_expansion import age_info
@@ -258,6 +261,18 @@ async def get_person_profile(person_id: str, current_user: dict = Depends(requir
         "account_active": linked_user.get("is_active", True) if linked_user else None,
         "account_role": linked_user.get("rol") if linked_user else None,
     }
+    can_read_front_groups = is_global_pastoral_authority(current_user) or has_capability(current_user, FRONT_GROUPS_VIEW)
+    front_group_items = []
+    if can_read_front_groups:
+        assignments = await db.front_group_assignments.find({"person_id": person_id, "active": True}, {"_id": 0}).to_list(500)
+        allowed_group_ids = await readable_group_ids(db, current_user)
+        if allowed_group_ids is not None:
+            assignments = [item for item in assignments if item.get("front_group_id") in allowed_group_ids]
+        group_ids = [item["front_group_id"] for item in assignments]
+        groups = await db.front_groups.find({"front_group_id": {"$in": group_ids}, "status": {"$ne": "archived"}}, {"_id": 0, "front_group_id": 1, "name": 1, "parent_group_id": 1, "root_group_id": 1, "depth": 1}).to_list(500) if group_ids else []
+        group_map = {item["front_group_id"]: item for item in groups}
+        front_group_items = [{**item, "group": group_map.get(item["front_group_id"]), "route": f"/grupos-frontales?group={item['front_group_id']}"} for item in assignments if item["front_group_id"] in group_map]
+        response["grupos_frontales"] = {"items": front_group_items, "can_manage": False}
 
     if can_read_contacts:
         available.append("contacto")
