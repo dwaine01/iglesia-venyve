@@ -1,110 +1,150 @@
 {
-  "project_name": "Ven y Ve 360 - Geo Sector Editor & 14x7 Presentation Mode",
-  "app_type": "dashboard geográfico administrativo + presentation experience",
-  "design_archetype": "THE PERFORMANCE COMMAND CENTER (TACTICAL HIGH-CONTRAST + 2:1 GIANT SCREEN PRESENTATION)",
-  "emotional_tone": "Precise, Authoritative, High-Legibility, Energetic, Ultra-Clear, Command-Center",
-  "aspect_ratio_mode": {
-    "presentation": "14x7 feet (2:1 ratio) adaptative scaling container",
-    "admin": "Responsive standard desktop & mobile multi-panel layout"
+  "project_title": "Iglesia Conexión Columbus - Membresía 360 & Minicenso de Evangelismo",
+  "app_type": "hybrid_fullstack",
+  "archetype": "ORGANIC & SACRED PRECISION",
+  "theme": {
+    "default": "light",
+    "toggle_supported": true,
+    "rationale": "Unites warm alabaster and slate tones for high legibility in pastoral admin dashboards with crisp emerald and vibrant amber badges for map census pins."
   },
   "typography": {
-    "headings": {
-      "font_family": "Bebas Neue, Space Grotesk, sans-serif",
-      "h1_hero": "text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight uppercase",
-      "h2_section": "text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight",
-      "h3_subsection": "text-xl sm:text-2xl font-semibold tracking-normal",
-      "h4_card": "text-lg sm:text-xl font-bold"
+    "font_family_heading": "Outfit, sans-serif",
+    "font_family_body": "Plus Jakarta Sans, sans-serif",
+    "font_family_mono": "JetBrains Mono, monospace",
+    "heading_styles": {
+      "h1": "font-extrabold text-3xl sm:text-4xl lg:text-5xl tracking-tight text-slate-900 dark:text-slate-100",
+      "h2": "font-bold text-2xl sm:text-3xl tracking-tight text-slate-900 dark:text-slate-100",
+      "h3": "font-semibold text-xl sm:text-2xl text-slate-800 dark:text-slate-200",
+      "h4": "font-semibold text-lg sm:text-xl text-slate-800 dark:text-slate-200",
+      "overline": "text-xs font-bold uppercase tracking-[0.2em] text-amber-600 dark:text-amber-400"
     },
-    "body": {
-      "font_family": "Inter, DM Sans, system-ui, sans-serif",
-      "size": "text-base sm:text-lg leading-relaxed font-normal"
-    },
-    "presentation_overlay": {
-      "font_family": "JetBrains Mono, Roboto Mono, monospace",
-      "badge_text": "text-xs sm:text-sm font-black tracking-wider uppercase",
-      "huge_metric": "text-5xl sm:text-6xl font-black text-amber-400 font-mono"
+    "body_styles": {
+      "default": "text-sm sm:text-base text-slate-600 dark:text-slate-300 leading-relaxed",
+      "muted": "text-xs sm:text-sm text-slate-500 dark:text-slate-400"
     }
   },
   "colors": {
-    "palette_name": "Tactical Neon & Midnight Slate",
-    "background_dark": "#0B0F17",
-    "background_card": "#131B2E",
-    "background_overlay": "rgba(11, 15, 23, 0.92)",
-    "border_color": "#2A364F",
-    "primary_brand": "#3B82F6",
-    "primary_brand_hover": "#2563EB",
-    "accent_highlight": "#F59E0B",
-    "accent_cyan": "#06B6D4",
-    "accent_emerald": "#10B981",
-    "dimmed_sector_fill": "rgba(30, 41, 59, 0.35)",
-    "active_sector_fill": "rgba(59, 130, 246, 0.45)",
-    "active_sector_stroke": "#60A5FA",
-    "zone_colors": {
-      "1_Norte": "#3B82F6",
-      "2_Este": "#10B981",
-      "3_Sur": "#F59E0B",
-      "4_Oeste": "#EC4899"
+    "primary": {
+      "slate_deep": "#0F172A",
+      "emerald_sacred": "#059669",
+      "amber_warm": "#D97706"
+    },
+    "accents": {
+      "blue_lake": "#2563EB",
+      "purple_royal": "#7C3AED",
+      "rose_heart": "#E11D48"
+    },
+    "neutrals": {
+      "bg_light": "#F8FAFC",
+      "card_light": "#FFFFFF",
+      "border_light": "#E2E8F0",
+      "bg_dark": "#0B1120",
+      "card_dark": "#1E293B",
+      "border_dark": "#334155"
+    },
+    "status_badges": {
+      "active_preexisting": "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800",
+      "in_process": "bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300 border border-amber-300 dark:border-amber-800",
+      "detected": "bg-purple-100 text-purple-800 dark:bg-purple-950/70 dark:text-purple-300 border border-purple-300 dark:border-purple-800",
+      "assigned": "bg-blue-100 text-blue-800 dark:bg-blue-950/70 dark:text-blue-300 border border-blue-300 dark:border-blue-800",
+      "visited": "bg-teal-100 text-teal-800 dark:bg-teal-950/70 dark:text-teal-300 border border-teal-300 dark:border-teal-800",
+      "connected": "bg-emerald-500 text-white font-semibold shadow-sm"
     }
   },
-  "visual_enhancers": {
-    "glassmorphism": "backdrop-blur-xl bg-slate-950/80 border border-slate-700/60 shadow-2xl rounded-xl",
-    "tracing_beam": "relative overflow-hidden before:absolute before:inset-0 before:bg-gradient-to-r before:from-blue-500/20 before:to-amber-500/20 before:animate-pulse",
-    "high_contrast_presentation": "ring-2 ring-amber-400/80 shadow-[0_0_30px_rgba(245,158,11,0.3)]",
-    "pin_badge": "inline-flex items-center justify-center bg-amber-500 text-slate-950 font-black rounded-full text-xs px-2 py-0.5 border-2 border-slate-900 shadow-md transform translate-x-1/2 -translate-y-1/2"
+  "spacing_and_layout": {
+    "generous_spacing": "p-4 sm:p-6 lg:p-8 space-y-6 lg:space-y-8",
+    "card_padding": "p-5 sm:p-6",
+    "bento_grid": "grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 lg:gap-6",
+    "hero_span": "col-span-full md:col-span-2 lg:col-span-3 row-span-2",
+    "sidebar_layout": "flex flex-col md:flex-row min-h-screen bg-slate-50 dark:bg-slate-950"
   },
-  "layout_hierarchy": {
-    "level_1": "Zona Oficial (1 Norte, 2 Este, 3 Sur, 4 Oeste)",
-    "level_2": "Sectores Personalizados Dibujados (S1, S2, S3... polígonos sobre calles reales)",
-    "level_3": "Calles Reales OSM & Nombres Visibles en Presentación",
-    "level_4": "Hogares (Pines con Badge de Residentes Totales)",
-    "level_5": "Personas y Líderes (Integrantes, Esposos, Hijos, Roles en la Célula)"
+  "components_and_ui": {
+    "header": "sticky top-0 z-50 backdrop-blur-md bg-white/80 dark:bg-slate-900/80 border-b border-slate-200 dark:border-slate-800 px-4 py-3",
+    "cards": "bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm hover:shadow-md transition-shadow",
+    "buttons": "inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 disabled:pointer-events-none disabled:opacity-50",
+    "forms": "space-y-4 rounded-xl border border-slate-200 dark:border-slate-800 p-6 bg-white dark:bg-slate-900 shadow-sm",
+    "tables": "w-full text-left text-sm border-collapse rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800",
+    "modal_dialog": "fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4",
+    "map_container": "relative h-[650px] w-full rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-inner"
   },
-  "key_components": [
-    {
-      "name": "GeoMapCanvas",
-      "path": "frontend/src/components/geo/GeoMapCanvas.js",
-      "description": "MapLibre canvas with high-contrast presentation mode layer dimming, vector fill opacity rules, household pins with badges, and sector polygon rendering"
+  "key_business_logics": {
+    "direct_membership": {
+      "roles_allowed": ["Pastor/Máster", "Coordinador General", "Privilegiado Directo"],
+      "action": "Check 'Miembro activo preexistente' in registration or CSV import",
+      "outcomes": [
+        "Skips onboarding process pipeline",
+        "Requires immediate input of existing Membership Number (e.g. COL-2024-8849)",
+        "Instant unlocking of digital Membership Card (Carnet) and Official Certificate"
+      ]
     },
-    {
-      "name": "GeoSectorEditorDrawer",
-      "path": "frontend/src/components/geo/GeoSectorEditorDrawer.js",
-      "description": "Toolbar & Drawer for polygon drawing, add/move/delete vertices, Overpass Snap-to-Roads, overlap warning, auto-numbering, color picker, and RBAC save"
+    "new_member_process": {
+      "pipeline_steps": [
+        "Fiesta / Reunión de Bienvenida (Activation as Member)",
+        "LBS (Línea de Vida/Liderazgo) Course Completion",
+        "Retiro de Liberación & Sanidad (Delivery of Carnet & Physical Certificate)",
+        "Ceremonia de Membresía Domingo (Public Blessing & Induction)"
+      ]
     },
-    {
-      "name": "Presentation2To1Shell",
-      "path": "frontend/src/components/geo/Presentation2To1Shell.js",
-      "description": "Adaptive 14x7 feet (2:1 aspect ratio) presentation wrapper with high-contrast controls, large dynamic sector summary card, zoom fitBounds triggers, and resident panel"
+    "mass_csv_importer": {
+      "features": ["Column Auto-Mapping", "Dry-Run Simulation Mode", "Duplicate Detection", "Household/Family grouping", "Audit Log Output"]
     },
-    {
-      "name": "HouseholdResidentDialog",
-      "path": "frontend/src/components/geo/HouseholdResidentDialog.js",
-      "description": "Modal detailing all residents at a pin (husband, wife, children, leaders, roles, cellular network status)"
+    "map_360_sections": {
+      "tab_1": "Miembros y Líderes (Active Members & Servants)",
+      "tab_2": "Células / Grupos en Casa (Home Groups & Ministries)",
+      "tab_3": "Casas por Visitar (Minicenso de Hispanos Columbus OH)"
+    },
+    "minicenso_field_tool": {
+      "mobile_quick_capture": "Captura rápida móvil de Calle + Número de Casa + Notas (no sensibles) + Idioma Aparented",
+      "statuses": ["Detectada", "Asignada", "Visitada", "Seguimiento", "Conectada", "No Visitar"],
+      "geocoding": "Automatic latitude/longitude lookup in Columbus, OH"
     }
-  ],
+  },
   "image_urls": [
     {
-      "category": "map_presentation",
-      "url": "https://images.unsplash.com/photo-1584972191378-d70853fc47fc?crop=entropy&cs=srgb&fm=jpg&q=85",
-      "description": "High contrast vector map display with illuminated sector highlights"
+      "category": "columbus_skyline",
+      "url": "https://images.pexels.com/photos/8331320/pexels-photo-8331320.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "description": "View of Columbus skyline with modern skyscrapers and green park along the river."
     },
     {
-      "category": "command_center",
-      "url": "https://images.pexels.com/photos/6366444/pexels-photo-6366444.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
-      "description": "Digital monitor with high density statistical presentation data"
+      "category": "columbus_architecture",
+      "url": "https://images.unsplash.com/photo-1494303110424-f25a258d2e4b?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NjZ8MHwxfHNlYXJjaHxfHxjb2x1bWJ1cyUyMG9oaW8lMjBza3lsaW5lJTIwbW9kZXJuJTIwY2h1cmNoJTIwY29tbXVuaXR5JTIwbWFwfGVufDB8fHx8MTc4OTc5Mzk2OXww&ixlib=rb-4.1.0&q=85",
+      "description": "Columbus skyline aerial view"
+    },
+    {
+      "category": "map_pins_evangelism",
+      "url": "https://images.pexels.com/photos/8828593/pexels-photo-8828593.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "description": "Close-up of pins on map highlighting outreach locations."
+    },
+    {
+      "category": "mobile_field_capture",
+      "url": "https://images.unsplash.com/photo-1604357209793-fca5dca89f97?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NTJ8MHwxfHNlYXJjaHwxfHxtYXAlMjBuYXZpZ2F0aW9uJTIwR1BTJTIwbG9jYXRpb24lMjBwaW5zJTIwcm91dGV8ZW58MHx8fHwxNzg5NzkzOTc1fDA&ixlib=rb-4.1.0&q=85",
+      "description": "Mobile device with GPS location pins for field workers."
     }
   ],
+  "testing_requirements": {
+    "mandatory_data_testid": true,
+    "pattern": "data-testid=\"[action]-[entity]-[element]\"",
+    "examples": [
+      "data-testid=\"toggle-direct-membership-checkbox\"",
+      "data-testid=\"input-membership-number\"",
+      "data-testid=\"btn-dry-run-import\"",
+      "data-testid=\"tab-map-casas-visitar\"",
+      "data-testid=\"btn-quick-add-house\"",
+      "data-testid=\"select-house-status\""
+    ]
+  },
   "instructions_to_main_agent": [
-    "Always maintain strict testability with data-testid on buttons, inputs, modals, map pins, and presentation toggles.",
-    "Ensure Presentation Mode respects the 2:1 aspect ratio container scaling with custom zoom controls for 14x7 ft screens.",
-    "When hovering or selecting a sector, dim all other sectors to 0.2 opacity while illuminating the active sector with 0.7 opacity and vibrant glowing borders.",
-    "When a household pin is clicked, display a detailed drawer/dialog showing every authorized resident residing at that coordinate rather than just one single person.",
-    "Support full CRUD for custom sectors with vertex dragging, snap-to-roads integration, Shapely validation backend contracts, and RBAC check.",
-    "Use sonner for notifications and toasts. Avoid raw JavaScript alert popups."
+    "Ensure the direct membership logic is fully audited and available for privileged roles (Pastor/Máster, Coordinador General).",
+    "Include a smooth CSV/XLSX mass importer with Dry-Run mode to safely import existing 130-150 active members.",
+    "The 360 Map must feature 3 distinct tabs: 1. Miembros & Líderes, 2. Células / Grupos, 3. Casas por visitar (Minicenso Columbus, OH).",
+    "Provide quick mobile house intake form with street name & house number, auto-geocoding simulation for Columbus OH streets, and assignment flow to leaders.",
+    "Add digital Member ID Card (Carnet) and Certificate viewer with instant PDF/Image download preview for direct members and process-completed members.",
+    "All interactive controls must have crisp data-testid attributes."
   ],
-  "UNIVERSAL GUIDELINES FOR MAIN AGENT": {
-    "testing_attribute": "Every interactive element MUST have data-testid in kebab-case format.",
-    "header_transparency": "Headers and overlays MUST have backdrop-blur and a non-transparent background color (e.g. bg-slate-950/90).",
-    "toast_library": "Use sonner imported from src/components/ui/sonner.jsx or custom wrapper.",
-    "file_extension": "All React frontend files must use .js extension."
+  "UNIVERSAL_GUIDELINES_FOR_MAIN_AGENT": {
+    "avoid_ai_slop": "Do not center align app container. Avoid generic blue gradients.",
+    "spacing": "Use 2x-3x generous spacing padding (p-6, p-8) to keep interfaces breathable.",
+    "interactivity": "Use micro-animations for tab changes, map pin selections, modal dialogs, and toast notifications (Sonner).",
+    "contrast": "Ensure text contrast meets APCA/WCAG standards with explicit hover text colors."
   }
 }

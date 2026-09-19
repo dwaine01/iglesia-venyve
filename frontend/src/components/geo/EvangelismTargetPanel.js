@@ -1,0 +1,28 @@
+import React, { useEffect, useState } from 'react';
+import axios from 'axios';
+import { Archive, Home, Loader2, MapPin, Save, X } from 'lucide-react';
+import { toast } from 'sonner';
+import { useAuth } from '../../context/AuthContext';
+import { apiErrorMessage } from '../../lib/apiErrors';
+import { Button } from '../ui/button';
+import { Label } from '../ui/label';
+import { Textarea } from '../ui/textarea';
+
+const statuses = [['detected', 'Detectada'], ['assigned', 'Asignada'], ['visited', 'Visitada'], ['follow_up', 'Seguimiento'], ['connected', 'Conectada'], ['do_not_visit', 'No visitar']];
+
+export const EvangelismTargetPanel = ({ feature, onClose, onChanged }) => {
+  const { API, getAuthHeaders } = useAuth(); const item = feature?.properties || {};
+  const [status, setStatus] = useState(item.status || 'detected'); const [assignee, setAssignee] = useState(item.assigned_to_user_id || '');
+  const [notes, setNotes] = useState(item.notes || ''); const [assignees, setAssignees] = useState([]); const [saving, setSaving] = useState(false);
+  useEffect(() => { setStatus(item.status || 'detected'); setAssignee(item.assigned_to_user_id || ''); setNotes(item.notes || ''); }, [item.assigned_to_user_id, item.notes, item.status, item.target_id]);
+  useEffect(() => { axios.get(`${API}/api/geo/evangelism/assignees`, getAuthHeaders()).then((response) => setAssignees(response.data.items || [])).catch(() => setAssignees([])); }, [API, getAuthHeaders]);
+  if (!feature) return null;
+  const save = async () => { setSaving(true); try { await axios.patch(`${API}/api/geo/evangelism/${item.target_id}`, { status, assigned_to_user_id: assignee || null, notes: notes || null }, getAuthHeaders()); toast.success('Visita actualizada'); await onChanged?.(); onClose(); } catch (requestError) { toast.error(apiErrorMessage(requestError, 'No se pudo actualizar')); } finally { setSaving(false); } };
+  const archive = async () => { setSaving(true); try { await axios.delete(`${API}/api/geo/evangelism/${item.target_id}`, getAuthHeaders()); toast.success('Casa archivada del Minicenso'); await onChanged?.(); onClose(); } catch (requestError) { toast.error(apiErrorMessage(requestError, 'No se pudo archivar')); } finally { setSaving(false); } };
+  return <aside className="absolute bottom-3 left-3 right-3 z-20 max-h-[78%] overflow-y-auto border-t-4 border-emerald-600 bg-white p-4 shadow-2xl md:bottom-auto md:left-auto md:right-4 md:top-4 md:w-[360px]" data-testid="evangelism-target-panel">
+    <div className="flex items-start justify-between gap-3"><div><p className="flex items-center gap-1 text-xs font-bold uppercase text-emerald-700"><Home className="h-4 w-4" />Casa por visitar</p><h2 className="mt-1 font-['Spectral'] text-xl font-semibold" data-testid="evangelism-target-address">{item.full_address || item.address}</h2></div><Button variant="ghost" size="icon" onClick={onClose} aria-label="Cerrar" data-testid="evangelism-target-close-button"><X className="h-4 w-4" /></Button></div>
+    <p className="mt-3 flex items-center gap-2 text-xs text-slate-500" data-testid="evangelism-target-location-status"><MapPin className="h-4 w-4" />{item.verification_status === 'verified' ? `Ubicación verificada · Zona ${item.zone_number || '—'} ${item.subzone_key || ''}` : 'Ubicación pendiente de verificación'}</p>
+    <div className="mt-5 space-y-4"><div><Label htmlFor="ev-target-status">Estado</Label><select id="ev-target-status" value={status} onChange={(event) => setStatus(event.target.value)} className="h-10 w-full border bg-white px-3 text-sm" data-testid="select-house-status">{statuses.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div><div><Label htmlFor="ev-target-assignee">Responsable de la visita</Label><select id="ev-target-assignee" value={assignee} onChange={(event) => setAssignee(event.target.value)} className="h-10 w-full border bg-white px-3 text-sm" data-testid="evangelism-target-assignee-select"><option value="">Sin asignar</option>{assignees.map((person) => <option key={person.user_id} value={person.user_id}>{person.name} · {person.title}</option>)}</select></div><div><Label htmlFor="ev-target-notes">Notas</Label><Textarea id="ev-target-notes" value={notes} onChange={(event) => setNotes(event.target.value)} rows={3} data-testid="evangelism-target-notes-input" /></div></div>
+    <div className="mt-5 grid grid-cols-[1fr_auto] gap-2 border-t pt-4"><Button onClick={save} disabled={saving} className="bg-emerald-700 hover:bg-emerald-800" data-testid="evangelism-target-save-button">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}Guardar seguimiento</Button><Button variant="outline" size="icon" onClick={archive} disabled={saving} aria-label="Archivar casa" data-testid="evangelism-target-archive-button"><Archive className="h-4 w-4" /></Button></div>
+  </aside>;
+};

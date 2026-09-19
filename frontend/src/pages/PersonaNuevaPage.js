@@ -6,12 +6,15 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
-import { UserPlus, ArrowLeft, AlertTriangle, Loader2 } from 'lucide-react';
+import { Checkbox } from '../components/ui/checkbox';
+import { UserPlus, ArrowLeft, AlertTriangle, BadgeCheck, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
+import { canManageDirectMembership } from '../lib/accessControl';
 
-const emptyForm = { nombre: '', apellido: '', telefono: '', email: '', fecha_nacimiento: '' };
+const emptyForm = { nombre: '', apellido: '', telefono: '', email: '', fecha_nacimiento: '', preexisting_active_member: false, existing_member_number: '' };
 
 export default function PersonaNuevaPage() {
-  const { API, getAuthHeaders } = useAuth();
+  const { API, getAuthHeaders, user } = useAuth();
   const navigate = useNavigate();
   const [form, setForm] = useState(emptyForm);
   const [step, setStep] = useState('form');
@@ -20,6 +23,7 @@ export default function PersonaNuevaPage() {
   const [checking, setChecking] = useState(false);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
+  const canDirect = canManageDirectMembership(user);
 
   const update = (field) => (e) => setForm((f) => ({ ...f, [field]: e.target.value }));
 
@@ -64,8 +68,11 @@ export default function PersonaNuevaPage() {
         email: form.email || null,
         fecha_nacimiento: form.fecha_nacimiento || null,
         idempotency_key: idempotencyKey || genKey(),
+        preexisting_active_member: canDirect && form.preexisting_active_member,
+        existing_member_number: canDirect && form.preexisting_active_member && form.existing_member_number ? form.existing_member_number.trim() : null,
       };
       const res = await axios.post(`${API}/api/core/persons`, payload, getAuthHeaders());
+      if (res.data.membership?.direct) toast.success(`Membresía directa activada · N.º ${res.data.membership.member_number}`);
       navigate(`/personas/${res.data.person_id}`);
     } catch (err) {
       setError(formatError(err?.response?.data?.detail));
@@ -139,6 +146,13 @@ export default function PersonaNuevaPage() {
                     />
                   </div>
                 </div>
+                {canDirect && <div className="border-l-4 border-emerald-600 bg-emerald-50 p-4" data-testid="direct-membership-section">
+                  <div className="flex items-start gap-3">
+                    <Checkbox id="preexisting-active-member" checked={form.preexisting_active_member} onCheckedChange={(checked) => setForm((current) => ({ ...current, preexisting_active_member: Boolean(checked), existing_member_number: checked ? current.existing_member_number : '' }))} data-testid="toggle-direct-membership-checkbox" />
+                    <div className="min-w-0 flex-1"><Label htmlFor="preexisting-active-member" className="flex items-center gap-2 font-semibold text-emerald-950"><BadgeCheck className="h-4 w-4" />Miembro activo preexistente</Label><p className="mt-1 text-xs leading-5 text-emerald-800">Omite el proceso de nuevos miembros y habilita de inmediato el número, carnet y certificado.</p></div>
+                  </div>
+                  {form.preexisting_active_member && <div className="mt-4 space-y-1.5"><Label htmlFor="existing-member-number">Número existente (opcional)</Label><Input id="existing-member-number" value={form.existing_member_number} onChange={update('existing_member_number')} placeholder="Déjelo vacío para asignar uno nuevo" maxLength={20} data-testid="input-membership-number" /></div>}
+                </div>}
                 <Button
                   onClick={handleCheckDuplicates}
                   disabled={!isValid || checking}
@@ -155,6 +169,7 @@ export default function PersonaNuevaPage() {
 
             {step === 'review' && (
               <div className="space-y-4">
+                {form.preexisting_active_member && <div className="border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900" data-testid="direct-membership-review-alert"><b>Alta directa:</b> al crear esta Persona se activará su membresía histórica y sus documentos oficiales.</div>}
                 {duplicates.length > 0 ? (
                   <div className="rounded-md border border-amber-300 bg-amber-50 p-4 space-y-3">
                     <div className="flex items-start gap-2 text-amber-800">

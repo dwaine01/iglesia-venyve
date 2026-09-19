@@ -14,6 +14,7 @@ import EstadisticasPage from './pages/EstadisticasPage';
 import PersonasListPage from './pages/PersonasListPage';
 import PersonaNuevaPage from './pages/PersonaNuevaPage';
 import PersonaPerfilPage from './pages/PersonaPerfilPage';
+import MembershipImportPage from './pages/MembershipImportPage';
 import MinisteriosPage from './pages/MinisteriosPage';
 import MinisterioDetailPage from './pages/MinisterioDetailPage';
 import DirectorioTalentosPage from './pages/DirectorioTalentosPage';
@@ -65,7 +66,7 @@ import BoardMeetingsPage from './pages/board/BoardMeetingsPage';
 import BoardMeetingDetailPage from './pages/board/BoardMeetingDetailPage';
 import BoardMinutesPage from './pages/board/BoardMinutesPage';
 import AppLayout from './components/AppLayout';
-import { canViewFrontGroups, canViewGeo, canViewLeadership, hasAnyCapability, isPastoralAuthority } from './lib/accessControl';
+import { canManageDirectMembership, canViewFrontGroups, canViewGeo, canViewLeadership, hasAnyCapability, isPastoralAuthority } from './lib/accessControl';
 import './App.css';
 
 const GeoMapsPage = lazy(() => import('./pages/GeoMapsPage'));
@@ -199,6 +200,7 @@ function App() {
             <Route path="registro" element={<Navigate to="/procesos/consolidacion" replace />} />
             <Route path="personas" element={<StaffRoute><PersonasListPage /></StaffRoute>} />
             <Route path="personas/nueva" element={<StaffRoute><PersonaNuevaPage /></StaffRoute>} />
+            <Route path="personas/importar" element={<CapabilityRoute allowed={canManageDirectMembership}><MembershipImportPage /></CapabilityRoute>} />
             <Route path="personas/:personId" element={<PersonaPerfilPage />} />
             <Route path="directorio" element={<DirectorioTalentosPage />} />
             <Route path="ministerios" element={<MinisteriosPage />} />

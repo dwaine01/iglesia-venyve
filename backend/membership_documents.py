@@ -42,7 +42,7 @@ class MembershipSettingsInput(BaseModel):
 
 class IssueDocumentInput(BaseModel):
     issue_date: date = Field(default_factory=date.today)
-    existing_member_number: Optional[str] = Field(default=None, pattern=r"^\d{1,10}$")
+    existing_member_number: Optional[str] = Field(default=None, pattern=r"^[A-Za-z0-9-]{1,20}$")
 
 
 class RenewCardInput(BaseModel):
@@ -58,13 +58,22 @@ def signature_bucket():
 
 
 def require_document_manager(current_user: dict) -> None:
-    if not is_global_pastoral_authority(current_user) and not has_capability(current_user, MEMBERSHIP_DOCUMENTS_MANAGE):
+    if not is_direct_membership_manager(current_user) and not has_capability(current_user, MEMBERSHIP_DOCUMENTS_MANAGE):
         raise HTTPException(status_code=403, detail="No tiene permiso para emitir documentos oficiales de membresía")
 
 
 def require_pastor(current_user: dict) -> None:
     if not is_global_pastoral_authority(current_user):
         raise HTTPException(status_code=403, detail="Solo Pastor/Pastora puede configurar documentos oficiales")
+
+
+def is_direct_membership_manager(current_user: dict) -> bool:
+    return is_global_pastoral_authority(current_user) or str(current_user.get("access_level") or "").lower() == "coordinador_general"
+
+
+def require_direct_membership_manager(current_user: dict) -> None:
+    if not is_direct_membership_manager(current_user):
+        raise HTTPException(status_code=403, detail="Solo Pastor/Pastora o Coordinación General puede registrar membresía directa")
 
 
 async def managed_user(current_user: dict = Depends(get_current_user)) -> dict:
@@ -158,7 +167,8 @@ async def settings_document() -> dict:
 async def allocate_member_number(person: dict, requested: Optional[str] = None) -> str:
     person_id = person["person_id"]
     if requested:
-        candidate = requested.zfill(5)
+        normalized = requested.strip().upper()
+        candidate = normalized.zfill(5) if normalized.isdigit() else normalized
         registry = await db.membership_number_registry.find_one({"member_number": candidate}, {"_id": 0})
         if registry and registry.get("person_id") != person_id:
             raise HTTPException(status_code=409, detail="El número de miembro ya está asignado")
@@ -277,6 +287,78 @@ async def activate_membership_from_acceptance(
         {"person_id": person_id},
         {"$addToSet": {"privilege_groups": "membership"}, "$set": {"membership_status": "active", "updated_at": now}},
     )
+    membership = await db.person_memberships.find_one({"membership_id": membership_id}, {"_id": 0})
+    return serialize(membership), True
+
+
+async def activate_preexisting_membership(
+    person: dict,
+    actor_id: str,
+    requested_number: Optional[str] = None,
+    source: str = "manual_direct",
+) -> tuple[dict, bool]:
+    """Activa una membresía histórica sin inventar una inscripción de Consolidación."""
+    person_id = person["person_id"]
+    existing = await db.person_memberships.find_one({"person_id": person_id}, {"_id": 0})
+    if existing and existing.get("direct_membership") is True and existing.get("status") == "active":
+        return serialize(existing), False
+    now = now_utc()
+    if existing:
+        membership_id = existing["membership_id"]
+        member_number = existing["member_number"]
+    else:
+        membership_id = str(uuid4())
+        member_number = await allocate_member_number(person, requested_number)
+    fields = {
+        "membership_id": membership_id,
+        "person_id": person_id,
+        "member_number": member_number,
+        "status": "active",
+        "acceptance_signed_at": existing.get("acceptance_signed_at") if existing else now,
+        "acceptance_verified_at": existing.get("acceptance_verified_at") if existing else now,
+        "acceptance_verified_by_user_id": existing.get("acceptance_verified_by_user_id") if existing else actor_id,
+        "acceptance_notes": existing.get("acceptance_notes") if existing else "Membresía activa preexistente registrada por autoridad",
+        "legacy_membership": True,
+        "direct_membership": True,
+        "direct_membership_source": source,
+        "direct_membership_activated_at": now,
+        "direct_membership_activated_by_user_id": actor_id,
+        "benefits_enabled_at": existing.get("benefits_enabled_at") if existing else now,
+        "certificate_eligible_at": existing.get("certificate_eligible_at") if existing else now,
+        "certificate_delivery_status": existing.get("certificate_delivery_status") if existing else "available",
+        "card_eligible_at": existing.get("card_eligible_at") if existing else now,
+        "card_delivery_status": existing.get("card_delivery_status") if existing else "available",
+        "updated_by_user_id": actor_id,
+        "updated_at": now,
+    }
+    if existing:
+        await db.person_memberships.update_one({"membership_id": membership_id}, {"$set": fields})
+    else:
+        await db.person_memberships.insert_one({
+            "_id": membership_id,
+            **fields,
+            "certificate_issue_date": None,
+            "card_issue_date": None,
+            "card_expiration_date": None,
+            "card_position_snapshot": None,
+            "created_by_user_id": actor_id,
+            "created_at": now,
+        })
+    await db.users.update_many(
+        {"person_id": person_id},
+        {"$addToSet": {"privilege_groups": "membership"}, "$set": {"membership_status": "active", "updated_at": now}},
+    )
+    event_id = str(uuid4())
+    await db.membership_events.insert_one({
+        "_id": event_id,
+        "event_id": event_id,
+        "membership_id": membership_id,
+        "person_id": person_id,
+        "event_type": "direct_membership_activated",
+        "source": source,
+        "actor_user_id": actor_id,
+        "occurred_at": now,
+    })
     membership = await db.person_memberships.find_one({"membership_id": membership_id}, {"_id": 0})
     return serialize(membership), True
 
@@ -459,6 +541,8 @@ async def ensure_membership_documents():
     await db.membership_number_registry.create_index("person_id", unique=True)
     await db.membership_document_issuances.create_index("issuance_id", unique=True)
     await db.membership_document_issuances.create_index([("person_id", 1), ("created_at", -1)])
+    await db.membership_events.create_index("event_id", unique=True)
+    await db.membership_events.create_index([("person_id", 1), ("occurred_at", -1)])
     async for membership in db.person_memberships.find({}, {"_id": 0, "membership_id": 1, "person_id": 1, "member_number": 1, "acceptance_signed_at": 1}):
         await db.membership_number_registry.update_one(
             {"member_number": membership["member_number"]},

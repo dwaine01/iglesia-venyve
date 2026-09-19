@@ -39,6 +39,9 @@ const registerImages = (map) => {
   const images = {
     'pin-household': createPinImage('household', '#B7791F'), 'pin-cell': createPinImage('cell', '#2F6B4F'),
     'pin-front-group': createPinImage('front_group', '#1B6B93'), 'pin-church': createPinImage('church', '#9F1239', true),
+    'pin-ev-detected': createPinImage('household', '#7C3AED'), 'pin-ev-assigned': createPinImage('household', '#2563EB'),
+    'pin-ev-visited': createPinImage('household', '#0F766E'), 'pin-ev-follow-up': createPinImage('household', '#D97706'),
+    'pin-ev-connected': createPinImage('household', '#059669'), 'pin-ev-do-not-visit': createPinImage('household', '#64748B'),
   };
   Object.entries(images).forEach(([id, image]) => { if (!map.hasImage(id)) map.addImage(id, image, { pixelRatio: 2 }); });
   [[1, 'Zona 1 · Norte', zoneColors.north], [2, 'Zona 2 · Este', zoneColors.east], [3, 'Zona 3 · Sur', zoneColors.south], [4, 'Zona 4 · Oeste', zoneColors.west]].forEach(([number, label, color]) => map.addImage(`zone-label-${number}`, createLabelImage(label, color), { pixelRatio: 2 }));
@@ -128,7 +131,8 @@ export const GeoMapCanvas = ({
       map.addLayer({ id: 'geo-heatmap', type: 'heatmap', source: 'geo-raw', maxzoom: 16, paint: { 'heatmap-weight': ['interpolate', ['linear'], ['coalesce', ['get', 'resident_count'], ['get', 'count'], 1], 1, 0.2, 20, 1], 'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 8, 0.8, 14, 2], 'heatmap-color': ['interpolate', ['linear'], ['heatmap-density'], 0, 'rgba(27,107,147,0)', 0.25, '#87B9A4', 0.5, '#E8C35A', 0.75, '#D97706', 1, '#9F1239'], 'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 8, 18, 14, 38], 'heatmap-opacity': 0.82 } });
       map.addLayer({ id: 'geo-clusters', type: 'circle', source: 'geo-clustered', filter: ['has', 'point_count'], paint: { 'circle-color': '#1B2A4A', 'circle-radius': ['step', ['get', 'point_count'], 18, 20, 24, 75, 31], 'circle-stroke-color': '#fff', 'circle-stroke-width': 2 } });
       map.addLayer({ id: 'geo-cluster-count', type: 'symbol', source: 'geo-clustered', filter: ['has', 'point_count'], layout: { 'text-field': ['get', 'point_count_abbreviated'], 'text-size': 12 }, paint: { 'text-color': '#fff' } });
-      const iconExpression = ['match', ['get', 'entity_kind'], 'cell', 'pin-cell', 'pin-household'];
+      const evangelismIcon = ['match', ['get', 'status'], 'assigned', 'pin-ev-assigned', 'visited', 'pin-ev-visited', 'follow_up', 'pin-ev-follow-up', 'connected', 'pin-ev-connected', 'do_not_visit', 'pin-ev-do-not-visit', 'pin-ev-detected'];
+      const iconExpression = ['match', ['get', 'entity_kind'], 'cell', 'pin-cell', 'evangelism_target', evangelismIcon, 'pin-household'];
       map.addLayer({ id: 'geo-unclustered', type: 'symbol', source: 'geo-clustered', filter: ['!', ['has', 'point_count']], layout: { 'icon-image': iconExpression, 'icon-anchor': 'bottom', 'icon-allow-overlap': true } });
       map.addLayer({ id: 'geo-pins', type: 'symbol', source: 'geo-raw', layout: { 'icon-image': iconExpression, 'icon-anchor': 'bottom', 'icon-allow-overlap': true } });
       map.addLayer({ id: 'geo-household-counts', type: 'symbol', source: 'geo-raw', filter: ['==', ['get', 'entity_kind'], 'household'], layout: { 'text-field': ['to-string', ['get', 'resident_count']], 'text-size': 14, 'text-offset': [0, -2.05], 'text-allow-overlap': true }, paint: { 'text-color': '#FFFFFF', 'text-halo-color': '#6B3D00', 'text-halo-width': 1 } });

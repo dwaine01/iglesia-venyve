@@ -1,0 +1,4 @@
+Nombre,Apellido,Correo,Telefono,Direccion,Ciudad,Estado,ZIP,Hogar
+Maria,Rios,maria.ui@example.com,6145550101,123 Main Street,Columbus,OH,43204,Familia Rios
+Jose,Rios,jose.ui@example.com,6145550102,123 Main St.,Columbus,OH,43204,Familia Rios
+SinApellido,,correo-invalido,12,,,,,

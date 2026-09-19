@@ -8,10 +8,11 @@ import { Input } from '../components/ui/input';
 import { Badge } from '../components/ui/badge';
 import { Skeleton } from '../components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
-import { Search, UserPlus, IdCard, FlaskConical } from 'lucide-react';
+import { Search, UserPlus, IdCard, FlaskConical, Upload } from 'lucide-react';
 import PersonCanonicalLink from '../components/PersonCanonicalLink';
 import { QaDemoCleanupDialog } from '../components/QaDemoCleanupDialog';
 import { toast } from 'sonner';
+import { canManageDirectMembership } from '../lib/accessControl';
 
 export default function PersonasListPage() {
   const { API, getAuthHeaders, user } = useAuth();
@@ -121,6 +122,7 @@ export default function PersonasListPage() {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            {canManageDirectMembership(user) && <Button variant="outline" onClick={() => navigate('/personas/importar')} className="bg-white" data-testid="membership-import-open-button"><Upload className="h-4 w-4" />Importar membresía</Button>}
             {user?.rol === 'pastor' && qaSummary?.total > 0 && <Button
               variant="outline"
               onClick={() => { setCleanupError(''); setCleanupOpen(true); }}
