@@ -405,6 +405,8 @@ async def save_board_attendance(meeting_id: str, payload: AttendanceBulk, curren
 async def start_board_meeting(meeting_id: str, payload: MeetingStart, current_user: dict = Depends(get_current_user)):
     await ensure_board_access(db, current_user, "board.meetings.write"); meeting = await meeting_or_404(meeting_id)
     if not payload.recording_notice_confirmed: raise HTTPException(status_code=409, detail="Debe confirmar el aviso de grabación")
+    if meeting.get("status") == "closed": raise HTTPException(status_code=409, detail="Una reunión cerrada no puede volver a abrirse")
+    if meeting.get("status") == "open" and meeting.get("started_at"): return serialize(meeting)
     quorum = await quorum_summary(db, meeting_id)
     await db.board_meetings.update_one({"meeting_id": meeting_id}, {"$set": {"status": "open", "started_at": meeting.get("started_at") or now_utc(), "recording_notice_confirmed": True, "quorum_at_start": quorum, "updated_at": now_utc()}})
     await record_board_audit(db, current_user["user_id"], "meeting_started", "board_meeting", meeting_id, {"quorum": quorum})

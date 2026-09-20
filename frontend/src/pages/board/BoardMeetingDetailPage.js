@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import { Clock3, DoorClosed, Mic, Timer } from 'lucide-react';
 import { useParams } from 'react-router-dom';
@@ -11,6 +11,7 @@ import { BoardDocumentsPanel } from '../../components/board/BoardDocumentsPanel'
 import { BoardGovernancePanel } from '../../components/board/BoardGovernancePanel';
 import { SecretaryNotesPanel } from '../../components/board/SecretaryNotesPanel';
 import { TranscriptMinutesPanel } from '../../components/board/TranscriptMinutesPanel';
+import { BoardRecordingErrorBoundary } from '../../components/board/BoardRecordingErrorBoundary';
 import { DoorError, DoorLoading, DoorShell } from '../../components/doors/DoorShell';
 import { Button } from '../../components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
@@ -19,16 +20,17 @@ import { statusLabel } from '../../lib/displayLabels';
 export default function BoardMeetingDetailPage() {
   const { meetingId } = useParams();
   const { API, getAuthHeaders } = useAuth();
-  const [meeting, setMeeting] = useState(null); const [members, setMembers] = useState([]); const [error, setError] = useState(''); const [now, setNow] = useState(Date.now()); const [activeTab, setActiveTab] = useState('attendance');
+  const [meeting, setMeeting] = useState(null); const [members, setMembers] = useState([]); const [error, setError] = useState(''); const [now, setNow] = useState(Date.now()); const [activeTab, setActiveTab] = useState('attendance'); const recordingRef = useRef(null);
   const load = useCallback(async () => {
     try {
       const [detail, board] = await Promise.all([axios.get(`${API}/api/board/meetings/${meetingId}`, getAuthHeaders()), axios.get(`${API}/api/board`, getAuthHeaders())]);
-      setMeeting(detail.data); setMembers(board.data.members.filter((item) => item.active).map((item) => item.person));
+      setMeeting(detail.data); setMembers((board.data.members || []).filter((item) => item.active && item.person).map((item) => item.person)); setError('');
     } catch (e) { setError(e?.response?.data?.detail || 'No se pudo abrir la reunión.'); }
   }, [API, getAuthHeaders, meetingId]);
   useEffect(() => { load(); }, [load]);
-  useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(timer); }, []);
-  const elapsed = useMemo(() => meeting?.started_at ? Math.max(0, Math.floor(((meeting.ended_at ? new Date(meeting.ended_at).getTime() : now) - new Date(meeting.started_at).getTime()) / 1000)) : 0, [meeting, now]);
+  useEffect(() => { if (meeting?.status !== 'open') return undefined; const timer = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(timer); }, [meeting?.status]);
+  useEffect(() => { if (activeTab !== 'recording') return; window.requestAnimationFrame(() => recordingRef.current?.scrollIntoView({ behavior: 'auto', block: 'start' })); }, [activeTab]);
+  const elapsed = useMemo(() => { if (!meeting?.started_at) return 0; const start = Date.parse(meeting.started_at); const end = meeting.ended_at ? Date.parse(meeting.ended_at) : now; return Number.isFinite(start) && Number.isFinite(end) ? Math.max(0, Math.floor((end - start) / 1000)) : 0; }, [meeting, now]);
   const close = async () => { try { await axios.post(`${API}/api/board/meetings/${meetingId}/close`, {}, getAuthHeaders()); toast.success('Reunión cerrada y duración registrada'); await load(); } catch (e) { toast.error(e?.response?.data?.detail || 'No se pudo cerrar'); } };
   if (!meeting && !error) return <DoorShell eyebrow="Junta Directiva" title="Reunión" description="Abriendo consola..." guideKey="board_meeting"><DoorLoading /></DoorShell>;
   const clock = `${String(Math.floor(elapsed / 3600)).padStart(2, '0')}:${String(Math.floor((elapsed % 3600) / 60)).padStart(2, '0')}:${String(elapsed % 60).padStart(2, '0')}`;
@@ -42,11 +44,11 @@ export default function BoardMeetingDetailPage() {
       </section>
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="grid h-auto w-full grid-cols-3 bg-white p-1 sm:grid-cols-5"><TabsTrigger value="attendance" data-testid="meeting-tab-attendance">Asistencia</TabsTrigger><TabsTrigger value="agenda" data-testid="meeting-tab-agenda">Agenda</TabsTrigger><TabsTrigger value="notes" data-testid="meeting-tab-notes">Notas</TabsTrigger><TabsTrigger value="governance" data-testid="meeting-tab-governance">Votos/Tareas</TabsTrigger><TabsTrigger value="recording" data-testid="meeting-tab-recording">Audio/Minuta</TabsTrigger></TabsList>
-        <TabsContent value="attendance"><BoardAttendancePanel meeting={meeting} members={members} onReload={load} onStarted={() => setActiveTab('recording')} /></TabsContent>
+        <TabsContent value="attendance"><BoardAttendancePanel meeting={meeting} members={members} onReload={load} onStarted={(startedMeeting) => { setMeeting((current) => ({ ...current, ...startedMeeting })); setNow(Date.now()); setActiveTab('recording'); }} /></TabsContent>
         <TabsContent value="agenda"><BoardAgendaPanel meeting={meeting} onReload={load} /></TabsContent>
         <TabsContent value="notes"><SecretaryNotesPanel meetingId={meetingId} /></TabsContent>
         <TabsContent value="governance"><BoardGovernancePanel meeting={meeting} members={members} onReload={load} /></TabsContent>
-        <TabsContent value="recording"><div className="space-y-5"><BoardDocumentsPanel meetingId={meetingId} /><TranscriptMinutesPanel meeting={meeting} members={members} onReload={load} /><AiArtifactsPanel artifacts={meeting.ai_artifacts || []} /></div></TabsContent>
+        <TabsContent value="recording" forceMount className="data-[state=inactive]:hidden"><div ref={recordingRef} className="scroll-mt-40 space-y-5" data-testid="board-recording-workspace"><BoardRecordingErrorBoundary><BoardDocumentsPanel meetingId={meetingId} /><TranscriptMinutesPanel meeting={meeting} members={members} onReload={load} /><AiArtifactsPanel artifacts={meeting.ai_artifacts || []} /></BoardRecordingErrorBoundary></div></TabsContent>
       </Tabs>
     </>}
   </DoorShell>;

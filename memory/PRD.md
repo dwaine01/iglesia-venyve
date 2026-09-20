@@ -342,6 +342,16 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - Validación: React build PASS, frontend 17/17 PASS, auth/Junta 13/13 iniciales PASS; Mega‑Bloque D volvió a PASS tras limpiar fixtures; datos temporales eliminados.
 - Reporte independiente: `/app/test_reports/iteration_12.json`. El hallazgo de rutas antiguas de grabación fue corregido después del reporte y validado contra la suite activa.
 
+### Estabilización crítica de grabación de Junta — COMPLETADO 2026‑09‑20
+
+- `BoardRecorder` muestra reloj propio y persiste bloques de audio cada 5 segundos mientras continúa grabando.
+- Cambiar entre Agenda y Audio/Minuta ya no desmonta el grabador; **Ir a grabación** reposiciona el control sin pantalla blanca.
+- El temporizador general se activa inmediatamente con la respuesta de apertura; `start` es idempotente y una reunión cerrada no puede reabrirse.
+- Añadidos errores persistentes de Chrome/micrófono, estado de finalización, confirmación de guardado y boundary del workspace.
+- Audio guardado se puede escuchar y descargar con autenticación; STT pendiente no bloquea grabación ni reproducción.
+- Certificación Iteración 34: backend 5/5 + regresión 4/4; E2E timers, upload vivo, cambio de pestaña, stop/save/playback y responsive PASS.
+- Junta, cuentas, personas, chunks y grabaciones QA eliminados; residuos finales: `0`.
+
 ### P0 — Gobierno jerárquico y confidencialidad v2 — COMPLETADO 2026‑09‑16
 
 - Pastor es superadministrador único y decide cuántos coordinadores generales existen.
