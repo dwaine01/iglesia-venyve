@@ -89,9 +89,11 @@ async def start_recording_upload(payload: UploadStart, current_user: dict = Depe
     await ensure_recording_access(current_user, "board.audio.manage")
     meeting = await db.board_meetings.find_one({"meeting_id": payload.meeting_id}, {"_id": 0})
     if not meeting: raise HTTPException(status_code=404, detail="Reunión no encontrada")
+    if meeting.get("status") != "open": raise HTTPException(status_code=409, detail="Abra la reunión antes de iniciar la grabación")
     if not meeting.get("recording_notice_confirmed"): raise HTTPException(status_code=409, detail="Confirme el aviso antes de grabar")
     upload_id = str(uuid4()); now = datetime.now(timezone.utc)
     await db.board_recording_uploads.insert_one({"_id": upload_id, "upload_id": upload_id, "meeting_id": payload.meeting_id, "owner_user_id": current_user["user_id"], "content_type": payload.content_type, "next_seq": 0, "bytes": 0, "status": "uploading", "created_at": now, "updated_at": now})
+    await record_board_audit(db, current_user["user_id"], "recording_upload_started", "board_meeting", payload.meeting_id, {"upload_id": upload_id, "content_type": payload.content_type})
     return {"upload_id": upload_id, "max_bytes": MAX_AUDIO_BYTES, "max_seconds": MAX_AUDIO_SECONDS, "next_seq": 0}
 
 
@@ -177,6 +179,21 @@ async def complete_recording_upload(upload_id: str, payload: UploadComplete, bac
         await db["board_recordings.files"].update_one({"_id": recording_id}, {"$set": {"metadata.transcription_status": "blocked", "metadata.transcription_provider": provider.provider_key, "metadata.transcription_message": "Identificación de participantes pendiente de procesamiento STT diarizado."}})
     await record_board_audit(db, current_user["user_id"], "recording_completed", "board_recording", str(recording_id), {"meeting_id": upload["meeting_id"], "bytes": upload["bytes"], "sha256": sha})
     return {"recording_id": str(recording_id), "sha256": sha, "bytes": upload["bytes"], "status": "ready", "transcription_status": transcription_status}
+
+
+@router.delete("/recordings/uploads/{upload_id}", response_model=dict)
+async def abort_recording_upload(upload_id: str, current_user: dict = Depends(get_current_user)):
+    await ensure_recording_access(current_user, "board.audio.manage")
+    upload = await db.board_recording_uploads.find_one({"upload_id": upload_id, "owner_user_id": current_user["user_id"]}, {"_id": 0})
+    if not upload: raise HTTPException(status_code=404, detail="Carga no encontrada")
+    if upload.get("status") == "complete": raise HTTPException(status_code=409, detail="Una grabación completada no puede cancelarse")
+    staged = await db["board_recording_staging.files"].find({"metadata.upload_id": upload_id}, {"_id": 1}).to_list(10000)
+    bucket = stage_bucket()
+    for item in staged: await bucket.delete(item["_id"])
+    now = datetime.now(timezone.utc)
+    await db.board_recording_uploads.update_one({"upload_id": upload_id}, {"$set": {"status": "aborted", "aborted_at": now, "updated_at": now}})
+    await record_board_audit(db, current_user["user_id"], "recording_upload_aborted", "board_meeting", upload["meeting_id"], {"upload_id": upload_id})
+    return {"upload_id": upload_id, "status": "aborted"}
 
 
 @router.get("/meetings/{meeting_id}/recordings", response_model=dict)

@@ -79,7 +79,7 @@ async def test_abandoned_photo_uploads_remove_expired_and_orphan_chunks_only():
 @pytest.mark.asyncio
 async def test_board_recording_double_finalize_creates_one_file(monkeypatch):
     await cleanup(); user_id, _, email = await make_user("pastor"); meeting_id = str(uuid.uuid4()); now = datetime.now(timezone.utc)
-    await server.db.board_meetings.insert_one({"_id": meeting_id, "meeting_id": meeting_id, "title": "STABILIZATION UPLOAD BOARD", "recording_notice_confirmed": True, "created_at": now})
+    await server.db.board_meetings.insert_one({"_id": meeting_id, "meeting_id": meeting_id, "title": "STABILIZATION UPLOAD BOARD", "status": "open", "recording_notice_confirmed": True, "created_at": now})
     async def no_transcription(*args, **kwargs): return None
     monkeypatch.setattr(board_recording_routes, "transcribe_recording", no_transcription)
     client, headers = await login(email)
@@ -94,6 +94,29 @@ async def test_board_recording_double_finalize_creates_one_file(monkeypatch):
         upload = await server.db.board_recording_uploads.find_one({"upload_id": upload_id}, {"_id": 0})
         assert upload["status"] == "complete"
         assert await server.db["board_recordings.files"].count_documents({"metadata.upload_id": upload_id}) == 1
+    finally:
+        await client.aclose(); await cleanup()
+
+
+@pytest.mark.asyncio
+async def test_board_recording_requires_open_meeting_and_abort_cleans_staging():
+    await cleanup(); user_id, _, email = await make_user("pastor"); meeting_id = str(uuid.uuid4()); now = datetime.now(timezone.utc)
+    await server.db.board_meetings.insert_one({"_id": meeting_id, "meeting_id": meeting_id, "title": "STABILIZATION UPLOAD BOARD ABORT", "status": "scheduled", "recording_notice_confirmed": True, "created_at": now})
+    client, headers = await login(email)
+    try:
+        blocked = await client.post("/api/board/recordings/uploads", json={"meeting_id": meeting_id, "content_type": "audio/webm"}, headers=headers)
+        assert blocked.status_code == 409
+        await server.db.board_meetings.update_one({"meeting_id": meeting_id}, {"$set": {"status": "open"}})
+        started = await client.post("/api/board/recordings/uploads", json={"meeting_id": meeting_id, "content_type": "audio/webm"}, headers=headers)
+        assert started.status_code == 201, started.text
+        upload_id = started.json()["upload_id"]
+        chunk = await client.put(f"/api/board/recordings/uploads/{upload_id}/chunks/0", content=b"live-audio", headers={**headers, "Content-Type": "application/octet-stream"})
+        assert chunk.status_code == 200
+        aborted = await client.delete(f"/api/board/recordings/uploads/{upload_id}", headers=headers)
+        assert aborted.status_code == 200 and aborted.json()["status"] == "aborted"
+        upload = await server.db.board_recording_uploads.find_one({"upload_id": upload_id}, {"_id": 0})
+        assert upload["status"] == "aborted"
+        assert await server.db["board_recording_staging.files"].count_documents({"metadata.upload_id": upload_id}) == 0
     finally:
         await client.aclose(); await cleanup()
 
