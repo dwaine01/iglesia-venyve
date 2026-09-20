@@ -42,6 +42,7 @@ def _queries(user_oids: list[ObjectId], user_ids: list[str], person_oids: list[O
         ("person_contacts", {"person_id": {"$in": person_ids}}),
         ("person_addresses", {"person_id": {"$in": person_ids}}),
         ("person_activity", {"person_id": {"$in": person_ids}}),
+        ("front_group_routing_events", {"actor_user_id": {"$in": user_ids}}),
         ("person_memberships", {"person_id": {"$in": person_ids}}),
         ("membership_events", {"person_id": {"$in": person_ids}}),
         ("membership_number_registry", {"person_id": {"$in": person_ids}}),
@@ -54,9 +55,12 @@ def _queries(user_oids: list[ObjectId], user_ids: list[str], person_oids: list[O
         ("household_memberships", {"person_id": {"$in": person_ids}}),
         ("ministry_assignments", {"person_id": {"$in": person_ids}}),
         ("cap_assessments", {"person_id": {"$in": person_ids}}),
-        ("front_group_memberships", {"person_id": {"$in": person_ids}}),
-        ("front_group_mentor_qualifications", {"person_id": {"$in": person_ids}}),
+        ("front_group_assignments", {"person_id": {"$in": person_ids}}),
+        ("mentor_qualifications", {"person_id": {"$in": person_ids}}),
+        ("mentor_assignments", {"$or": [{"person_id": {"$in": person_ids}}, {"mentor_person_id": {"$in": person_ids}}]}),
+        ("mentor_evaluations", {"mentor_person_id": {"$in": person_ids}}),
         ("leadership_promotions", {"person_id": {"$in": person_ids}}),
+        ("person_leadership_status", {"person_id": {"$in": person_ids}}),
         ("process_enrollments", {"person_id": {"$in": person_ids}}),
         ("process_stage_progress", {"person_id": {"$in": person_ids}}),
         ("process_timeline", {"person_id": {"$in": person_ids}}),
@@ -77,9 +81,15 @@ async def qa_cleanup_plan(db) -> dict:
     user_ids = [str(item) for item in user_oids]
     person_oids = [item["_id"] for item in people]
     person_ids = [str(item) for item in person_oids]
+    qa_groups = await db.front_groups.find(
+        {"created_by_user_id": {"$in": user_ids}}, {"_id": 1, "front_group_id": 1}
+    ).to_list(10000)
+    qa_group_ids = [item["front_group_id"] for item in qa_groups]
     care_cases = await db.pastoral_cases.find({"person_id": {"$in": person_ids}}, {"_id": 1, "case_id": 1}).to_list(100000)
     care_case_ids = [item["case_id"] for item in care_cases]
     op72_items = await db.op72_records.find({"person_id": {"$in": person_ids}}, {"_id": 1, "op72_id": 1}).to_list(100000)
+    evangelism_items = await db.evangelism_targets.find({"created_by_user_id": {"$in": user_ids}}, {"_id": 1, "target_id": 1}).to_list(100000)
+    evangelism_target_ids = [item["target_id"] for item in evangelism_items]
     note_items = await db.pastoral_case_notes.find({"case_id": {"$in": care_case_ids}}, {"_id": 1, "note_id": 1}).to_list(100000)
     visit_participants = await db.pastoral_visitation_participants.find({"person_id": {"$in": person_ids}}, {"_id": 1, "visit_id": 1}).to_list(100000)
     visit_ids = sorted({item["visit_id"] for item in visit_participants})
@@ -95,16 +105,40 @@ async def qa_cleanup_plan(db) -> dict:
         ("pastoral_visitations", {"visit_id": {"$in": visit_ids}}),
         ("care_audit_events", {"$or": [{"entity_id": {"$in": care_entity_ids}}, {"actor_user_id": {"$in": user_ids}}]}),
         ("pastoral_cases", {"case_id": {"$in": care_case_ids}}),
+        ("evangelism_target_events", {"target_id": {"$in": evangelism_target_ids}}),
+        ("evangelism_targets", {"target_id": {"$in": evangelism_target_ids}}),
     ]
-    collections = []
+    front_group_queries = [
+        ("front_group_work_assignments", {"$or": [{"assigned_group_id": {"$in": qa_group_ids}}, {"origin_group_id": {"$in": qa_group_ids}}]}),
+        ("front_group_rotation_weeks", {"$or": [{"root_group_id": {"$in": qa_group_ids}}, {"selected_group_id": {"$in": qa_group_ids}}, {"eligible_group_ids_snapshot": {"$in": qa_group_ids}}]}),
+        ("front_group_rotation_policies", {"$or": [{"root_group_id": {"$in": qa_group_ids}}, {"ordered_group_ids": {"$in": qa_group_ids}}]}),
+        ("cell_front_group_links", {"front_group_id": {"$in": qa_group_ids}}),
+        ("front_group_routing_events", {"front_group_id": {"$in": qa_group_ids}}),
+        ("front_group_audit_events", {"front_group_id": {"$in": qa_group_ids}}),
+        ("front_group_assignments", {"front_group_id": {"$in": qa_group_ids}}),
+        ("mentor_qualifications", {"front_group_id": {"$in": qa_group_ids}}),
+        ("mentor_assignments", {"front_group_id": {"$in": qa_group_ids}}),
+        ("mentor_evaluations", {"front_group_id": {"$in": qa_group_ids}}),
+        ("leadership_requirement_evidence", {"front_group_id": {"$in": qa_group_ids}}),
+        ("leadership_promotions", {"front_group_id": {"$in": qa_group_ids}}),
+        ("person_leadership_status", {"front_group_id": {"$in": qa_group_ids}}),
+        ("front_groups", {"front_group_id": {"$in": qa_group_ids}}),
+    ]
+    collection_ids = {}
     upload_ids = []
-    for collection_name, query in [*care_queries, *_queries(user_oids, user_ids, person_oids, person_ids)]:
+    for collection_name, query in [*care_queries, *front_group_queries, *_queries(user_oids, user_ids, person_oids, person_ids)]:
         docs = await db[collection_name].find(query, {"_id": 1}).to_list(100000)
         ids = [item["_id"] for item in docs]
         if collection_name == "person_photo_uploads":
             upload_ids = [str(item) for item in ids]
         if ids:
-            collections.append({"collection": collection_name, "ids": ids})
+            collection_ids.setdefault(collection_name, {})
+            for item_id in ids:
+                collection_ids[collection_name][str(item_id)] = item_id
+    collections = [
+        {"collection": collection_name, "ids": list(values.values())}
+        for collection_name, values in collection_ids.items()
+    ]
     if upload_ids:
         chunks = await db.person_photo_chunks.find({"upload_id": {"$in": upload_ids}}, {"_id": 1}).to_list(100000)
         if chunks:

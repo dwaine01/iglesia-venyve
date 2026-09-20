@@ -17,6 +17,9 @@ export const hasAnyCapability = (user, capabilities) => (
 export const canViewFrontGroups = (user) => hasAnyCapability(user, [
   'front_groups.view',
   'front_groups.manage',
+  'front_groups.work.assign',
+  'front_groups.rotation.manage',
+  'consolidation.assign',
   'mentor.qualifications.manage',
 ]);
 

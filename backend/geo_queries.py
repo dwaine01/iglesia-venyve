@@ -11,6 +11,7 @@ from cellular_engine import cellular_scope
 from geo_service import geographic_classification
 from process_engine import access_person_ids
 from geo_address import normalize_address_document
+from front_group_tree import descendant_group_ids
 
 
 def _iso(value) -> str | None:
@@ -65,8 +66,14 @@ async def person_features(db, current_user: dict, filters: dict) -> list[dict]:
     enrollments = await db.process_enrollments.find({"person_id": {"$in": person_ids}, "process_key": {"$in": ["consolidation", "discipleship"]}}, {"_id": 0}).to_list(60000)
     enrollment_by_person = defaultdict(list)
     for item in enrollments: enrollment_by_person[item["person_id"]].append(item)
-    group_assignments = await db.front_group_assignments.find({"person_id": {"$in": person_ids}, "active": True}, {"_id": 0}).to_list(30000)
-    group_by_person = {item["person_id"]: item["front_group_id"] for item in group_assignments}
+    active_group_ids = set(await db.front_groups.distinct("front_group_id", {"status": {"$ne": "archived"}}))
+    group_assignments = await db.front_group_assignments.find({"person_id": {"$in": person_ids}, "active": True, "front_group_id": {"$in": list(active_group_ids)}}, {"_id": 0}).to_list(30000)
+    groups_by_person = defaultdict(set); member_groups_by_person = defaultdict(set); led_groups_by_person = defaultdict(set)
+    for item in group_assignments:
+        groups_by_person[item["person_id"]].add(item["front_group_id"])
+        if item.get("role") == "leader": led_groups_by_person[item["person_id"]].add(item["front_group_id"])
+        else: member_groups_by_person[item["person_id"]].add(item["front_group_id"])
+    requested_group_ids = set(await descendant_group_ids(db, filters["front_group_id"])) if filters.get("front_group_id") else set()
     cell_memberships = await db.cell_memberships.find({"person_id": {"$in": person_ids}, "active": True, "membership_type": "primary"}, {"_id": 0}).to_list(30000)
     cell_by_person = {item["person_id"]: item["cell_id"] for item in cell_memberships}
     contacts = await db.person_contacts.find({"person_id": {"$in": person_ids}, "es_principal": True}, {"_id": 0, "person_id": 1, "valor": 1}).to_list(30000)
@@ -89,13 +96,16 @@ async def person_features(db, current_user: dict, filters: dict) -> list[dict]:
         if created_at and (datetime.now(timezone.utc) - created_at).days <= 90: categories.add("new")
         if active_consolidation: categories.add("consolidation")
         if discipleship: categories.add("discipleship")
-        if person_id in group_by_person: categories.add("front_group")
+        if person_id in groups_by_person: categories.add("front_group")
         if person_id in cell_by_person: categories.add("cell")
         if requested_categories and not categories.intersection(requested_categories): continue
         stage = active_consolidation.get("current_stage_key") if active_consolidation else None
         if filters.get("stage") and stage != filters["stage"]: continue
-        group_id = group_by_person.get(person_id) or (active_consolidation or {}).get("front_group_id")
-        if filters.get("front_group_id") and group_id != filters["front_group_id"]: continue
+        consolidation_group_id = (active_consolidation or {}).get("front_group_id")
+        person_group_ids = set(groups_by_person.get(person_id, set()))
+        if consolidation_group_id: person_group_ids.add(consolidation_group_id)
+        primary_group_id = consolidation_group_id or next(iter(sorted(member_groups_by_person.get(person_id, set()))), None) or next(iter(sorted(led_groups_by_person.get(person_id, set()))), None)
+        if requested_group_ids and not person_group_ids.intersection(requested_group_ids): continue
         cell_id = cell_by_person.get(person_id)
         if filters.get("cell_id") and cell_id != filters["cell_id"]: continue
         coordinates = address["location"]["coordinates"]
@@ -114,7 +124,9 @@ async def person_features(db, current_user: dict, filters: dict) -> list[dict]:
                 "person_number": person.get("person_number"), "phone": phone_by_person.get(person_id),
                 "address": _address_text(address), "zone": zone, "zone_number": classification["zone_number"],
                 "subzone": subzone, "categories": sorted(categories),
-                "stage": stage, "front_group_id": group_id, "cell_id": cell_id,
+                "stage": stage, "front_group_id": primary_group_id, "front_group_ids": sorted(person_group_ids),
+                "member_front_group_ids": sorted(member_groups_by_person.get(person_id, set())),
+                "led_front_group_ids": sorted(led_groups_by_person.get(person_id, set())), "cell_id": cell_id,
                 "verification_status": address.get("verification_status"), "created_at": _iso(person.get("created_at")),
                 "normalized_address_key": address.get("normalized_address_key") or normalized_address["normalized_address_key"],
                 "normalized_unit": address.get("normalized_unit") or normalized_address["normalized_unit"],

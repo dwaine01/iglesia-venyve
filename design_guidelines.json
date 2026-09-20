@@ -1,276 +1,118 @@
 {
-  "project_name": "VEN Y VE 360 - Mega-Bloque F: Cuidado Pastoral",
-  "archetype": "ORGANIC & LUXURY INSTITUTIONAL (Navy & Dorado VaultLine)",
-  "version": "1.0.0",
-  "technology_stack": {
-    "framework": "React.js (JavaScript - .js files)",
-    "styling": "Tailwind CSS v3 + CSS Variables",
-    "components": "Shadcn/UI customized with institutional rules",
-    "icons": "Lucide React (@lucide-react / lucide-react)",
-    "animations": "Framer Motion + Tailwind keyframes",
-    "notifications": "Sonner"
-  },
+  "project_name": "Ven y Ve 360 - Grupos Frontales (Front Groups)",
+  "version": "2.0.0",
+  "theme": "hybrid_light_slate_gold",
   "typography": {
-    "headings": {
-      "family": "Spectral, serif",
-      "font_weights": {
-        "regular": 400,
-        "semibold": 600,
-        "bold": 700
-      },
-      "usage": "Use Spectral for all section headers, case titles, pastoral modal titles, and SLA counters.",
-      "hierarchy": {
-        "h1": "text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-slate-900 leading-tight",
-        "h2": "text-2xl sm:text-3xl font-semibold tracking-tight text-slate-800",
-        "h3": "text-xl sm:text-2xl font-semibold text-slate-800",
-        "h4": "text-lg font-medium text-slate-800"
-      }
+    "font_families": {
+      "heading": "Spectral, serif",
+      "body": "IBM Plex Sans, sans-serif",
+      "mono": "JetBrains Mono, monospace"
     },
-    "body": {
-      "family": "IBM Plex Sans, sans-serif",
-      "font_weights": {
-        "regular": 400,
-        "medium": 500,
-        "semibold": 600
-      },
-      "usage": "Use IBM Plex Sans for body text, tables, form fields, timeline items, metadata, and badge counters.",
-      "hierarchy": {
-        "body_large": "text-base leading-relaxed text-slate-700",
-        "body_normal": "text-sm leading-normal text-slate-600",
-        "caption": "text-xs leading-normal text-slate-500 font-medium"
-      }
+    "hierarchy": {
+      "h1": "text-3xl sm:text-4xl lg:text-5xl font-semibold tracking-tight leading-none font-['Spectral']",
+      "h2": "text-2xl sm:text-3xl font-semibold tracking-tight font-['Spectral']",
+      "h3": "text-xl sm:text-2xl font-medium tracking-tight font-['Spectral']",
+      "h4": "text-lg font-medium text-slate-900 font-['Spectral']",
+      "body": "text-sm sm:text-base leading-relaxed text-slate-700 font-sans",
+      "caption": "text-xs font-mono uppercase tracking-widest text-slate-500"
     }
   },
   "colors": {
-    "primary_navy": {
-      "deep": "#0B1428",
-      "main": "#1B2A4A",
-      "light": "#2A3C64",
-      "subtle": "#F0F4F9"
+    "archetype": "Institutional Swiss Luxury & Spiritual Warmth",
+    "base": {
+      "page_bg": "#F8FAFC",
+      "surface_bg": "#FFFFFF",
+      "surface_alt": "#F1F5F9",
+      "header_bg": "#0F172A",
+      "header_fg": "#F8FAFC"
     },
-    "accent_gold": {
-      "main": "#C8A951",
-      "bright": "#D4AF37",
-      "dark": "#9A7E32",
-      "light": "#FDF9EE",
-      "border": "rgba(200, 169, 81, 0.35)"
+    "brand_accents": {
+      "gold_primary": "#C8A951",
+      "gold_muted": "#E2CF8A",
+      "gold_dark": "#9A7B2A",
+      "amber_accent": "#D97706",
+      "emerald_active": "#059669",
+      "slate_border": "#E2E8F0"
     },
-    "sla_indicators": {
-      "critical_24h": {
-        "bg": "#FEF2F2",
-        "border": "#FECACA",
-        "text": "#991B1B",
-        "accent": "#EF4444",
-        "glow": "0 0 12px rgba(239, 68, 68, 0.25)"
-      },
-      "urgent_72h": {
-        "bg": "#FFFBEB",
-        "border": "#FDE68A",
-        "text": "#92400E",
-        "accent": "#F59E0B",
-        "glow": "0 0 12px rgba(245, 158, 11, 0.2)"
-      },
-      "on_track": {
-        "bg": "#ECFDF5",
-        "border": "#A7F3D0",
-        "text": "#065F46",
-        "accent": "#10B981"
-      },
-      "resolved": {
-        "bg": "#F8FAFC",
-        "border": "#E2E8F0",
-        "text": "#475569",
-        "accent": "#64748B"
-      }
-    },
-    "confidential_vault": {
-      "vault_dark": "#0A1120",
-      "vault_card": "#111C30",
-      "gold_hairline": "rgba(200, 169, 81, 0.3)",
-      "text_encrypted": "#94A3B8"
+    "status_badges": {
+      "active": "bg-emerald-50 text-emerald-800 border-emerald-200",
+      "pending": "bg-amber-50 text-amber-800 border-amber-200",
+      "historic": "bg-slate-100 text-slate-700 border-slate-300",
+      "audit_alert": "bg-rose-50 text-rose-800 border-rose-200"
     }
   },
-  "visual_privacy_and_rbac": {
-    "core_principle": "Zero Inference Visual Insulation (UI Anti-Leakage)",
-    "rules": [
-      {
-        "rule_id": "PRIVACY-01",
-        "name": "Strict Non-Inference for Unauthorized Users",
-        "description": "Users without Cuidado Pastoral permissions (pastoral_core or assigned_team) must NEVER see any indicator, badge, zero counter, empty timeline section, tab, or metadata that reveals or suggests the existence of a pastoral case or confidential note."
-      },
-      {
-        "rule_id": "PRIVACY-02",
-        "name": "Persona 360 Privacy Shield",
-        "description": "In Persona 360 profile view, the 'Cuidado Pastoral' tab or section badge is ONLY rendered if accessControl.hasPastoralAccess(user) evaluates to true. For unauthorized users, the UI renders as if the module does not exist. No 'Acceso Denegado' placeholder, no disabled button."
-      },
-      {
-        "rule_id": "PRIVACY-03",
-        "name": "Pastoral Vault Visual Partitioning",
-        "description": "Within Pastoral Care cases, notes are partitioned: 'pastoral_core' (pastors & general coordinators) can read/write encrypted pastoral vault notes; 'assigned_team' can view operational progress and public updates but NOT confidential vault notes."
-      },
-      {
-        "rule_id": "PRIVACY-04",
-        "name": "Audit Log Badge & Append-Only Indicator",
-        "description": "Vault notes show an explicit security badge: 'Bóveda Cifrada | Auditado'. Notes cannot be edited or deleted once created (append-only timeline with view audit tracking)."
-      }
-    ]
+  "layout_strategy": {
+    "anti_nested_cards": "Strict prohibition of card-in-card stacking. Use high-contrast split panels with 1px hairline borders (`border-slate-200`), direct table views, and subtle background alternating rows.",
+    "bento_grid_mode": "Mode B (High-Density Dashboard with Left-to-Right Flow)",
+    "desktop_columns": "grid-cols-1 lg:grid-cols-[340px_1fr]",
+    "mobile_first": "Stack navigation & controls vertically on mobile screens (< 768px). Sidebar tree collapses into full-width accordion/drawer on mobile.",
+    "padding_rules": "Generous spacing philosophy: p-6 to p-8 inside primary control boxes. 12px min padding on interactive items to avoid text clipping."
   },
-  "operacion_72_guidelines": {
-    "rules": [
-      "Operación 72 triggers automatically when a person accepts Jesus for the first time.",
-      "Single historical record per person_id with immutable original conversion date.",
-      "Re-entry logic: If a person returns after months or years, reactivate the existing record from the last completed valid stage without creating duplicate Person, expediente, or enrollment.",
-      "Timers: 24h assignment timer (Red SLA alert if unassigned) & 72h contact timer (Amber/Red SLA alert if uncontacted).",
-      "Distinct scope: Operación 72 = immediate contact response; Consolidación = formative process; Cuidado Pastoral = full case file and ongoing accompaniment."
-    ],
-    "ui_components": [
-      "SlaTimerCountdown: Real-time visual countdown with progress ring and SLA status color.",
-      "HistoricalStageTimeline: Interactive stage history showing completed, reactivated, and current active stages.",
-      "ReactivationAlertBanner: Gold badge indicating 'Expediente Histórico Reactivado (Continuación de última etapa validada)'."
-    ]
-  },
-  "navigation_and_routes": {
-    "base_path": "/cuidado-pastoral",
-    "routes": [
-      {
-        "path": "/cuidado-pastoral",
-        "component": "PastoralDashboardPage.js",
-        "title": "Tablero Confidencial de Cuidado Pastoral",
-        "data_testid": "route-pastoral-dashboard"
-      },
-      {
-        "path": "/cuidado-pastoral/casos",
-        "component": "PastoralCasesInboxPage.js",
-        "title": "Bandeja de Casos y Alertas SLA",
-        "data_testid": "route-pastoral-cases-inbox"
-      },
-      {
-        "path": "/cuidado-pastoral/casos/:caseId",
-        "component": "PastoralExpedienteDetailPage.js",
-        "title": "Expediente Pastoral y Bóveda Cifrada",
-        "data_testid": "route-pastoral-expediente-detail"
-      },
-      {
-        "path": "/cuidado-pastoral/operacion-72",
-        "component": "Operacion72DashboardPage.js",
-        "title": "Operación 72 - Respuesta Inmediata",
-        "data_testid": "route-operacion-72"
-      },
-      {
-        "path": "/cuidado-pastoral/visitas",
-        "component": "PastoralVisitsPage.js",
-        "title": "Agenda de Visitas por Hogar e Individual",
-        "data_testid": "route-pastoral-visits"
-      }
-    ]
-  },
-  "component_architecture": {
-    "page_containers": [
-      {
-        "name": "PastoralDashboardPage",
-        "file": "frontend/src/pages/pastoral/PastoralDashboardPage.js",
-        "description": "Confidential executive overview with metrics, active alerts, response performance, and household visit summary."
-      },
-      {
-        "name": "PastoralCasesInboxPage",
-        "file": "frontend/src/pages/pastoral/PastoralCasesInboxPage.js",
-        "description": "Operational inbox with strict filtering by SLA status, assigned team, severity, and stage filter."
-      },
-      {
-        "name": "PastoralExpedienteDetailPage",
-        "file": "frontend/src/pages/pastoral/PastoralExpedienteDetailPage.js",
-        "description": "Comprehensive expediente with case summary, encrypted pastoral notes vault (append-only), interaction timeline, and escalation control."
-      },
-      {
-        "name": "Operacion72DashboardPage",
-        "file": "frontend/src/pages/pastoral/Operacion72DashboardPage.js",
-        "description": "Immediate 72-hour contact engine showing active 24h/72h SLA countdowns, single historical record status, and reactivation history."
-      },
-      {
-        "name": "PastoralVisitsPage",
-        "file": "frontend/src/pages/pastoral/PastoralVisitsPage.js",
-        "description": "Visits dispatcher allowing grouping by household, multi-person scheduling, address mapping integration, and individual notes."
-      }
-    ],
-    "reusable_components": [
-      {
-        "name": "PastoralSlaBadge",
-        "file": "frontend/src/components/pastoral/PastoralSlaBadge.js",
-        "description": "Displays SLA alert level (24h Sin Asignar, 72h Sin Contacto, Próximo Paso Vencido, Urgente) with exact countdown."
-      },
-      {
-        "name": "PastoralVaultPanel",
-        "file": "frontend/src/components/pastoral/PastoralVaultPanel.js",
-        "description": "Encrypted append-only pastoral note box accessible only to pastoral_core users, complete with read audit log visual stamp."
-      },
-      {
-        "name": "HouseholdVisitsGroupCard",
-        "file": "frontend/src/components/pastoral/HouseholdVisitsGroupCard.js",
-        "description": "Renders family group home visits with collapsible individual member activity history."
-      },
-      {
-        "name": "Operacion72ReactivationBanner",
-        "file": "frontend/src/components/pastoral/Operacion72ReactivationBanner.js",
-        "description": "Displays single historical record notice when a person is reactivated from previous valid stage."
-      },
-      {
-        "name": "PastoralCaseEscalationDialog",
-        "file": "frontend/src/components/pastoral/PastoralCaseEscalationDialog.js",
-        "description": "Audited high-priority escalation modal to notify pastoral leadership immediately."
-      }
-    ]
-  },
-  "state_designs": {
-    "empty_state": {
-      "bg": "#FAF8F5",
-      "border": "1px dashed rgba(200, 169, 81, 0.4)",
-      "icon": "ShieldCheck",
-      "icon_color": "#C8A951",
-      "title": "No hay casos en esta bandeja",
-      "description": "Todos los casos pastoralmente asignados están al día en sus SLAs. El rebaño está atendido.",
-      "action_button": "Crear Nuevo Caso Pastoral"
+  "key_architectural_features": {
+    "recursive_tree_viewer": {
+      "concept": "Pastora -> Líderes -> Ramas -> Subramas sin límite fijo de profundidad",
+      "dual_role_handling": "A single canonical Persona can be displayed both as a member of an upper group AND as leader/owner of their own sub-branch with a 'Rol Dual' visual badge.",
+      "navigation": "Interactive node expand/collapse with active breadcrumbs trail showing branch ancestral chain."
     },
-    "loading_state": {
-      "shimmer": "Background shimmer with Navy #1B2A4A pulser",
-      "text": "Desencriptando expediente confidencial...",
-      "spinner": "Golden ring loader with radial gold blur overlay"
+    "work_inbox_and_delegation": {
+      "concept": "Bandeja de trabajo que desciende por el árbol y métricas que ascienden",
+      "features": [
+        "Task/Case assignment intake",
+        "Direct delegation to child sub-branches or specific canonical Personas",
+        "Ascending metric aggregates (personas alcanzadas, consolidaciones activas, retención semanal)"
+      ]
     },
-    "error_state": {
-      "bg": "#FEF2F2",
-      "border": "1px solid #FCA5A5",
-      "title": "Acceso Restringido o Error de Conexión",
-      "description": "Esta información está bajo protocolos de confidencialidad pastoral extrema o no se pudo cargar.",
-      "action_button": "Reintentar Autenticación Pastoral"
+    "consolidation_authority_and_audit": {
+      "concept": "Consolidación conserva autoridad para revisar rotación semanal y confirmar/modificar asignaciones",
+      "audit_requirements": "Every manual rotation modification opens an audit dialog requiring mandatory reason (motivo) and records timestamp, editor ID, and prior assignment history."
     },
-    "unauthorized_state": {
-      "behavior": "Completely hidden from UI. No error box, no placeholder card, no inferrable tab. Component returns null."
+    "cell_origin_vs_frontal_group": {
+      "concept": "Célula de Origen y Grupo Frontal Responsable son datos separados",
+      "configurable_link": "Configurable relation picker showing Cell ID vs Frontal Group ID with explicit override options."
+    },
+    "invasion_creation": {
+      "button_exact_label": "Crear invasión",
+      "integration": "Opens Mapa 360 modal/drawer preset with sector geometry selection, reusing existing GeoMaps component ecosystem without duplicating domains."
+    },
+    "pastoral_care_isolation": {
+      "security_rule": "Frontal Group membership NEVER grants access to Pastoral Care (Cuidado Pastoral) notes or confidential vault records.",
+      "ui_indicator": "Discreet padlock badge indicating Pastoral Care Vault is isolated under restricted access policy."
     }
   },
-  "image_urls": [
-    {
-      "category": "pastoral_hero",
-      "url": "https://images.pexels.com/photos/38786011/pexels-photo-38786011.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
-      "description": "Gold communion tray with pastor and congregation background for institutional header"
-    },
-    {
-      "category": "pastoral_community",
-      "url": "https://images.unsplash.com/flagged/photo-1551212696-dcb8e1ea4256?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1OTV8MHwxfHNlYXJjaHwxfHxwYXN0b3JhbCUyMGNhcmUlMjBDaHVyY2glMjBOYXZ5JTIwR29sZCUyMHBvcnRyYWl0JTIwYWJzdHJhY3R8ZW58MHx8fHwxNzg5ODQ3MzkxfDA&ixlib=rb-4.1.0&q=85",
-      "description": "Pastoral accompaniment and counseling portrait"
-    }
-  ],
+  "component_structure": {
+    "FrontGroupsPage.js": "Main layout container with sticky header, high-level metrics header, breadcrumbs, search, and dual-panel view.",
+    "FrontGroupTreeNav.js": "Recursive tree sidebar with depth indicators, search filter, active state indicator, and 'Crear Rama' action.",
+    "FrontGroupDetailPanel.js": "Structured workspace view featuring tabbed sections: (1) Resumen y Métricas Ascendentes, (2) Bandeja de Trabajo y Delegación, (3) Rotación Semanal y Consolidación, (4) Equipo y Rol Dual, (5) Vinculación Células.",
+    "FrontGroupDialog.js": "Dialog for creating/editing Frontal Groups & recursive sub-branches with parent_id binding.",
+    "FrontGroupAuditModal.js": "Audit confirmation dialog for Consolidación assignment overrides with mandatory motivo field.",
+    "FrontGroupInvasionDialog.js": "Modal triggering 'Crear invasión' using Mapa 360 sector & target link."
+  },
+  "testing_and_data_attributes": {
+    "mandatory_data_testid": "Every interactive element, input, filter, badge, button, and dynamic list item MUST have explicit data-testid attributes.",
+    "test_id_examples": [
+      "front-groups-page",
+      "front-group-create-button",
+      "front-group-crear-invasion-button",
+      "front-group-tree-node-{groupId}",
+      "front-group-work-inbox",
+      "front-group-audit-reason-input",
+      "front-group-confirm-rotation-button",
+      "front-group-pastoral-isolation-badge",
+      "front-group-cell-link-select"
+    ]
+  },
+  "image_urls": {
+    "map_reference": "https://images.unsplash.com/photo-1654099067467-c18c8dec1df4?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NTJ8MHwxfHNlYXJjaHwxfHxjb21tdW5pdHklMjBsZWFkZXIlMjB0ZWFtJTIwbWVudG9yaW5nJTIwY2h1cmNoJTIwbWFwfGVufDB8fHx8MTc4OTg1ODczM3ww&ixlib=rb-4.1.0&q=85",
+    "meeting_presentation": "https://images.pexels.com/photos/9034259/pexels-photo-9034259.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+    "leader_profile_1": "https://images.unsplash.com/photo-1560250097-0b93528c311a?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NzZ8MHwxfHNlYXJjaHwxfHxwb3J0cmFpdCUyMHRlYW0lMjBsZWFkZXIlMjBwZXJzb24lMjBwcm9maWxlfGVufDB8fHx8MTc4OTg1ODczM3ww&ixlib=rb-4.1.0&q=85",
+    "leader_profile_2": "https://images.unsplash.com/photo-1607746882042-944635dfe10e?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NzZ8MHwxfHNlYXJjaHwyfHxwb3J0cmFpdCUyMHRlYW0lMjBsZWFkZXIlMjBwZXJzb24lMjBwcm9maWxlfGVufDB8fHx8MTc4OTg1ODczM3ww&ixlib=rb-4.1.0&q=85"
+  },
   "instructions_to_main_agent": [
-    "1. Maintain strict compatibility with existing VEN Y VE 360 styling tokens (Navy #1B2A4A, Gold #C8A951, Spectral font for headers, IBM Plex Sans for body).",
-    "2. All files created under src/ must be JavaScript (.js) files.",
-    "3. ALWAYS implement data-testid on every interactive button, input, tab, badge, case row, and modal container (e.g. data-testid=\"op72-reactivate-btn\", data-testid=\"pastoral-vault-note-input\").",
-    "4. Enforce strict visual privacy: Wrap pastoral components in access checks (e.g., accessControl.hasPastoralAccess(user)). Unauthorized users MUST NOT see any pastoral UI or inferrable counters.",
-    "5. In Operación 72 views, ensure the single historical record badge and reactivation stage logic are clearly highlighted in the UI.",
-    "6. Use Sonner toasts for all action feedback (e.g. 'Nota pastoral cifrada y guardada en bóveda', 'Caso pastoral escalado con éxito').",
-    "7. Include comprehensive desktop and mobile responsive layouts for all 5 pastoral pages."
-  ],
-  "UNIVERSAL GUIDELINES FOR MAIN AGENT": {
-    "code_format": "JavaScript React (.js files)",
-    "testing_requirement": "All buttons, tabs, input elements, badges, timeline events, and card items MUST have data-testid attributes.",
-    "privacy_rule": "Strict anti-inference RBAC visual insulation. Never display empty pastoral tabs or counters to unauthorized users.",
-    "design_tokens": "Navy primary (#1B2A4A), Gold accent (#C8A951), White/Ivory surface (#FAF8F5), Red SLA (#EF4444), Amber SLA (#F59E0B), Emerald SLA (#10B981)."
-  }
+    "Preserve existing API contracts and add additive attributes for parent_group_id, child_branches, rotation_history, audit_logs, and origin_cell_id.",
+    "Do NOT hard delete any group or assignment; set status='inactive' or soft-archive to maintain audit history.",
+    "Ensure button text is EXACTLY 'Crear invasión' as mandated by prompt.",
+    "In the leader panel, build an intuitive work tray ('Bandeja de trabajo') showing active consolidations down the branch hierarchy.",
+    "Include empty state screens with contextual guidance for new branches with zero active groups.",
+    "Strictly enforce that Pastoral Care notes are never accessible from Front Group UI components."
+  ]
 }

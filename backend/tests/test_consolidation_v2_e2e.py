@@ -71,6 +71,7 @@ async def complete_stage(client: AsyncClient, headers: dict, enrollment_id: str,
 async def cleanup():
     preview = await qa_preview(server.db)
     await delete_qa_artifacts(server.db, preview["preview_token"], preview["confirmation_phrase"])
+    await server.db.cells.delete_many({"cell_id": "CELL-QA-01"})
 
 
 @pytest.mark.asyncio
@@ -136,6 +137,7 @@ async def test_legacy_pastor_and_explicit_view_capabilities_can_open_new_modules
 async def test_four_entry_modes_preserve_origin_and_converge():
     await cleanup()
     _, pastor_email = await create_user("Entry Pastor", "pastor")
+    await server.db.cells.insert_one({"_id": "CELL-QA-01", "cell_id": "CELL-QA-01", "name": "QA Célula de origen", "status": "active", "created_at": datetime.now(timezone.utc), "updated_at": datetime.now(timezone.utc)})
     mentor_person_id = await create_person("Mentor Entradas")
     await create_user("Mentor Entradas", "lider", mentor_person_id)
     client, headers = await auth_client(pastor_email)

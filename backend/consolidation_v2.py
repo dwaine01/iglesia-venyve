@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from access_control import (
+    CONSOLIDATION_ASSIGN,
     CONSOLIDATION_MENTOR_TRANSFER,
     CONSOLIDATION_RETREAT_CLOSE,
     MEMBERSHIP_ACCEPTANCE_MANAGE,
@@ -29,6 +30,9 @@ from consolidation_service import (
     mentor_qualification,
 )
 from front_groups import assert_group_scope, group_in_scope
+from front_group_routing import confirm_routing, routing_recommendation
+from front_group_tree import readable_group_ids
+from front_group_work import create_source_work_assignment
 from membership_documents import activate_membership_from_acceptance
 from process_engine import create_enrollment, now_utc, record_event, serialize
 from process_engine import access_person_ids
@@ -47,6 +51,29 @@ class ConsolidationIntake(BaseModel):
     source_reference: Optional[str] = Field(default=None, max_length=200)
     next_followup_at: Optional[datetime] = None
     initial_result: Optional[str] = Field(default=None, max_length=1200)
+    routing_policy_id: Optional[str] = None
+    assignment_reason: Optional[str] = Field(default=None, max_length=1000)
+
+
+class ConsolidationBatchItem(BaseModel):
+    person_id: str
+    entry_mode: Literal["complete_cycle", "direct_church", "cell", "visitor_followup"] = "direct_church"
+    source_cell_id: Optional[str] = None
+    source_reference: Optional[str] = Field(default=None, max_length=200)
+    initial_result: Optional[str] = Field(default=None, max_length=1200)
+
+
+class ConsolidationBatchAssignment(BaseModel):
+    items: list[ConsolidationBatchItem] = Field(min_length=1, max_length=100)
+    front_group_id: str
+    routing_policy_id: Optional[str] = None
+    reason: str = Field(min_length=3, max_length=1000)
+
+
+class ConsolidationGroupAssignment(BaseModel):
+    front_group_id: str
+    routing_policy_id: Optional[str] = None
+    reason: str = Field(min_length=3, max_length=1000)
 
 
 class VisitorStart(BaseModel):
@@ -98,8 +125,8 @@ async def load_scoped(enrollment_id: str, current_user: dict, leader_required: b
 @router.get("/dashboard", response_model=dict)
 async def consolidation_dashboard(current_user: dict = Depends(require_read)):
     query = {"process_key": "consolidation", "definition_version": 2}
-    if not is_global_pastoral_authority(current_user):
-        group_ids = await db.front_group_assignments.distinct("front_group_id", {"person_id": current_user.get("person_id"), "active": True})
+    if not is_global_pastoral_authority(current_user) and not has_capability(current_user, CONSOLIDATION_ASSIGN):
+        group_ids = list(await readable_group_ids(db, current_user) or [])
         query["$or"] = [{"front_group_id": {"$in": group_ids}}, {"person_id": current_user.get("person_id")}, {"mentor_person_id": current_user.get("person_id")}]
     items = await db.process_enrollments.find(query, {"_id": 0}).to_list(10000)
     by_entry = {key: 0 for key in ["complete_cycle", "direct_church", "cell", "visitor_followup"]}
@@ -117,7 +144,7 @@ async def consolidation_dashboard(current_user: dict = Depends(require_read)):
         if isinstance(started, datetime) and isinstance(signed, datetime) and signed >= started:
             durations.append((signed - started).total_seconds() / 86400)
     group_ids = list({item.get("front_group_id") for item in items if item.get("front_group_id")})
-    groups = await db.front_groups.find({"front_group_id": {"$in": group_ids}}, {"_id": 0, "front_group_id": 1, "name": 1}).to_list(1000) if group_ids else []
+    groups = await db.front_groups.find({"front_group_id": {"$in": group_ids}, "status": {"$ne": "archived"}}, {"_id": 0, "front_group_id": 1, "name": 1}).to_list(1000) if group_ids else []
     by_front_group = [{"front_group_id": group["front_group_id"], "name": group["name"], "total": sum(1 for item in items if item.get("front_group_id") == group["front_group_id"]), "completed": sum(1 for item in items if item.get("front_group_id") == group["front_group_id"] and item.get("status") == "completed")} for group in groups]
     active_alerts = await db.process_alerts.count_documents({"enrollment_id": {"$in": [item["enrollment_id"] for item in items]}, "status": "open"}) if items else 0
     return {
@@ -140,17 +167,45 @@ async def consolidation_dashboard(current_user: dict = Depends(require_read)):
 @router.post("/intakes", response_model=dict, status_code=201)
 async def create_intake(payload: ConsolidationIntake, current_user: dict = Depends(require_write)):
     person = await load_person(db, payload.person_id)
-    if payload.front_group_id:
-        await assert_group_scope(payload.front_group_id, current_user, leader_required=not is_global_pastoral_authority(current_user))
-    elif not is_global_pastoral_authority(current_user) and current_user.get("person_id") != payload.person_id:
+    decision = await confirm_routing(
+        requested_group_id=payload.front_group_id, source_cell_id=payload.source_cell_id,
+        policy_id=payload.routing_policy_id, reason=payload.assignment_reason, current_user=current_user,
+    )
+    assigned_group_id = decision["assigned_group_id"]
+    if not assigned_group_id and not is_global_pastoral_authority(current_user) and not has_capability(current_user, CONSOLIDATION_ASSIGN) and current_user.get("person_id") != payload.person_id:
         raise HTTPException(status_code=403, detail="Un Líder de Grupo Frontal debe iniciar procesos dentro de su Grupo")
     if payload.entry_mode == "cell" and not payload.source_cell_id:
         raise HTTPException(status_code=422, detail="La entrada desde célula requiere identificar la célula de origen")
-    if payload.entry_mode != "visitor_followup" and not payload.mentor_person_id:
+    assignment_authority = is_global_pastoral_authority(current_user) or has_capability(current_user, CONSOLIDATION_ASSIGN)
+    if payload.entry_mode != "visitor_followup" and not payload.mentor_person_id and not assignment_authority:
         raise HTTPException(status_code=422, detail="Asigne un mentor al iniciar el proceso")
-    existing = await db.process_enrollments.find_one({"process_key": "consolidation", "person_id": payload.person_id, "status": {"$in": ["planned", "active", "paused"]}}, {"_id": 0})
-    if existing:
+    existing = await db.process_enrollments.find_one({"process_key": "consolidation", "person_id": payload.person_id}, {"_id": 0}, sort=[("created_at", -1)])
+    if existing and existing.get("status") in {"planned", "active"}:
+        if assigned_group_id and assignment_authority:
+            previous_group_id = existing.get("front_group_id")
+            if previous_group_id and previous_group_id != assigned_group_id and not payload.assignment_reason:
+                raise HTTPException(status_code=422, detail="Indique el motivo para modificar el Grupo Frontal responsable")
+            now = now_utc()
+            await db.process_enrollments.update_one({"enrollment_id": existing["enrollment_id"]}, {"$set": {"front_group_id": assigned_group_id, "routing_decision": decision, "updated_at": now}, "$push": {"routing_history": {**decision, "source_cell_id": payload.source_cell_id or existing.get("source_cell_id"), "actor_user_id": current_user["user_id"], "occurred_at": now}}})
+            await create_source_work_assignment(source_type="consolidation", source_id=existing["enrollment_id"], source_sub_id=None, title="Ejecutar Consolidación", description="Asignación operativa de Consolidación al Grupo Frontal.", assigned_group_id=assigned_group_id, assigned_person_id=existing.get("mentor_person_id") if previous_group_id == assigned_group_id else None, priority="high", due_at=existing.get("next_action_at"), actor_user_id=current_user["user_id"], reason=payload.assignment_reason or "Confirmación de asignación de Consolidación")
+            await record_event(db, existing, current_user["user_id"], "front_group_assigned", "Grupo Frontal responsable confirmado", payload.assignment_reason or assigned_group_id)
+            return await enrollment_detail(db, await load_consolidation(db, existing["enrollment_id"]))
         raise HTTPException(status_code=409, detail="La Persona ya tiene una Consolidación activa")
+    if existing and existing.get("status") == "completed":
+        raise HTTPException(status_code=409, detail="La Persona ya completó Consolidación; continúe con el proceso siguiente")
+    if existing and existing.get("status") in {"paused", "cancelled"}:
+        now = now_utc(); update = {
+            "status": "active", "reactivated_at": now, "reactivation_reason": payload.assignment_reason or "La Persona regresó a Consolidación",
+            "updated_at": now, "last_activity_at": now,
+        }
+        if assigned_group_id: update["front_group_id"] = assigned_group_id
+        if not existing.get("source_cell_id") and payload.source_cell_id: update["source_cell_id"] = payload.source_cell_id
+        await db.process_enrollments.update_one({"enrollment_id": existing["enrollment_id"]}, {"$set": update, "$inc": {"reactivation_count": 1}, "$push": {"routing_history": {**decision, "source_cell_id": payload.source_cell_id, "actor_user_id": current_user["user_id"], "occurred_at": now}}})
+        await record_event(db, existing, current_user["user_id"], "reactivated", "Consolidación reactivada desde la última etapa válida", f"Continúa en {existing.get('current_stage_key')}")
+        refreshed = await db.process_enrollments.find_one({"enrollment_id": existing["enrollment_id"]}, {"_id": 0})
+        if assigned_group_id:
+            await create_source_work_assignment(source_type="consolidation", source_id=existing["enrollment_id"], source_sub_id=None, title="Continuar Consolidación", description="Expediente reactivado; continuar desde la etapa vigente.", assigned_group_id=assigned_group_id, assigned_person_id=refreshed.get("mentor_person_id"), priority="high", due_at=refreshed.get("next_action_at"), actor_user_id=current_user["user_id"], reason=payload.assignment_reason or "Reactivación de Consolidación")
+        return await enrollment_detail(db, refreshed)
     enrollment, _ = await create_enrollment(
         db, "consolidation", payload.person_id, payload.mentor_person_id, current_user["user_id"],
         status="active", next_action="Dar seguimiento al visitante" if payload.entry_mode == "visitor_followup" else "Completar etapa actual",
@@ -158,8 +213,10 @@ async def create_intake(payload: ConsolidationIntake, current_user: dict = Depen
     )
     arrival = await db.person_arrivals.find_one({"person_id": payload.person_id}, {"_id": 0})
     await db.process_enrollments.update_one({"enrollment_id": enrollment["enrollment_id"]}, {"$set": {
-        "front_group_id": payload.front_group_id,
+        "front_group_id": assigned_group_id,
         "source_cell_id": payload.source_cell_id,
+        "routing_decision": decision,
+        "routing_history": [{**decision, "source_cell_id": payload.source_cell_id, "actor_user_id": current_user["user_id"], "occurred_at": now_utc()}],
         "origin_snapshot": serialize(arrival),
         "entry_recorded_by_user_id": current_user["user_id"],
         "entry_recorded_at": now_utc(),
@@ -170,7 +227,42 @@ async def create_intake(payload: ConsolidationIntake, current_user: dict = Depen
     if payload.mentor_person_id:
         enrollment = await db.process_enrollments.find_one({"enrollment_id": enrollment["enrollment_id"]}, {"_id": 0})
         await assign_mentor(db, enrollment, payload.mentor_person_id, current_user["user_id"], "Asignación inicial")
-    return await enrollment_detail(db, await db.process_enrollments.find_one({"enrollment_id": enrollment["enrollment_id"]}, {"_id": 0}))
+    enrollment = await db.process_enrollments.find_one({"enrollment_id": enrollment["enrollment_id"]}, {"_id": 0})
+    if assigned_group_id:
+        await create_source_work_assignment(source_type="consolidation", source_id=enrollment["enrollment_id"], source_sub_id=None, title="Ejecutar Consolidación", description="Asignación operativa de Consolidación al Grupo Frontal.", assigned_group_id=assigned_group_id, assigned_person_id=payload.mentor_person_id, priority="high", due_at=enrollment.get("next_action_at"), actor_user_id=current_user["user_id"], reason=payload.assignment_reason or "Asignación inicial de Consolidación")
+    await db.front_group_routing_events.insert_one({"_id": str(ObjectId()), "event_id": str(ObjectId()), "action": "consolidation_routing_confirmed" if assigned_group_id else "consolidation_waiting_assignment", "enrollment_id": enrollment["enrollment_id"], "person_id": payload.person_id, "source_cell_id": payload.source_cell_id, "decision": decision, "actor_user_id": current_user["user_id"], "occurred_at": now_utc()})
+    return await enrollment_detail(db, enrollment)
+
+
+@router.post("/batch-assign", response_model=dict)
+async def batch_assign_consolidation(payload: ConsolidationBatchAssignment, current_user: dict = Depends(get_current_user)):
+    if not is_global_pastoral_authority(current_user) and not has_capability(current_user, CONSOLIDATION_ASSIGN):
+        raise HTTPException(status_code=403, detail="Asignación por lotes reservada a Consolidación")
+    results = []
+    for item in payload.items:
+        intake = ConsolidationIntake(**item.model_dump(), front_group_id=payload.front_group_id, routing_policy_id=payload.routing_policy_id, assignment_reason=payload.reason)
+        try:
+            result = await create_intake(intake, current_user)
+            results.append({"person_id": item.person_id, "status": "assigned", "enrollment_id": result["enrollment_id"], "current_stage_key": result.get("current_stage_key")})
+        except HTTPException as exc:
+            results.append({"person_id": item.person_id, "status": "not_assigned", "detail": exc.detail})
+    return {"items": results, "assigned": sum(item["status"] == "assigned" for item in results), "not_assigned": sum(item["status"] != "assigned" for item in results)}
+
+
+@router.put("/{enrollment_id}/front-group", response_model=dict)
+async def reassign_front_group(enrollment_id: str, payload: ConsolidationGroupAssignment, current_user: dict = Depends(get_current_user)):
+    if not is_global_pastoral_authority(current_user) and not has_capability(current_user, CONSOLIDATION_ASSIGN):
+        raise HTTPException(status_code=403, detail="Reasignación reservada a Consolidación")
+    enrollment = await load_consolidation(db, enrollment_id)
+    decision = await confirm_routing(requested_group_id=payload.front_group_id, source_cell_id=enrollment.get("source_cell_id"), policy_id=payload.routing_policy_id, reason=payload.reason, current_user=current_user)
+    previous_group_id = enrollment.get("front_group_id"); now = now_utc(); mentor_id = enrollment.get("mentor_person_id")
+    if mentor_id and not await db.front_group_assignments.find_one({"front_group_id": payload.front_group_id, "person_id": mentor_id, "active": True}, {"_id": 1}):
+        await db.mentor_assignments.update_many({"enrollment_id": enrollment_id, "active": True}, {"$set": {"active": False, "ended_at": now, "ended_by_user_id": current_user["user_id"], "end_reason": payload.reason}})
+        mentor_id = None
+    await db.process_enrollments.update_one({"enrollment_id": enrollment_id}, {"$set": {"front_group_id": payload.front_group_id, "mentor_person_id": mentor_id, "responsible_person_id": mentor_id, "routing_decision": decision, "updated_at": now}, "$push": {"routing_history": {**decision, "source_cell_id": enrollment.get("source_cell_id"), "actor_user_id": current_user["user_id"], "occurred_at": now}}})
+    await create_source_work_assignment(source_type="consolidation", source_id=enrollment_id, source_sub_id=None, title="Ejecutar Consolidación", description="Asignación operativa de Consolidación al Grupo Frontal.", assigned_group_id=payload.front_group_id, assigned_person_id=mentor_id, priority="high", due_at=enrollment.get("next_action_at"), actor_user_id=current_user["user_id"], reason=payload.reason)
+    await record_event(db, enrollment, current_user["user_id"], "front_group_reassigned", "Grupo Frontal responsable actualizado", f"{previous_group_id or 'Sin grupo'} → {payload.front_group_id}. {payload.reason}")
+    return await enrollment_detail(db, await load_consolidation(db, enrollment_id))
 
 
 @router.get("/intake-candidates", response_model=dict)
@@ -197,14 +289,19 @@ async def intake_candidates(search: str = "", limit: int = 20, current_user: dic
         query["_id"] = {"$in": [ObjectId(item) for item in allowed if ObjectId.is_valid(item)]}
     people = await db.persons.find(query, {"_id": 1, "person_number": 1, "nombre": 1, "apellido": 1}).sort([("nombre", 1), ("apellido", 1)]).limit(limit * 2).to_list(limit * 2)
     person_ids = [str(item["_id"]) for item in people]
-    active_ids = set(await db.process_enrollments.distinct("person_id", {"process_key": "consolidation", "person_id": {"$in": person_ids}, "status": {"$in": ["planned", "active", "paused"]}}))
+    journey_docs = await db.process_enrollments.find({"process_key": "consolidation", "person_id": {"$in": person_ids}}, {"_id": 0, "person_id": 1, "status": 1, "current_stage_key": 1}).sort("created_at", -1).to_list(limit * 4)
+    journey_by_person = {}
+    for journey in journey_docs: journey_by_person.setdefault(journey["person_id"], journey)
+    excluded_ids = {person_id for person_id, journey in journey_by_person.items() if journey.get("status") in {"planned", "active", "completed"}}
     contacts = await db.person_contacts.find({"person_id": {"$in": person_ids}, "es_principal": True}, {"_id": 0, "person_id": 1, "valor": 1}).to_list(limit * 2)
     phones = {item["person_id"]: item.get("valor") for item in contacts}
     items = [{
         "person_id": str(person["_id"]), "person_number": person.get("person_number"),
         "name": f"{person.get('nombre', '')} {person.get('apellido', '')}".strip(),
         "phone": phones.get(str(person["_id"])),
-    } for person in people if str(person["_id"]) not in active_ids][:limit]
+        "continuation_status": (journey_by_person.get(str(person["_id"])) or {}).get("status"),
+        "current_stage_key": (journey_by_person.get(str(person["_id"])) or {}).get("current_stage_key"),
+    } for person in people if str(person["_id"]) not in excluded_ids][:limit]
     return {"items": items, "total": len(items)}
 
 
