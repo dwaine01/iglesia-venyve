@@ -202,3 +202,51 @@ async def test_direct_membership_stamps_document_eligibility_fields():
     finally:
         await client.aclose()
         await cleanup()
+
+
+@pytest.mark.asyncio
+async def test_general_coordinator_can_create_direct_member_and_ordinary_leader_cannot():
+    await cleanup()
+    _, coordinator_email = await create_user("lider", coordinator=True)
+    await server.db.users.update_one(
+        {"email": coordinator_email},
+        {"$set": {"access_level": "lider"}},
+    )
+    _, leader_email = await create_user("lider")
+    coordinator, coordinator_headers = await login_client(coordinator_email)
+    leader, leader_headers = await login_client(leader_email)
+    try:
+        coordinator_me = await coordinator.get("/api/auth/me", headers=coordinator_headers)
+        assert coordinator_me.status_code == 200
+        assert coordinator_me.json()["access_level"] == "coordinador_general"
+
+        allowed = await coordinator.post(
+            "/api/core/persons",
+            json={
+                "nombre": "Marta",
+                "apellido": "Coordinadora",
+                "telefono": "6145559293",
+                "idempotency_key": f"qa:iter29:{uuid.uuid4()}",
+                "preexisting_active_member": True,
+            },
+            headers=coordinator_headers,
+        )
+        assert allowed.status_code == 201, allowed.text
+        assert allowed.json()["membership"]["direct"] is True
+
+        denied = await leader.post(
+            "/api/core/persons",
+            json={
+                "nombre": "Mario",
+                "apellido": "Lider",
+                "telefono": "6145559294",
+                "idempotency_key": f"qa:iter29:{uuid.uuid4()}",
+                "preexisting_active_member": True,
+            },
+            headers=leader_headers,
+        )
+        assert denied.status_code == 403
+    finally:
+        await coordinator.aclose()
+        await leader.aclose()
+        await cleanup()

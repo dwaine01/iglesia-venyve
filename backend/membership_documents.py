@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field
 from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
-from access_control import MEMBERSHIP_DOCUMENTS_MANAGE, has_capability, is_global_pastoral_authority
+from access_control import MEMBERSHIP_DOCUMENTS_MANAGE, has_capability, is_general_coordinator, is_global_pastoral_authority
 from door_board_engine import active_board_membership
 from person_profile_domains import assignment_items
 from server import db, get_current_user
@@ -68,7 +68,7 @@ def require_pastor(current_user: dict) -> None:
 
 
 def is_direct_membership_manager(current_user: dict) -> bool:
-    return is_global_pastoral_authority(current_user) or str(current_user.get("access_level") or "").lower() == "coordinador_general"
+    return is_global_pastoral_authority(current_user) or is_general_coordinator(current_user)
 
 
 def require_direct_membership_manager(current_user: dict) -> None:

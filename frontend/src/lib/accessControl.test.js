@@ -21,6 +21,9 @@ describe('geo access control', () => {
   test('direct membership is limited to pastor and general coordinator', () => {
     expect(canManageDirectMembership({ rol: 'pastor' })).toBe(true);
     expect(canManageDirectMembership({ rol: 'lider', access_level: 'coordinador_general' })).toBe(true);
+    expect(canManageDirectMembership({ rol: 'general_coordinator' })).toBe(true);
+    expect(canManageDirectMembership({ rol: 'lider', access_level: 'lider', capabilities: ['core.access.manage'] })).toBe(true);
+    expect(canManageDirectMembership({ rol: 'lider', access_level: 'director', capabilities: ['core.access.manage'] })).toBe(false);
     expect(canManageDirectMembership({ rol: 'lider' })).toBe(false);
   });
 

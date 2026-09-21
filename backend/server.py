@@ -21,6 +21,7 @@ from access_control import (
     ensure_access_defaults,
     normalized_access_scope,
     normalized_capabilities,
+    resolved_access_level,
 )
 from canonical_identity import IdentityConflictError, ensure_user_person_link, migrate_core_identity, sync_legacy_person_to_canonical
 
@@ -408,7 +409,7 @@ async def get_authenticated_user(authorization: Optional[str] = Header(None)):
     payload["access_scope"] = normalized_access_scope(db_user)
     payload["person_id"] = db_user.get("person_id")
     payload["rol"] = db_user.get("rol")
-    payload["access_level"] = db_user.get("access_level") or ("coordinador_general" if db_user.get("rol") == "lider" and CORE_ACCESS_MANAGE in payload["capabilities"] else db_user.get("rol"))
+    payload["access_level"] = resolved_access_level({**db_user, "capabilities": payload["capabilities"]})
     payload["must_change_password"] = db_user.get("must_change_password", False) is True
     payload["onboarding_required"] = db_user.get("onboarding_required", False) is True
     payload["onboarding_completed_at"] = db_user.get("onboarding_completed_at")
@@ -1067,7 +1068,7 @@ async def login(user: UserLogin, request: Request):
         user_token_version(db_user),
     )
     person_id = db_user.get("person_id")
-    return {"token": token, "user": {"id": user_id, "nombre": db_user["nombre"], "email": db_user["email"], "rol": db_user["rol"], "person_id": person_id, "canonical_profile_path": f"/personas/{person_id}" if person_id else None, "capabilities": normalized_capabilities(db_user), "access_level": db_user.get("access_level") or ("coordinador_general" if db_user.get("rol") == "lider" and CORE_ACCESS_MANAGE in normalized_capabilities(db_user) else db_user.get("rol")), "must_change_password": db_user.get("must_change_password", False) is True, "onboarding_required": db_user.get("onboarding_required", False) is True, "onboarding_completed_at": db_user.get("onboarding_completed_at"), "privilege_groups": db_user.get("privilege_groups") or [], "organization_scope": db_user.get("organization_scope")}}
+    return {"token": token, "user": {"id": user_id, "nombre": db_user["nombre"], "email": db_user["email"], "rol": db_user["rol"], "person_id": person_id, "canonical_profile_path": f"/personas/{person_id}" if person_id else None, "capabilities": normalized_capabilities(db_user), "access_level": resolved_access_level({**db_user, "capabilities": normalized_capabilities(db_user)}), "must_change_password": db_user.get("must_change_password", False) is True, "onboarding_required": db_user.get("onboarding_required", False) is True, "onboarding_completed_at": db_user.get("onboarding_completed_at"), "privilege_groups": db_user.get("privilege_groups") or [], "organization_scope": db_user.get("organization_scope")}}
 
 
 @app.get("/api/auth/me")
@@ -1079,7 +1080,7 @@ async def get_me(authorization: Optional[str] = Header(None)):
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     person_id = user.get("person_id")
-    return {"id": str(user["_id"]), "nombre": user["nombre"], "email": user["email"], "rol": user["rol"], "person_id": person_id, "canonical_profile_path": f"/personas/{person_id}" if person_id else None, "capabilities": normalized_capabilities(user), "access_level": user.get("access_level") or ("coordinador_general" if user.get("rol") == "lider" and CORE_ACCESS_MANAGE in normalized_capabilities(user) else user.get("rol")), "must_change_password": user.get("must_change_password", False) is True, "onboarding_required": user.get("onboarding_required", False) is True, "onboarding_completed_at": user.get("onboarding_completed_at"), "privilege_groups": user.get("privilege_groups") or [], "organization_scope": user.get("organization_scope")}
+    return {"id": str(user["_id"]), "nombre": user["nombre"], "email": user["email"], "rol": user["rol"], "person_id": person_id, "canonical_profile_path": f"/personas/{person_id}" if person_id else None, "capabilities": normalized_capabilities(user), "access_level": resolved_access_level({**user, "capabilities": normalized_capabilities(user)}), "must_change_password": user.get("must_change_password", False) is True, "onboarding_required": user.get("onboarding_required", False) is True, "onboarding_completed_at": user.get("onboarding_completed_at"), "privilege_groups": user.get("privilege_groups") or [], "organization_scope": user.get("organization_scope")}
 
 
 @app.post("/api/auth/change-password")
@@ -1097,7 +1098,7 @@ async def change_password(payload: PasswordChange, current_user: dict = Depends(
     token = create_token(str(user["_id"]), user["email"], user["rol"], new_version)
     capabilities = normalized_capabilities(user)
     person_id = user.get("person_id")
-    return {"token": token, "user": {"id": str(user["_id"]), "nombre": user["nombre"], "email": user["email"], "rol": user["rol"], "person_id": person_id, "canonical_profile_path": f"/personas/{person_id}" if person_id else None, "capabilities": capabilities, "access_level": user.get("access_level") or ("coordinador_general" if user.get("rol") == "lider" and CORE_ACCESS_MANAGE in capabilities else user.get("rol")), "must_change_password": False, "onboarding_required": user.get("onboarding_required", False) is True, "onboarding_completed_at": user.get("onboarding_completed_at"), "privilege_groups": user.get("privilege_groups") or [], "organization_scope": user.get("organization_scope")}}
+    return {"token": token, "user": {"id": str(user["_id"]), "nombre": user["nombre"], "email": user["email"], "rol": user["rol"], "person_id": person_id, "canonical_profile_path": f"/personas/{person_id}" if person_id else None, "capabilities": capabilities, "access_level": resolved_access_level({**user, "capabilities": capabilities}), "must_change_password": False, "onboarding_required": user.get("onboarding_required", False) is True, "onboarding_completed_at": user.get("onboarding_completed_at"), "privilege_groups": user.get("privilege_groups") or [], "organization_scope": user.get("organization_scope")}}
 
 
 # --- Contacts Routes ---
