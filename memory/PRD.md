@@ -286,18 +286,18 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - Validación funcional final pendiente únicamente de la grabación manual solicitada al usuario con dos hablantes reales.
 - **Board AI: BLOCKED controlado mientras `BOARD_AI_ENDPOINT_URL`, `BOARD_AI_API_KEY` y `BOARD_AI_MODEL` no estén configurados.** Junta manual, minutas, votos, documentos y audio no dependen del proveedor IA.
 
-### P0 — Restauración Railway — RESUELTO Y VALIDADO EN PRODUCCIÓN 2026‑09‑16
+### P0 — Restauración Railway — RESUELTO; HOTFIX DE DEPENDENCIAS 2026‑09‑21
 
 - Corregida la precedencia de configuración: Kubernetes/runtime prevalece sobre `.env` mediante `load_dotenv(..., override=False)`.
 - La carga local de `.env` ahora usa una ruta relativa explícita a `server.py`, sin depender del directorio de ejecución.
 - Railway Production ya recibió `CORS_ORIGINS=https://panel.iglesiavenyve.org` y un `CORS_ORIGIN_REGEX` exacto/anclado; el crash CORS original desapareció.
-- Eliminados `emergentintegrations`, `litellm`, ruedas directas e índices privados después de confirmar que impedían resolver el build Railway.
-- Límites no secretos de Junta ya no bloquean el boot si faltan variables: audio 24 MiB/4 horas y documentos 10 MiB, con overrides `MAX_AUDIO_BYTES`, `MAX_AUDIO_SECONDS` y `MAX_BOARD_DOCUMENT_BYTES` documentados.
-- Instalación limpia pública: PASS; `pip check`: PASS; imports `server.py` y `board_ai_service.py`: PASS sin paquete Emergent.
-- Uvicorn supervisado RUNNING y `/api/health` preview 200; login/auth, Junta manual y CORS de regresión PASS.
-- Revisión de despliegue: PASS; auditoría de seguridad: PASS sin CRITICAL/HIGH/MEDIUM.
-- Railway Production confirmado **Active** por el usuario: boot limpio, índices creados, `/api/health` 200, frontend sin errores, login pastor end‑to‑end PASS, APIs reales 200 y CORS PASS.
-- `backend/.env.example` quedó rastreado con `CORS_ORIGIN_REGEX` y los tres límites `MAX_*`; validación de parseo/regex PASS y sin secretos reales.
+- El PR #11 reintrodujo accidentalmente 130 paquetes de entorno mediante `pip freeze`, incluyendo `emergentintegrations==0.2.0` y un wheel privado de `litellm`; Railway no podía resolverlos.
+- `backend/requirements.txt` fue regenerado desde un entorno limpio con 31 dependencias públicas y `reportlab==5.0.1`; no contiene índices privados, wheels directos, `emergentintegrations` ni `litellm`.
+- Descarga pública de las 31 ruedas desde PyPI, instalación limpia, `pip check`, ReportLab e imports `server.py`/`board_ai_service.py`: PASS.
+- Regresión de portabilidad y STT: 7/7 PASS; el proveedor diarizado continúa usando únicamente `httpx` y `OPENAI_STT_API_KEY`.
+- Revisión de despliegue posterior al hotfix: PASS sin bloqueadores estáticos; producción permanece en la versión anterior hasta que el usuario publique el nuevo PR.
+- Límites no secretos de Junta permanecen seguros: audio 24 MiB/4 horas y documentos 10 MiB, configurables mediante `MAX_*`.
+- `backend/.env.example` conserva CORS, límites y configuración OpenAI STT sin secretos reales.
 
 ### Sistema global de aprendizaje contextual — COMPLETADO 2026‑09‑16
 
