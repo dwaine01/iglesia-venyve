@@ -11,7 +11,7 @@ import requests
 from bson import ObjectId
 from pymongo import MongoClient
 
-from access_control import CORE_ACCESS_MANAGE, access_defaults_for_role
+from access_control import CORE_ACCESS_MANAGE, MEMBERSHIP_DIRECT_IMPORT, access_defaults_for_role
 
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/")
@@ -286,3 +286,89 @@ def test_pastor_can_still_create_direct_membership_without_regression(qa_env):
     )
     assert response.status_code == 201, response.text
     assert response.json()["membership"]["direct"] is True
+
+
+@pytest.mark.skipif(not BASE_URL or not MONGO_URL or not DB_NAME, reason="Missing required env vars")
+def test_pastor_can_delegate_and_revoke_direct_import_without_granting_documents(qa_env):
+    db = _db()
+    pastor_token, _ = _login(qa_env["pastor"]["email"])
+    target_id = qa_env["ordinary_leader"]["user_id"]
+    target = db.users.find_one({"_id": ObjectId(target_id)}, {"_id": 0})
+    old_token, _ = _login(qa_env["ordinary_leader"]["email"])
+
+    grant_payload = {
+        "access_level": target.get("access_level") or "lider",
+        "is_active": True,
+        "privilege_groups": target.get("privilege_groups") or [],
+        "capabilities": sorted(set([*(target.get("capabilities") or []), MEMBERSHIP_DIRECT_IMPORT])),
+    }
+    granted = requests.put(
+        f"{BASE_URL}/api/core/governance/users/{target_id}/access",
+        json=grant_payload,
+        headers={"Authorization": f"Bearer {pastor_token}"},
+        timeout=30,
+    )
+    assert granted.status_code == 200, granted.text
+    assert MEMBERSHIP_DIRECT_IMPORT in granted.json()["capabilities"]
+    assert granted.json()["token_version"] == int(target.get("token_version", 1)) + 1
+
+    revoked_old_session = requests.get(f"{BASE_URL}/api/auth/me", headers={"Authorization": f"Bearer {old_token}"}, timeout=30)
+    assert revoked_old_session.status_code == 401
+    delegated_token, delegated_login = _login(qa_env["ordinary_leader"]["email"])
+    assert MEMBERSHIP_DIRECT_IMPORT in delegated_login["user"]["capabilities"]
+
+    direct = requests.post(
+        f"{BASE_URL}/api/core/persons",
+        json={
+            "nombre": "Iter36",
+            "apellido": "DelegatedDirectImport",
+            "telefono": "6145553615",
+            "idempotency_key": f"qa:iter36:{uuid.uuid4()}",
+            "preexisting_active_member": True,
+            "existing_member_number": "I36-DELEG-01",
+        },
+        headers={"Authorization": f"Bearer {delegated_token}"},
+        timeout=30,
+    )
+    assert direct.status_code == 201, direct.text
+    person_id = direct.json()["person_id"]
+
+    official_documents = requests.get(
+        f"{BASE_URL}/api/membership/persons/{person_id}",
+        headers={"Authorization": f"Bearer {delegated_token}"},
+        timeout=30,
+    )
+    assert official_documents.status_code == 403
+
+    updated_target = db.users.find_one({"_id": ObjectId(target_id)}, {"_id": 0})
+    revoke_payload = {
+        "access_level": updated_target.get("access_level") or "lider",
+        "is_active": True,
+        "privilege_groups": updated_target.get("privilege_groups") or [],
+        "capabilities": [item for item in (updated_target.get("capabilities") or []) if item != MEMBERSHIP_DIRECT_IMPORT],
+    }
+    revoked = requests.put(
+        f"{BASE_URL}/api/core/governance/users/{target_id}/access",
+        json=revoke_payload,
+        headers={"Authorization": f"Bearer {pastor_token}"},
+        timeout=30,
+    )
+    assert revoked.status_code == 200, revoked.text
+    assert MEMBERSHIP_DIRECT_IMPORT not in revoked.json()["capabilities"]
+    assert requests.get(f"{BASE_URL}/api/auth/me", headers={"Authorization": f"Bearer {delegated_token}"}, timeout=30).status_code == 401
+
+    fresh_token, fresh_login = _login(qa_env["ordinary_leader"]["email"])
+    assert MEMBERSHIP_DIRECT_IMPORT not in fresh_login["user"]["capabilities"]
+    denied = requests.post(
+        f"{BASE_URL}/api/core/persons",
+        json={
+            "nombre": "Iter36",
+            "apellido": "DelegatedRevoked",
+            "telefono": "6145553616",
+            "idempotency_key": f"qa:iter36:{uuid.uuid4()}",
+            "preexisting_active_member": True,
+        },
+        headers={"Authorization": f"Bearer {fresh_token}"},
+        timeout=30,
+    )
+    assert denied.status_code == 403

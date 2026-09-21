@@ -8,6 +8,8 @@ from copy import deepcopy
 
 from fastapi import HTTPException
 
+ACCESS_POLICY_VERSION = 20
+
 PERSON_PROFILE_SENSITIVE_READ = "person.profile.sensitive.read"
 PERSON_PROFILE_WRITE = "person.profile.write"
 PERSON_HOUSEHOLD_READ = "person.household.read"
@@ -39,6 +41,7 @@ FINANCE_READ = "finance.read"
 FINANCE_MANAGE = "finance.manage"
 FINANCE_CAPABILITIES = [FINANCE_READ, FINANCE_MANAGE]
 MEMBERSHIP_DOCUMENTS_MANAGE = "membership.documents.manage"
+MEMBERSHIP_DIRECT_IMPORT = "membership.direct_import"
 MEMBERSHIP_ACCEPTANCE_MANAGE = "membership.acceptance.manage"
 CONSOLIDATION_MENTOR_TRANSFER = "consolidation.mentor.transfer"
 CONSOLIDATION_RETREAT_CLOSE = "consolidation.retreat.close"
@@ -187,7 +190,7 @@ PERSON_DOMAIN_CAPABILITIES = [
 
 _ROLE_ACCESS_DEFAULTS = {
     "pastor": {
-        "capabilities": [*PERSON_DOMAIN_CAPABILITIES, *PROCESS_CAPABILITIES, *CELLULAR_CAPABILITIES, *DOOR_BOARD_CAPABILITIES, *FINANCE_CAPABILITIES, *JOURNEY_GOVERNANCE_CAPABILITIES, *OPERATIONS_CAPABILITIES, *CARE_CAPABILITIES, MEMBERSHIP_DOCUMENTS_MANAGE, PERSON_PASTORAL_NOTES_READ, CORE_GOVERNANCE_MANAGE, CORE_ACCESS_MANAGE],
+        "capabilities": [*PERSON_DOMAIN_CAPABILITIES, *PROCESS_CAPABILITIES, *CELLULAR_CAPABILITIES, *DOOR_BOARD_CAPABILITIES, *FINANCE_CAPABILITIES, *JOURNEY_GOVERNANCE_CAPABILITIES, *OPERATIONS_CAPABILITIES, *CARE_CAPABILITIES, MEMBERSHIP_DOCUMENTS_MANAGE, MEMBERSHIP_DIRECT_IMPORT, PERSON_PASTORAL_NOTES_READ, CORE_GOVERNANCE_MANAGE, CORE_ACCESS_MANAGE],
         "access_scope": {"persons": "all"},
     },
     "lider": {
@@ -209,7 +212,7 @@ def access_defaults_for_role(role: str) -> dict:
             {"capabilities": [], "access_scope": {"persons": "none"}},
         )
     )
-    defaults["access_policy_version"] = 19
+    defaults["access_policy_version"] = ACCESS_POLICY_VERSION
     return defaults
 
 
@@ -282,15 +285,15 @@ async def ensure_access_defaults(db) -> None:
             {"$set": {"access_scope": defaults["access_scope"]}},
         )
         await db.users.update_many(
-            {"rol": role, "$or": [{"parent_user_id": {"$exists": False}}, {"access_policy_version": {"$lt": 19}}, {"access_policy_version": {"$exists": False}}]},
+            {"rol": role, "$or": [{"parent_user_id": {"$exists": False}}, {"access_policy_version": {"$lt": ACCESS_POLICY_VERSION}}, {"access_policy_version": {"$exists": False}}]},
             {
                 "$addToSet": {"capabilities": {"$each": defaults["capabilities"]}},
-                "$set": {"access_policy_version": 19},
+                "$set": {"access_policy_version": ACCESS_POLICY_VERSION},
             },
         )
     await db.users.update_many({"rol": "persona"}, {"$addToSet": {"capabilities": {"$each": [OPERATIONS_VIEW, OPERATIONS_VOLUNTEER]}}})
     await db.users.update_many({"rol": "lider"}, {"$addToSet": {"capabilities": {"$each": [OPERATIONS_VIEW, OPERATIONS_CHECKIN, OPERATIONS_VOLUNTEER]}}})
     await db.users.update_many(
         {"$or": [{"access_level": "coordinador_general"}, {"rol": "lider", "capabilities": CORE_ACCESS_MANAGE}]},
-        {"$addToSet": {"capabilities": {"$each": CARE_CAPABILITIES}, "privilege_groups": "care"}, "$set": {"access_scope.persons": "all", "access_policy_version": 19}},
+        {"$addToSet": {"capabilities": {"$each": [*CARE_CAPABILITIES, MEMBERSHIP_DIRECT_IMPORT]}, "privilege_groups": "care"}, "$set": {"access_scope.persons": "all", "access_policy_version": ACCESS_POLICY_VERSION}},
     )

@@ -55,3 +55,13 @@
 - Verificar 403 para la cuenta sin `processes.read` ni permisos administrativos equivalentes.
 - Confirmar que Liderazgo y Grupos Frontales solo aparezcan en navegación cuando puedan consultarse.
 - Eliminar cuentas, Personas y registros QA al terminar; no persistir credenciales efímeras.
+
+## Membresía directa delegada
+
+- Pastor asigna `membership.direct_import` desde Gestión de Accesos y el cambio incrementa `token_version`.
+- El token anterior queda revocado; con sesión nueva el delegado ve la capacidad en `/api/auth/me`.
+- Delegado puede crear Persona con `preexisting_active_member=true`, pero no emitir carnet/certificado sin `membership.documents.manage`.
+- Líder ordinario recibe 403 al forzar el bypass.
+- Al revocar la capacidad, el token previo queda inválido y una sesión nueva vuelve a recibir 403.
+- Pastor y Coordinación General conservan alta directa automática.
+- Limpiar cuentas, Personas, membresías, eventos y números de miembro QA al terminar.

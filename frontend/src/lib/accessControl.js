@@ -43,6 +43,13 @@ export const canManageDirectMembership = (user) => (
     && String(user?.access_level || '').trim().toLowerCase() === 'lider'
     && (user?.capabilities || []).includes('core.access.manage')
   )
+  || (user?.capabilities || []).includes('membership.direct_import')
+);
+
+export const canManageMembershipDocuments = (user) => (
+  isPastoralAuthority(user)
+  || ['coordinador_general', 'general_coordinator'].includes(String(user?.access_level || user?.rol || user?.role || '').trim().toLowerCase())
+  || (user?.capabilities || []).includes('membership.documents.manage')
 );
 
 export const canViewOperations = (user) => Boolean(user) && (isPastoralAuthority(user) || hasCapability(user, 'operations.view'));
