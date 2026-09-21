@@ -40,7 +40,7 @@ test('las funciones especializadas conservan la capa pastoral', () => {
   expect(meetingModalityLabel('hybrid')).toBe('Híbrida');
   expect(minuteTypeLabel('human_draft')).toBe('Borrador humano');
   expect(minuteTypeLabel('manual')).toBe('Minuta manual');
-  expect(speakerLabel('speaker_2')).toBe('Participante 3');
+  expect(speakerLabel('speaker_2')).toBe('Hablante 3');
 });
 
 test('una etapa compuesta no expone claves internas', () => {

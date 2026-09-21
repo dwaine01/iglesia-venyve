@@ -22,7 +22,7 @@ const recorderError = (error) => {
 
 const formatDuration = (seconds) => `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
 
-export const BoardRecorder = ({ meetingId, enabled, onCompleted }) => {
+export const BoardRecorder = ({ meetingId, enabled, onCompleted, onChunkUploaded }) => {
   const { API, getAuthHeaders } = useAuth();
   const [recording, setRecording] = useState(false); const [uploading, setUploading] = useState(false); const [requesting, setRequesting] = useState(false);
   const [elapsed, setElapsed] = useState(0); const [uploadedBytes, setUploadedBytes] = useState(0); const [errorMessage, setErrorMessage] = useState(''); const [saved, setSaved] = useState(false);
@@ -46,8 +46,10 @@ export const BoardRecorder = ({ meetingId, enabled, onCompleted }) => {
     uploadChainRef.current = uploadChainRef.current.then(async () => {
       if (uploadErrorRef.current) return;
       try {
-        const response = await axios.put(`${API}/api/board/recordings/uploads/${uploadIdRef.current}/chunks/${sequence}`, blob, { headers: { ...getAuthHeaders().headers, 'Content-Type': contentType } });
+        const chunkElapsed = Math.max(0, (Date.now() - startedAtRef.current) / 1000);
+        const response = await axios.put(`${API}/api/board/recordings/uploads/${uploadIdRef.current}/chunks/${sequence}`, blob, { headers: { ...getAuthHeaders().headers, 'Content-Type': contentType, 'X-Recording-Elapsed-Seconds': String(chunkElapsed) } });
         setUploadedBytes(response.data.total_bytes || 0);
+        onChunkUploaded?.();
       } catch (error) {
         uploadErrorRef.current = error; setErrorMessage(recorderError(error));
         if (recorderRef.current?.state === 'recording') recorderRef.current.stop();

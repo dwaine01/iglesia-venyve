@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from bson import ObjectId
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from motor.motor_asyncio import AsyncIOMotorGridFSBucket
 from pydantic import BaseModel, Field
@@ -16,6 +16,7 @@ from pymongo import ReturnDocument
 from access_control import DOORS_MANAGE
 from board_ai_provider import BoardAIProviderDegraded, BoardAIProviderUnavailable, get_board_ai_provider
 from board_ai_service import generate_board_artifacts, transcribe_recording
+from board_live_transcription import transcribe_live_upload
 from door_board_engine import ensure_board_access, person_summary, record_board_audit, serialize
 from meeting_transcription import get_transcription_provider
 from server import db, get_current_user
@@ -92,13 +93,13 @@ async def start_recording_upload(payload: UploadStart, current_user: dict = Depe
     if meeting.get("status") != "open": raise HTTPException(status_code=409, detail="Abra la reunión antes de iniciar la grabación")
     if not meeting.get("recording_notice_confirmed"): raise HTTPException(status_code=409, detail="Confirme el aviso antes de grabar")
     upload_id = str(uuid4()); now = datetime.now(timezone.utc)
-    await db.board_recording_uploads.insert_one({"_id": upload_id, "upload_id": upload_id, "meeting_id": payload.meeting_id, "owner_user_id": current_user["user_id"], "content_type": payload.content_type, "next_seq": 0, "bytes": 0, "status": "uploading", "created_at": now, "updated_at": now})
+    await db.board_recording_uploads.insert_one({"_id": upload_id, "upload_id": upload_id, "meeting_id": payload.meeting_id, "owner_user_id": current_user["user_id"], "content_type": payload.content_type, "next_seq": 0, "bytes": 0, "elapsed_seconds": 0, "status": "uploading", "live_transcription_status": "listening", "live_job_active": False, "created_at": now, "updated_at": now})
     await record_board_audit(db, current_user["user_id"], "recording_upload_started", "board_meeting", payload.meeting_id, {"upload_id": upload_id, "content_type": payload.content_type})
     return {"upload_id": upload_id, "max_bytes": MAX_AUDIO_BYTES, "max_seconds": MAX_AUDIO_SECONDS, "next_seq": 0}
 
 
 @router.put("/recordings/uploads/{upload_id}/chunks/{seq}", response_model=dict)
-async def upload_recording_chunk(upload_id: str, seq: int, request: Request, current_user: dict = Depends(get_current_user)):
+async def upload_recording_chunk(upload_id: str, seq: int, request: Request, background: BackgroundTasks, recording_elapsed_seconds: float | None = Header(default=None, alias="X-Recording-Elapsed-Seconds"), current_user: dict = Depends(get_current_user)):
     await ensure_recording_access(current_user, "board.audio.manage")
     upload = await db.board_recording_uploads.find_one({"upload_id": upload_id, "owner_user_id": current_user["user_id"], "status": "uploading"})
     if not upload: raise HTTPException(status_code=404, detail="Carga no encontrada")
@@ -116,10 +117,15 @@ async def upload_recording_chunk(upload_id: str, seq: int, request: Request, cur
         try: await target.abort()
         except Exception: pass
         raise
-    result = await db.board_recording_uploads.update_one({"upload_id": upload_id, "next_seq": seq, "status": "uploading"}, {"$inc": {"next_seq": 1, "bytes": received}, "$set": {"updated_at": datetime.now(timezone.utc)}})
+    elapsed = max(float(recording_elapsed_seconds or ((seq + 1) * 5)), float(upload.get("elapsed_seconds") or 0))
+    result = await db.board_recording_uploads.update_one({"upload_id": upload_id, "next_seq": seq, "status": "uploading"}, {"$inc": {"next_seq": 1, "bytes": received}, "$set": {"elapsed_seconds": elapsed, "updated_at": datetime.now(timezone.utc)}})
     if not result.modified_count:
         await stage_bucket().delete(file_id); raise HTTPException(status_code=409, detail="Secuencia ya procesada")
-    return {"seq": seq, "bytes": received, "total_bytes": upload["bytes"] + received}
+    last_requested = float(upload.get("last_live_requested_elapsed") or 0)
+    if elapsed >= 8 and elapsed - last_requested >= 8:
+        await db.board_recording_uploads.update_one({"upload_id": upload_id}, {"$set": {"last_live_requested_elapsed": elapsed, "live_transcription_status": "queued"}})
+        background.add_task(transcribe_live_upload, db, upload_id)
+    return {"seq": seq, "bytes": received, "total_bytes": upload["bytes"] + received, "live_transcription_status": "queued" if elapsed >= 8 and elapsed - last_requested >= 8 else upload.get("live_transcription_status", "listening")}
 
 
 @router.post("/recordings/uploads/{upload_id}/complete", response_model=dict)
@@ -161,7 +167,7 @@ async def complete_recording_upload(upload_id: str, payload: UploadComplete, bac
     sha = digest.hexdigest(); now = datetime.now(timezone.utc)
     try:
         await db["board_recordings.files"].update_one({"_id": recording_id}, {"$set": {"metadata.sha256": sha}})
-        completed = await db.board_recording_uploads.update_one({"upload_id": upload_id, "status": "finalizing", "finalization_token": finalization_token}, {"$set": {"status": "complete", "recording_id": recording_id, "sha256": sha, "duration_seconds": payload.duration_seconds, "completed_at": now, "updated_at": now}, "$unset": {"finalization_token": "", "finalization_started_at": ""}})
+        completed = await db.board_recording_uploads.update_one({"upload_id": upload_id, "status": "finalizing", "finalization_token": finalization_token}, {"$set": {"status": "complete", "recording_id": recording_id, "sha256": sha, "duration_seconds": payload.duration_seconds, "completed_at": now, "updated_at": now, "live_transcription_status": "finalizing"}, "$unset": {"finalization_token": "", "finalization_started_at": ""}})
         if completed.modified_count != 1:
             raise HTTPException(status_code=409, detail="Otra solicitud completó esta carga")
     except Exception:
@@ -190,6 +196,11 @@ async def abort_recording_upload(upload_id: str, current_user: dict = Depends(ge
     staged = await db["board_recording_staging.files"].find({"metadata.upload_id": upload_id}, {"_id": 1}).to_list(10000)
     bucket = stage_bucket()
     for item in staged: await bucket.delete(item["_id"])
+    live_versions = await db.board_transcript_versions.find({"source_upload_id": upload_id, "kind": "live_provisional"}, {"_id": 0, "transcript_version_id": 1}).to_list(100)
+    live_version_ids = [item["transcript_version_id"] for item in live_versions]
+    if live_version_ids:
+        await db.board_transcript_segments.delete_many({"transcript_version_id": {"$in": live_version_ids}})
+        await db.board_transcript_versions.delete_many({"transcript_version_id": {"$in": live_version_ids}})
     now = datetime.now(timezone.utc)
     await db.board_recording_uploads.update_one({"upload_id": upload_id}, {"$set": {"status": "aborted", "aborted_at": now, "updated_at": now}})
     await record_board_audit(db, current_user["user_id"], "recording_upload_aborted", "board_meeting", upload["meeting_id"], {"upload_id": upload_id})
@@ -233,11 +244,13 @@ async def request_transcription(recording_id: str, background: BackgroundTasks, 
 async def get_transcript(meeting_id: str, current_user: dict = Depends(get_current_user)):
     await ensure_recording_access(current_user, "board.audio.manage")
     version = await db.board_transcript_versions.find_one({"meeting_id": meeting_id}, {"_id": 0}, sort=[("version", -1)])
-    if not version: return {"version": None, "segments": [], "mappings": []}
+    live_upload = await db.board_recording_uploads.find_one({"meeting_id": meeting_id, "status": {"$in": ["uploading", "finalizing", "complete"]}}, {"_id": 0, "live_transcription_status": 1, "live_transcription_message": 1, "elapsed_seconds": 1}, sort=[("created_at", -1)])
+    live = {"status": (live_upload or {}).get("live_transcription_status", "idle"), "message": (live_upload or {}).get("live_transcription_message"), "elapsed_seconds": (live_upload or {}).get("elapsed_seconds", 0)}
+    if not version: return {"version": None, "segments": [], "mappings": [], "live": live}
     segments = await db.board_transcript_segments.find({"transcript_version_id": version["transcript_version_id"]}, {"_id": 0}).sort("order", 1).to_list(10000)
     for segment in segments: segment["person"] = await person_summary(db, segment.get("person_id")) if segment.get("person_id") else None
     mappings = await db.board_speaker_mappings.find({"meeting_id": meeting_id}, {"_id": 0}).to_list(100)
-    return {**serialize(version), "segments": serialize(segments), "mappings": serialize(mappings)}
+    return {**serialize(version), "segments": serialize(segments), "mappings": serialize(mappings), "live": live}
 
 
 async def create_corrected_transcript(meeting_id: str, actor_user_id: str, text_correction: TranscriptSegmentCorrection | None = None):

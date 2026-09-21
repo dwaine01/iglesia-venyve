@@ -1,50 +1,37 @@
 """Transcripción diarizada y artefactos IA de Junta; nunca publica minutas."""
 import json
-import tempfile
 from datetime import datetime, timezone
 from uuid import uuid4
 
 from bson import ObjectId
-from motor.motor_asyncio import AsyncIOMotorGridFSBucket
-
 from board_ai_provider import BoardAIProviderUnavailable, get_board_ai_provider
+from board_live_transcription import transcribe_final_recording
 from door_board_catalog import BOARD_ID
 from door_board_engine import person_summary, serialize
-from meeting_transcription import TranscriptionProviderUnavailable, get_transcription_provider
+from meeting_transcription import TranscriptionProviderUnavailable
 
 
 async def transcribe_recording(db, recording_id: str) -> None:
-    oid = ObjectId(recording_id); bucket = AsyncIOMotorGridFSBucket(db, bucket_name="board_recordings")
+    oid = ObjectId(recording_id)
     file_doc = await db["board_recordings.files"].find_one({"_id": oid})
     if not file_doc: return
-    provider = get_transcription_provider()
-    if not provider.is_configured():
-        await db["board_recordings.files"].update_one({"_id": oid}, {"$set": {"metadata.transcription_status": "blocked", "metadata.transcription_message": "Identificación de participantes pendiente de procesamiento STT diarizado.", "metadata.transcription_provider": provider.provider_key}})
+    status = file_doc.get("metadata", {}).get("transcription_status")
+    if status == "completed":
         return
-    await db["board_recordings.files"].update_one({"_id": oid}, {"$set": {"metadata.transcription_status": "processing", "metadata.transcription_provider": provider.provider_key, "metadata.transcription_started_at": datetime.now(timezone.utc)}})
-    suffix = ".webm" if "webm" in file_doc.get("metadata", {}).get("content_type", "") else ".wav"
+    claimed = await db["board_recordings.files"].update_one(
+        {"_id": oid, "metadata.transcription_status": {"$nin": ["processing", "completed"]}},
+        {"$set": {"metadata.transcription_status": "processing", "metadata.transcription_started_at": datetime.now(timezone.utc)}},
+    )
+    if not claimed.modified_count:
+        return
     try:
-        source = await bucket.open_download_stream(oid)
-        with tempfile.NamedTemporaryFile(suffix=suffix) as audio:
-            while True:
-                block = await source.read(1024 * 1024)
-                if not block: break
-                audio.write(block)
-            source.close(); audio.flush(); audio.seek(0)
-            result = await provider.transcribe(audio, f"meeting{suffix}", file_doc["metadata"].get("content_type", "audio/webm"))
-        meeting_id = file_doc["metadata"]["meeting_id"]
-        latest = await db.board_transcript_versions.find_one({"meeting_id": meeting_id}, {"_id": 0}, sort=[("version", -1)])
-        version = int((latest or {}).get("version", 0)) + 1; transcript_id = str(uuid4()); now = datetime.now(timezone.utc)
-        segments = result.get("segments") or result.get("utterances") or []
-        doc = {"_id": transcript_id, "transcript_version_id": transcript_id, "meeting_id": meeting_id, "recording_id": recording_id, "version": version, "kind": "original_diarized", "full_text": result.get("text", ""), "language": result.get("language"), "immutable": True, "created_at": now}
-        await db.board_transcript_versions.insert_one(doc)
-        if segments:
-            await db.board_transcript_segments.insert_many([{"_id": str(uuid4()), "segment_id": str(uuid4()), "transcript_version_id": transcript_id, "meeting_id": meeting_id, "order": index, "speaker_label": item.get("speaker") or item.get("speaker_label") or "Speaker ?", "person_id": None, "start_seconds": item.get("start"), "end_seconds": item.get("end"), "text": item.get("text", ""), "created_at": now} for index, item in enumerate(segments)])
-        await db["board_recordings.files"].update_one({"_id": oid}, {"$set": {"metadata.transcription_status": "completed", "metadata.transcript_version_id": transcript_id, "metadata.transcription_completed_at": now}})
+        await transcribe_final_recording(db, recording_id)
     except TranscriptionProviderUnavailable:
         await db["board_recordings.files"].update_one({"_id": oid}, {"$set": {"metadata.transcription_status": "blocked", "metadata.transcription_message": "Identificación de participantes pendiente de procesamiento STT diarizado.", "metadata.transcription_completed_at": datetime.now(timezone.utc)}})
+        await db.board_recording_uploads.update_one({"recording_id": oid}, {"$set": {"live_transcription_status": "blocked", "live_job_active": False, "updated_at": datetime.now(timezone.utc)}})
     except Exception as exc:
         await db["board_recordings.files"].update_one({"_id": oid}, {"$set": {"metadata.transcription_status": "failed", "metadata.transcription_error": type(exc).__name__, "metadata.transcription_completed_at": datetime.now(timezone.utc)}})
+        await db.board_recording_uploads.update_one({"recording_id": oid}, {"$set": {"live_transcription_status": "retry", "live_transcription_message": type(exc).__name__, "live_job_active": False, "updated_at": datetime.now(timezone.utc)}})
 
 
 async def collect_meeting_sources(db, meeting_id: str) -> dict:
