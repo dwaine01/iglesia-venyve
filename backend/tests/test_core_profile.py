@@ -96,15 +96,10 @@ async def test_profile_returns_header_and_sections(client):
     domain_sections = sections[1:]
     expected_keys = ["contacto", "direcciones", "ministerio_servicio", *[key for key, _ in PLANNED_DOMAINS]]
     assert [section["section_key"] for section in domain_sections] == expected_keys
-    restricted_keys = {
-        "contacto", "direcciones", "llegada_origen", "familia",
-        "household", "asistencia", "historial", "ministerio_servicio",
-    }
+    restricted_keys = {section["section_key"] for section in domain_sections}
     for section in domain_sections:
-        expected_status = (
-            "access_restricted" if section["section_key"] in restricted_keys else "module_unavailable"
-        )
-        assert section["status_code"] == expected_status
+        assert section["section_key"] in restricted_keys
+        assert section["status_code"] == "access_restricted"
         assert section["summary"] is None
         assert section["status_label"] not in ("Pendiente", "No completado", "No miembro")
 

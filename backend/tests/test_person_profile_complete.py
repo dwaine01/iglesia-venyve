@@ -115,6 +115,17 @@ async def test_complete_profile_block_is_modular_visible_and_persistent():
             assert arrival.status_code == 200
             assert attendance.status_code == 201
             assert note.status_code == 201
+            baptism = await client.put(
+                f"/api/core/persons/{person_id}/baptism",
+                json={
+                    "status": "completed",
+                    "baptism_date": "2025-07-20",
+                    "location": "Casa de Oración Ven y Ve",
+                    "officiant_name": "Pastor de prueba",
+                    "testimony": "Registro verificable de bautismo.",
+                },
+            )
+            assert baptism.status_code == 200, baptism.text
 
             init = await client.post(
                 f"/api/core/persons/{person_id}/photo/uploads",
@@ -142,7 +153,7 @@ async def test_complete_profile_block_is_modular_visible_and_persistent():
             body = profile.json()
             assert body["sections_available"] == [
                 "resumen", "contacto", "direcciones", "household",
-                "familia", "procesos", "asistencia", "historial",
+                "familia", "procesos", "asistencia", "historial", "membresia", "bautismo",
             ]
             assert body["sections_planned"] == []
             assert body["profile_can_write"] is True
@@ -156,6 +167,7 @@ async def test_complete_profile_block_is_modular_visible_and_persistent():
             assert body["llegada_origen"]["lugar_origen"] == "Santiago"
             assert body["asistencia"][0]["actividad"] == "Servicio dominical"
             assert body["notas"][0]["categoria"] == "seguimiento"
+            assert body["bautismo"]["status"] == "completed"
             assert len(body["historial"]) >= 6
             assert len(body["procesos"]) == 1
             assert body["procesos"][0]["process_key"] == "consolidation"
@@ -164,13 +176,14 @@ async def test_complete_profile_block_is_modular_visible_and_persistent():
             statuses = {item["section_key"]: item["status_code"] for item in body["sections"]}
             for built in ("llegada_origen", "familia", "household", "asistencia", "historial", "ministerio_servicio", "celula"):
                 assert statuses[built] == "has_summary" if built not in {"ministerio_servicio", "celula"} else "no_record"
-            assert statuses["consolidacion"] == "has_summary"
-            for unavailable in (
-                "membership", "bautismo", "bienvenida", "discipulado",
-            ):
-                assert statuses[unavailable] == "module_unavailable"
+            assert statuses["consolidacion"] == "in_progress"
+            assert statuses["membership"] == "no_record"
+            assert statuses["bautismo"] == "has_summary"
+            assert statuses["bienvenida"] == "in_progress"
+            assert statuses["discipulado"] == "no_record"
             for integrated_without_record in ("ley7", "mentor_acompanamiento", "cap"):
                 assert statuses[integrated_without_record] == "no_record"
+            assert all(item["status_code"] != "module_unavailable" for item in body["sections"])
 
             person_doc = await server.db.persons.find_one({"_id": created.json()["_id"]}) if "_id" in created.json() else await server.db.persons.find_one({"person_number": created.json()["person_number"]})
             for forbidden in ("household", "familia", "asistencia", "notas", "procesos"):
@@ -186,6 +199,7 @@ async def test_complete_profile_block_is_modular_visible_and_persistent():
             })
             for collection in (
                 server.db.person_arrivals,
+                server.db.person_baptisms,
                 server.db.person_attendance,
                 server.db.person_notes,
                 server.db.person_activity,

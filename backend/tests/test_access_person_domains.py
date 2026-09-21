@@ -113,7 +113,7 @@ async def test_explicit_capability_and_scope_enable_visible_profile_domains(scop
     body = profile.json()
     assert body["sections_available"] == [
         "resumen", "contacto", "direcciones", "household",
-        "familia", "procesos", "asistencia", "historial",
+        "familia", "procesos", "asistencia", "historial", "membresia", "bautismo",
     ]
     assert body["sections_planned"] == []
     assert body["header"]["primary_contact"] == "8095550101"
@@ -131,11 +131,10 @@ async def test_explicit_capability_and_scope_enable_visible_profile_domains(scop
     }
     assert domain_statuses["contacto"] == "has_summary"
     assert domain_statuses["direcciones"] == "has_summary"
-    expected_unavailable = {
-        "membership", "bautismo", "bienvenida", "discipulado",
-    }
-    assert expected_unavailable.issubset(domain_statuses)
-    assert {domain_statuses[key] for key in expected_unavailable} == {"module_unavailable"}
+    newly_connected = {"membership", "bautismo", "bienvenida", "discipulado"}
+    assert newly_connected.issubset(domain_statuses)
+    assert {domain_statuses[key] for key in newly_connected} == {"no_record"}
+    assert "module_unavailable" not in domain_statuses.values()
     # historial now shows has_summary because contact/address CRUD records activity
     # ministerio_servicio is now a real domain, shows no_record when no assignments
     for built_key in ("llegada_origen", "familia", "household", "asistencia", "ministerio_servicio", "celula", "consolidacion", "ley7", "mentor_acompanamiento", "cap"):

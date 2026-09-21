@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import { BookHeart, CheckCircle2, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -9,6 +10,8 @@ import { Button } from '../../components/ui/button';
 import { Checkbox } from '../../components/ui/checkbox';
 
 export default function DiscipleshipPage() {
+  const [searchParams] = useSearchParams();
+  const requestedPersonId = searchParams.get('person');
   const { API, getAuthHeaders } = useAuth();
   const [items, setItems] = useState([]);
   const [selected, setSelected] = useState(null);
@@ -17,10 +20,10 @@ export default function DiscipleshipPage() {
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const load = useCallback(async () => {
-    try { const response = await axios.get(`${API}/api/processes/enrollments?process_key=discipleship`, getAuthHeaders()); setItems(response.data.items || []); setSelected((current) => current || response.data.items?.[0] || null); setError(''); }
+    try { const response = await axios.get(`${API}/api/processes/enrollments?process_key=discipleship`, getAuthHeaders()); const loaded = response.data.items || []; const requested = loaded.find((item) => item.person_id === requestedPersonId); setItems(loaded); setSelected((current) => requested || current || loaded[0] || null); setError(''); }
     catch (requestError) { setError(requestError?.response?.data?.detail || 'No se pudo cargar Discipulado'); }
     finally { setLoading(false); }
-  }, [API, getAuthHeaders]);
+  }, [API, getAuthHeaders, requestedPersonId]);
   const loadDetail = useCallback(async () => {
     if (!selected) return setDetail(null);
     const response = await axios.get(`${API}/api/processes/enrollments/${selected.enrollment_id}`, getAuthHeaders()); setDetail(response.data);

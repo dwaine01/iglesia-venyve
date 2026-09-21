@@ -49,6 +49,9 @@ const statusContent = (section) => {
   if (section.status_code === 'has_summary') {
     return { label: 'Registrado', classes: 'bg-emerald-50 text-emerald-700 border-emerald-100' };
   }
+  if (section.status_code === 'in_progress') {
+    return { label: 'En proceso', classes: 'bg-blue-50 text-blue-700 border-blue-200' };
+  }
   if (section.status_code === 'no_record') {
     return { label: 'Sin registros', classes: 'bg-gray-100 text-gray-600 border-gray-200' };
   }
@@ -98,15 +101,15 @@ export default function Profile360Summary({ sections, available, onSelect }) {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-start justify-between gap-2">
                     <h3 className="text-sm font-semibold text-[#101D36]">{section.status_label}</h3>
-                    <Badge variant="outline" className={`shrink-0 border px-2 py-0.5 text-[10px] font-medium ${status.classes}`}>
+                    <Badge variant="outline" className={`shrink-0 border px-2 py-0.5 text-[10px] font-medium ${status.classes}`} data-testid={`resumen-360-status-${section.section_key}`}>
                       {status.label}
                     </Badge>
                   </div>
-                  <p className={`mt-1 line-clamp-2 text-sm ${unavailable ? 'text-gray-400' : 'text-gray-600'}`}>
+                  <p className={`mt-1 line-clamp-2 text-sm ${unavailable ? 'text-gray-400' : 'text-gray-600'}`} data-testid={`resumen-360-summary-${section.section_key}`}>
                     {section.summary || (unavailable ? 'Módulo aún no disponible' : restricted ? 'Información protegida por permisos' : 'Sin registros todavía')}
                   </p>
                   {!unavailable && (
-                    <p className="mt-1 text-xs text-gray-400">{canOpen ? 'Ver información' : 'Fuente protegida'}</p>
+                    <p className="mt-1 text-xs text-gray-400">{canOpen ? 'Abrir módulo' : 'Fuente protegida'}</p>
                   )}
                 </div>
                 {canOpen && <ChevronRight className="mt-auto h-4 w-4 shrink-0 text-gray-400 transition-transform group-hover:translate-x-0.5" />}

@@ -103,7 +103,7 @@ async def test_mentor_and_pastor_use_same_canonical_profile_with_different_permi
         assert statuses["contacto"] == "access_restricted"
         assert statuses["household"] == "access_restricted"
         assert statuses["asistencia"] == "no_record"
-        assert statuses["discipulado"] == "module_unavailable"
+        assert statuses["discipulado"] == "access_restricted"
 
         forbidden_write = await mentor.post(
             f"/api/core/persons/{person_id}/attendance",

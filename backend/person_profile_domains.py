@@ -48,6 +48,23 @@ MAX_PHOTO_BYTES = 5 * 1024 * 1024
 PHOTO_CHUNK_BYTES = 512 * 1024
 PHOTO_UPLOAD_TTL_SECONDS = 60 * 60
 ALLOWED_PHOTO_TYPES = {"image/jpeg", "image/png", "image/webp"}
+PROCESS_PROFILE_ROUTES = {
+    "seven_weeks": "/procesos/7-semanas",
+    "consolidation": "/procesos/consolidacion",
+    "mentorship": "/procesos/mentoria",
+    "cap": "/procesos/cap",
+    "discipleship": "/procesos/discipulado",
+}
+
+
+def process_profile_route(item: dict) -> str:
+    process_key = item["process_key"]
+    enrollment_id = item.get("enrollment_id")
+    if enrollment_id and process_key == "seven_weeks":
+        return f"/procesos/7-semanas/{enrollment_id}"
+    if enrollment_id and process_key == "consolidation" and int(item.get("definition_version") or 1) >= 2:
+        return f"/procesos/consolidacion/{enrollment_id}"
+    return PROCESS_PROFILE_ROUTES.get(process_key, "/procesos/dashboard")
 
 def iso_z(value: Optional[datetime]) -> Optional[str]:
     if value is None:
@@ -193,6 +210,37 @@ class ArrivalPayload(BaseModel):
     @classmethod
     def clean_fields(cls, value: Optional[str]) -> Optional[str]:
         return clean_optional(value)
+
+
+class BaptismPayload(BaseModel):
+    status: Literal["pending", "scheduled", "completed"] = "pending"
+    baptism_date: Optional[str] = None
+    location: Optional[str] = Field(default=None, max_length=180)
+    officiant_name: Optional[str] = Field(default=None, max_length=140)
+    testimony: Optional[str] = Field(default=None, max_length=3000)
+    notes: Optional[str] = Field(default=None, max_length=2000)
+
+    @field_validator("baptism_date")
+    @classmethod
+    def valid_baptism_date(cls, value: Optional[str]) -> Optional[str]:
+        value = clean_optional(value)
+        if value:
+            try:
+                datetime.fromisoformat(value)
+            except ValueError as exc:
+                raise ValueError("fecha de bautismo inválida") from exc
+        return value
+
+    @field_validator("location", "officiant_name", "testimony", "notes")
+    @classmethod
+    def clean_baptism_fields(cls, value: Optional[str]) -> Optional[str]:
+        return clean_optional(value)
+
+    @model_validator(mode="after")
+    def require_date_when_confirmed(self):
+        if self.status in {"scheduled", "completed"} and not self.baptism_date:
+            raise ValueError("Indique la fecha de bautismo")
+        return self
 
 
 class AttendancePayload(BaseModel):
@@ -422,10 +470,15 @@ async def profile_domain_snapshot(person_id: str, current_user: dict) -> dict:
     process_docs = (
         await db.process_enrollments.find(
             {"person_id": person_id},
-            {"_id": 0, "enrollment_id": 1, "process_key": 1, "status": 1, "current_stage_key": 1, "progress_pct": 1, "next_action": 1, "next_action_at": 1, "responsible_person_id": 1, "ready_for_cellular": 1},
+            {"_id": 0, "enrollment_id": 1, "process_key": 1, "definition_version": 1, "status": 1, "current_stage_key": 1, "progress_pct": 1, "next_action": 1, "next_action_at": 1, "responsible_person_id": 1, "ready_for_cellular": 1, "updated_at": 1},
         ).sort("updated_at", -1).to_list(100)
         if permissions["procesos"]["read"]
         else []
+    )
+    baptism = (
+        await db.person_baptisms.find_one({"person_id": person_id}, {"_id": 0})
+        if permissions["procesos"]["read"]
+        else None
     )
     process_names = {
         "seven_weeks": "Ley de las 7 Semanas",
@@ -466,12 +519,43 @@ async def profile_domain_snapshot(person_id: str, current_user: dict) -> dict:
                 "label": process_names.get(item["process_key"], item["process_key"]),
                 "status_code": item.get("status"),
                 "status_label": process_status_labels.get(item.get("status"), item.get("status", "")),
-                "route": f"/procesos/{'7-semanas' if item['process_key'] == 'seven_weeks' else item['process_key']}",
+                "route": process_profile_route(item),
             }
             for item in process_docs
         ],
+        "bautismo": baptism,
         "celula": cell_memberships,
     }
+
+
+@router.get("/{person_id}/baptism", response_model=dict)
+async def get_baptism(person_id: str, current_user: dict = Depends(require_person_profile_user)):
+    await authorize_domain(person_id, current_user, PROCESSES_READ)
+    record = await db.person_baptisms.find_one({"person_id": person_id}, {"_id": 0})
+    return {"exists": bool(record), "record": record}
+
+
+@router.put("/{person_id}/baptism", response_model=dict)
+async def save_baptism(person_id: str, payload: BaptismPayload, current_user: dict = Depends(require_person_profile_user)):
+    await authorize_domain(person_id, current_user, PROCESSES_WRITE)
+    existing = await db.person_baptisms.find_one({"person_id": person_id}, {"_id": 0, "baptism_id": 1})
+    now = now_utc()
+    baptism_id = (existing or {}).get("baptism_id") or str(uuid4())
+    values = {
+        "baptism_id": baptism_id,
+        "person_id": person_id,
+        **payload.model_dump(),
+        "updated_by_user_id": current_user.get("user_id"),
+        "updated_at": now,
+    }
+    await db.person_baptisms.update_one(
+        {"person_id": person_id},
+        {"$set": values, "$setOnInsert": {"created_at": now, "created_by_user_id": current_user.get("user_id")}},
+        upsert=True,
+    )
+    summary = "Bautismo completado" if payload.status == "completed" else "Bautismo actualizado"
+    await record_activity(person_id, current_user, "bautismo", "updated", summary)
+    return await db.person_baptisms.find_one({"person_id": person_id}, {"_id": 0})
 
 
 @router.put("/{person_id}/profile-basics")
@@ -895,6 +979,7 @@ async def ensure_indexes() -> None:
     await db.person_households.create_index("person_id", unique=True)
     await db.person_family.create_index([("person_id", 1), ("created_at", 1)])
     await db.person_arrivals.create_index("person_id", unique=True)
+    await db.person_baptisms.create_index("person_id", unique=True)
     await db.person_attendance.create_index([("person_id", 1), ("fecha", -1)])
     await db.person_notes.create_index([("person_id", 1), ("created_at", -1)])
     await db.person_activity.create_index([("person_id", 1), ("created_at", -1)])

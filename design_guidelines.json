@@ -1,118 +1,178 @@
 {
-  "project_name": "Ven y Ve 360 - Grupos Frontales (Front Groups)",
-  "version": "2.0.0",
-  "theme": "hybrid_light_slate_gold",
+  "project_name": "Ven y Ve 360 - Perfil 360 Full Module Activation",
+  "design_archetype": "Swiss & High-Contrast / Institutional Warmth (Navy & Gold)",
+  "context_type": "WEB APP / HYBRID DASHBOARD",
+  "theme": {
+    "mode": "light",
+    "primary_background": "#F7F5EF",
+    "card_background": "#FFFFFF",
+    "card_border": "#E8E5DE",
+    "hover_border": "#C8A951",
+    "accent_gold": "#C8A951",
+    "accent_gold_dark": "#785E24",
+    "accent_gold_light": "#F4EBCF",
+    "navy_primary": "#101D36",
+    "navy_secondary": "#132443",
+    "text_dark": "#101D36",
+    "text_muted": "#64748B"
+  },
   "typography": {
-    "font_families": {
-      "heading": "Spectral, serif",
-      "body": "IBM Plex Sans, sans-serif",
-      "mono": "JetBrains Mono, monospace"
+    "headings": {
+      "font_family": "Spectral, serif",
+      "weights": ["font-bold", "font-semibold"],
+      "h1": "text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-[#101D36]",
+      "h2": "text-2xl sm:text-3xl font-bold tracking-tight text-[#101D36]",
+      "h3": "text-lg sm:text-xl font-semibold text-[#101D36]"
     },
-    "hierarchy": {
-      "h1": "text-3xl sm:text-4xl lg:text-5xl font-semibold tracking-tight leading-none font-['Spectral']",
-      "h2": "text-2xl sm:text-3xl font-semibold tracking-tight font-['Spectral']",
-      "h3": "text-xl sm:text-2xl font-medium tracking-tight font-['Spectral']",
-      "h4": "text-lg font-medium text-slate-900 font-['Spectral']",
-      "body": "text-sm sm:text-base leading-relaxed text-slate-700 font-sans",
-      "caption": "text-xs font-mono uppercase tracking-widest text-slate-500"
+    "body": {
+      "font_family": "IBM Plex Sans, sans-serif",
+      "main": "text-sm sm:text-base leading-relaxed text-gray-700",
+      "subtext": "text-xs sm:text-sm text-gray-500"
     }
   },
   "colors": {
-    "archetype": "Institutional Swiss Luxury & Spiritual Warmth",
-    "base": {
-      "page_bg": "#F8FAFC",
-      "surface_bg": "#FFFFFF",
-      "surface_alt": "#F1F5F9",
-      "header_bg": "#0F172A",
-      "header_fg": "#F8FAFC"
+    "navy": {
+      "dark": "#101D36",
+      "medium": "#132443",
+      "light": "#1E3A8A"
     },
-    "brand_accents": {
-      "gold_primary": "#C8A951",
-      "gold_muted": "#E2CF8A",
-      "gold_dark": "#9A7B2A",
-      "amber_accent": "#D97706",
-      "emerald_active": "#059669",
-      "slate_border": "#E2E8F0"
+    "gold": {
+      "main": "#C8A951",
+      "dark": "#785E24",
+      "bg": "#F4EBCF",
+      "hover": "#B3933B"
     },
     "status_badges": {
-      "active": "bg-emerald-50 text-emerald-800 border-emerald-200",
-      "pending": "bg-amber-50 text-amber-800 border-amber-200",
-      "historic": "bg-slate-100 text-slate-700 border-slate-300",
-      "audit_alert": "bg-rose-50 text-rose-800 border-rose-200"
+      "registrado": {
+        "label": "Registrado",
+        "bg": "bg-emerald-50",
+        "text": "text-emerald-700",
+        "border": "border-emerald-200"
+      },
+      "en_proceso": {
+        "label": "En proceso",
+        "bg": "bg-blue-50",
+        "text": "text-blue-700",
+        "border": "border-blue-200"
+      },
+      "sin_registros": {
+        "label": "Sin registros",
+        "bg": "bg-gray-100",
+        "text": "text-gray-600",
+        "border": "border-gray-200"
+      },
+      "acceso_restringido": {
+        "label": "Acceso restringido",
+        "bg": "bg-amber-50",
+        "text": "text-amber-700",
+        "border": "border-amber-200"
+      }
     }
   },
-  "layout_strategy": {
-    "anti_nested_cards": "Strict prohibition of card-in-card stacking. Use high-contrast split panels with 1px hairline borders (`border-slate-200`), direct table views, and subtle background alternating rows.",
-    "bento_grid_mode": "Mode B (High-Density Dashboard with Left-to-Right Flow)",
-    "desktop_columns": "grid-cols-1 lg:grid-cols-[340px_1fr]",
-    "mobile_first": "Stack navigation & controls vertically on mobile screens (< 768px). Sidebar tree collapses into full-width accordion/drawer on mobile.",
-    "padding_rules": "Generous spacing philosophy: p-6 to p-8 inside primary control boxes. 12px min padding on interactive items to avoid text clipping."
-  },
-  "key_architectural_features": {
-    "recursive_tree_viewer": {
-      "concept": "Pastora -> Líderes -> Ramas -> Subramas sin límite fijo de profundidad",
-      "dual_role_handling": "A single canonical Persona can be displayed both as a member of an upper group AND as leader/owner of their own sub-branch with a 'Rol Dual' visual badge.",
-      "navigation": "Interactive node expand/collapse with active breadcrumbs trail showing branch ancestral chain."
+  "modules_activation_map": {
+    "membership": {
+      "title": "Membresía",
+      "icon": "UsersRound",
+      "data_source": "person_memberships",
+      "target_tab_or_route": "membresia",
+      "modal_or_drawer": "MembershipDocumentsSection",
+      "actions": ["Ver Carnet Digital", "Emitir Certificado de Membresía", "Actualizar Estado"]
     },
-    "work_inbox_and_delegation": {
-      "concept": "Bandeja de trabajo que desciende por el árbol y métricas que ascienden",
-      "features": [
-        "Task/Case assignment intake",
-        "Direct delegation to child sub-branches or specific canonical Personas",
-        "Ascending metric aggregates (personas alcanzadas, consolidaciones activas, retención semanal)"
-      ]
+    "bautismo": {
+      "title": "Bautismo",
+      "icon": "Droplets",
+      "data_source": "profile.bautismo",
+      "target_tab_or_route": "bautismo_editor",
+      "editable_fields": ["estado_bautismo", "fecha_bautismo", "lugar_bautismo", "ministro_bautizador", "notas"],
+      "actions": ["Registrar Bautismo", "Editar Fechado", "Adjuntar Testimonio"]
     },
-    "consolidation_authority_and_audit": {
-      "concept": "Consolidación conserva autoridad para revisar rotación semanal y confirmar/modificar asignaciones",
-      "audit_requirements": "Every manual rotation modification opens an audit dialog requiring mandatory reason (motivo) and records timestamp, editor ID, and prior assignment history."
+    "bienvenida": {
+      "title": "Bienvenida",
+      "icon": "Handshake",
+      "data_source": "profile.procesos.welcome_party",
+      "target_tab_or_route": "/procesos/consolidacion",
+      "actions": ["Ver Expediente de Bienvenida", "Asignar Anfitrión"]
     },
-    "cell_origin_vs_frontal_group": {
-      "concept": "Célula de Origen y Grupo Frontal Responsable son datos separados",
-      "configurable_link": "Configurable relation picker showing Cell ID vs Frontal Group ID with explicit override options."
+    "consolidacion": {
+      "title": "Consolidación",
+      "icon": "Sprout",
+      "target_tab_or_route": "/procesos/consolidacion",
+      "actions": ["Abrir Expediente de Consolidación"]
     },
-    "invasion_creation": {
-      "button_exact_label": "Crear invasión",
-      "integration": "Opens Mapa 360 modal/drawer preset with sector geometry selection, reusing existing GeoMaps component ecosystem without duplicating domains."
+    "ley7": {
+      "title": "Ley de las 7 Semanas",
+      "icon": "BookOpen",
+      "target_tab_or_route": "/procesos/7-semanas",
+      "actions": ["Ver Progreso de 7 Semanas", "Registrar Avance"]
     },
-    "pastoral_care_isolation": {
-      "security_rule": "Frontal Group membership NEVER grants access to Pastoral Care (Cuidado Pastoral) notes or confidential vault records.",
-      "ui_indicator": "Discreet padlock badge indicating Pastoral Care Vault is isolated under restricted access policy."
+    "discipulado": {
+      "title": "Discipulado",
+      "icon": "UsersRound",
+      "target_tab_or_route": "/procesos/discipulado",
+      "actions": ["Ver Nivel de Discipulado", "Matricular en Curso"]
+    },
+    "mentor_acompanamiento": {
+      "title": "Mentor / Acompañamiento",
+      "icon": "UserRound",
+      "target_tab_or_route": "/procesos/mentoria",
+      "actions": ["Asignar Mentor", "Ver Sesiones"]
+    },
+    "celula": {
+      "title": "Célula",
+      "icon": "Network",
+      "target_tab_or_route": "/celulas",
+      "actions": ["Asignar a Célula", "Ver Reportes de Asistencia"]
+    },
+    "ministerio_servicio": {
+      "title": "Ministerio / Servicio",
+      "icon": "BriefcaseBusiness",
+      "target_tab_or_route": "/ministerios",
+      "actions": ["Asignar Ministerio", "Ver Historial de Servicio"]
+    },
+    "cuidado_pastoral": {
+      "title": "Cuidado Pastoral",
+      "icon": "ShieldCheck",
+      "target_tab_or_route": "/pastoral",
+      "actions": ["Ver Historial Pastoral", "Programar Visita"]
     }
   },
-  "component_structure": {
-    "FrontGroupsPage.js": "Main layout container with sticky header, high-level metrics header, breadcrumbs, search, and dual-panel view.",
-    "FrontGroupTreeNav.js": "Recursive tree sidebar with depth indicators, search filter, active state indicator, and 'Crear Rama' action.",
-    "FrontGroupDetailPanel.js": "Structured workspace view featuring tabbed sections: (1) Resumen y Métricas Ascendentes, (2) Bandeja de Trabajo y Delegación, (3) Rotación Semanal y Consolidación, (4) Equipo y Rol Dual, (5) Vinculación Células.",
-    "FrontGroupDialog.js": "Dialog for creating/editing Frontal Groups & recursive sub-branches with parent_id binding.",
-    "FrontGroupAuditModal.js": "Audit confirmation dialog for Consolidación assignment overrides with mandatory motivo field.",
-    "FrontGroupInvasionDialog.js": "Modal triggering 'Crear invasión' using Mapa 360 sector & target link."
+  "layout_and_grid": {
+    "container": "mx-auto max-w-[1380px] space-y-4 px-3 py-4 sm:px-5 lg:px-7 lg:py-6",
+    "profile_summary_grid": "grid gap-3 sm:gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3",
+    "card_structure": {
+      "min_height": "min-h-[110px]",
+      "padding": "p-4 sm:p-5",
+      "border": "border border-[#DED8C9] hover:border-[#C8A951]/80 rounded-xl bg-white shadow-sm hover:shadow-md transition-all duration-200",
+      "icon_wrapper": "flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-[#F4EBCF] text-[#785E24]"
+    }
   },
-  "testing_and_data_attributes": {
-    "mandatory_data_testid": "Every interactive element, input, filter, badge, button, and dynamic list item MUST have explicit data-testid attributes.",
-    "test_id_examples": [
-      "front-groups-page",
-      "front-group-create-button",
-      "front-group-crear-invasion-button",
-      "front-group-tree-node-{groupId}",
-      "front-group-work-inbox",
-      "front-group-audit-reason-input",
-      "front-group-confirm-rotation-button",
-      "front-group-pastoral-isolation-badge",
-      "front-group-cell-link-select"
-    ]
+  "accessibility_and_testing": {
+    "data_testid_rules": "All cards, tab triggers, modal inputs, and CTA buttons MUST have explicit data-testid attributes (e.g. data-testid='resumen-360-card-bautismo', data-testid='bautismo-modal-submit')",
+    "contrast_compliance": "WCAG AA ratio 4.5:1 or APCA standards met. Dark navy text (#101D36) on light gold/cream backgrounds (#F4EBCF, #F7F5EF)."
   },
-  "image_urls": {
-    "map_reference": "https://images.unsplash.com/photo-1654099067467-c18c8dec1df4?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NTJ8MHwxfHNlYXJjaHwxfHxjb21tdW5pdHklMjBsZWFkZXIlMjB0ZWFtJTIwbWVudG9yaW5nJTIwY2h1cmNoJTIwbWFwfGVufDB8fHx8MTc4OTg1ODczM3ww&ixlib=rb-4.1.0&q=85",
-    "meeting_presentation": "https://images.pexels.com/photos/9034259/pexels-photo-9034259.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
-    "leader_profile_1": "https://images.unsplash.com/photo-1560250097-0b93528c311a?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NzZ8MHwxfHNlYXJjaHwxfHxwb3J0cmFpdCUyMHRlYW0lMjBsZWFkZXIlMjBwZXJzb24lMjBwcm9maWxlfGVufDB8fHx8MTc4OTg1ODczM3ww&ixlib=rb-4.1.0&q=85",
-    "leader_profile_2": "https://images.unsplash.com/photo-1607746882042-944635dfe10e?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NzZ8MHwxfHNlYXJjaHwyfHxwb3J0cmFpdCUyMHRlYW0lMjBsZWFkZXIlMjBwZXJzb24lMjBwcm9maWxlfGVufDB8fHx8MTc4OTg1ODczM3ww&ixlib=rb-4.1.0&q=85"
-  },
+  "image_urls": [
+    {
+      "url": "https://images.unsplash.com/photo-1681936482571-1829721350d0?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMzl8MHwxfHNlYXJjaHwzfHxjaHVyY2glMjBjb21tdW5pdHklMjBtZW1iZXIlMjBwb3J0cmFpdHxlbnwwfHx8fDE3OTAwMTE0ODJ8MA&ixlib=rb-4.1.0&q=85",
+      "category": "church_member_portrait",
+      "description": "Church community member portrait for profile testing"
+    },
+    {
+      "url": "https://images.pexels.com/photos/8675068/pexels-photo-8675068.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "category": "pastoral_care",
+      "description": "Pastor offering guidance in church environment"
+    }
+  ],
   "instructions_to_main_agent": [
-    "Preserve existing API contracts and add additive attributes for parent_group_id, child_branches, rotation_history, audit_logs, and origin_cell_id.",
-    "Do NOT hard delete any group or assignment; set status='inactive' or soft-archive to maintain audit history.",
-    "Ensure button text is EXACTLY 'Crear invasión' as mandated by prompt.",
-    "In the leader panel, build an intuitive work tray ('Bandeja de trabajo') showing active consolidations down the branch hierarchy.",
-    "Include empty state screens with contextual guidance for new branches with zero active groups.",
-    "Strictly enforce that Pastoral Care notes are never accessible from Front Group UI components."
-  ]
+    "Ensure ALL 16 cards in Perfil 360 are functional and clickable with real navigation or dialog modals.",
+    "ELIMINATE 'No disponible' / 'module_unavailable' statuses for implemented modules in Profile360Summary.js.",
+    "Implement real status handling for Membresía (person_memberships), Bautismo (editable state, date, place, minister, notes), and Bienvenida (welcome_party stage).",
+    "Keep existing brand aesthetics intact: Navy (#101D36), Gold (#C8A951), Warm Light Gray (#F7F5EF), Spectral serif headers, IBM Plex Sans body.",
+    "Ensure responsive layout on mobile and desktop viewports.",
+    "Preserve access control checks (permissions and role capabilities) when opening sensitive detail drawers or tabs."
+  ],
+  "UNIVERSAL GUIDELINES FOR MAIN AGENT": {
+    "testing_attribute": "Every interactive element, tab, card, and button must include data-testid.",
+    "no_transparent_overlays": "Never use pure transparent backgrounds on sticky headers or dropdowns. Always use backdrop blur and high opacity white/slate backgrounds.",
+    "toasts": "Use sonner for notifications."
+  }
 }

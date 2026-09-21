@@ -92,22 +92,28 @@ async def test_catalog_exposes_consolidation_v2_discipleship_and_required_format
         await cleanup_qa()
 
 
-# módulo: bloqueo de inscripción genérica en seven_weeks y consolidation
+# módulo: 7 Semanas vuelve a aceptar inscripciones; Consolidación conserva intake oficial
 @pytest.mark.asyncio
-async def test_generic_enrollment_endpoint_blocks_seven_weeks_and_consolidation():
+async def test_generic_enrollment_endpoint_allows_seven_weeks_and_blocks_consolidation():
     await cleanup_qa()
     pastor_email = await create_user("Enrollment Pastor", "pastor")
     person_id = await create_person("Enrollment Candidate")
     headers = await auth_headers(pastor_email)
     client = AsyncClient(transport=ASGITransport(app=server.app), base_url="http://test")
     try:
-        blocked_seven = await client.post(
-            "/api/processes/enrollments",
-            json={"process_key": "seven_weeks", "person_id": person_id, "status": "active"},
+        cycle = await client.post(
+            "/api/processes/cycles",
+            json={"name": f"QA Ley7 {uuid.uuid4().hex[:6]}", "start_date": "2026-10-01", "end_date": "2026-11-19", "status": "active"},
             headers=headers,
         )
-        assert blocked_seven.status_code == 409, blocked_seven.text
-        assert "Consolidación v2" in str(blocked_seven.json().get("detail"))
+        assert cycle.status_code == 201, cycle.text
+        allowed_seven = await client.post(
+            "/api/processes/enrollments",
+            json={"process_key": "seven_weeks", "person_id": person_id, "cycle_id": cycle.json()["cycle_id"], "status": "active"},
+            headers=headers,
+        )
+        assert allowed_seven.status_code == 201, allowed_seven.text
+        assert allowed_seven.json()["process_key"] == "seven_weeks"
 
         blocked_consolidation = await client.post(
             "/api/processes/enrollments",

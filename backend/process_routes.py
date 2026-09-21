@@ -349,8 +349,8 @@ async def list_enrollments(process_key: Optional[str] = None, cycle_id: Optional
 
 @router.post("/enrollments", status_code=status.HTTP_201_CREATED, response_model=dict)
 async def enroll(payload: EnrollmentCreate, current_user: dict = Depends(require_write)):
-    if payload.process_key in {"seven_weeks", "consolidation"}:
-        raise HTTPException(status_code=409, detail="Las nuevas inscripciones se realizan por el intake oficial de Consolidación v2; 7 Semanas permanece como histórico")
+    if payload.process_key == "consolidation":
+        raise HTTPException(status_code=409, detail="Las nuevas inscripciones de Consolidación se realizan por el intake oficial")
     person = await load_person(payload.person_id)
     authorize_person(current_user, person, PROCESSES_WRITE)
     responsible = payload.responsible_person_id or current_user.get("person_id")
