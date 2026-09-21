@@ -19,7 +19,7 @@ import { Skeleton } from '../components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs';
 import { displayLabel } from '../lib/displayLabels';
 import { PersonFinanceSection } from '../components/finance/PersonFinanceSection';
-import { MembershipDocumentsSection } from '../components/membership/MembershipDocumentsSection';
+import { BaptismSection, MembershipProfileSection } from '../components/PersonModuleSections';
 import { PersonArchiveDialog } from '../components/PersonArchiveDialog';
 import { PersonJourneyStatusStrip } from '../components/PersonJourneyStatusStrip';
 import { toast } from 'sonner';
@@ -27,8 +27,7 @@ import { canManageDirectMembership } from '../lib/accessControl';
 
 // P-001 Slice 2A - Person Profile 360 (shell full-screen).
 // Consume unicamente el read-model /api/core/persons/{id}/profile.
-// No inventa estados: si un dominio no tiene datos reales, se muestra tal
-// como el backend lo declara (module_unavailable / no_record / has_summary).
+// No inventa estados: cada dominio se muestra desde su fuente de verdad y permisos.
 const SECTION_LABELS = {
   resumen: 'Resumen',
   contacto: 'Contacto',
@@ -40,6 +39,7 @@ const SECTION_LABELS = {
   historial: 'Historial',
   finanzas: 'Finanzas',
   membresia: 'Carnet y certificado',
+  bautismo: 'Bautismo',
 };
 
 export default function PersonaPerfilPage() {
@@ -117,7 +117,7 @@ export default function PersonaPerfilPage() {
   const canArchive = user?.rol === 'pastor' && user?.person_id !== personId && profile?.identity?.account_role !== 'pastor';
   const allSections = [
     'resumen', 'contacto', 'direcciones', 'household',
-    'familia', 'procesos', 'asistencia', 'historial', ...(canViewFinance ? ['finanzas'] : []), ...(canManageMembershipDocuments ? ['membresia'] : []),
+    'familia', 'procesos', 'asistencia', 'historial', ...(available.includes('membresia') ? ['membresia'] : []), ...(available.includes('bautismo') ? ['bautismo'] : []), ...(canViewFinance ? ['finanzas'] : []),
   ];
 
   const archivePerson = async () => {
@@ -198,13 +198,13 @@ export default function PersonaPerfilPage() {
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
           <div className="overflow-hidden rounded-xl border border-[#E8E5DE] bg-[#EEECE6] p-1 shadow-sm">
-            <TabsList className="grid h-auto w-full grid-cols-4 gap-1 bg-transparent p-0 lg:grid-cols-10">
+            <TabsList className="grid h-auto w-full grid-cols-3 gap-1 bg-transparent p-0 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-12">
               {allSections.map((section) => (
                 <TabsTrigger
                   key={section}
                   value={section}
                   data-testid={`profile-tab-${section}`}
-                  disabled={!available.includes(section) && section !== 'finanzas' && section !== 'membresia'}
+                  disabled={!available.includes(section) && section !== 'finanzas'}
                   className="min-h-9 rounded-lg px-2 text-xs font-medium text-gray-600 data-[state=active]:bg-white data-[state=active]:text-[#101D36] data-[state=active]:shadow-sm sm:text-sm"
                 >
                   {SECTION_LABELS[section] || displayLabel(section, 'Sección')}
@@ -281,9 +281,15 @@ export default function PersonaPerfilPage() {
             </TabsContent>
           )}
 
-          {canManageMembershipDocuments && (
+          {available.includes('membresia') && (
             <TabsContent value="membresia" className="mt-0">
-              <MembershipDocumentsSection personId={personId} photoSrc={photoSrc} />
+              <MembershipProfileSection personId={personId} membership={profile.membership} canManage={canManageMembershipDocuments} photoSrc={photoSrc} />
+            </TabsContent>
+          )}
+
+          {available.includes('bautismo') && (
+            <TabsContent value="bautismo" className="mt-0">
+              <BaptismSection personId={personId} record={profile.bautismo} canWrite={profile.permissions?.procesos?.write} API={API} getAuthHeaders={getAuthHeaders} onChanged={refreshProfile} />
             </TabsContent>
           )}
 

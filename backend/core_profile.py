@@ -40,8 +40,8 @@ from care_service import has_care_entry, profile_care_section
 
 router = APIRouter(prefix="/api/core", tags=["core-profile"])
 
-# Catalogo del agregador 360. Cada dominio conserva su fuente de verdad;
-# mientras no exista integracion real se declara module_unavailable.
+# Catálogo del agregador 360. Cada dominio conserva su fuente de verdad y
+# se proyecta como disponible, sin registros o restringido según permisos.
 PLANNED_DOMAINS = [
     ("llegada_origen", "Llegada y origen"),
     ("membership", "Membresía"),
@@ -314,6 +314,8 @@ async def get_person_profile(person_id: str, current_user: dict = Depends(requir
         }
         for tab_key in ("household", "familia", "procesos", "asistencia", "historial"):
             (available if tab_access[tab_key] else planned).append(tab_key)
+        if permissions["procesos"]["read"]:
+            available.extend(["membresia", "bautismo"])
 
         household = snapshot["household"]
         family = snapshot["familia"]
@@ -322,6 +324,7 @@ async def get_person_profile(person_id: str, current_user: dict = Depends(requir
         history = snapshot["historial"]
         ministries = snapshot["ministerios"]
         processes = snapshot.get("procesos", [])
+        baptism = snapshot.get("bautismo")
         cell_memberships = snapshot.get("celula", [])
         built_sections = {
             "llegada_origen": (
@@ -395,11 +398,21 @@ async def get_person_profile(person_id: str, current_user: dict = Depends(requir
         built_sections["celula"]["tab_key"] = "procesos"
         if cell_memberships:
             built_sections["celula"]["route"] = cell_memberships[0]["route"]
+        else:
+            built_sections["celula"]["route"] = "/celulas"
         process_domain_map = {
             "consolidacion": ("consolidation", "Consolidación"),
             "ley7": ("seven_weeks", "Ley de las 7 Semanas"),
+            "discipulado": ("discipleship", "Discipulado"),
             "mentor_acompanamiento": ("mentorship", "Mentoría"),
             "cap": ("cap", "CAP"),
+        }
+        process_routes = {
+            "consolidation": "/procesos/consolidacion",
+            "seven_weeks": "/procesos/7-semanas",
+            "discipleship": "/procesos/discipulado",
+            "mentorship": "/procesos/mentoria",
+            "cap": "/procesos/cap",
         }
         for section_key, (process_key, label) in process_domain_map.items():
             enrollments = [item for item in processes if item.get("process_key") == process_key]
@@ -411,12 +424,65 @@ async def get_person_profile(person_id: str, current_user: dict = Depends(requir
                     if enrollment.get("current_stage_name"):
                         summary = f"{summary} · {enrollment['current_stage_name']}"
                 section = _domain_section(section_key, label, enrollments, summary)
-                if enrollment and enrollment.get("route"):
-                    section["route"] = enrollment["route"]
+                if enrollment and enrollment.get("status") in {"planned", "active", "paused"}:
+                    section["status_code"] = "in_progress"
+                section["route"] = enrollment.get("route") if enrollment else process_routes[process_key]
+                if enrollment and process_key in {"discipleship", "mentorship", "cap"}:
+                    section["route"] = f"{process_routes[process_key]}?person={person_id}"
             else:
                 section = _restricted_section(section_key, label, "procesos")
             section["tab_key"] = "procesos"
             built_sections[section_key] = section
+
+        if permissions["procesos"]["read"]:
+            membership = await db.person_memberships.find_one(
+                {"person_id": person_id},
+                {"_id": 0, "membership_id": 1, "member_number": 1, "status": 1, "legacy_membership": 1, "acceptance_signed_at": 1, "certificate_issue_date": 1, "card_issue_date": 1, "card_expiration_date": 1, "updated_at": 1},
+            )
+            response["membership"] = membership
+            membership_summary = None
+            if membership:
+                membership_status = {"active": "Activa", "inactive": "Inactiva", "pending": "Pendiente"}.get(membership.get("status"), "Registrada")
+                membership_summary = f"{membership.get('member_number', 'Número pendiente')} · {membership_status}"
+            membership_section = _domain_section("membership", "Membresía", [membership] if membership else [], membership_summary)
+            membership_section["tab_key"] = "membresia"
+            built_sections["membership"] = membership_section
+
+            response["bautismo"] = baptism
+            baptism_summary = None
+            if baptism:
+                baptism_summary = {
+                    "completed": f"Completado · {baptism.get('baptism_date') or 'Fecha pendiente'}",
+                    "scheduled": f"Programado · {baptism.get('baptism_date') or 'Fecha pendiente'}",
+                    "pending": "Pendiente de programación",
+                }.get(baptism.get("status"), "Registro disponible")
+            baptism_section = _domain_section("bautismo", "Bautismo", [baptism] if baptism else [], baptism_summary)
+            if baptism and baptism.get("status") in {"pending", "scheduled"}:
+                baptism_section["status_code"] = "in_progress"
+            baptism_section["tab_key"] = "bautismo"
+            built_sections["bautismo"] = baptism_section
+
+            consolidation = next((item for item in processes if item.get("process_key") == "consolidation"), None)
+            welcome_stage = None
+            if consolidation:
+                welcome_stage = await db.process_stage_progress.find_one(
+                    {"enrollment_id": consolidation["enrollment_id"], "stage_key": "welcome_party"},
+                    {"_id": 0, "status": 1, "completed_at": 1, "updated_at": 1},
+                )
+            welcome_items = [welcome_stage or consolidation] if consolidation else []
+            welcome_summary = None
+            if welcome_stage and welcome_stage.get("status") == "completed":
+                welcome_summary = "Fiesta de Bienvenida completada"
+            elif consolidation:
+                welcome_summary = "Integrada en la ruta de Consolidación"
+            welcome_section = _domain_section("bienvenida", "Bienvenida", welcome_items, welcome_summary)
+            if consolidation and (not welcome_stage or welcome_stage.get("status") != "completed"):
+                welcome_section["status_code"] = "in_progress"
+            welcome_section["route"] = consolidation.get("route") if consolidation else "/procesos/consolidacion"
+            built_sections["bienvenida"] = welcome_section
+        else:
+            for section_key, label in (("membership", "Membresía"), ("bautismo", "Bautismo"), ("bienvenida", "Bienvenida"), ("discipulado", "Discipulado")):
+                built_sections[section_key] = _restricted_section(section_key, label, "procesos")
         
         # Ministerio/Servicio is now a real domain, add it separately
         ministries_section = (
@@ -437,6 +503,8 @@ async def get_person_profile(person_id: str, current_user: dict = Depends(requir
         ministries_section["tab_key"] = "procesos"
         if len(ministries) == 1:
             ministries_section["route"] = ministries[0]["ministry_path"]
+        else:
+            ministries_section["route"] = "/ministerios"
         domain_sections.append(ministries_section)
         
         response.update(snapshot)
@@ -450,6 +518,15 @@ async def get_person_profile(person_id: str, current_user: dict = Depends(requir
             "household": _restricted_section("household", "Household", "household"),
             "asistencia": _restricted_section("asistencia", "Asistencia", "asistencia"),
             "historial": _restricted_section("historial", "Historial", "historial"),
+            "membership": _restricted_section("membership", "Membresía", "procesos"),
+            "bautismo": _restricted_section("bautismo", "Bautismo", "procesos"),
+            "bienvenida": _restricted_section("bienvenida", "Bienvenida", "procesos"),
+            "consolidacion": _restricted_section("consolidacion", "Consolidación", "procesos"),
+            "ley7": _restricted_section("ley7", "Ley de las 7 Semanas", "procesos"),
+            "discipulado": _restricted_section("discipulado", "Discipulado", "procesos"),
+            "mentor_acompanamiento": _restricted_section("mentor_acompanamiento", "Mentoría", "procesos"),
+            "cap": _restricted_section("cap", "CAP", "procesos"),
+            "celula": _restricted_section("celula", "Célula", "procesos"),
         }
         # Ministerio/Servicio restricted when no snapshot
         ministries_section = _restricted_section(

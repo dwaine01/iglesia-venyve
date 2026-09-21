@@ -613,6 +613,21 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - Certificación Iteración 36: backend 5/5 PASS, frontend desktop/móvil PASS, control seleccionable, input histórico visible y overflow `[]`; sin APIs MOCKED.
 - Limpieza verificada: `iteration36_users=0`, `iteration36_people=0`, `iteration36_members=0`.
 
+### PERFIL 360 — ACTIVACIÓN TOTAL DE MÓDULOS — COMPLETADO 2026‑09‑21
+
+- Las 17 tarjetas del Perfil 360 ya proyectan fuentes reales y autorizadas; no queda ningún estado `module_unavailable`/“No disponible” para los dominios implementados.
+- Estados visibles y honestos: **Registrado**, **En proceso**, **Sin registros** o **Acceso restringido** según datos y permisos.
+- **Membresía** lee `person_memberships`, abre pestaña propia y conserva el panel completo de carnet/certificado únicamente para usuarios autorizados; los demás ven resumen de solo lectura.
+- **Bautismo** es un dominio persistente en `person_baptisms`, con estado pendiente/programado/completado, fecha, lugar, ministro, testimonio, notas, validación y actividad auditable.
+- **Bienvenida** refleja la etapa `welcome_party` de Consolidación y abre el expediente exacto cuando existe.
+- **Consolidación, Ley de las 7 Semanas, Discipulado, Mentoría, CAP, Célula y Ministerio** abren páginas o expedientes reales incluso cuando aún no existen registros.
+- Ley de las 7 Semanas recuperó la inscripción funcional mediante ciclo; Consolidación mantiene su intake oficial y rechaza creación genérica.
+- Discipulado acepta `?person=` y enfoca automáticamente el expediente de la Persona seleccionada desde Perfil 360.
+- Permisos preservados: sin `processes.read`, los módulos de procesos muestran Acceso restringido; Célula conserva su permiso independiente `cellular.read`; sin `processes.write`, Bautismo responde 403.
+- Verificación: regresión principal **24/24 PASS**, Iteración 37 **6/6 PASS**, frontend **24/24 PASS**, build PASS, health 200 y servidor con 430 rutas.
+- Browser real: 17 tarjetas, 0 deshabilitadas para Pastor, 0 “No disponible”, Membresía/Bautismo/Bienvenida/Ley7/Discipulado navegados y Bautismo guardado; desktop 1920×800 y móvil 390×844 sin overflow.
+- APIs MOCKED: ninguna. Limpieza final: `iter37_users=0`, `iter37_people=0`, `iter37_baptisms=0`, `iter37_memberships=0`.
+
 ### FASE DE ESTABILIZACIÓN — COMPLETADA 2026‑09‑19
 
 - **Limpieza QA/demo P0:** el escaneo transversal fue reemplazado por una allowlist explícita de colecciones y campos de propiedad directa. Nunca se elimina un documento real por una mención incidental a una cuenta QA.
