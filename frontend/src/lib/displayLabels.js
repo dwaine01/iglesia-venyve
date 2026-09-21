@@ -99,4 +99,8 @@ export const meetingModalityLabel = (value) => displayLabel(value, 'Modalidad po
 export const priorityLabel = (value) => displayLabel(value, 'Prioridad normal');
 export const statusLabel = (value) => displayLabel(value, 'Sin estado');
 export const minuteTypeLabel = (value) => value === 'manual' ? 'Minuta manual' : displayLabel(value, 'Minuta');
-export const speakerLabel = (value) => displayLabel(value, 'Participante');
+export const speakerLabel = (value) => {
+  const raw = String(value || '').trim();
+  const match = raw.toLowerCase().replaceAll(' ', '_').replaceAll('-', '_').match(/^speaker_?(\d+)$/);
+  return match ? `Hablante ${Number(match[1]) + 1}` : 'Hablante sin identificar';
+};

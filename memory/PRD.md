@@ -278,12 +278,12 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - Blueprint: `/app/memory/DOORS_BOARD_SCHEMA_BLUEPRINT.md`.
 - Validación actual: suite global **71 passed, 8 skipped**; regresión focal **16 passed**; test D, GridFS, documentos y modo IA BLOCKED PASS; frontend build PASS; security audit PASS.
 
-#### Dependencia externa abierta
+#### Integración STT diarizada — habilitada en desarrollo
 
-- **STT diarizado: BLOCKED — external credential required.**
-- `OPENAI_STT_API_KEY` permanece vacío y fuera de código/frontend/documentación. Sin esa credencial no se crean speakers ni atribuciones.
-- UI muestra: “Identificación de participantes pendiente de procesamiento STT diarizado.”
-- No se usa `whisper-1` como sustituto.
+- `OPENAI_STT_API_KEY` está configurada exclusivamente en backend y nunca se expone al frontend.
+- Modelo exacto `gpt-4o-transcribe-diarize`, respuesta `diarized_json` y segmentación automática verificados contra OpenAI real.
+- No se usa `whisper-1` ni `EMERGENT_LLM_KEY` como sustituto de diarización.
+- Validación funcional final pendiente únicamente de la grabación manual solicitada al usuario con dos hablantes reales.
 - **Board AI: BLOCKED controlado mientras `BOARD_AI_ENDPOINT_URL`, `BOARD_AI_API_KEY` y `BOARD_AI_MODEL` no estén configurados.** Junta manual, minutas, votos, documentos y audio no dependen del proveedor IA.
 
 ### P0 — Restauración Railway — RESUELTO Y VALIDADO EN PRODUCCIÓN 2026‑09‑16
@@ -348,8 +348,9 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - Cambiar entre Agenda y Audio/Minuta ya no desmonta el grabador; **Ir a grabación** reposiciona el control sin pantalla blanca.
 - El temporizador general se activa inmediatamente con la respuesta de apertura; `start` es idempotente y una reunión cerrada no puede reabrirse.
 - Añadidos errores persistentes de Chrome/micrófono, estado de finalización, confirmación de guardado y boundary del workspace.
-- Audio guardado se puede escuchar y descargar con autenticación; STT pendiente no bloquea grabación ni reproducción.
-- Certificación Iteración 34: backend 5/5 + regresión 4/4; E2E timers, upload vivo, cambio de pestaña, stop/save/playback y responsive PASS.
+- Audio guardado se puede escuchar y descargar con autenticación; STT nunca bloquea grabación ni reproducción.
+- P0 STT 2026‑09‑21: ventanas móviles FFmpeg, diarización progresiva, conciliación estable Hablante 1/2, versión final íntegra e inmutable y polling UI conectados.
+- OpenAI real respondió correctamente con `gpt-4o-transcribe-diarize`; Iteración 35 backend/frontend 100%, build y responsive PASS, sin APIs MOCKED.
 - Junta, cuentas, personas, chunks y grabaciones QA eliminados; residuos finales: `0`.
 
 ### P0 — Gobierno jerárquico y confidencialidad v2 — COMPLETADO 2026‑09‑16
