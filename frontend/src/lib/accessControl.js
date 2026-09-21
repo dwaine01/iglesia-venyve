@@ -36,7 +36,13 @@ export const canUseTerritorialMap = (user) => hasAnyCapability(user, [
 ]);
 
 export const canManageDirectMembership = (user) => (
-  isPastoralAuthority(user) || String(user?.access_level || '').toLowerCase() === 'coordinador_general'
+  isPastoralAuthority(user)
+  || ['coordinador_general', 'general_coordinator'].includes(String(user?.access_level || user?.rol || user?.role || '').trim().toLowerCase())
+  || (
+    String(user?.rol || user?.role || '').trim().toLowerCase() === 'lider'
+    && String(user?.access_level || '').trim().toLowerCase() === 'lider'
+    && (user?.capabilities || []).includes('core.access.manage')
+  )
 );
 
 export const canViewOperations = (user) => Boolean(user) && (isPastoralAuthority(user) || hasCapability(user, 'operations.view'));

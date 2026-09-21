@@ -85,6 +85,22 @@ CARE_CONFIDENTIAL_WRITE = "care.confidential.write"
 CARE_AUDIT_READ = "care.audit.read"
 CARE_CAPABILITIES = [CARE_ASSIGNED_READ, CARE_ASSIGNED_WRITE, CARE_MANAGE, CARE_CONFIDENTIAL_READ, CARE_CONFIDENTIAL_WRITE, CARE_AUDIT_READ]
 
+
+def resolved_access_level(user: dict) -> str:
+    """Normalize current and legacy coordinator account shapes."""
+    role = str(user.get("rol") or user.get("role") or "").strip().lower()
+    explicit = str(user.get("access_level") or "").strip().lower()
+    coordinator_aliases = {"coordinador_general", "general_coordinator"}
+    if explicit in coordinator_aliases or role in coordinator_aliases:
+        return "coordinador_general"
+    if role == "lider" and CORE_ACCESS_MANAGE in (user.get("capabilities") or []) and explicit in {"", "lider"}:
+        return "coordinador_general"
+    return explicit or role or "persona"
+
+
+def is_general_coordinator(user: dict) -> bool:
+    return resolved_access_level(user) == "coordinador_general"
+
 CELLULAR_CAPABILITIES = [
     CELLULAR_READ,
     CELLULAR_WRITE,

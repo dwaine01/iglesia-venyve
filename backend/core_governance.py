@@ -27,6 +27,7 @@ from access_control import (
     access_defaults_for_role,
     has_capability,
     is_global_pastoral_authority,
+    resolved_access_level,
 )
 from canonical_identity import IdentityConflictError, ensure_user_person_link, migrate_core_identity
 from server import db, get_current_user
@@ -131,13 +132,9 @@ def require_access_manager(current_user: dict = Depends(get_current_user)) -> di
 
 
 def access_level(user: dict) -> str:
-    if user.get("access_level"):
-        return user["access_level"]
     if is_global_pastoral_authority(user):
         return "pastor"
-    if user.get("rol") == "lider" and CORE_ACCESS_MANAGE in (user.get("capabilities") or []):
-        return "coordinador_general"
-    return user.get("rol", "persona")
+    return resolved_access_level(user)
 
 
 def access_defaults(level: str, privilege_groups: Optional[list[str]] = None) -> dict:

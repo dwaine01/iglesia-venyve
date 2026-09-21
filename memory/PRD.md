@@ -604,6 +604,15 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - UI verificada en 1920×800 y 390×844 sin overflow: CSV → mapeo → dashboard; Persona → registrar casa → lista determinista → panel → Visitada → guardar → reabrir → archivar. Hallazgo iteration 29 sobre testabilidad del pin quedó resuelto con la lista accesible.
 - Limpieza final local: `feature_users=0`, `feature_people=0`, `feature_targets=0`, `orphan_pub_numbers=0`. Producción no fue usada ni modificada.
 
+### HOTFIX — ALTA DIRECTA PARA COORDINACIÓN GENERAL — COMPLETADO 2026‑09‑21
+
+- El control **Miembro activo preexistente** de `/personas/nueva` queda habilitado para Pastor/Pastora y Coordinación General, incluyendo cuentas históricas `rol=lider` + `access_level=lider` + `core.access.manage`.
+- La normalización del nivel de acceso es única y coherente en login, `/api/auth/me`, autorización backend, gobierno del Core y frontend; siempre devuelve `coordinador_general` para la forma histórica válida.
+- Líder ordinario y Director permanecen bloqueados aunque intenten forzar `preexisting_active_member=true`; el backend responde 403 y no depende de la visibilidad del control.
+- Coordinador puede activar la casilla, conservar un número histórico opcional y crear la Persona con membresía directa activa; Pastor conserva el flujo sin regresión.
+- Certificación Iteración 36: backend 5/5 PASS, frontend desktop/móvil PASS, control seleccionable, input histórico visible y overflow `[]`; sin APIs MOCKED.
+- Limpieza verificada: `iteration36_users=0`, `iteration36_people=0`, `iteration36_members=0`.
+
 ### FASE DE ESTABILIZACIÓN — COMPLETADA 2026‑09‑19
 
 - **Limpieza QA/demo P0:** el escaneo transversal fue reemplazado por una allowlist explícita de colecciones y campos de propiedad directa. Nunca se elimina un documento real por una mención incidental a una cuenta QA.
