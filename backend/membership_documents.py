@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field
 from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
-from access_control import MEMBERSHIP_DOCUMENTS_MANAGE, has_capability, is_general_coordinator, is_global_pastoral_authority
+from access_control import MEMBERSHIP_DIRECT_IMPORT, MEMBERSHIP_DOCUMENTS_MANAGE, has_capability, is_general_coordinator, is_global_pastoral_authority
 from door_board_engine import active_board_membership
 from person_profile_domains import assignment_items
 from server import db, get_current_user
@@ -58,7 +58,8 @@ def signature_bucket():
 
 
 def require_document_manager(current_user: dict) -> None:
-    if not is_direct_membership_manager(current_user) and not has_capability(current_user, MEMBERSHIP_DOCUMENTS_MANAGE):
+    institutional_authority = is_global_pastoral_authority(current_user) or is_general_coordinator(current_user)
+    if not institutional_authority and not has_capability(current_user, MEMBERSHIP_DOCUMENTS_MANAGE):
         raise HTTPException(status_code=403, detail="No tiene permiso para emitir documentos oficiales de membresía")
 
 
@@ -68,7 +69,7 @@ def require_pastor(current_user: dict) -> None:
 
 
 def is_direct_membership_manager(current_user: dict) -> bool:
-    return is_global_pastoral_authority(current_user) or is_general_coordinator(current_user)
+    return is_global_pastoral_authority(current_user) or is_general_coordinator(current_user) or has_capability(current_user, MEMBERSHIP_DIRECT_IMPORT)
 
 
 def require_direct_membership_manager(current_user: dict) -> None:

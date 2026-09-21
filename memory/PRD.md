@@ -613,6 +613,18 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - Certificación Iteración 36: backend 5/5 PASS, frontend desktop/móvil PASS, control seleccionable, input histórico visible y overflow `[]`; sin APIs MOCKED.
 - Limpieza verificada: `iteration36_users=0`, `iteration36_people=0`, `iteration36_members=0`.
 
+### PRIVILEGIO DE MEMBRESÍA DIRECTA DELEGABLE — COMPLETADO 2026‑09‑21
+
+- Nueva capacidad granular `membership.direct_import`, mostrada como **Registrar miembro activo preexistente** en Gestión de Accesos.
+- Pastor/Pastora y Coordinación General reciben el privilegio automáticamente; un Líder ordinario no lo recibe por defecto.
+- Solo Pastor/Pastora puede asignar o retirar esta capacidad a múltiples cuentas mediante la tabla existente de Gestión de Accesos.
+- El delegado puede activar **Miembro activo preexistente** al crear una Persona, preservar un número histórico y omitir los procesos propios de un nuevo creyente.
+- Aislamiento estricto: `membership.direct_import` no concede `membership.documents.manage`; sin esta segunda capacidad el delegado recibe 403 al intentar emitir carnet/certificado.
+- La asignación y revocación incrementan `token_version`; las sesiones anteriores quedan invalidadas y el usuario debe iniciar una sesión nueva para aplicar el cambio.
+- Política de acceso centralizada en `ACCESS_POLICY_VERSION = 20`; Integridad confirma `access_policy_outdated=0`.
+- Verificación Iteración 38: delegación/revocación, JWT, backend, UI escritorio/móvil y separación de documentos PASS; suites 9/9, frontend 25/25 y build PASS, sin APIs MOCKED.
+- Protocolo reproducible documentado en `/app/auth_testing.md`; limpieza final `iter38_users=0`, `iter38_people=0` y cuenta compartida sin capacidad residual.
+
 ### PERFIL 360 — ACTIVACIÓN TOTAL DE MÓDULOS — COMPLETADO 2026‑09‑21
 
 - Las 17 tarjetas del Perfil 360 ya proyectan fuentes reales y autorizadas; no queda ningún estado `module_unavailable`/“No disponible” para los dominios implementados.

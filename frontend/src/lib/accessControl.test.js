@@ -1,4 +1,4 @@
-import { canCheckInOperations, canManageDirectMembership, canManageOperations, canUseTerritorialMap, canViewGeo, canViewOperations, hasCapability, isPastoralAuthority } from './accessControl';
+import { canCheckInOperations, canManageDirectMembership, canManageMembershipDocuments, canManageOperations, canUseTerritorialMap, canViewGeo, canViewOperations, hasCapability, isPastoralAuthority } from './accessControl';
 
 describe('geo access control', () => {
   test('pastoral authority receives map access', () => {
@@ -24,7 +24,14 @@ describe('geo access control', () => {
     expect(canManageDirectMembership({ rol: 'general_coordinator' })).toBe(true);
     expect(canManageDirectMembership({ rol: 'lider', access_level: 'lider', capabilities: ['core.access.manage'] })).toBe(true);
     expect(canManageDirectMembership({ rol: 'lider', access_level: 'director', capabilities: ['core.access.manage'] })).toBe(false);
+    expect(canManageDirectMembership({ rol: 'lider', access_level: 'lider', capabilities: ['membership.direct_import'] })).toBe(true);
     expect(canManageDirectMembership({ rol: 'lider' })).toBe(false);
+  });
+
+  test('direct import does not grant official membership documents', () => {
+    expect(canManageMembershipDocuments({ rol: 'lider', capabilities: ['membership.direct_import'] })).toBe(false);
+    expect(canManageMembershipDocuments({ rol: 'lider', capabilities: ['membership.documents.manage'] })).toBe(true);
+    expect(canManageMembershipDocuments({ rol: 'lider', access_level: 'coordinador_general', capabilities: [] })).toBe(true);
   });
 
   test('operations separates viewing, check-in and management', () => {

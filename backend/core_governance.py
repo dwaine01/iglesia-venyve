@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr, Field
 
 from access_control import (
+    ACCESS_POLICY_VERSION,
     BOARD_CONFIDENTIAL_ACCESS,
     BOARD_AI,
     BOARD_AUDIO,
@@ -20,6 +21,7 @@ from access_control import (
     FINANCE_CAPABILITIES,
     JOURNEY_GOVERNANCE_CAPABILITIES,
     MEMBERSHIP_DOCUMENTS_MANAGE,
+    MEMBERSHIP_DIRECT_IMPORT,
     OPERATIONS_CAPABILITIES,
     PROCESS_CAPABILITIES,
     PERSON_DOMAIN_CAPABILITIES,
@@ -143,7 +145,7 @@ def access_defaults(level: str, privilege_groups: Optional[list[str]] = None) ->
     groups = sorted(set(privilege_groups or ([] if level not in {"pastor", "coordinador_general"} else ["membership"])))
     if level == "coordinador_general":
         groups = sorted(set([*groups, "care"]))
-        defaults["capabilities"] = sorted(set([*defaults["capabilities"], *CARE_CAPABILITIES]))
+        defaults["capabilities"] = sorted(set([*defaults["capabilities"], *CARE_CAPABILITIES, MEMBERSHIP_DIRECT_IMPORT]))
     if level in {"coordinador_general", "director"}:
         defaults["capabilities"] = sorted(set([*defaults["capabilities"], CORE_ACCESS_MANAGE]))
     if "membership" not in groups:
@@ -249,7 +251,7 @@ async def integrity_snapshot() -> dict:
         "users_without_person": await db.users.count_documents({"$or": [{"person_id": {"$exists": False}}, {"person_id": None}]}),
         "legacy_people_without_person": await db.people.count_documents({"$or": [{"canonical_person_id": {"$exists": False}}, {"canonical_person_id": None}]}),
         "access_policy_outdated": await db.users.count_documents({"$or": [
-            {"access_policy_version": {"$ne": 18}},
+            {"access_policy_version": {"$ne": ACCESS_POLICY_VERSION}},
             {"capabilities": {"$exists": False}},
             {"access_scope": {"$exists": False}},
         ]}),
@@ -416,7 +418,7 @@ async def update_user_access(
         if active_pastors <= 1:
             raise HTTPException(status_code=400, detail="Debe existir al menos un pastor activo")
     defaults = access_defaults(requested_level, requested_groups)
-    allowed = set(PERSON_DOMAIN_CAPABILITIES + PROCESS_CAPABILITIES + CELLULAR_CAPABILITIES + DOOR_BOARD_CAPABILITIES + FINANCE_CAPABILITIES + JOURNEY_GOVERNANCE_CAPABILITIES + OPERATIONS_CAPABILITIES + CARE_CAPABILITIES + [MEMBERSHIP_DOCUMENTS_MANAGE, BOARD_CONFIDENTIAL_ACCESS, PERSON_PASTORAL_NOTES_READ, CORE_GOVERNANCE_MANAGE, CORE_ACCESS_MANAGE, "person.profile.read"])
+    allowed = set(PERSON_DOMAIN_CAPABILITIES + PROCESS_CAPABILITIES + CELLULAR_CAPABILITIES + DOOR_BOARD_CAPABILITIES + FINANCE_CAPABILITIES + JOURNEY_GOVERNANCE_CAPABILITIES + OPERATIONS_CAPABILITIES + CARE_CAPABILITIES + [MEMBERSHIP_DOCUMENTS_MANAGE, MEMBERSHIP_DIRECT_IMPORT, BOARD_CONFIDENTIAL_ACCESS, PERSON_PASTORAL_NOTES_READ, CORE_GOVERNANCE_MANAGE, CORE_ACCESS_MANAGE, "person.profile.read"])
     capabilities = defaults["capabilities"]
     if payload.capabilities is not None:
         if not is_global_pastoral_authority(current_user):
@@ -425,7 +427,7 @@ async def update_user_access(
         invalid = sorted(set(payload.capabilities) - allowed - existing_capabilities)
         if invalid:
             raise HTTPException(status_code=400, detail=f"Capabilities inválidas: {', '.join(invalid)}")
-        customizable = set(JOURNEY_GOVERNANCE_CAPABILITIES + OPERATIONS_CAPABILITIES + [MEMBERSHIP_DOCUMENTS_MANAGE])
+        customizable = set(JOURNEY_GOVERNANCE_CAPABILITIES + OPERATIONS_CAPABILITIES + [MEMBERSHIP_DOCUMENTS_MANAGE, MEMBERSHIP_DIRECT_IMPORT])
         non_customizable = sorted(set(payload.capabilities) - set(defaults["capabilities"]) - customizable - existing_capabilities)
         if non_customizable:
             raise HTTPException(status_code=400, detail=f"Capabilities no personalizables para este nivel: {', '.join(non_customizable)}")
@@ -447,7 +449,7 @@ async def update_user_access(
         "is_active": payload.is_active,
         "capabilities": capabilities,
         "access_scope": defaults["access_scope"],
-        "access_policy_version": 18,
+        "access_policy_version": ACCESS_POLICY_VERSION,
         "updated_at": datetime.now(timezone.utc),
     }
     if changed:

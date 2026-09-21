@@ -23,7 +23,7 @@ import { BaptismSection, MembershipProfileSection } from '../components/PersonMo
 import { PersonArchiveDialog } from '../components/PersonArchiveDialog';
 import { PersonJourneyStatusStrip } from '../components/PersonJourneyStatusStrip';
 import { toast } from 'sonner';
-import { canManageDirectMembership } from '../lib/accessControl';
+import { canManageMembershipDocuments } from '../lib/accessControl';
 
 // P-001 Slice 2A - Person Profile 360 (shell full-screen).
 // Consume unicamente el read-model /api/core/persons/{id}/profile.
@@ -113,7 +113,7 @@ export default function PersonaPerfilPage() {
   const available = profile?.sections_available || ['resumen'];
   const planned = profile?.sections_planned || [];
   const canViewFinance = user?.rol === 'pastor' || (user?.capabilities || []).includes('finance.read');
-  const canManageMembershipDocuments = canManageDirectMembership(user) || (user?.capabilities || []).includes('membership.documents.manage');
+  const canManageMembershipDocs = canManageMembershipDocuments(user);
   const canArchive = user?.rol === 'pastor' && user?.person_id !== personId && profile?.identity?.account_role !== 'pastor';
   const allSections = [
     'resumen', 'contacto', 'direcciones', 'household',
@@ -283,7 +283,7 @@ export default function PersonaPerfilPage() {
 
           {available.includes('membresia') && (
             <TabsContent value="membresia" className="mt-0">
-              <MembershipProfileSection personId={personId} membership={profile.membership} canManage={canManageMembershipDocuments} photoSrc={photoSrc} />
+              <MembershipProfileSection personId={personId} membership={profile.membership} canManage={canManageMembershipDocs} photoSrc={photoSrc} />
             </TabsContent>
           )}
 
