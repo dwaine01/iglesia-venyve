@@ -11,6 +11,7 @@ from pydantic import BaseModel, EmailStr, Field
 from access_control import (
     ACCESS_POLICY_VERSION,
     BOARD_ACCESS,
+    BOARD_CONFIDENTIAL_ACCESS,
     BOARD_AI,
     BOARD_AUDIO,
     CELLULAR_CAPABILITIES,
@@ -29,6 +30,7 @@ from access_control import (
     access_defaults_for_role,
     has_capability,
     is_global_pastoral_authority,
+    normalized_capabilities,
     resolved_access_level,
 )
 from canonical_identity import IdentityConflictError, ensure_user_person_link, migrate_core_identity
@@ -198,7 +200,7 @@ def serialize_user(user: dict) -> dict:
         "is_active": user.get("is_active", True) is True,
         "person_id": person_id,
         "canonical_profile_path": f"/personas/{person_id}" if person_id else None,
-        "capabilities": sorted(user.get("capabilities") or []),
+        "capabilities": normalized_capabilities(user),
         "access_scope": user.get("access_scope") or {"persons": "none"},
         "token_version": user.get("token_version", 1),
         "access_level": access_level(user),
@@ -435,6 +437,11 @@ async def update_user_access(
         capabilities = sorted(set(defaults["capabilities"]) | preserved_existing | {item for item in payload.capabilities if item in customizable})
         if requested_role == "pastor" and CORE_GOVERNANCE_MANAGE not in capabilities:
             capabilities.append(CORE_GOVERNANCE_MANAGE)
+    if "finance" not in requested_groups:
+        capabilities = [item for item in capabilities if item not in FINANCE_CAPABILITIES]
+    if "board" not in requested_groups:
+        capabilities = [item for item in capabilities if item not in {BOARD_ACCESS, BOARD_CONFIDENTIAL_ACCESS}]
+    capabilities = sorted(set(capabilities))
     changed = (
         target.get("rol") != requested_role
         or target.get("is_active", True) is not payload.is_active

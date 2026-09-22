@@ -76,7 +76,7 @@ import BoardMeetingsPage from './pages/board/BoardMeetingsPage';
 import BoardMeetingDetailPage from './pages/board/BoardMeetingDetailPage';
 import BoardMinutesPage from './pages/board/BoardMinutesPage';
 import AppLayout from './components/AppLayout';
-import { canManageDirectMembership, canViewCare, canViewFrontGroups, canViewGeo, canViewLeadership, canViewOperations, hasAnyCapability, isPastoralAuthority } from './lib/accessControl';
+import { canManageDirectMembership, canViewCare, canViewFinanceModule, canViewFrontGroups, canViewGeo, canViewLeadership, canViewOperations, hasAnyCapability, isPastoralAuthority } from './lib/accessControl';
 import { useBoardAccess } from './hooks/useBoardAccess';
 import './App.css';
 
@@ -121,7 +121,7 @@ function FinanceRoute({ children }) {
   const { user, loading } = useAuth();
   if (loading) return <div className="flex min-h-screen items-center justify-center">Cargando…</div>;
   if (!user) return <Navigate to="/login" replace />;
-  if (!hasAnyCapability(user, ['finance.read', 'finance.manage'])) return <Navigate to="/" replace />;
+  if (!canViewFinanceModule(user)) return <Navigate to="/" replace />;
   return children;
 }
 

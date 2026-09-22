@@ -14,6 +14,20 @@ export const hasAnyCapability = (user, capabilities) => (
   isPastoralAuthority(user) || capabilities.some((capability) => hasCapability(user, capability))
 );
 
+export const hasPrivilegeGroup = (user, group) => (
+  Array.isArray(user?.privilege_groups) && user.privilege_groups.includes(group)
+);
+
+export const canViewFinanceModule = (user) => (
+  isPastoralAuthority(user)
+  || (
+    hasPrivilegeGroup(user, 'finance')
+    && (user?.capabilities || []).includes('finance.read')
+  )
+);
+
+export const canViewPrivatePersonFinance = (user) => isPastoralAuthority(user);
+
 export const canViewFrontGroups = (user) => hasAnyCapability(user, [
   'front_groups.view',
   'front_groups.manage',

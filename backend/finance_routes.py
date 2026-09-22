@@ -10,7 +10,8 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field, model_validator
 from pymongo.errors import DuplicateKeyError
 
-from finance_engine import audit, create_journal, ensure_open_period, now_utc, require_finance_manage, require_finance_read, serialize, validate_lines
+from access_control import is_global_pastoral_authority
+from finance_engine import audit, create_journal, ensure_open_period, now_utc, require_finance_manage, require_finance_read, require_private_person_finance, serialize, validate_lines
 from server import db, get_current_user
 
 router = APIRouter(prefix="/api/finance", tags=["finance"])
@@ -18,6 +19,7 @@ router = APIRouter(prefix="/api/finance", tags=["finance"])
 
 def reader(current_user: dict = Depends(get_current_user)) -> dict: require_finance_read(current_user); return current_user
 def manager(current_user: dict = Depends(get_current_user)) -> dict: require_finance_manage(current_user); return current_user
+def private_person_reader(current_user: dict = Depends(get_current_user)) -> dict: require_private_person_finance(current_user); return current_user
 
 
 class FundCreate(BaseModel):
@@ -261,7 +263,7 @@ async def settings(current_user: dict = Depends(reader)):
 
 @router.put("/settings", response_model=dict)
 async def update_settings(payload: dict, current_user: dict = Depends(manager)):
-    if current_user.get("rol") != "pastor": raise HTTPException(status_code=403, detail="Solo el pastor puede cambiar la política contable")
+    if not is_global_pastoral_authority(current_user): raise HTTPException(status_code=403, detail="Solo Pastor/Pastora puede cambiar la política contable")
     allowed = {key: payload[key] for key in ["accounting_basis", "currency", "fiscal_year_start_month"] if key in payload}
     if allowed.get("accounting_basis") not in {None, "cash", "accrual", "modified_cash"}: raise HTTPException(status_code=422, detail="Base contable no válida")
     await db.finance_settings.update_one({"_id": "primary"}, {"$set": {**allowed, "updated_at": now_utc(), "updated_by_user_id": current_user["user_id"]}})
@@ -326,7 +328,7 @@ async def period_checklist(period_id: str, current_user: dict = Depends(reader))
 
 @router.post("/periods/{period_id}/close", response_model=dict)
 async def period_close(period_id: str, current_user: dict = Depends(manager)):
-    if current_user.get("rol") != "pastor": raise HTTPException(status_code=403, detail="El cierre final corresponde al pastor")
+    if not is_global_pastoral_authority(current_user): raise HTTPException(status_code=403, detail="El cierre final corresponde a Pastor/Pastora")
     period = await db.finance_periods.find_one({"period_id": period_id})
     if not period: raise HTTPException(status_code=404, detail="Período no encontrado")
     checklist = await build_period_checklist(period)
@@ -338,8 +340,8 @@ async def period_close(period_id: str, current_user: dict = Depends(manager)):
 
 @router.post("/periods/{period_id}/reopen", response_model=dict)
 async def period_reopen(period_id: str, payload: dict, current_user: dict = Depends(manager)):
-    if current_user.get("rol") != "pastor":
-        raise HTTPException(status_code=403, detail="Solo el pastor puede reabrir un período")
+    if not is_global_pastoral_authority(current_user):
+        raise HTTPException(status_code=403, detail="Solo Pastor/Pastora puede reabrir un período")
     reason = str(payload.get("reason") or "").strip()
     if len(reason) < 5:
         raise HTTPException(status_code=422, detail="Indique el motivo de reapertura")
@@ -375,7 +377,7 @@ async def journal_workflow(entry_id: str, action: Literal["submit", "review", "a
         if entry["prepared_by_user_id"] == uid: raise HTTPException(status_code=403, detail="El preparador no puede revisar su propio asiento")
         changes.update(status="reviewed", reviewed_by_user_id=uid, reviewed_at=now)
     elif action == "approve":
-        if current_user.get("rol") != "pastor": raise HTTPException(status_code=403, detail="La aprobación final corresponde al pastor")
+        if not is_global_pastoral_authority(current_user): raise HTTPException(status_code=403, detail="La aprobación final corresponde a Pastor/Pastora")
         if entry["status"] != "reviewed": raise HTTPException(status_code=409, detail="El asiento requiere revisión previa")
         if uid in {entry["prepared_by_user_id"], entry.get("reviewed_by_user_id")}: raise HTTPException(status_code=403, detail="Nadie puede aprobar un asiento que preparó o revisó")
         period = await db.finance_periods.find_one({"start_date": {"$lte": entry["entry_date"]}, "end_date": {"$gte": entry["entry_date"]}, "status": "closed"})
@@ -396,7 +398,7 @@ async def contributions(current_user: dict = Depends(reader)):
 
 
 @router.get("/persons/{person_id}/contributions", response_model=dict)
-async def person_contributions(person_id: str, scope: Literal["person", "family"] = "person", current_user: dict = Depends(reader)):
+async def person_contributions(person_id: str, scope: Literal["person", "family"] = "person", current_user: dict = Depends(private_person_reader)):
     person_ids = [person_id]
     if scope == "family":
         memberships = await db.household_memberships.find({"person_id": person_id, "active": {"$ne": False}}, {"_id": 0, "household_id": 1}).to_list(100)
@@ -620,7 +622,7 @@ async def batch_count(batch_id: str, payload: BatchCount, current_user: dict = D
 
 @router.post("/batches/{batch_id}/resolve-variance", response_model=dict)
 async def batch_resolve_variance(batch_id: str, payload: BatchVarianceResolution, current_user: dict = Depends(manager)):
-    if current_user.get("rol") != "pastor":
+    if not is_global_pastoral_authority(current_user):
         raise HTTPException(status_code=403, detail="La diferencia requiere autorización pastoral")
     item = await db.finance_batches.find_one({"batch_id": batch_id, "status": "variance_review"})
     if not item:
@@ -656,7 +658,7 @@ async def expense_workflow(expense_id: str, action: Literal["review", "approve",
         if item["status"] != "submitted" or item["prepared_by_user_id"] == uid: raise HTTPException(status_code=403, detail="Otro usuario financiero debe revisar este gasto")
         changes = {"status": "reviewed", "reviewed_by_user_id": uid, "reviewed_at": now}
     elif action == "approve":
-        if current_user.get("rol") != "pastor" or item["status"] != "reviewed" or uid in {item["prepared_by_user_id"], item.get("reviewed_by_user_id")}: raise HTTPException(status_code=403, detail="La aprobación pastoral requiere separación de funciones")
+        if not is_global_pastoral_authority(current_user) or item["status"] != "reviewed" or uid in {item["prepared_by_user_id"], item.get("reviewed_by_user_id")}: raise HTTPException(status_code=403, detail="La aprobación pastoral requiere separación de funciones")
         changes = {"status": "approved", "approved_by_user_id": uid, "approved_at": now}
     else: changes = {"status": "rejected", "rejected_by_user_id": uid, "rejected_at": now}
     await db.finance_expenses.update_one({"expense_id": expense_id}, {"$set": {**changes, "updated_at": now}}); await audit(uid, f"expense_{action}", "expense", expense_id); return serialize(await db.finance_expenses.find_one({"expense_id": expense_id}, {"_id": 0}))

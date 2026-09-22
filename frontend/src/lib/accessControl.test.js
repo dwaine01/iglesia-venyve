@@ -1,8 +1,9 @@
-import { canCheckInOperations, canManageDirectMembership, canManageMembershipDocuments, canManageOperations, canUseTerritorialMap, canViewGeo, canViewOperations, hasCapability, isPastoralAuthority } from './accessControl';
+import { canCheckInOperations, canManageDirectMembership, canManageMembershipDocuments, canManageOperations, canUseTerritorialMap, canViewFinanceModule, canViewGeo, canViewOperations, canViewPrivatePersonFinance, hasCapability, isPastoralAuthority } from './accessControl';
 
 describe('geo access control', () => {
   test('pastoral authority receives map access', () => {
     expect(isPastoralAuthority({ rol: 'pastor' })).toBe(true);
+    expect(isPastoralAuthority({ rol: 'pastora' })).toBe(true);
     expect(canViewGeo({ rol: 'pastor', capabilities: [] })).toBe(true);
   });
 
@@ -39,5 +40,12 @@ describe('geo access control', () => {
     expect(canCheckInOperations({ rol: 'lider', capabilities: ['operations.view', 'operations.checkin'] })).toBe(true);
     expect(canManageOperations({ rol: 'lider', capabilities: ['operations.checkin'] })).toBe(false);
     expect(canManageOperations({ rol: 'pastor', capabilities: [] })).toBe(true);
+  });
+
+  test('finance module requires the restricted group and private finance stays pastoral', () => {
+    expect(canViewFinanceModule({ rol: 'lider', capabilities: ['finance.read'], privilege_groups: [] })).toBe(false);
+    expect(canViewFinanceModule({ rol: 'lider', capabilities: ['finance.read'], privilege_groups: ['finance'] })).toBe(true);
+    expect(canViewPrivatePersonFinance({ rol: 'lider', capabilities: ['finance.read'], privilege_groups: ['finance'] })).toBe(false);
+    expect(canViewPrivatePersonFinance({ rol: 'pastora', capabilities: [] })).toBe(true);
   });
 });

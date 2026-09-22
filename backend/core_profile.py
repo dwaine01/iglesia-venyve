@@ -250,7 +250,10 @@ async def get_person_profile(person_id: str, current_user: dict = Depends(requir
     domain_sections = []
     available = ["resumen"]
     planned = []
-    response = {"profile_can_write": can_write_profile}
+    response = {
+        "profile_can_write": can_write_profile,
+        "private_finance_can_read": is_global_pastoral_authority(current_user),
+    }
     linked_user = await db.users.find_one(
         {"person_id": person_id},
         {"_id": 1, "rol": 1, "is_active": 1},

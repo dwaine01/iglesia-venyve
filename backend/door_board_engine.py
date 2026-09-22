@@ -6,7 +6,7 @@ from uuid import uuid4
 from bson import ObjectId
 from fastapi import HTTPException
 
-from access_control import DOORS_MANAGE, is_global_pastoral_authority
+from access_control import BOARD_ACCESS, DOORS_MANAGE, has_capability, is_global_pastoral_authority
 from door_board_catalog import BOARD_ID
 
 
@@ -67,6 +67,8 @@ async def active_board_membership(db, person_id: str, board_id: str = BOARD_ID) 
 async def ensure_board_access(db, current_user: dict, permission: str = "board.read", board_id: str = BOARD_ID) -> dict | None:
     if is_global_pastoral_authority(current_user):
         return {"pastoral_full_access": True, "permissions": sorted(BOARD_PERMISSIONS), "position_key": "pastor"}
+    if not has_capability(current_user, BOARD_ACCESS):
+        raise HTTPException(status_code=403, detail="La Junta Directiva requiere una concesión explícita")
     membership = await active_board_membership(db, current_user.get("person_id"), board_id)
     if not membership:
         raise HTTPException(status_code=403, detail="La Junta Directiva requiere una membresía formal activa")
@@ -79,6 +81,8 @@ async def ensure_board_access(db, current_user: dict, permission: str = "board.r
 async def board_access_snapshot(db, current_user: dict, board_id: str = BOARD_ID) -> dict:
     if is_global_pastoral_authority(current_user):
         return {"allowed": True, "full_access": True, "position_key": "pastor", "permissions": sorted(BOARD_PERMISSIONS), "data_classification": "board_institutional"}
+    if not has_capability(current_user, BOARD_ACCESS):
+        return {"allowed": False, "full_access": False, "position_key": None, "permissions": [], "data_classification": "board_institutional"}
     membership = await active_board_membership(db, current_user.get("person_id"), board_id)
     if not membership:
         return {"allowed": False, "full_access": False, "position_key": None, "permissions": [], "data_classification": "board_institutional"}

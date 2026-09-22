@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-09-22 — RBAC estricto de Junta y Finanzas
+
+- Cerrada la causa raíz: grants históricos aditivos, gates por capability sin grupo, membresía de Junta sin `board.access` y reutilización de `finance.read` para Persona 360.
+- Finanzas ahora requiere grupo `finance` + capability; Junta requiere grupo/capability + membresía activa + permiso del cargo. Pastora conserva acceso global y Coordinación General queda denegada por defecto.
+- El historial financiero integrado en Persona 360 es exclusivamente pastoral; Finanzas/Tesorería mantiene su operación completa dentro del módulo financiero.
+- Certificación: testing agent Iteración 40 (matriz 6/6 + regresión focal 37/37), frontend 26/26, build PASS, API/UI desktop-móvil PASS y cero fixtures RBAC.
+
 ## 2026-09-20 — Junta Directiva: grabación estabilizada
 
 - Corregidos temporizadores congelados, pantalla blanca al entrar en Audio/Minuta y pérdida del grabador al cambiar de pestaña.

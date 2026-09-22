@@ -20,6 +20,7 @@ from access_control import (
     ensure_access_defaults,
     normalized_access_scope,
     normalized_capabilities,
+    is_global_pastoral_authority,
     resolved_access_level,
 )
 from canonical_identity import IdentityConflictError, ensure_user_person_link, migrate_core_identity, sync_legacy_person_to_canonical
@@ -941,11 +942,11 @@ async def create_invite_code(body: InviteCodeCreate, authorization: Optional[str
     rol = payload.get("rol")
     creator_id = payload["user_id"]
 
-    if rol not in ("pastor", "lider"):
+    if rol != "lider" and not is_global_pastoral_authority(payload):
         raise HTTPException(status_code=403, detail="Solo pastores y lideres pueden generar codigos")
 
     # Determinar rol a asignar segun quien crea
-    if rol == "pastor":
+    if is_global_pastoral_authority(payload):
         role_to_assign = "lider"
         leader_id_to_assign = None  # lider raiz, no queda bajo otro lider
     else:
@@ -983,7 +984,7 @@ async def list_invite_codes(authorization: Optional[str] = Header(None)):
     payload = await get_current_user(authorization)
     rol = payload.get("rol")
     creator_id = payload["user_id"]
-    if rol not in ("pastor", "lider"):
+    if rol != "lider" and not is_global_pastoral_authority(payload):
         raise HTTPException(status_code=403, detail="Solo pastores y lideres pueden ver codigos")
 
     cursor = db.invite_codes.find({"created_by_user_id": creator_id}).sort("created_at", -1)
@@ -1191,7 +1192,7 @@ async def update_checklist(update: ChecklistUpdate, authorization: Optional[str]
 async def admin_diagnose_users(authorization: Optional[str] = Header(None)):
     """Solo pastor: diagnostica qué users tienen checklists/progress y cuáles no."""
     payload = await get_current_user(authorization)
-    if payload.get("rol") != "pastor":
+    if not is_global_pastoral_authority(payload):
         raise HTTPException(status_code=403, detail="Solo pastores")
 
     users = await db.users.find({}).to_list(1000)
@@ -1224,7 +1225,7 @@ async def admin_bootstrap_checklists(authorization: Optional[str] = Header(None)
     """Solo pastor: para cada usuario que no tenga las 7 semanas de checklists/progress,
     las crea con los valores DEFAULT_CHECKLISTS. Idempotente: salta los que ya existen."""
     payload = await get_current_user(authorization)
-    if payload.get("rol") != "pastor":
+    if not is_global_pastoral_authority(payload):
         raise HTTPException(status_code=403, detail="Solo pastores")
 
     users = await db.users.find({}).to_list(1000)
@@ -1321,7 +1322,7 @@ async def admin_seed_demo(authorization: Optional[str] = Header(None)):
     import string as _s
 
     payload = await get_current_user(authorization)
-    if payload.get("rol") != "pastor":
+    if not is_global_pastoral_authority(payload):
         raise HTTPException(status_code=403, detail="Solo pastores")
 
     leaders = await db.users.find({"rol": "lider"}).to_list(1000)
@@ -1730,7 +1731,7 @@ async def generate_manual_pdf(request: Request, authorization: Optional[str] = H
     """Genera el PDF del manual usando Chromium headless server-side.
     Fidelidad 100% — mismo motor del navegador que renderiza en pantalla."""
     payload = await get_current_user(authorization)
-    if payload.get("rol") not in ("pastor", "lider"):
+    if payload.get("rol") != "lider" and not is_global_pastoral_authority(payload):
         raise HTTPException(status_code=403, detail="Solo líderes y pastores pueden descargar el manual")
 
     # Derivar URL del frontend desde el request actual (same-origin en prod)
@@ -1865,7 +1866,7 @@ async def upload_photo(photo_data: dict, authorization: Optional[str] = Header(N
 async def add_pastor_note(note_data: dict, authorization: Optional[str] = Header(None)):
     """Pastor deja nota a un líder"""
     payload = await get_current_user(authorization)
-    if payload.get("rol") != "pastor":
+    if not is_global_pastoral_authority(payload):
         raise HTTPException(status_code=403, detail="Solo pastores pueden dejar notas")
     
     leader_id = note_data.get("leader_id")
@@ -1890,7 +1891,7 @@ async def add_pastor_note(note_data: dict, authorization: Optional[str] = Header
 async def get_pastor_notes(leader_id: str, authorization: Optional[str] = Header(None)):
     """Obtener notas del pastor para un líder"""
     payload = await get_current_user(authorization)
-    if payload.get("rol") != "pastor" and payload.get("user_id") != leader_id:
+    if not is_global_pastoral_authority(payload) and payload.get("user_id") != leader_id:
         raise HTTPException(status_code=403, detail="Notas pastorales restringidas")
     notes = await db.pastor_notes.find({"leader_id": leader_id}).sort("created_at", -1).to_list(100)
     return [serialize_doc(n) for n in notes]
@@ -1930,7 +1931,7 @@ async def get_presentation_notes(authorization: Optional[str] = Header(None)):
 async def create_presentation_session(authorization: Optional[str] = Header(None)):
     """Crea una sesión de presentación. Devuelve un código de 4 dígitos."""
     payload = await get_current_user(authorization)
-    if payload.get("rol") not in ["pastor", "lider"]:
+    if payload.get("rol") != "lider" and not is_global_pastoral_authority(payload):
         raise HTTPException(status_code=403, detail="Solo pastores y líderes pueden presentar")
 
     # Generar código único de 4 dígitos
@@ -2003,9 +2004,9 @@ async def close_presentation_session(code: str, authorization: Optional[str] = H
 async def list_pastors(authorization: Optional[str] = Header(None)):
     """Listar todos los pastores. Solo accesible por pastores."""
     payload = await get_current_user(authorization)
-    if payload.get("rol") != "pastor":
+    if not is_global_pastoral_authority(payload):
         raise HTTPException(status_code=403, detail="Solo pastores pueden ver la lista de pastores")
-    pastors = await db.users.find({"rol": "pastor"}).sort("created_at", 1).to_list(1000)
+    pastors = await db.users.find({"rol": {"$in": ["pastor", "pastora", "admin", "superadmin"]}}).sort("created_at", 1).to_list(1000)
     return [
         {
             "_id": str(p["_id"]),
@@ -2022,7 +2023,7 @@ async def list_pastors(authorization: Optional[str] = Header(None)):
 async def create_pastor(data: dict, authorization: Optional[str] = Header(None)):
     """Crear nueva cuenta de pastor con acceso maestro. Solo pastores existentes."""
     payload = await get_current_user(authorization)
-    if payload.get("rol") != "pastor":
+    if not is_global_pastoral_authority(payload):
         raise HTTPException(status_code=403, detail="Solo pastores pueden crear otros pastores")
 
     nombre = (data.get("nombre") or "").strip()
@@ -2072,18 +2073,18 @@ async def create_pastor(data: dict, authorization: Optional[str] = Header(None))
 async def delete_pastor(pastor_id: str, authorization: Optional[str] = Header(None)):
     """Eliminar una cuenta de pastor. No se puede auto-eliminar."""
     payload = await get_current_user(authorization)
-    if payload.get("rol") != "pastor":
+    if not is_global_pastoral_authority(payload):
         raise HTTPException(status_code=403, detail="Solo pastores pueden eliminar pastores")
 
     if pastor_id == payload["user_id"]:
         raise HTTPException(status_code=400, detail="No puedes eliminar tu propia cuenta")
 
     # Evitar eliminar si queda 1 solo pastor
-    total = await db.users.count_documents({"rol": "pastor"})
+    total = await db.users.count_documents({"rol": {"$in": ["pastor", "pastora", "admin", "superadmin"]}})
     if total <= 1:
         raise HTTPException(status_code=400, detail="Debe existir al menos un pastor en el sistema")
 
-    target = await db.users.find_one({"_id": ObjectId(pastor_id), "rol": "pastor"})
+    target = await db.users.find_one({"_id": ObjectId(pastor_id), "rol": {"$in": ["pastor", "pastora", "admin", "superadmin"]}})
     if not target:
         raise HTTPException(status_code=404, detail="Pastor no encontrado")
 
@@ -2098,14 +2099,14 @@ async def delete_pastor(pastor_id: str, authorization: Optional[str] = Header(No
 async def reset_pastor_password(pastor_id: str, data: dict, authorization: Optional[str] = Header(None)):
     """Resetear la contraseña de un pastor. Solo otros pastores."""
     payload = await get_current_user(authorization)
-    if payload.get("rol") != "pastor":
+    if not is_global_pastoral_authority(payload):
         raise HTTPException(status_code=403, detail="Solo pastores pueden resetear contraseñas de pastores")
 
     new_password = data.get("password") or ""
     if len(new_password) < 6:
         raise HTTPException(status_code=400, detail="La contraseña debe tener al menos 6 caracteres")
 
-    target = await db.users.find_one({"_id": ObjectId(pastor_id), "rol": "pastor"})
+    target = await db.users.find_one({"_id": ObjectId(pastor_id), "rol": {"$in": ["pastor", "pastora", "admin", "superadmin"]}})
     if not target:
         raise HTTPException(status_code=404, detail="Pastor no encontrado")
 
@@ -2135,7 +2136,7 @@ async def get_dashboard_by_role(authorization: Optional[str] = Header(None), lea
     rol = payload.get("rol", "lider")
     
     # Si es pastor y especifica leader_id, muestra dashboard de ese líder
-    if rol == "pastor" and leader_id:
+    if is_global_pastoral_authority(payload) and leader_id:
         # Pastor viendo dashboard de un líder específico
         lider = await db.users.find_one({"_id": ObjectId(leader_id)})
         if not lider:
@@ -2175,7 +2176,7 @@ async def get_dashboard_by_role(authorization: Optional[str] = Header(None), lea
             "pastor_notes": [serialize_doc(n) for n in notes],
         }
     
-    if rol == "pastor":
+    if is_global_pastoral_authority(payload):
         # Dashboard General del Pastor - ve todos los líderes
         lideres = await db.users.find({"rol": "lider"}).to_list(1000)
         lideres_data = []
@@ -2310,7 +2311,7 @@ async def get_dashboard_by_role(authorization: Optional[str] = Header(None), lea
 async def get_people(authorization: Optional[str] = Header(None), estado: Optional[str] = None):
     """Obtener todas las personas bajo el líder actual"""
     payload = await get_current_user(authorization)
-    if payload.get("rol") not in ("lider", "pastor"):
+    if payload.get("rol") != "lider" and not is_global_pastoral_authority(payload):
         raise HTTPException(status_code=403, detail="Solo líderes y pastores pueden listar personas")
     leader_id = payload["user_id"]
     
@@ -2327,7 +2328,7 @@ async def create_person(person: PersonCreate, authorization: Optional[str] = Hea
     raise HTTPException(status_code=410, detail="Alta legacy retirada; cree o seleccione una Persona canónica y use /api/processes/enrollments")
     """Crear una nueva persona para consolidar"""
     payload = await get_current_user(authorization)
-    if payload.get("rol") not in ("lider", "pastor"):
+    if payload.get("rol") != "lider" and not is_global_pastoral_authority(payload):
         raise HTTPException(status_code=403, detail="Solo líderes y pastores pueden crear personas")
     leader_id = payload["user_id"]
 
@@ -2516,7 +2517,7 @@ async def delete_person(person_id: str, authorization: Optional[str] = Header(No
     raise HTTPException(status_code=410, detail="Eliminación legacy retirada; pause o cancele la inscripción canónica")
     """Eliminar una persona (y todo su progreso asociado)"""
     payload = await get_current_user(authorization)
-    if payload.get("rol") not in ("lider", "pastor"):
+    if payload.get("rol") != "lider" and not is_global_pastoral_authority(payload):
         raise HTTPException(status_code=403, detail="Solo líderes y pastores pueden eliminar personas")
     leader_id = payload["user_id"]
     
@@ -2765,7 +2766,7 @@ def _serialize_journal(doc: dict) -> dict:
 async def create_journal_entry(entry: JournalEntryCreate, authorization: Optional[str] = Header(None)):
     """Crear una entrada de bitácora del líder. Solo líderes y pastores."""
     payload = await get_current_user(authorization)
-    if payload.get("rol") not in ("lider", "pastor"):
+    if payload.get("rol") != "lider" and not is_global_pastoral_authority(payload):
         raise HTTPException(status_code=403, detail="Solo líderes y pastores pueden registrar bitácora")
 
     doc = {
@@ -2906,7 +2907,7 @@ async def update_journal_entry(entry_id: str, entry: JournalEntryUpdate, authori
     existing = await db.leader_journal.find_one({"_id": oid})
     if not existing:
         raise HTTPException(status_code=404, detail="Entrada no encontrada")
-    if payload.get("rol") != "pastor" and existing.get("leader_id") != payload["user_id"]:
+    if not is_global_pastoral_authority(payload) and existing.get("leader_id") != payload["user_id"]:
         raise HTTPException(status_code=403, detail="No autorizado")
 
     update_doc = {k: v for k, v in entry.dict(exclude_unset=True).items() if v is not None}
@@ -2930,7 +2931,7 @@ async def delete_journal_entry(entry_id: str, authorization: Optional[str] = Hea
     existing = await db.leader_journal.find_one({"_id": oid})
     if not existing:
         return {"success": True}
-    if payload.get("rol") != "pastor" and existing.get("leader_id") != payload["user_id"]:
+    if not is_global_pastoral_authority(payload) and existing.get("leader_id") != payload["user_id"]:
         raise HTTPException(status_code=403, detail="No autorizado")
 
     await db.leader_journal.delete_one({"_id": oid})

@@ -15,7 +15,7 @@ import DisplayScaleToggle from './DisplayScaleToggle';
 import { ContextGuideButton } from './guides/ContextGuideButton';
 import { resolveRouteGuide } from './guides/guideRouteMap';
 import { BRAND } from '../config/brand';
-import { canViewCare, canViewFrontGroups, canViewGeo, canViewLeadership, canViewOperations, hasAnyCapability, isPastoralAuthority } from '../lib/accessControl';
+import { canViewCare, canViewFinanceModule, canViewFrontGroups, canViewGeo, canViewLeadership, canViewOperations, hasAnyCapability, isPastoralAuthority } from '../lib/accessControl';
 import { useBoardAccess } from '../hooks/useBoardAccess';
 const LOGO_URL = LOGO_IGLESIA;
 
@@ -49,7 +49,6 @@ const getNavItems = (user, boardAllowed = false) => {
       { type: 'separator', label: 'Administración' },
       { to: '/estadisticas', icon: BarChart3, label: 'Estadísticas Globales' },
     ];
-    if (boardAllowed) personItems.push({ to: '/junta/dashboard', icon: Gavel, label: 'Junta Directiva', testId: 'nav-board' });
     return personItems;
   }
   
@@ -94,7 +93,7 @@ const getNavItems = (user, boardAllowed = false) => {
   if (hasAnyCapability(user, ['core.access.manage'])) {
     items.splice(1, 0, { to: '/nucleo', icon: DatabaseZap, label: 'Gestión de accesos', testId: 'nav-core-governance' });
   }
-  if (hasAnyCapability(user, ['finance.read', 'finance.manage']) && !items.some((item) => item.to === '/finanzas')) {
+  if (canViewFinanceModule(user) && !items.some((item) => item.to === '/finanzas')) {
     items.splice(1, 0, { to: '/finanzas', icon: Landmark, label: 'Contabilidad y Finanzas', testId: 'nav-finance' });
   }
   return items.filter((item) => (

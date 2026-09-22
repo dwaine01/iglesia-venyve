@@ -23,7 +23,7 @@ import { BaptismSection, MembershipProfileSection } from '../components/PersonMo
 import { PersonArchiveDialog } from '../components/PersonArchiveDialog';
 import { PersonJourneyStatusStrip } from '../components/PersonJourneyStatusStrip';
 import { toast } from 'sonner';
-import { canManageMembershipDocuments } from '../lib/accessControl';
+import { canManageMembershipDocuments, isPastoralAuthority } from '../lib/accessControl';
 
 // P-001 Slice 2A - Person Profile 360 (shell full-screen).
 // Consume unicamente el read-model /api/core/persons/{id}/profile.
@@ -112,9 +112,9 @@ export default function PersonaPerfilPage() {
   const sections = profile?.sections || [];
   const available = profile?.sections_available || ['resumen'];
   const planned = profile?.sections_planned || [];
-  const canViewFinance = user?.rol === 'pastor' || (user?.capabilities || []).includes('finance.read');
+  const canViewFinance = profile?.private_finance_can_read === true;
   const canManageMembershipDocs = canManageMembershipDocuments(user);
-  const canArchive = user?.rol === 'pastor' && user?.person_id !== personId && profile?.identity?.account_role !== 'pastor';
+  const canArchive = isPastoralAuthority(user) && user?.person_id !== personId && profile?.identity?.account_role !== 'pastor';
   const allSections = [
     'resumen', 'contacto', 'direcciones', 'household',
     'familia', 'procesos', 'asistencia', 'historial', ...(available.includes('membresia') ? ['membresia'] : []), ...(available.includes('bautismo') ? ['bautismo'] : []), ...(canViewFinance ? ['finanzas'] : []),

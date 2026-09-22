@@ -66,6 +66,8 @@ def require_pastor(current_user: dict = Depends(get_current_user)) -> dict:
 
 def require_person_profile_user(current_user: dict = Depends(get_current_user)) -> dict:
     """Allow any role with explicit Person capabilities and a Person scope."""
+    if is_global_pastoral_authority(current_user):
+        return current_user
     capabilities = normalized_capabilities(current_user)
     scope = normalized_access_scope(current_user).get("persons", "none")
     if not any(item.startswith("person.") for item in capabilities) or scope == "none":
