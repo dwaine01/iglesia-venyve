@@ -762,3 +762,10 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - Operación: trabajo delegable, rotación semanal auditable, autoridad de Consolidación, vínculo configurable Célula ↔ Grupo y continuidad del expediente.
 - Integraciones: Persona 360, Op. 72 única, Ley de 7 Semanas como proceso y Mapa 360/Invasiones reutilizados con botón “Crear invasión”.
 - UI y certificación: panel recursivo y mesa semanal; build exitoso, 29 pruebas críticas y desktop/móvil sin overflow. Iteración 33 corregida y revalidada.
+
+### HOTFIX P0 — Carnet con fotografía visible — RESUELTO 2026-09-22
+
+- Corregido el desacople entre Persona 360, que reconocía cualquier fotografía canónica por `person_id`, y la emisión del carnet, que exigía incorrectamente `is_current=true`.
+- Las nuevas cargas de fotografía guardan `is_current=true`; las fotografías históricas ya visibles continúan siendo válidas aunque no tengan esa bandera.
+- Se conserva el rechazo 422 cuando realmente no existe fotografía y el 403 para usuarios sin autoridad ni `membership.documents.manage`; no se modificó RBAC de Junta o Finanzas.
+- Certificación Iteración 47: backend 3/3, frontend desktop/móvil, botón habilitado, emisión 201, vista previa e historial PASS; auto-regresión 4/4 PASS y cero datos QA residuales.

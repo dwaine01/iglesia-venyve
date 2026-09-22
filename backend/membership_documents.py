@@ -125,6 +125,10 @@ async def canonical_person(person_id: str) -> dict:
     return person
 
 
+async def has_profile_photo(person_id: str) -> bool:
+    return await db.person_photos.count_documents({"person_id": person_id}, limit=1) > 0
+
+
 def full_name(person: dict) -> str:
     for key in ["display_name", "full_name", "nombre_completo"]:
         if person.get(key):
@@ -407,7 +411,7 @@ async def render_data(person: dict, membership: dict) -> dict:
             "person_id": person["person_id"],
             "full_name": full_name(person),
             "position": position,
-            "has_profile_photo": await db.person_photos.count_documents({"person_id": person["person_id"], "is_current": True}) > 0,
+            "has_profile_photo": await has_profile_photo(person["person_id"]),
             "photo_path": f"/api/core/persons/{person['person_id']}/photo",
         },
         "membership": serialize(membership),
@@ -533,7 +537,7 @@ async def issue_membership_document(person_id: str, document_type: Literal["card
     if not membership.get("acceptance_signed_at") and not membership.get("legacy_membership"):
         raise HTTPException(status_code=409, detail="La membresía no tiene aceptación formal registrada")
     settings = await settings_document()
-    if document_type == "card" and not await db.person_photos.find_one({"person_id": person["person_id"], "is_current": True}, {"_id": 1}):
+    if document_type == "card" and not await has_profile_photo(person["person_id"]):
         raise HTTPException(status_code=422, detail="La Persona 360 necesita fotografía antes de emitir el carnet")
     if document_type == "certificate" and not settings.get("signature_file_id"):
         raise HTTPException(status_code=409, detail="Configure la firma autorizada antes de emitir el certificado")
