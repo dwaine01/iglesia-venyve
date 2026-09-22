@@ -640,6 +640,28 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - Browser real: 17 tarjetas, 0 deshabilitadas para Pastor, 0 “No disponible”, Membresía/Bautismo/Bienvenida/Ley7/Discipulado navegados y Bautismo guardado; desktop 1920×800 y móvil 390×844 sin overflow.
 - APIs MOCKED: ninguna. Limpieza final: `iter37_users=0`, `iter37_people=0`, `iter37_baptisms=0`, `iter37_memberships=0`.
 
+### JUNTA DIRECTIVA — RECINTO RESTRINGIDO Y PRIVACIDAD PASTORAL — COMPLETADO 2026‑09‑22
+
+- Junta dejó de depender de jerarquía general, `doors.manage`, `core.access.manage` o acceso de Coordinación General.
+- Fuente de verdad: **Pastor/Pastora = FULL**; cualquier otra cuenta requiere `board_memberships` activa por `person_id` en cada request.
+- `GET /api/board/access` entrega únicamente `allowed`, cargo, permisos efectivos y clasificación institucional; frontend usa esta respuesta para navegación y protección de rutas.
+- Coordinador General, Director, Líder, Supervisor, Mentor o Líder frontal sin membresía formal no ven `nav-board`, son redirigidos al intentar URL directa y reciben 403 en backend.
+- Matriz máxima por cargo aplicada también en servidor:
+  - Presidencia/Vicepresidencia: reuniones, agenda, votaciones, acuerdos y tareas.
+  - Secretaría: reuniones, agenda, notas, minutas, grabaciones, documentos y seguimiento.
+  - Tesorería: lectura institucional, documentos compartidos y votación si corresponde.
+  - Vocal/Miembro: lectura institucional, votación y solo tareas/documentos propios o compartidos.
+- Un payload que intenta conceder permisos superiores al cargo recibe 422; permisos almacenados históricos también se intersectan con el máximo del cargo.
+- Agregar membresía sincroniza `board.access`; finalizarla incrementa `token_version`, invalida sesiones anteriores y retira acceso inmediatamente.
+- La membresía de Junta nunca agrega `care.confidential.read`, `person.pastoral_notes.read` ni el legado `board.confidential.access`.
+- Separación documental fuerte: Junta solo acepta/lista/descarga `classification=board_institutional`; cualquier `pastoral_confidential` queda fuera del módulo incluso para evitar mezcla accidental.
+- Respuestas no pastorales usan resúmenes institucionales mínimos y eliminan `profile_path`; notas privadas de Secretaría requieren su permiso específico.
+- Vocal solo ve tareas propias/compartidas, actualiza las propias, ve minutas oficiales y no ve grabaciones, notas o borradores; Secretaría/Pastora administran esos artefactos.
+- Se corrigió un crash de startup detectado en Iteración 39: Mongo no permite `$addToSet` y `$pull` sobre `capabilities` en una sola operación; la migración quedó dividida en dos escrituras seguras.
+- Verificación post-fix: Junta/Auth/regresiones **25/25 PASS**, matriz+cleanup **5/5 PASS**, frontend **25/25 PASS**, build PASS, health 200 y servidor con 431 rutas.
+- Browser: Coordinador sin botón/redirección segura; Pastora con gestión completa; Secretaría con notas/audio/documentos; Vocal móvil sin controles elevados y sin overflow.
+- APIs MOCKED: ninguna. Limpieza final: `iter39_users=0`, `iter39_meetings=0`, `iter39_memberships=0`.
+
 ### FASE DE ESTABILIZACIÓN — COMPLETADA 2026‑09‑19
 
 - **Limpieza QA/demo P0:** el escaneo transversal fue reemplazado por una allowlist explícita de colecciones y campos de propiedad directa. Nunca se elimina un documento real por una mención incidental a una cuenta QA.

@@ -10,7 +10,7 @@ from pydantic import BaseModel, EmailStr, Field
 
 from access_control import (
     ACCESS_POLICY_VERSION,
-    BOARD_CONFIDENTIAL_ACCESS,
+    BOARD_ACCESS,
     BOARD_AI,
     BOARD_AUDIO,
     CELLULAR_CAPABILITIES,
@@ -151,7 +151,7 @@ def access_defaults(level: str, privilege_groups: Optional[list[str]] = None) ->
     if "membership" not in groups:
         defaults["capabilities"] = [item for item in defaults["capabilities"] if item not in PERSON_DOMAIN_CAPABILITIES]
     if "board" in groups:
-        defaults["capabilities"] = sorted(set([*defaults["capabilities"], BOARD_AUDIO, BOARD_AI, BOARD_CONFIDENTIAL_ACCESS]))
+        defaults["capabilities"] = sorted(set([*defaults["capabilities"], BOARD_ACCESS]))
     if "finance" in groups:
         defaults["capabilities"] = sorted(set([*defaults["capabilities"], *FINANCE_CAPABILITIES, "person.directory.search", "person.profile.read"]))
     defaults["access_scope"] = {"persons": "all" if level == "coordinador_general" else "created_by" if role == "lider" else defaults["access_scope"]["persons"]}
@@ -418,7 +418,7 @@ async def update_user_access(
         if active_pastors <= 1:
             raise HTTPException(status_code=400, detail="Debe existir al menos un pastor activo")
     defaults = access_defaults(requested_level, requested_groups)
-    allowed = set(PERSON_DOMAIN_CAPABILITIES + PROCESS_CAPABILITIES + CELLULAR_CAPABILITIES + DOOR_BOARD_CAPABILITIES + FINANCE_CAPABILITIES + JOURNEY_GOVERNANCE_CAPABILITIES + OPERATIONS_CAPABILITIES + CARE_CAPABILITIES + [MEMBERSHIP_DOCUMENTS_MANAGE, MEMBERSHIP_DIRECT_IMPORT, BOARD_CONFIDENTIAL_ACCESS, PERSON_PASTORAL_NOTES_READ, CORE_GOVERNANCE_MANAGE, CORE_ACCESS_MANAGE, "person.profile.read"])
+    allowed = set(PERSON_DOMAIN_CAPABILITIES + PROCESS_CAPABILITIES + CELLULAR_CAPABILITIES + DOOR_BOARD_CAPABILITIES + FINANCE_CAPABILITIES + JOURNEY_GOVERNANCE_CAPABILITIES + OPERATIONS_CAPABILITIES + CARE_CAPABILITIES + [MEMBERSHIP_DOCUMENTS_MANAGE, MEMBERSHIP_DIRECT_IMPORT, BOARD_ACCESS, PERSON_PASTORAL_NOTES_READ, CORE_GOVERNANCE_MANAGE, CORE_ACCESS_MANAGE, "person.profile.read"])
     capabilities = defaults["capabilities"]
     if payload.capabilities is not None:
         if not is_global_pastoral_authority(current_user):

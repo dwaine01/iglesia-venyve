@@ -16,13 +16,14 @@ import { ContextGuideButton } from './guides/ContextGuideButton';
 import { resolveRouteGuide } from './guides/guideRouteMap';
 import { BRAND } from '../config/brand';
 import { canViewCare, canViewFrontGroups, canViewGeo, canViewLeadership, canViewOperations, hasAnyCapability, isPastoralAuthority } from '../lib/accessControl';
+import { useBoardAccess } from '../hooks/useBoardAccess';
 const LOGO_URL = LOGO_IGLESIA;
 
 // Menu items by role
-const getNavItems = (user) => {
+const getNavItems = (user, boardAllowed = false) => {
   const rol = user?.rol;
   if (isPastoralAuthority(user)) {
-    return [
+    const personItems = [
       { to: '/dashboard-general', icon: Crown, label: 'Panel General', end: true },
       { to: '/nucleo', icon: DatabaseZap, label: 'Gobierno del Núcleo', testId: 'nav-core-governance' },
       { to: '/procesos/dashboard', icon: Activity, label: 'Panel de Procesos', testId: 'nav-process-dashboard' },
@@ -48,6 +49,8 @@ const getNavItems = (user) => {
       { type: 'separator', label: 'Administración' },
       { to: '/estadisticas', icon: BarChart3, label: 'Estadísticas Globales' },
     ];
+    if (boardAllowed) personItems.push({ to: '/junta/dashboard', icon: Gavel, label: 'Junta Directiva', testId: 'nav-board' });
+    return personItems;
   }
   
   if (rol === 'persona') {
@@ -104,6 +107,8 @@ const getNavItems = (user) => {
     item.to !== '/operaciones' || canViewOperations(user)
   ) && (
     item.to !== '/cuidado-pastoral' || canViewCare(user)
+  ) && (
+    item.to !== '/junta/dashboard' || boardAllowed
   ));
 };
 
@@ -158,7 +163,8 @@ const breadcrumbMap = {
 
 function SidebarContent({ onClose, testIdPrefix = '' }) {
   const { user, logout } = useAuth();
-  const navItems = getNavItems(user);
+  const boardAccess = useBoardAccess();
+  const navItems = getNavItems(user, boardAccess.allowed);
 
   const getRolLabel = () => {
     if (isPastoralAuthority(user)) return 'Pastor (Acceso Maestro)';

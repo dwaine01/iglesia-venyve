@@ -1,6 +1,8 @@
 """Catálogo institucional versionado para Puertas y Junta Directiva."""
 from datetime import datetime, timezone
 
+from access_control import BOARD_ACCESS, BOARD_CONFIDENTIAL_ACCESS
+
 BOARD_ID = "board_directiva_principal"
 
 POSITIONS = [
@@ -42,3 +44,8 @@ async def seed_door_board_catalog(db) -> None:
         )
     for door_key, detail in DOOR_DETAILS.items():
         await db.door_catalog.update_one({"door_key": door_key}, {"$set": {**detail, "version": 2, "updated_at": now}})
+    active_person_ids = await db.board_memberships.distinct("person_id", {"board_id": BOARD_ID, "active": True})
+    if active_person_ids:
+        await db.users.update_many({"person_id": {"$in": active_person_ids}}, {"$pull": {"capabilities": BOARD_CONFIDENTIAL_ACCESS}})
+        await db.users.update_many({"person_id": {"$in": active_person_ids}}, {"$addToSet": {"capabilities": BOARD_ACCESS, "privilege_groups": "board"}})
+    await db.users.update_many({"person_id": {"$nin": active_person_ids}}, {"$pull": {"capabilities": {"$in": [BOARD_ACCESS, BOARD_CONFIDENTIAL_ACCESS]}, "privilege_groups": "board"}})

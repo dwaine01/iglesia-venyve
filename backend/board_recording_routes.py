@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 from datetime import datetime, timezone
+from typing import Literal
 from uuid import uuid4
 
 from bson import ObjectId
@@ -82,7 +83,17 @@ def queue_ai_regeneration(background: BackgroundTasks, meeting_id: str, user_id:
 
 
 async def ensure_recording_access(current_user: dict, permission: str):
-    await ensure_board_access(db, current_user, permission)
+    return await ensure_board_access(db, current_user, permission)
+
+
+def visible_document_query(meeting_id: str, access: dict, current_user: dict) -> dict:
+    query = {
+        "metadata.meeting_id": meeting_id,
+        "$and": [{"$or": [{"metadata.classification": "board_institutional"}, {"metadata.classification": {"$exists": False}}]}],
+    }
+    if not access.get("pastoral_full_access") and not ({"board.meetings.write", "board.notes.write"} & set(access.get("permissions", []))):
+        query["$and"].append({"$or": [{"metadata.visibility": "board"}, {"metadata.visibility": {"$exists": False}}, {"metadata.assigned_person_ids": current_user.get("person_id")}]})
+    return query
 
 
 @router.post("/recordings/uploads", response_model=dict, status_code=201)
@@ -314,12 +325,18 @@ async def generate_ai_draft(meeting_id: str, payload: AiDraftRequest, current_us
 
 
 @router.post("/meetings/{meeting_id}/documents", response_model=dict, status_code=201)
-async def upload_board_document(meeting_id: str, file: UploadFile = File(...), agenda_item_id: str | None = Form(default=None), current_user: dict = Depends(get_current_user)):
+async def upload_board_document(meeting_id: str, file: UploadFile = File(...), agenda_item_id: str | None = Form(default=None), classification: Literal["board_institutional"] = Form(default="board_institutional"), visibility: Literal["board", "assigned"] = Form(default="board"), assigned_person_ids_json: str = Form(default="[]"), current_user: dict = Depends(get_current_user)):
     await ensure_recording_access(current_user, "board.meetings.write")
     if not await db.board_meetings.find_one({"meeting_id": meeting_id}): raise HTTPException(status_code=404, detail="Reunión no encontrada")
     if file.content_type not in ALLOWED_DOCUMENT_TYPES: raise HTTPException(status_code=415, detail="Tipo de documento no permitido")
     if agenda_item_id and not await db.board_agenda_items.find_one({"agenda_item_id": agenda_item_id, "meeting_id": meeting_id}): raise HTTPException(status_code=422, detail="Punto de agenda no válido")
-    filename = Path(file.filename or "documento").name[:180]; document_id = ObjectId(); target = document_bucket().open_upload_stream_with_id(document_id, filename, metadata={"meeting_id": meeting_id, "agenda_item_id": agenda_item_id, "filename": filename, "content_type": file.content_type, "owner_user_id": current_user["user_id"], "immutable": True, "sha256": None, "created_at": datetime.now(timezone.utc)})
+    try: assigned_person_ids = json.loads(assigned_person_ids_json)
+    except json.JSONDecodeError as exc: raise HTTPException(status_code=422, detail="Destinatarios inválidos") from exc
+    if not isinstance(assigned_person_ids, list) or any(not isinstance(item, str) for item in assigned_person_ids): raise HTTPException(status_code=422, detail="Destinatarios inválidos")
+    if visibility == "assigned" and not assigned_person_ids: raise HTTPException(status_code=422, detail="Seleccione al menos un destinatario")
+    active_ids = set(await db.board_memberships.distinct("person_id", {"active": True}))
+    if any(item not in active_ids for item in assigned_person_ids): raise HTTPException(status_code=422, detail="Los destinatarios deben integrar la Junta")
+    filename = Path(file.filename or "documento").name[:180]; document_id = ObjectId(); target = document_bucket().open_upload_stream_with_id(document_id, filename, metadata={"meeting_id": meeting_id, "agenda_item_id": agenda_item_id, "filename": filename, "content_type": file.content_type, "owner_user_id": current_user["user_id"], "immutable": True, "classification": classification, "visibility": visibility, "assigned_person_ids": assigned_person_ids, "sha256": None, "created_at": datetime.now(timezone.utc)})
     size = 0; digest = hashlib.sha256()
     try:
         while True:
@@ -341,17 +358,21 @@ async def upload_board_document(meeting_id: str, file: UploadFile = File(...), a
 
 @router.get("/meetings/{meeting_id}/documents", response_model=dict)
 async def list_board_documents(meeting_id: str, current_user: dict = Depends(get_current_user)):
-    await ensure_recording_access(current_user, "board.read")
-    docs = await db["board_documents.files"].find({"metadata.meeting_id": meeting_id}, {"_id": 1, "length": 1, "uploadDate": 1, "metadata": 1}).sort("uploadDate", -1).to_list(500)
+    access = await ensure_recording_access(current_user, "board.read")
+    docs = await db["board_documents.files"].find(visible_document_query(meeting_id, access, current_user), {"_id": 1, "length": 1, "uploadDate": 1, "metadata": 1}).sort("uploadDate", -1).to_list(500)
     return {"items": [{"document_id": str(item["_id"]), "bytes": item.get("length"), "uploaded_at": serialize(item.get("uploadDate")), **serialize(item.get("metadata", {}))} for item in docs]}
 
 
 @router.get("/documents/{document_id}")
 async def download_board_document(document_id: str, current_user: dict = Depends(get_current_user)):
-    await ensure_recording_access(current_user, "board.read")
+    access = await ensure_recording_access(current_user, "board.read")
     if not ObjectId.is_valid(document_id): raise HTTPException(status_code=404, detail="Documento no encontrado")
     doc = await db["board_documents.files"].find_one({"_id": ObjectId(document_id)})
     if not doc: raise HTTPException(status_code=404, detail="Documento no encontrado")
+    metadata = doc.get("metadata", {})
+    classification = metadata.get("classification", "board_institutional")
+    allowed_by_scope = metadata.get("visibility", "board") == "board" or current_user.get("person_id") in (metadata.get("assigned_person_ids") or []) or access.get("pastoral_full_access") or bool({"board.meetings.write", "board.notes.write"} & set(access.get("permissions", [])))
+    if classification != "board_institutional" or not allowed_by_scope: raise HTTPException(status_code=404, detail="Documento no encontrado")
     source = await document_bucket().open_download_stream(ObjectId(document_id))
     async def stream():
         try:

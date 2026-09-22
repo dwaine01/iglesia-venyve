@@ -16,6 +16,7 @@ import { DoorError, DoorLoading, DoorShell } from '../../components/doors/DoorSh
 import { Button } from '../../components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import { statusLabel } from '../../lib/displayLabels';
+import { hasBoardPermission } from '../../hooks/useBoardAccess';
 
 export default function BoardMeetingDetailPage() {
   const { meetingId } = useParams();
@@ -34,7 +35,8 @@ export default function BoardMeetingDetailPage() {
   const close = async () => { try { await axios.post(`${API}/api/board/meetings/${meetingId}/close`, {}, getAuthHeaders()); toast.success('Reunión cerrada y duración registrada'); await load(); } catch (e) { toast.error(e?.response?.data?.detail || 'No se pudo cerrar'); } };
   if (!meeting && !error) return <DoorShell eyebrow="Junta Directiva" title="Reunión" description="Abriendo consola..." guideKey="board_meeting"><DoorLoading /></DoorShell>;
   const clock = `${String(Math.floor(elapsed / 3600)).padStart(2, '0')}:${String(Math.floor((elapsed % 3600) / 60)).padStart(2, '0')}:${String(elapsed % 60).padStart(2, '0')}`;
-  const actions = meeting?.status === 'open' ? <div className="flex flex-wrap gap-2"><Button onClick={() => setActiveTab('recording')} className="bg-red-700 hover:bg-red-800" data-testid="go-to-recording-button"><Mic className="mr-2 h-4 w-4" />Ir a grabación</Button><Button onClick={close} variant="outline" data-testid="close-board-meeting-button"><DoorClosed className="mr-2 h-4 w-4" />Cerrar reunión</Button></div> : null;
+  const access = meeting?.access || { permissions: [] }; const canMeetings = hasBoardPermission(access, 'board.meetings.write'); const canNotes = hasBoardPermission(access, 'board.notes.write'); const canVote = hasBoardPermission(access, 'board.vote'); const canActions = hasBoardPermission(access, 'board.actions.write'); const canAudio = hasBoardPermission(access, 'board.audio.manage'); const canMinutes = hasBoardPermission(access, 'board.minutes.review');
+  const actions = meeting?.status === 'open' ? <div className="flex flex-wrap gap-2">{canAudio && <Button onClick={() => setActiveTab('recording')} className="bg-red-700 hover:bg-red-800" data-testid="go-to-recording-button"><Mic className="mr-2 h-4 w-4" />Ir a grabación</Button>}{canMeetings && <Button onClick={close} variant="outline" data-testid="close-board-meeting-button"><DoorClosed className="mr-2 h-4 w-4" />Cerrar reunión</Button>}</div> : null;
   return <DoorShell eyebrow="Reunión de Junta" title={meeting?.title || 'Reunión'} description={meeting ? `${new Date(meeting.scheduled_at).toLocaleString('es')} · ${meeting.location}` : ''} guideKey="board_meeting" actions={actions}>
     {error ? <DoorError message={error} /> : <>
       <section className="grid gap-3 sm:grid-cols-3">
@@ -43,12 +45,12 @@ export default function BoardMeetingDetailPage() {
         <div className="border bg-white p-4"><b className="block text-2xl uppercase" data-testid="board-meeting-status">{statusLabel(meeting.status)}</b><span className="text-xs text-slate-500">Estado formal</span></div>
       </section>
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid h-auto w-full grid-cols-3 bg-white p-1 sm:grid-cols-5"><TabsTrigger value="attendance" data-testid="meeting-tab-attendance">Asistencia</TabsTrigger><TabsTrigger value="agenda" data-testid="meeting-tab-agenda">Agenda</TabsTrigger><TabsTrigger value="notes" data-testid="meeting-tab-notes">Notas</TabsTrigger><TabsTrigger value="governance" data-testid="meeting-tab-governance">Votos/Tareas</TabsTrigger><TabsTrigger value="recording" data-testid="meeting-tab-recording">Audio/Minuta</TabsTrigger></TabsList>
-        <TabsContent value="attendance"><BoardAttendancePanel meeting={meeting} members={members} onReload={load} onStarted={(startedMeeting) => { setMeeting((current) => ({ ...current, ...startedMeeting })); setNow(Date.now()); setActiveTab('recording'); }} /></TabsContent>
-        <TabsContent value="agenda"><BoardAgendaPanel meeting={meeting} onReload={load} /></TabsContent>
-        <TabsContent value="notes"><SecretaryNotesPanel meetingId={meetingId} /></TabsContent>
-        <TabsContent value="governance"><BoardGovernancePanel meeting={meeting} members={members} onReload={load} /></TabsContent>
-        <TabsContent value="recording" forceMount className="data-[state=inactive]:hidden"><div ref={recordingRef} className="scroll-mt-40 space-y-5" data-testid="board-recording-workspace"><BoardRecordingErrorBoundary><BoardDocumentsPanel meetingId={meetingId} /><TranscriptMinutesPanel meeting={meeting} members={members} onReload={load} /><AiArtifactsPanel artifacts={meeting.ai_artifacts || []} /></BoardRecordingErrorBoundary></div></TabsContent>
+        <TabsList className="grid h-auto w-full grid-cols-2 bg-white p-1 sm:grid-cols-5"><TabsTrigger value="attendance" data-testid="meeting-tab-attendance">Asistencia</TabsTrigger><TabsTrigger value="agenda" data-testid="meeting-tab-agenda">Agenda</TabsTrigger>{canNotes && <TabsTrigger value="notes" data-testid="meeting-tab-notes">Notas</TabsTrigger>}<TabsTrigger value="governance" data-testid="meeting-tab-governance">Votos/Tareas</TabsTrigger><TabsTrigger value="recording" data-testid="meeting-tab-recording">Documentos/Minuta</TabsTrigger></TabsList>
+        <TabsContent value="attendance"><BoardAttendancePanel meeting={meeting} members={members} canWrite={canMeetings} onReload={load} onStarted={(startedMeeting) => { setMeeting((current) => ({ ...current, ...startedMeeting })); setNow(Date.now()); setActiveTab(canAudio ? 'recording' : 'agenda'); }} /></TabsContent>
+        <TabsContent value="agenda"><BoardAgendaPanel meeting={meeting} onReload={load} canWrite={canMeetings} /></TabsContent>
+        {canNotes && <TabsContent value="notes"><SecretaryNotesPanel meetingId={meetingId} /></TabsContent>}
+        <TabsContent value="governance"><BoardGovernancePanel meeting={meeting} members={members} onReload={load} canManageMeeting={canMeetings} canVote={canVote} canManageActions={canActions} /></TabsContent>
+        <TabsContent value="recording" forceMount className="data-[state=inactive]:hidden"><div ref={recordingRef} className="scroll-mt-40 space-y-5" data-testid="board-recording-workspace"><BoardRecordingErrorBoundary><BoardDocumentsPanel meetingId={meetingId} canUpload={canMeetings || canNotes} />{canAudio && canNotes && canMinutes ? <TranscriptMinutesPanel meeting={meeting} members={members} onReload={load} /> : <section className="border bg-white p-4" data-testid="board-official-minutes-readonly"><h2 className="font-semibold">Minutas oficiales</h2><p className="mt-1 text-xs text-slate-500">Solo Secretaría y Pastora acceden a grabaciones, borradores y notas de trabajo.</p><div className="mt-3 space-y-2">{(meeting.minutes || []).map((item) => <article key={item.minute_id} className="border p-3 text-sm">Versión {item.version} · {statusLabel(item.status)}</article>)}</div></section>} {canMinutes && <AiArtifactsPanel artifacts={meeting.ai_artifacts || []} />}</BoardRecordingErrorBoundary></div></TabsContent>
       </Tabs>
     </>}
   </DoorShell>;

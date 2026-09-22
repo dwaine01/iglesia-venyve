@@ -15,7 +15,6 @@ from bson import ObjectId
 import json
 from dotenv import load_dotenv
 from access_control import (
-    BOARD_CONFIDENTIAL_ACCESS,
     CORE_ACCESS_MANAGE,
     access_defaults_for_role,
     ensure_access_defaults,
