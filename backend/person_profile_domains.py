@@ -684,6 +684,7 @@ async def complete_photo_upload(
     await db.person_photos.insert_one({
         "_id": photo_id,
         "person_id": person_id,
+        "is_current": True,
         "content_type": upload["content_type"],
         "data": Binary(data),
         "size": len(data),

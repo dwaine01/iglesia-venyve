@@ -6,6 +6,8 @@
 - **Completado:** Coordinación General sin accesos restringidos por defecto; Finanzas y Junta aisladas con unión multirol explícita.
 - **P0 RBAC listo para revisión manual:** cierre Iteración 41 sin FAIL/SKIP dentro de la matriz; resultado retenido, sin merge ni despliegue.
 - **Completado:** membresía histórica y Formación/Educación configurable integradas con Persona 360, Bautismo y certificados preparados; Iteración 46 sin FAIL/SKIP.
+- **Completado:** hotfix de emisión de carnet con fotografía visible; Iteración 47 backend/frontend y responsive PASS.
+- **Completado y aprobado visualmente:** identidad Institucional Contemporánea del carnet CR80 y certificado Letter; PDF/QR/casos extremos certificados con 42 pruebas PASS.
 
 ## P1 — Seguimiento
 
