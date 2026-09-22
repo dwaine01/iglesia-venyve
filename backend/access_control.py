@@ -8,7 +8,7 @@ from copy import deepcopy
 
 from fastapi import HTTPException
 
-ACCESS_POLICY_VERSION = 20
+ACCESS_POLICY_VERSION = 21
 
 PERSON_PROFILE_SENSITIVE_READ = "person.profile.sensitive.read"
 PERSON_PROFILE_WRITE = "person.profile.write"
@@ -36,10 +36,13 @@ PERSON_ADDRESSES_WRITE = "person.addresses.write"
 PERSON_PASTORAL_NOTES_READ = "person.notes.pastoral.read"
 CORE_GOVERNANCE_MANAGE = "core.governance.manage"
 CORE_ACCESS_MANAGE = "core.access.manage"
+BOARD_ACCESS = "board.access"
 BOARD_CONFIDENTIAL_ACCESS = "board.confidential.access"
 FINANCE_READ = "finance.read"
 FINANCE_MANAGE = "finance.manage"
 FINANCE_CAPABILITIES = [FINANCE_READ, FINANCE_MANAGE]
+FINANCE_PRIVILEGE_GROUP = "finance"
+BOARD_PRIVILEGE_GROUP = "board"
 MEMBERSHIP_DOCUMENTS_MANAGE = "membership.documents.manage"
 MEMBERSHIP_DIRECT_IMPORT = "membership.direct_import"
 MEMBERSHIP_ACCEPTANCE_MANAGE = "membership.acceptance.manage"
@@ -202,6 +205,7 @@ _ROLE_ACCESS_DEFAULTS = {
         "access_scope": {"persons": "self"},
     },
 }
+_ROLE_ACCESS_DEFAULTS["pastora"] = deepcopy(_ROLE_ACCESS_DEFAULTS["pastor"])
 
 
 def access_defaults_for_role(role: str) -> dict:
@@ -218,6 +222,21 @@ def access_defaults_for_role(role: str) -> dict:
 
 def normalized_capabilities(user: dict) -> list[str]:
     value = user.get("capabilities", [])
+    if not isinstance(value, list):
+        return []
+    capabilities = {item for item in value if isinstance(item, str) and item}
+    if not is_global_pastoral_authority(user):
+        groups = set(normalized_privilege_groups(user))
+        if FINANCE_PRIVILEGE_GROUP not in groups:
+            capabilities.difference_update(FINANCE_CAPABILITIES)
+        if BOARD_PRIVILEGE_GROUP not in groups:
+            capabilities.discard(BOARD_ACCESS)
+        capabilities.discard(BOARD_CONFIDENTIAL_ACCESS)
+    return sorted(capabilities)
+
+
+def normalized_privilege_groups(user: dict) -> list[str]:
+    value = user.get("privilege_groups", [])
     if not isinstance(value, list):
         return []
     return sorted({item for item in value if isinstance(item, str) and item})
@@ -244,6 +263,8 @@ def has_capability(user: dict, capability: str) -> bool:
 
 
 def can_access_person(user: dict, person: dict) -> bool:
+    if is_global_pastoral_authority(user):
+        return True
     person_scope = normalized_access_scope(user).get("persons", "none")
     user_id = user.get("user_id")
     user_person_id = user.get("person_id")

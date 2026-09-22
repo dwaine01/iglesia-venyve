@@ -10,6 +10,7 @@ from pydantic import BaseModel, EmailStr, Field
 
 from access_control import (
     ACCESS_POLICY_VERSION,
+    BOARD_ACCESS,
     BOARD_CONFIDENTIAL_ACCESS,
     BOARD_AI,
     BOARD_AUDIO,
@@ -29,6 +30,7 @@ from access_control import (
     access_defaults_for_role,
     has_capability,
     is_global_pastoral_authority,
+    normalized_capabilities,
     resolved_access_level,
 )
 from canonical_identity import IdentityConflictError, ensure_user_person_link, migrate_core_identity
@@ -151,7 +153,7 @@ def access_defaults(level: str, privilege_groups: Optional[list[str]] = None) ->
     if "membership" not in groups:
         defaults["capabilities"] = [item for item in defaults["capabilities"] if item not in PERSON_DOMAIN_CAPABILITIES]
     if "board" in groups:
-        defaults["capabilities"] = sorted(set([*defaults["capabilities"], BOARD_AUDIO, BOARD_AI, BOARD_CONFIDENTIAL_ACCESS]))
+        defaults["capabilities"] = sorted(set([*defaults["capabilities"], BOARD_ACCESS]))
     if "finance" in groups:
         defaults["capabilities"] = sorted(set([*defaults["capabilities"], *FINANCE_CAPABILITIES, "person.directory.search", "person.profile.read"]))
     defaults["access_scope"] = {"persons": "all" if level == "coordinador_general" else "created_by" if role == "lider" else defaults["access_scope"]["persons"]}
@@ -198,7 +200,7 @@ def serialize_user(user: dict) -> dict:
         "is_active": user.get("is_active", True) is True,
         "person_id": person_id,
         "canonical_profile_path": f"/personas/{person_id}" if person_id else None,
-        "capabilities": sorted(user.get("capabilities") or []),
+        "capabilities": normalized_capabilities(user),
         "access_scope": user.get("access_scope") or {"persons": "none"},
         "token_version": user.get("token_version", 1),
         "access_level": access_level(user),
@@ -418,7 +420,7 @@ async def update_user_access(
         if active_pastors <= 1:
             raise HTTPException(status_code=400, detail="Debe existir al menos un pastor activo")
     defaults = access_defaults(requested_level, requested_groups)
-    allowed = set(PERSON_DOMAIN_CAPABILITIES + PROCESS_CAPABILITIES + CELLULAR_CAPABILITIES + DOOR_BOARD_CAPABILITIES + FINANCE_CAPABILITIES + JOURNEY_GOVERNANCE_CAPABILITIES + OPERATIONS_CAPABILITIES + CARE_CAPABILITIES + [MEMBERSHIP_DOCUMENTS_MANAGE, MEMBERSHIP_DIRECT_IMPORT, BOARD_CONFIDENTIAL_ACCESS, PERSON_PASTORAL_NOTES_READ, CORE_GOVERNANCE_MANAGE, CORE_ACCESS_MANAGE, "person.profile.read"])
+    allowed = set(PERSON_DOMAIN_CAPABILITIES + PROCESS_CAPABILITIES + CELLULAR_CAPABILITIES + DOOR_BOARD_CAPABILITIES + FINANCE_CAPABILITIES + JOURNEY_GOVERNANCE_CAPABILITIES + OPERATIONS_CAPABILITIES + CARE_CAPABILITIES + [MEMBERSHIP_DOCUMENTS_MANAGE, MEMBERSHIP_DIRECT_IMPORT, BOARD_ACCESS, PERSON_PASTORAL_NOTES_READ, CORE_GOVERNANCE_MANAGE, CORE_ACCESS_MANAGE, "person.profile.read"])
     capabilities = defaults["capabilities"]
     if payload.capabilities is not None:
         if not is_global_pastoral_authority(current_user):
@@ -435,6 +437,11 @@ async def update_user_access(
         capabilities = sorted(set(defaults["capabilities"]) | preserved_existing | {item for item in payload.capabilities if item in customizable})
         if requested_role == "pastor" and CORE_GOVERNANCE_MANAGE not in capabilities:
             capabilities.append(CORE_GOVERNANCE_MANAGE)
+    if "finance" not in requested_groups:
+        capabilities = [item for item in capabilities if item not in FINANCE_CAPABILITIES]
+    if "board" not in requested_groups:
+        capabilities = [item for item in capabilities if item not in {BOARD_ACCESS, BOARD_CONFIDENTIAL_ACCESS}]
+    capabilities = sorted(set(capabilities))
     changed = (
         target.get("rol") != requested_role
         or target.get("is_active", True) is not payload.is_active

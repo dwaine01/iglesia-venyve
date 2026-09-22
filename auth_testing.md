@@ -35,7 +35,7 @@
 - Toda cuenta privilegiada queda bloqueada en backend hasta completar cambio de clave y onboarding.
 - Verificar cadena Pastor → Coordinador general → Director → secretario/tesorero/equipo y `parent_user_id` directo.
 - Director solo puede crear cuentas con el mismo `organization_scope`.
-- Junta exige simultáneamente `board.confidential.access` y membresía activa; Finanzas nunca es delegable fuera del pastor.
+- Junta exige simultáneamente `board.access`, grupo `board` y membresía activa; Finanzas solo se concede mediante el grupo pastoral `finance`.
 - Las firmas deben conservar snapshot y versión de política, cuatro aceptaciones, fecha/hora, IP y agente de navegador.
 
 ## Mega‑Bloque B — Procesos
@@ -65,3 +65,24 @@
 - Al revocar la capacidad, el token previo queda inválido y una sesión nueva vuelve a recibir 403.
 - Pastor y Coordinación General conservan alta directa automática.
 - Limpiar cuentas, Personas, membresías, eventos y números de miembro QA al terminar.
+
+## Junta Directiva restringida
+
+- Pastor/Pastora obtiene `full_access=true` sin depender de capacidades generales.
+- Coordinador General, Director y Líder sin membresía formal activa reciben `allowed=false`, no ven navegación y obtienen 403 en rutas de Junta.
+- Membresía activa se valida por `person_id` en cada request; los permisos efectivos se intersectan con el máximo del cargo.
+- Presidencia: reuniones/agenda/votos/acuerdos/tareas. Secretaría: reuniones/notas/minutas/grabaciones/documentos/tareas. Tesorería y Vocal: lectura institucional, votos y elementos compartidos/asignados.
+- Finalizar membresía incrementa `token_version`, invalida JWT previo y elimina `board.access`.
+- Miembro de Junta nunca recibe `care.confidential.read`, `person.pastoral_notes.read` ni el legado `board.confidential.access`.
+- Documentos aceptados en Junta llevan `classification=board_institutional`; cualquier archivo `pastoral_confidential` queda fuera de listados y descargas, incluso para evitar mezclas accidentales.
+- Vocal solo ve tareas propias/compartidas, documentos propios/compartidos y minutas oficiales; Secretaría/Pastora gestionan borradores y grabaciones.
+- Probar desktop/móvil, acceso directo por URL, IDOR de documentos, revocación y limpieza completa de fixtures.
+
+## Finanzas y privacidad pastoral de Persona 360
+
+- Pastor/Pastora accede a todo Finanzas y al historial financiero privado integrado en Persona 360.
+- Coordinación General sin grupo `finance` no ve navegación y recibe 403 aunque conserve capabilities financieras históricas.
+- Finanzas/Tesorería con grupo `finance` y capabilities materializadas puede leer y operar CRUD dentro de `/api/finance/*`.
+- `GET /api/finance/persons/{person_id}/contributions` es exclusivamente pastoral; `finance.read` o `finance.manage` nunca bastan.
+- El detalle operativo `/api/finance/contributors/{person_id}` permanece disponible para Finanzas dentro de su módulo.
+- Un usuario multirol con Junta activa + Finanzas obtiene la unión de ambos módulos, pero no notas pastorales ni finanzas privadas de Persona 360.

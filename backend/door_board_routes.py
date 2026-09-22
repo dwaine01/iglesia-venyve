@@ -6,10 +6,10 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from access_control import BOARD_CONFIDENTIAL_ACCESS, DOORS_MANAGE
+from access_control import BOARD_ACCESS, BOARD_CONFIDENTIAL_ACCESS, is_global_pastoral_authority
 from door_board_catalog import BOARD_ID
 from door_board_engine import (
-    active_board_membership, door_scope, ensure_board_access, ensure_door_access,
+    BOARD_POSITION_PERMISSIONS, active_board_membership, board_access_snapshot, door_scope, effective_board_permissions, ensure_board_access, ensure_door_access,
     ensure_person, now_utc, person_summary, quorum_summary, record_case_event,
     serialize, upsert_case_from_cell_need, record_board_audit,
 )
@@ -18,16 +18,13 @@ from server import db, get_current_user
 router = APIRouter(prefix="/api", tags=["doors-board"])
 
 DOOR_ROLES = {"supervisor", "door_leader", "assistant", "collaborator", "server"}
-BOARD_PERMISSIONS = {"board.read", "board.meetings.write", "board.notes.write", "board.vote", "board.actions.write", "board.audio.manage", "board.minutes.review", "board.audit.read", "doors.assignments.manage"}
-
-
 def require_staff(current_user: dict = Depends(get_current_user)) -> dict:
     if current_user.get("rol") == "persona": raise HTTPException(status_code=403, detail="Acceso institucional requerido")
     return current_user
 
 
 def ensure_pastor(current_user: dict):
-    if DOORS_MANAGE not in current_user.get("capabilities", []): raise HTTPException(status_code=403, detail="Gobierno institucional requerido")
+    if not is_global_pastoral_authority(current_user): raise HTTPException(status_code=403, detail="Solo la autoridad pastoral principal administra la Junta")
 
 
 class PositionCreate(BaseModel):
@@ -41,7 +38,7 @@ class BoardMemberCreate(BaseModel):
     position_key: str
     started_at: date = Field(default_factory=date.today)
     voting_rights: bool = True
-    permissions: list[str] = Field(default_factory=lambda: ["board.read", "board.vote"], max_length=20)
+    permissions: list[str] = Field(default_factory=list, max_length=20)
     supervised_door_keys: list[str] = Field(default_factory=list, max_length=9)
     ministry_ids: list[str] = Field(default_factory=list, max_length=50)
 
@@ -157,6 +154,7 @@ class ActionCreate(BaseModel):
     description: Optional[str] = Field(default=None, max_length=3000)
     responsible_person_id: str
     due_at: Optional[datetime] = None
+    visibility: Literal["assigned", "board"] = "assigned"
 
 
 class ActionUpdate(BaseModel):
@@ -275,12 +273,21 @@ async def update_case(case_id: str, payload: DoorCaseUpdate, current_user: dict 
 
 @router.get("/board", response_model=dict)
 async def board_detail(current_user: dict = Depends(get_current_user)):
-    await ensure_board_access(db, current_user, "board.read")
+    access = await ensure_board_access(db, current_user, "board.read")
     board = await db.governance_boards.find_one({"board_id": BOARD_ID}, {"_id": 0})
     positions = await db.board_position_catalog.find({"active": True}, {"_id": 0}).sort("order", 1).to_list(100)
     memberships = await db.board_memberships.find({"board_id": BOARD_ID}, {"_id": 0}).sort("started_at", -1).to_list(1000)
-    members = [{**serialize(item), "person": await person_summary(db, item["person_id"]), "position": next((p for p in positions if p["position_key"] == item["position_key"]), None)} for item in memberships]
-    return {**serialize(board), "positions": serialize(positions), "members": members}
+    members = []
+    for item in memberships:
+        person = await person_summary(db, item["person_id"])
+        if person and not access.get("pastoral_full_access"): person.pop("profile_path", None)
+        members.append({**serialize(item), "permissions": sorted(effective_board_permissions(item)), "person": person, "position": next((p for p in positions if p["position_key"] == item["position_key"]), None)})
+    return {**serialize(board), "positions": serialize(positions), "members": members, "access": serialize(access), "data_classification": "board_institutional"}
+
+
+@router.get("/board/access", response_model=dict)
+async def board_access(current_user: dict = Depends(get_current_user)):
+    return await board_access_snapshot(db, current_user)
 
 
 @router.put("/board", response_model=dict)
@@ -307,16 +314,24 @@ async def create_position(payload: PositionCreate, current_user: dict = Depends(
 async def add_board_member(payload: BoardMemberCreate, current_user: dict = Depends(get_current_user)):
     ensure_pastor(current_user); await ensure_person(db, payload.person_id)
     if not await db.board_position_catalog.find_one({"position_key": payload.position_key, "active": True}): raise HTTPException(status_code=422, detail="Cargo no válido")
-    invalid = set(payload.permissions) - BOARD_PERMISSIONS
-    if invalid: raise HTTPException(status_code=422, detail=f"Permisos no válidos: {', '.join(sorted(invalid))}")
+    ceiling = BOARD_POSITION_PERMISSIONS.get(payload.position_key, {"board.read"})
+    requested = set(payload.permissions or ceiling)
+    if not payload.voting_rights: requested.discard("board.vote")
+    invalid = requested - ceiling
+    if invalid: raise HTTPException(status_code=422, detail=f"El cargo no permite: {', '.join(sorted(invalid))}")
+    permissions = sorted(requested.union({"board.read"}))
     for key in payload.supervised_door_keys:
         if not await db.door_catalog.find_one({"door_key": key, "active": True}): raise HTTPException(status_code=422, detail=f"Puerta no válida: {key}")
     existing = await active_board_membership(db, payload.person_id)
     if existing: raise HTTPException(status_code=409, detail="La Persona ya integra la Junta")
     membership_id = str(uuid4()); now = now_utc()
-    doc = {"_id": membership_id, "membership_id": membership_id, "board_id": BOARD_ID, **payload.model_dump(), "started_at": payload.started_at.isoformat(), "active": True, "ended_at": None, "end_reason": None, "created_by_user_id": current_user["user_id"], "created_at": now, "updated_at": now}
+    doc = {"_id": membership_id, "membership_id": membership_id, "board_id": BOARD_ID, **payload.model_dump(exclude={"permissions"}), "permissions": permissions, "started_at": payload.started_at.isoformat(), "active": True, "ended_at": None, "end_reason": None, "created_by_user_id": current_user["user_id"], "created_at": now, "updated_at": now}
     await db.board_memberships.insert_one(doc)
-    await db.users.update_one({"person_id": payload.person_id}, {"$addToSet": {"capabilities": BOARD_CONFIDENTIAL_ACCESS, "privilege_groups": "board"}})
+    target_user = await db.users.find_one({"person_id": payload.person_id}, {"_id": 1})
+    user_update = {"$addToSet": {"capabilities": BOARD_ACCESS, "privilege_groups": "board"}}
+    if target_user and str(target_user["_id"]) != current_user.get("user_id"): user_update["$inc"] = {"token_version": 1}
+    await db.users.update_one({"person_id": payload.person_id}, user_update)
+    await db.users.update_one({"person_id": payload.person_id}, {"$pull": {"capabilities": BOARD_CONFIDENTIAL_ACCESS}})
     for door_key in payload.supervised_door_keys:
         assignment_id = str(uuid4())
         await db.door_assignments.update_one(
@@ -336,16 +351,21 @@ async def end_board_member(membership_id: str, payload: BoardMemberEnd, current_
     await db.door_assignments.update_many({"source_board_membership_id": membership_id, "active": True}, {"$set": {"active": False, "ended_at": payload.ended_at.isoformat(), "end_reason": f"Fin de membresía de Junta: {payload.reason}", "updated_at": now_utc()}})
     ended = await db.board_memberships.find_one({"membership_id": membership_id}, {"_id": 0, "person_id": 1})
     if ended and not await db.board_memberships.find_one({"person_id": ended.get("person_id"), "active": True}):
-        await db.users.update_one({"person_id": ended.get("person_id")}, {"$pull": {"capabilities": BOARD_CONFIDENTIAL_ACCESS, "privilege_groups": "board"}})
+        target_user = await db.users.find_one({"person_id": ended.get("person_id")}, {"_id": 1})
+        user_update = {"$pull": {"capabilities": {"$in": [BOARD_ACCESS, BOARD_CONFIDENTIAL_ACCESS]}, "privilege_groups": "board"}}
+        if target_user and str(target_user["_id"]) != current_user.get("user_id"): user_update["$inc"] = {"token_version": 1}
+        await db.users.update_one({"person_id": ended.get("person_id")}, user_update)
     await record_board_audit(db, current_user["user_id"], "board_member_ended", "board_membership", membership_id, {"reason": payload.reason})
     return serialize(await db.board_memberships.find_one({"membership_id": membership_id}, {"_id": 0}))
 
 
 @router.get("/board/dashboard", response_model=dict)
 async def board_dashboard(current_user: dict = Depends(get_current_user)):
-    await ensure_board_access(db, current_user, "board.read")
+    access = await ensure_board_access(db, current_user, "board.read")
     upcoming = await db.board_meetings.find({"board_id": BOARD_ID, "status": {"$in": ["draft", "scheduled", "open"]}}, {"_id": 0}).sort("scheduled_at", 1).limit(5).to_list(5)
-    return {"members_current": await db.board_memberships.count_documents({"board_id": BOARD_ID, "active": True}), "meetings_held": await db.board_meetings.count_documents({"board_id": BOARD_ID, "status": "closed"}), "open_actions": await db.board_actions.count_documents({"board_id": BOARD_ID, "status": {"$in": ["open", "in_progress"]}}), "pending_votes": await db.board_proposals.count_documents({"board_id": BOARD_ID, "status": "ready_for_vote"}), "draft_minutes": await db.board_minutes.count_documents({"board_id": BOARD_ID, "status": {"$in": ["draft", "ai_draft", "review"]}}), "upcoming": serialize(upcoming)}
+    action_query = {"board_id": BOARD_ID, "status": {"$in": ["open", "in_progress"]}}
+    if not access.get("pastoral_full_access") and "board.actions.write" not in access.get("permissions", []): action_query["$or"] = [{"responsible_person_id": current_user.get("person_id")}, {"visibility": "board"}]
+    return {"members_current": await db.board_memberships.count_documents({"board_id": BOARD_ID, "active": True}), "meetings_held": await db.board_meetings.count_documents({"board_id": BOARD_ID, "status": "closed"}), "open_actions": await db.board_actions.count_documents(action_query), "pending_votes": await db.board_proposals.count_documents({"board_id": BOARD_ID, "status": "ready_for_vote"}), "draft_minutes": await db.board_minutes.count_documents({"board_id": BOARD_ID, "status": {"$in": ["draft", "ai_draft", "review"]}}) if access.get("pastoral_full_access") or "board.minutes.review" in access.get("permissions", []) else 0, "upcoming": serialize(upcoming), "access": serialize(access)}
 
 
 @router.get("/board/meetings", response_model=dict)
@@ -378,15 +398,23 @@ async def meeting_or_404(meeting_id: str) -> dict:
 
 @router.get("/board/meetings/{meeting_id}", response_model=dict)
 async def board_meeting_detail(meeting_id: str, current_user: dict = Depends(get_current_user)):
-    await ensure_board_access(db, current_user, "board.read"); meeting = await meeting_or_404(meeting_id)
+    access = await ensure_board_access(db, current_user, "board.read"); meeting = await meeting_or_404(meeting_id)
     agenda = await db.board_agenda_items.find({"meeting_id": meeting_id}, {"_id": 0}).sort("order", 1).to_list(100)
     attendance = await db.board_meeting_attendance.find({"meeting_id": meeting_id}, {"_id": 0}).to_list(100)
-    attendees = [{**serialize(item), "person": await person_summary(db, item["person_id"])} for item in attendance]
+    attendees = []
+    for item in attendance:
+        person = await person_summary(db, item["person_id"])
+        if person and not access.get("pastoral_full_access"): person.pop("profile_path", None)
+        attendees.append({**serialize(item), "person": person})
     proposals = await db.board_proposals.find({"meeting_id": meeting_id}, {"_id": 0}).sort("created_at", 1).to_list(100)
-    actions = await db.board_actions.find({"meeting_id": meeting_id}, {"_id": 0}).sort("created_at", 1).to_list(500)
-    minutes = await db.board_minutes.find({"meeting_id": meeting_id}, {"_id": 0}).sort("version", -1).to_list(100)
-    artifacts = await db.board_ai_artifacts.find({"meeting_id": meeting_id, "valid": True}, {"_id": 0}).sort("version", -1).to_list(20)
-    return {**serialize(meeting), "agenda": serialize(agenda), "attendance": attendees, "proposals": serialize(proposals), "actions": serialize(actions), "minutes": serialize(minutes), "ai_artifacts": serialize(artifacts), "quorum": await quorum_summary(db, meeting_id)}
+    action_query = {"meeting_id": meeting_id}
+    if not access.get("pastoral_full_access") and "board.actions.write" not in access.get("permissions", []): action_query["$or"] = [{"action_type": "agreement"}, {"responsible_person_id": current_user.get("person_id")}, {"visibility": "board"}]
+    actions = await db.board_actions.find(action_query, {"_id": 0}).sort("created_at", 1).to_list(500)
+    minute_query = {"meeting_id": meeting_id}
+    if not access.get("pastoral_full_access") and "board.minutes.review" not in access.get("permissions", []): minute_query["status"] = "official"
+    minutes = await db.board_minutes.find(minute_query, {"_id": 0}).sort("version", -1).to_list(100)
+    artifacts = await db.board_ai_artifacts.find({"meeting_id": meeting_id, "valid": True}, {"_id": 0}).sort("version", -1).to_list(20) if access.get("pastoral_full_access") or "board.minutes.review" in access.get("permissions", []) else []
+    return {**serialize(meeting), "agenda": serialize(agenda), "attendance": attendees, "proposals": serialize(proposals), "actions": serialize(actions), "minutes": serialize(minutes), "ai_artifacts": serialize(artifacts), "quorum": await quorum_summary(db, meeting_id), "access": serialize(access), "data_classification": "board_institutional"}
 
 
 @router.put("/board/meetings/{meeting_id}/attendance", response_model=dict)
@@ -443,7 +471,7 @@ async def update_agenda_item(agenda_item_id: str, payload: AgendaUpdate, current
 
 @router.get("/board/meetings/{meeting_id}/secretary-notes", response_model=dict)
 async def get_secretary_notes(meeting_id: str, current_user: dict = Depends(get_current_user)):
-    await ensure_board_access(db, current_user, "board.read"); await meeting_or_404(meeting_id)
+    await ensure_board_access(db, current_user, "board.notes.write"); await meeting_or_404(meeting_id)
     note = await db.board_secretary_notes.find_one({"meeting_id": meeting_id}, {"_id": 0})
     return serialize(note or {"meeting_id": meeting_id, "content": "", "version": 0})
 
@@ -451,7 +479,7 @@ async def get_secretary_notes(meeting_id: str, current_user: dict = Depends(get_
 @router.put("/board/meetings/{meeting_id}/secretary-notes", response_model=dict)
 async def save_secretary_notes(meeting_id: str, payload: SecretaryNoteUpdate, current_user: dict = Depends(get_current_user)):
     await ensure_board_access(db, current_user, "board.notes.write"); meeting = await meeting_or_404(meeting_id)
-    if current_user.get("person_id") != meeting["secretary_person_id"] and DOORS_MANAGE not in current_user.get("capabilities", []): raise HTTPException(status_code=403, detail="Solo Secretaría puede editar estas notas")
+    if current_user.get("person_id") != meeting["secretary_person_id"] and not is_global_pastoral_authority(current_user): raise HTTPException(status_code=403, detail="Solo Secretaría puede editar estas notas")
     existing = await db.board_secretary_notes.find_one({"meeting_id": meeting_id}, {"_id": 0}); version = int((existing or {}).get("version", 0)) + 1; now = now_utc()
     version_id = f"{meeting_id}:{version}"
     await db.board_secretary_note_versions.insert_one({"_id": version_id, "version_id": version_id, "meeting_id": meeting_id, "board_id": BOARD_ID, "version": version, "content": payload.content, "edited_by_user_id": current_user["user_id"], "created_at": now})
@@ -463,7 +491,7 @@ async def save_secretary_notes(meeting_id: str, payload: SecretaryNoteUpdate, cu
 @router.post("/board/meetings/{meeting_id}/proposals", response_model=dict, status_code=201)
 async def create_proposal(meeting_id: str, payload: ProposalCreate, current_user: dict = Depends(get_current_user)):
     await ensure_board_access(db, current_user, "board.vote"); await meeting_or_404(meeting_id); await ensure_person(db, payload.proposer_person_id)
-    if payload.proposer_person_id != current_user.get("person_id") and DOORS_MANAGE not in current_user.get("capabilities", []): raise HTTPException(status_code=403, detail="El proponente debe ser la Persona actual")
+    if payload.proposer_person_id != current_user.get("person_id") and not is_global_pastoral_authority(current_user): raise HTTPException(status_code=403, detail="El proponente debe ser la Persona actual")
     if payload.seconder_person_id: await ensure_person(db, payload.seconder_person_id)
     proposal_id = str(uuid4()); now = now_utc(); doc = {"_id": proposal_id, "proposal_id": proposal_id, "meeting_id": meeting_id, "board_id": BOARD_ID, **payload.model_dump(), "discussion": None, "status": "draft", "result": None, "created_by_user_id": current_user["user_id"], "created_at": now, "updated_at": now}
     await db.board_proposals.insert_one(doc)
@@ -529,9 +557,10 @@ async def create_action(meeting_id: str, payload: ActionCreate, current_user: di
 
 @router.put("/board/actions/{action_id}", response_model=dict)
 async def update_action(action_id: str, payload: ActionUpdate, current_user: dict = Depends(get_current_user)):
-    await ensure_board_access(db, current_user, "board.actions.write")
+    access = await ensure_board_access(db, current_user, "board.read")
     action = await db.board_actions.find_one({"action_id": action_id}, {"_id": 0})
     if not action: raise HTTPException(status_code=404, detail="Acción no encontrada")
+    if not access.get("pastoral_full_access") and "board.actions.write" not in access.get("permissions", []) and action.get("responsible_person_id") != current_user.get("person_id"): raise HTTPException(status_code=403, detail="Solo puede actualizar tareas asignadas a usted")
     result = await db.board_actions.update_one({"action_id": action_id}, {"$set": {**payload.model_dump(), "completed_at": now_utc() if payload.status == "completed" else None, "updated_at": now_utc()}})
     if not result.matched_count: raise HTTPException(status_code=404, detail="Acción no encontrada")
     await record_board_audit(db, current_user["user_id"], "action_status_changed", "board_action", action_id, {"meeting_id": action["meeting_id"], "status": payload.status})
@@ -550,11 +579,13 @@ async def save_manual_minute(meeting_id: str, payload: ManualMinuteUpdate, curre
 
 @router.get("/board/minutes", response_model=dict)
 async def minutes_book(current_user: dict = Depends(get_current_user)):
-    await ensure_board_access(db, current_user, "board.read")
-    docs = await db.board_minutes.find({"board_id": BOARD_ID}, {"_id": 0}).sort("created_at", -1).to_list(5000)
+    access = await ensure_board_access(db, current_user, "board.read")
+    query = {"board_id": BOARD_ID}
+    if not access.get("pastoral_full_access") and "board.minutes.review" not in access.get("permissions", []): query["status"] = "official"
+    docs = await db.board_minutes.find(query, {"_id": 0}).sort("created_at", -1).to_list(5000)
     meeting_ids = list({item["meeting_id"] for item in docs})
     meetings = {item["meeting_id"]: item async for item in db.board_meetings.find({"meeting_id": {"$in": meeting_ids}}, {"_id": 0, "meeting_id": 1, "title": 1, "scheduled_at": 1})}
-    return {"items": [{**serialize(item), "meeting": serialize(meetings.get(item["meeting_id"]))} for item in docs], "total": len(docs)}
+    return {"items": [{**serialize(item), "meeting": serialize(meetings.get(item["meeting_id"]))} for item in docs], "total": len(docs), "access": serialize(access)}
 
 
 @router.put("/board/minutes/{minute_id}/status", response_model=dict)

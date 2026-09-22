@@ -76,7 +76,8 @@ import BoardMeetingsPage from './pages/board/BoardMeetingsPage';
 import BoardMeetingDetailPage from './pages/board/BoardMeetingDetailPage';
 import BoardMinutesPage from './pages/board/BoardMinutesPage';
 import AppLayout from './components/AppLayout';
-import { canManageDirectMembership, canViewCare, canViewFrontGroups, canViewGeo, canViewLeadership, canViewOperations, hasAnyCapability, isPastoralAuthority } from './lib/accessControl';
+import { canManageDirectMembership, canViewCare, canViewFinanceModule, canViewFrontGroups, canViewGeo, canViewLeadership, canViewOperations, hasAnyCapability, isPastoralAuthority } from './lib/accessControl';
+import { useBoardAccess } from './hooks/useBoardAccess';
 import './App.css';
 
 const GeoMapsPage = lazy(() => import('./pages/GeoMapsPage'));
@@ -120,7 +121,7 @@ function FinanceRoute({ children }) {
   const { user, loading } = useAuth();
   if (loading) return <div className="flex min-h-screen items-center justify-center">Cargando…</div>;
   if (!user) return <Navigate to="/login" replace />;
-  if (!hasAnyCapability(user, ['finance.read', 'finance.manage'])) return <Navigate to="/" replace />;
+  if (!canViewFinanceModule(user)) return <Navigate to="/" replace />;
   return children;
 }
 
@@ -129,6 +130,14 @@ function CapabilityRoute({ children, allowed }) {
   if (loading) return <div className="flex min-h-screen items-center justify-center" data-testid="capability-route-loading">Cargando…</div>;
   if (!user) return <Navigate to="/login" replace />;
   if (!allowed(user)) return <Navigate to="/" replace />;
+  return children;
+}
+
+function BoardAccessRoute({ children }) {
+  const { user } = useAuth();
+  const access = useBoardAccess();
+  if (!user || access.loading) return <div className="flex min-h-screen items-center justify-center" data-testid="board-access-loading">Cargando…</div>;
+  if (!access.allowed) return <Navigate to="/" replace />;
   return children;
 }
 
@@ -185,11 +194,11 @@ function App() {
             <Route path="puertas/dashboard" element={<StaffRoute><DoorsDashboardPage /></StaffRoute>} />
             <Route path="puertas/casos" element={<StaffRoute><DoorCasesPage /></StaffRoute>} />
             <Route path="puertas/:doorKey" element={<StaffRoute><DoorDetailPage /></StaffRoute>} />
-            <Route path="junta/dashboard" element={<BoardDashboardPage />} />
-            <Route path="junta/miembros" element={<BoardMembersPage />} />
-            <Route path="junta/reuniones" element={<BoardMeetingsPage />} />
-            <Route path="junta/reuniones/:meetingId" element={<BoardMeetingDetailPage />} />
-            <Route path="junta/minutas" element={<BoardMinutesPage />} />
+            <Route path="junta/dashboard" element={<BoardAccessRoute><BoardDashboardPage /></BoardAccessRoute>} />
+            <Route path="junta/miembros" element={<BoardAccessRoute><BoardMembersPage /></BoardAccessRoute>} />
+            <Route path="junta/reuniones" element={<BoardAccessRoute><BoardMeetingsPage /></BoardAccessRoute>} />
+            <Route path="junta/reuniones/:meetingId" element={<BoardAccessRoute><BoardMeetingDetailPage /></BoardAccessRoute>} />
+            <Route path="junta/minutas" element={<BoardAccessRoute><BoardMinutesPage /></BoardAccessRoute>} />
             <Route path="finanzas" element={<FinanceRoute><FinanceDashboardPage /></FinanceRoute>} />
             <Route path="finanzas/configuracion" element={<FinanceRoute><FinanceSetupPage /></FinanceRoute>} />
             <Route path="finanzas/asientos" element={<FinanceRoute><FinanceJournalsPage /></FinanceRoute>} />

@@ -15,14 +15,15 @@ import DisplayScaleToggle from './DisplayScaleToggle';
 import { ContextGuideButton } from './guides/ContextGuideButton';
 import { resolveRouteGuide } from './guides/guideRouteMap';
 import { BRAND } from '../config/brand';
-import { canViewCare, canViewFrontGroups, canViewGeo, canViewLeadership, canViewOperations, hasAnyCapability, isPastoralAuthority } from '../lib/accessControl';
+import { canViewCare, canViewFinanceModule, canViewFrontGroups, canViewGeo, canViewLeadership, canViewOperations, hasAnyCapability, isPastoralAuthority } from '../lib/accessControl';
+import { useBoardAccess } from '../hooks/useBoardAccess';
 const LOGO_URL = LOGO_IGLESIA;
 
 // Menu items by role
-const getNavItems = (user) => {
+const getNavItems = (user, boardAllowed = false) => {
   const rol = user?.rol;
   if (isPastoralAuthority(user)) {
-    return [
+    const personItems = [
       { to: '/dashboard-general', icon: Crown, label: 'Panel General', end: true },
       { to: '/nucleo', icon: DatabaseZap, label: 'Gobierno del Núcleo', testId: 'nav-core-governance' },
       { to: '/procesos/dashboard', icon: Activity, label: 'Panel de Procesos', testId: 'nav-process-dashboard' },
@@ -48,6 +49,7 @@ const getNavItems = (user) => {
       { type: 'separator', label: 'Administración' },
       { to: '/estadisticas', icon: BarChart3, label: 'Estadísticas Globales' },
     ];
+    return personItems;
   }
   
   if (rol === 'persona') {
@@ -91,7 +93,7 @@ const getNavItems = (user) => {
   if (hasAnyCapability(user, ['core.access.manage'])) {
     items.splice(1, 0, { to: '/nucleo', icon: DatabaseZap, label: 'Gestión de accesos', testId: 'nav-core-governance' });
   }
-  if (hasAnyCapability(user, ['finance.read', 'finance.manage']) && !items.some((item) => item.to === '/finanzas')) {
+  if (canViewFinanceModule(user) && !items.some((item) => item.to === '/finanzas')) {
     items.splice(1, 0, { to: '/finanzas', icon: Landmark, label: 'Contabilidad y Finanzas', testId: 'nav-finance' });
   }
   return items.filter((item) => (
@@ -104,6 +106,8 @@ const getNavItems = (user) => {
     item.to !== '/operaciones' || canViewOperations(user)
   ) && (
     item.to !== '/cuidado-pastoral' || canViewCare(user)
+  ) && (
+    item.to !== '/junta/dashboard' || boardAllowed
   ));
 };
 
@@ -156,9 +160,9 @@ const breadcrumbMap = {
   '/junta/minutas': 'Libro de Minutas',
 };
 
-function SidebarContent({ onClose, testIdPrefix = '' }) {
+function SidebarContent({ onClose, testIdPrefix = '', boardAllowed = false }) {
   const { user, logout } = useAuth();
-  const navItems = getNavItems(user);
+  const navItems = getNavItems(user, boardAllowed);
 
   const getRolLabel = () => {
     if (isPastoralAuthority(user)) return 'Pastor (Acceso Maestro)';
@@ -255,6 +259,7 @@ function SidebarContent({ onClose, testIdPrefix = '' }) {
 
 export default function AppLayout() {
   const { user } = useAuth();
+  const boardAccess = useBoardAccess();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [mapSidebarOpen, setMapSidebarOpen] = useState(false);
   const location = useLocation();
@@ -291,10 +296,10 @@ export default function AppLayout() {
     <div className="flex h-screen overflow-hidden bg-background">
       {/* Desktop Sidebar */}
       {(!isMapRoute || mapSidebarOpen) && <aside className="hidden lg:flex lg:w-64 lg:flex-col border-r border-border bg-card" data-testid="desktop-sidebar">
-        <SidebarContent />
+        <SidebarContent boardAllowed={boardAccess.allowed} />
       </aside>}
 
-      {mobileOpen && <div className="fixed inset-0 z-50 lg:hidden" data-testid="mobile-navigation-overlay"><button type="button" className="absolute inset-0 bg-black/45" onClick={() => setMobileOpen(false)} aria-label="Cerrar menú" data-testid="close-mobile-navigation-backdrop" /><aside id="mobile-navigation-sheet" className="relative h-full w-[85vw] max-w-xs bg-white shadow-2xl" data-testid="mobile-navigation-sheet" aria-label="Menú de navegación"><SidebarContent onClose={() => setMobileOpen(false)} testIdPrefix="mobile-" /></aside></div>}
+      {mobileOpen && <div className="fixed inset-0 z-50 lg:hidden" data-testid="mobile-navigation-overlay"><button type="button" className="absolute inset-0 bg-black/45" onClick={() => setMobileOpen(false)} aria-label="Cerrar menú" data-testid="close-mobile-navigation-backdrop" /><aside id="mobile-navigation-sheet" className="relative h-full w-[85vw] max-w-xs bg-white shadow-2xl" data-testid="mobile-navigation-sheet" aria-label="Menú de navegación"><SidebarContent onClose={() => setMobileOpen(false)} testIdPrefix="mobile-" boardAllowed={boardAccess.allowed} /></aside></div>}
 
       {/* Main Content */}
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden">

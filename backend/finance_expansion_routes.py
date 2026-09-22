@@ -13,6 +13,7 @@ from fastapi.responses import StreamingResponse
 from motor.motor_asyncio import AsyncIOMotorGridFSBucket
 from pydantic import BaseModel, Field
 
+from access_control import is_global_pastoral_authority
 from finance_engine import audit, create_journal, ensure_open_period, now_utc, require_finance_manage, require_finance_read, serialize
 from finance_routes import ContributionCreate, ExpenseCreate, contribution_create, expense_create
 from server import db, get_current_user
@@ -34,8 +35,8 @@ def manager(current_user: dict = Depends(get_current_user)) -> dict:
 
 
 def require_pastor(current_user: dict) -> None:
-    if current_user.get("rol") != "pastor":
-        raise HTTPException(status_code=403, detail="Esta configuración corresponde al pastor")
+    if not is_global_pastoral_authority(current_user):
+        raise HTTPException(status_code=403, detail="Esta configuración corresponde a Pastor/Pastora")
 
 
 class ContributionTypeInput(BaseModel):

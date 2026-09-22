@@ -357,7 +357,7 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 
 - Pastor es superadministrador único y decide cuántos coordinadores generales existen.
 - Todo coordinador general debe completar información administrativa, cambio de clave, consentimiento electrónico de privacidad/confidencialidad, seguridad de dispositivo y deber de reportar incidentes antes de recibir acceso operativo.
-- Privilegios restringidos se otorgan individualmente por el pastor: Junta Directiva/libro de minutas y Finanzas/Contabilidad. Ser coordinador general no concede estos accesos automáticamente.
+- Pastora conserva autoridad global; Junta Directiva y Finanzas se conceden explícitamente por grupo/capability. Coordinación General no recibe ninguno de esos módulos por jerarquía ni por defaults.
 - Jerarquía delegable: Pastor → Coordinador general → Director de área/ministerio/células → secretario, tesorero y equipo.
 - Cada nivel solo podrá crear cuentas dentro de su alcance y delegar un subconjunto de sus propios privilegios; nunca podrá elevarse ni conceder Junta/Finanzas sin autorización pastoral.
 - Finanzas deberá permitir únicamente las personas designadas explícitamente por el pastor; la cantidad no se codificará de forma rígida hasta confirmar el límite operativo.
@@ -366,9 +366,9 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - Cada firma guarda snapshot de política, versión, fecha/hora, IP y agente de navegador en `access_consents`.
 - Política editable/versionada por pastor y límite de accesos a Finanzas configurable desde `/nucleo`.
 - Jerarquía aplicada con `parent_user_id`: pastor → coordinador → director → secretario/tesorero/equipo. Las cuentas subordinadas se limitan al mismo `organization_scope`.
-- Grupos separados: `membership`, `board`, `finance`. Junta y Finanzas solo las concede el pastor; no son heredables.
-- Junta exige privilegio confidencial y membresía activa simultáneamente. El bypass detectado en iteration 13 fue corregido separando capacidades de Junta de `doors.manage`.
-- Validación: frontend build PASS, frontend 17/17 PASS, backend focalizado 18/18 PASS, retest jerarquía/Junta 20/20 PASS, desktop/móvil sin overflow, artefactos QA eliminados.
+- Grupos separados: `membership`, `board`, `finance`. La normalización elimina del acceso efectivo capabilities financieras/de Junta que no estén respaldadas por su grupo restringido; no son heredables.
+- Junta exige simultáneamente `board.access`, grupo `board`, membresía activa y permiso funcional del cargo; Coordinación o Finanzas sin concesión reciben 403.
+- Cierre Iteración 41: matriz granular/inventario 16/16, regresión relacionada 41/41 e independiente 28/28 PASS; 63/63 rutas Finanzas y 41/41 rutas Junta con gate. Desktop/móvil 6/6 roles; estado Junta móvil centralizado; cero fixtures.
 
 ### P0 — Mega‑Bloque G — CONTABILIDAD Y FINANZAS — IMPLEMENTADO Y CERTIFICADO 2026‑09‑16
 
@@ -377,7 +377,7 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - Ingresos con Persona 360 o anónimo, diezmos/ofrendas/donaciones, asignación dividida entre fondos, campañas, promesas, conteos y depósitos.
 - Operaciones con proveedores, gastos, pagos, transferencias, presupuestos y conciliación bancaria.
 - Reportes de actividad, ingresos/gastos, posición financiera, flujo de efectivo, balances por fondo, presupuesto versus real y auditoría.
-- RBAC financiero explícito: Finanzas no se hereda; solo el pastor concede el grupo restringido. Segregación preparador → revisor distinto → aprobación pastoral.
+- RBAC financiero explícito: Finanzas requiere grupo `finance` + capability y no se hereda. El historial integrado en Persona 360 usa un gate pastoral independiente; `finance.read/manage` nunca lo habilita. Segregación preparador → revisor distinto → aprobación pastoral.
 - Corregida la idempotencia: múltiples contribuciones manuales sin identificador externo son válidas; duplicados reales CSV/Pushpay continúan protegidos con 409 y los orígenes externos exigen identificador.
 - Corregida la navegación móvil: la notificación de bienvenida se presenta abajo, no cubre el botón de menú y el acceso a Finanzas abre correctamente en 390×844 sin overflow.
 - Verificación independiente iteration 15: backend 100%, frontend 100%, health 200, build PASS, RBAC/seguridad focal PASS y respuestas MongoDB sin `_id` expuesto.
@@ -639,6 +639,28 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - Verificación: regresión principal **24/24 PASS**, Iteración 37 **6/6 PASS**, frontend **24/24 PASS**, build PASS, health 200 y servidor con 430 rutas.
 - Browser real: 17 tarjetas, 0 deshabilitadas para Pastor, 0 “No disponible”, Membresía/Bautismo/Bienvenida/Ley7/Discipulado navegados y Bautismo guardado; desktop 1920×800 y móvil 390×844 sin overflow.
 - APIs MOCKED: ninguna. Limpieza final: `iter37_users=0`, `iter37_people=0`, `iter37_baptisms=0`, `iter37_memberships=0`.
+
+### JUNTA DIRECTIVA — RECINTO RESTRINGIDO Y PRIVACIDAD PASTORAL — COMPLETADO 2026‑09‑22
+
+- Junta dejó de depender de jerarquía general, `doors.manage`, `core.access.manage` o acceso de Coordinación General.
+- Fuente de verdad: **Pastor/Pastora = FULL**; cualquier otra cuenta requiere `board_memberships` activa por `person_id` en cada request.
+- `GET /api/board/access` entrega únicamente `allowed`, cargo, permisos efectivos y clasificación institucional; frontend usa esta respuesta para navegación y protección de rutas.
+- Coordinador General, Director, Líder, Supervisor, Mentor o Líder frontal sin membresía formal no ven `nav-board`, son redirigidos al intentar URL directa y reciben 403 en backend.
+- Matriz máxima por cargo aplicada también en servidor:
+  - Presidencia/Vicepresidencia: reuniones, agenda, votaciones, acuerdos y tareas.
+  - Secretaría: reuniones, agenda, notas, minutas, grabaciones, documentos y seguimiento.
+  - Tesorería: lectura institucional, documentos compartidos y votación si corresponde.
+  - Vocal/Miembro: lectura institucional, votación y solo tareas/documentos propios o compartidos.
+- Un payload que intenta conceder permisos superiores al cargo recibe 422; permisos almacenados históricos también se intersectan con el máximo del cargo.
+- Agregar membresía sincroniza `board.access`; finalizarla incrementa `token_version`, invalida sesiones anteriores y retira acceso inmediatamente.
+- La membresía de Junta nunca agrega `care.confidential.read`, `person.pastoral_notes.read` ni el legado `board.confidential.access`.
+- Separación documental fuerte: Junta solo acepta/lista/descarga `classification=board_institutional`; cualquier `pastoral_confidential` queda fuera del módulo incluso para evitar mezcla accidental.
+- Respuestas no pastorales usan resúmenes institucionales mínimos y eliminan `profile_path`; notas privadas de Secretaría requieren su permiso específico.
+- Vocal solo ve tareas propias/compartidas, actualiza las propias, ve minutas oficiales y no ve grabaciones, notas o borradores; Secretaría/Pastora administran esos artefactos.
+- Se corrigió un crash de startup detectado en Iteración 39: Mongo no permite `$addToSet` y `$pull` sobre `capabilities` en una sola operación; la migración quedó dividida en dos escrituras seguras.
+- Verificación post-fix: Junta/Auth/regresiones **25/25 PASS**, matriz+cleanup **5/5 PASS**, frontend **25/25 PASS**, build PASS, health 200 y servidor con 431 rutas.
+- Browser: Coordinador sin botón/redirección segura; Pastora con gestión completa; Secretaría con notas/audio/documentos; Vocal móvil sin controles elevados y sin overflow.
+- APIs MOCKED: ninguna. Limpieza final: `iter39_users=0`, `iter39_meetings=0`, `iter39_memberships=0`.
 
 ### FASE DE ESTABILIZACIÓN — COMPLETADA 2026‑09‑19
 

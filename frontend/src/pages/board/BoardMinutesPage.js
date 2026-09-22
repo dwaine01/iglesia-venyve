@@ -7,6 +7,7 @@ import { useAuth } from '../../context/AuthContext';
 import { DoorEmpty, DoorError, DoorLoading, DoorShell } from '../../components/doors/DoorShell';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { displayLabel, minuteTypeLabel, translateTechnicalText } from '../../lib/displayLabels';
+import { hasBoardPermission, useBoardAccess } from '../../hooks/useBoardAccess';
 
 const renderHumanizedContent = (value, path = 'content') => {
   if (value === null || value === undefined || value === '') return <span>Sin contenido</span>;
@@ -32,7 +33,7 @@ const renderHumanizedContent = (value, path = 'content') => {
   return <span className="whitespace-pre-wrap">{translateTechnicalText(String(value))}</span>;
 };
 
-const MinuteCard = ({ item, onStatusChange }) => (
+const MinuteCard = ({ item, onStatusChange, canReview }) => (
   <article className="border bg-white p-5" data-testid={`minutes-book-${item.minute_id}`}>
     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
       <div className="min-w-0">
@@ -50,7 +51,7 @@ const MinuteCard = ({ item, onStatusChange }) => (
           {renderHumanizedContent(item.content)}
         </div>
       </div>
-      <Select value={item.status} onValueChange={(value) => onStatusChange(item, value)}>
+      {canReview ? <Select value={item.status} onValueChange={(value) => onStatusChange(item, value)}>
         <SelectTrigger className="w-full sm:w-40" data-testid={`minute-status-${item.minute_id}`}>
           <SelectValue />
         </SelectTrigger>
@@ -61,13 +62,14 @@ const MinuteCard = ({ item, onStatusChange }) => (
           <SelectItem value="rejected">Rechazada</SelectItem>
           <SelectItem value="ai_draft">Borrador asistido</SelectItem>
         </SelectContent>
-      </Select>
+      </Select> : <span className="border px-3 py-2 text-xs uppercase" data-testid={`minute-readonly-status-${item.minute_id}`}>{displayLabel(item.status)}</span>}
     </div>
   </article>
 );
 
 export default function BoardMinutesPage() {
   const { API, getAuthHeaders } = useAuth();
+  const access = useBoardAccess();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -104,7 +106,7 @@ export default function BoardMinutesPage() {
       {error ? <DoorError message={error} /> : (
         <section className="space-y-3" data-testid="minutes-book-list">
           {items.length
-            ? items.map((item) => <MinuteCard key={item.minute_id} item={item} onStatusChange={update} />)
+            ? items.map((item) => <MinuteCard key={item.minute_id} item={item} onStatusChange={update} canReview={hasBoardPermission(access, 'board.minutes.review')} />)
             : <DoorEmpty testId="minutes-book-empty">No hay minutas todavía.</DoorEmpty>}
         </section>
       )}

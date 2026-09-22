@@ -5,7 +5,12 @@ from uuid import uuid4
 from fastapi import HTTPException
 from pymongo import ReturnDocument
 
-from access_control import FINANCE_MANAGE, FINANCE_READ
+from access_control import (
+    FINANCE_MANAGE,
+    FINANCE_PRIVILEGE_GROUP,
+    FINANCE_READ,
+    is_global_pastoral_authority,
+)
 from server import db
 
 
@@ -21,15 +26,22 @@ def serialize(value):
 
 
 def require_finance_read(current_user: dict) -> None:
-    if current_user.get("rol") == "pastor": return
-    if FINANCE_READ not in (current_user.get("capabilities") or []):
+    if is_global_pastoral_authority(current_user):
+        return
+    groups = current_user.get("privilege_groups") or []
+    if FINANCE_PRIVILEGE_GROUP not in groups or FINANCE_READ not in (current_user.get("capabilities") or []):
         raise HTTPException(status_code=403, detail="El pastor no ha concedido acceso a Finanzas")
 
 
 def require_finance_manage(current_user: dict) -> None:
     require_finance_read(current_user)
-    if current_user.get("rol") != "pastor" and FINANCE_MANAGE not in (current_user.get("capabilities") or []):
+    if not is_global_pastoral_authority(current_user) and FINANCE_MANAGE not in (current_user.get("capabilities") or []):
         raise HTTPException(status_code=403, detail="Acceso financiero de consulta solamente")
+
+
+def require_private_person_finance(current_user: dict) -> None:
+    if not is_global_pastoral_authority(current_user):
+        raise HTTPException(status_code=403, detail="El historial financiero de Persona 360 es exclusivamente pastoral")
 
 
 async def audit(user_id: str, action: str, entity_type: str, entity_id: str, changes: dict | None = None):
