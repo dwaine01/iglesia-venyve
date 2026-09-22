@@ -4,7 +4,7 @@
 
 - **Completado:** RBAC deny-by-default de Junta/Finanzas y privacidad pastoral de Persona 360 certificado en Iteración 40.
 - **Completado:** Coordinación General sin accesos restringidos por defecto; Finanzas y Junta aisladas con unión multirol explícita.
-- Sin bloqueantes P0 pendientes dentro de este alcance; resultado retenido para revisión, sin merge ni despliegue.
+- **P0 RBAC listo para revisión manual:** cierre Iteración 41 sin FAIL/SKIP dentro de la matriz; resultado retenido, sin merge ni despliegue.
 
 ## P1 — Seguimiento
 

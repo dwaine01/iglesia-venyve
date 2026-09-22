@@ -160,10 +160,9 @@ const breadcrumbMap = {
   '/junta/minutas': 'Libro de Minutas',
 };
 
-function SidebarContent({ onClose, testIdPrefix = '' }) {
+function SidebarContent({ onClose, testIdPrefix = '', boardAllowed = false }) {
   const { user, logout } = useAuth();
-  const boardAccess = useBoardAccess();
-  const navItems = getNavItems(user, boardAccess.allowed);
+  const navItems = getNavItems(user, boardAllowed);
 
   const getRolLabel = () => {
     if (isPastoralAuthority(user)) return 'Pastor (Acceso Maestro)';
@@ -260,6 +259,7 @@ function SidebarContent({ onClose, testIdPrefix = '' }) {
 
 export default function AppLayout() {
   const { user } = useAuth();
+  const boardAccess = useBoardAccess();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [mapSidebarOpen, setMapSidebarOpen] = useState(false);
   const location = useLocation();
@@ -296,10 +296,10 @@ export default function AppLayout() {
     <div className="flex h-screen overflow-hidden bg-background">
       {/* Desktop Sidebar */}
       {(!isMapRoute || mapSidebarOpen) && <aside className="hidden lg:flex lg:w-64 lg:flex-col border-r border-border bg-card" data-testid="desktop-sidebar">
-        <SidebarContent />
+        <SidebarContent boardAllowed={boardAccess.allowed} />
       </aside>}
 
-      {mobileOpen && <div className="fixed inset-0 z-50 lg:hidden" data-testid="mobile-navigation-overlay"><button type="button" className="absolute inset-0 bg-black/45" onClick={() => setMobileOpen(false)} aria-label="Cerrar menú" data-testid="close-mobile-navigation-backdrop" /><aside id="mobile-navigation-sheet" className="relative h-full w-[85vw] max-w-xs bg-white shadow-2xl" data-testid="mobile-navigation-sheet" aria-label="Menú de navegación"><SidebarContent onClose={() => setMobileOpen(false)} testIdPrefix="mobile-" /></aside></div>}
+      {mobileOpen && <div className="fixed inset-0 z-50 lg:hidden" data-testid="mobile-navigation-overlay"><button type="button" className="absolute inset-0 bg-black/45" onClick={() => setMobileOpen(false)} aria-label="Cerrar menú" data-testid="close-mobile-navigation-backdrop" /><aside id="mobile-navigation-sheet" className="relative h-full w-[85vw] max-w-xs bg-white shadow-2xl" data-testid="mobile-navigation-sheet" aria-label="Menú de navegación"><SidebarContent onClose={() => setMobileOpen(false)} testIdPrefix="mobile-" boardAllowed={boardAccess.allowed} /></aside></div>}
 
       {/* Main Content */}
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden">

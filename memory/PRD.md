@@ -368,7 +368,7 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - Jerarquía aplicada con `parent_user_id`: pastor → coordinador → director → secretario/tesorero/equipo. Las cuentas subordinadas se limitan al mismo `organization_scope`.
 - Grupos separados: `membership`, `board`, `finance`. La normalización elimina del acceso efectivo capabilities financieras/de Junta que no estén respaldadas por su grupo restringido; no son heredables.
 - Junta exige simultáneamente `board.access`, grupo `board`, membresía activa y permiso funcional del cargo; Coordinación o Finanzas sin concesión reciben 403.
-- Certificación Iteración 40: matriz estricta 6/6 y regresión focal independiente 37/37 PASS; frontend 26/26, build PASS y navegación real desktop/móvil sin overflow. Fixtures RBAC eliminados.
+- Cierre Iteración 41: matriz granular/inventario 16/16, regresión relacionada 41/41 e independiente 28/28 PASS; 63/63 rutas Finanzas y 41/41 rutas Junta con gate. Desktop/móvil 6/6 roles; estado Junta móvil centralizado; cero fixtures.
 
 ### P0 — Mega‑Bloque G — CONTABILIDAD Y FINANZAS — IMPLEMENTADO Y CERTIFICADO 2026‑09‑16
 
