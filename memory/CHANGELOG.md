@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-22 — Identidad oficial Concepto A aprobada
+
+- Reemplazada completamente la presentación del carnet y certificado por el sistema Institucional Contemporáneo elegido por el usuario.
+- Implementados CR80 frente/reverso, Letter landscape, fotografía `cover`, firma dinámica, QR robusto, zoom y PDFs físicos exactos.
+- Aprobación visual explícita recibida; 42 pruebas PASS, QR decodificado en ambas piezas y casos extremos sin solapes.
+
 ## 2026-09-22 — Hotfix P0 de carnet con fotografía
 
 - Alineada la validación del carnet con la fuente canónica de fotografías de Persona 360.

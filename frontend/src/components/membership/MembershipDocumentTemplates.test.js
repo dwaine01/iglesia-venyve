@@ -45,3 +45,16 @@ test('el certificado incluye firma, QR y las tres referencias oficiales', () => 
   expect(certificate).toContain('Pastora Ana Martínez');
   expect(certificate).not.toContain('internal-uuid-never-visible');
 });
+
+test('adapta nombre corto, fotografía y vencimiento sin inventar datos', () => {
+  const shortData = {
+    ...data,
+    person: { full_name: 'Ana Pérez' },
+    membership: { ...data.membership, card_expiration_date: '2027-09-22' },
+  };
+  const front = renderToStaticMarkup(<MembershipCardFront data={shortData} photoSrc="blob:foto-horizontal" />);
+  expect(front).toContain('document-name-short');
+  expect(front).toContain('blob:foto-horizontal');
+  expect(front).toContain('Válido hasta');
+  expect(front).toContain('09-22-2027');
+});
