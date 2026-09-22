@@ -67,10 +67,14 @@ def ensure_qa_accounts():
             continue
         if existing:
             database.users.delete_one({"_id": existing["_id"]})
-        person_id = ObjectId(); user_id = ObjectId()
-        database.persons.insert_one({"_id": person_id, "person_number": f"VV-QA{str(person_id)[-7:].upper()}", "nombre": name, "apellido": "Fixture", "search_key": f"{name} fixture".lower(), "idempotency_key": f"qa:session:{email}", "version": 1, "created_at": now, "updated_at": now})
+        fixture_key = f"qa:session:{email}"
+        existing_person = database.persons.find_one({"idempotency_key": fixture_key}, {"_id": 1})
+        person_id = existing_person["_id"] if existing_person else ObjectId(); user_id = ObjectId()
+        if not existing_person:
+            database.persons.insert_one({"_id": person_id, "person_number": f"VV-QA{str(person_id)[-7:].upper()}", "nombre": name, "apellido": "Fixture", "search_key": f"{name} fixture".lower(), "idempotency_key": fixture_key, "version": 1, "created_at": now, "updated_at": now})
         defaults = access_defaults_for_role(role)
         database.users.insert_one({"_id": user_id, "nombre": name, "email": email, "password": bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode(), "rol": role, "person_id": str(person_id), "is_active": True, "token_version": 1, "created_at": now, **defaults})
+        database.persons.update_one({"_id": person_id}, {"$set": {"auth_user_id": str(user_id), "updated_at": now}})
 
 
 def pytest_sessionstart(session):

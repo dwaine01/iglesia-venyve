@@ -4,6 +4,7 @@ import { BadgeCheck, CalendarDays, Droplets, Loader2, MapPin, Save, UserRound } 
 import { toast } from 'sonner';
 
 import { MembershipDocumentsSection } from './membership/MembershipDocumentsSection';
+import { RegularizeMembershipDialog } from './membership/RegularizeMembershipDialog';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -11,9 +12,9 @@ import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Textarea } from './ui/textarea';
 
-const EMPTY_BAPTISM = { status: 'pending', baptism_date: '', location: '', officiant_name: '', testimony: '', notes: '' };
+const EMPTY_BAPTISM = { status: 'pending', baptized: false, baptism_date: '', location: '', church_name: '', officiant_name: '', testimony: '', notes: '' };
 
-export const MembershipProfileSection = ({ personId, membership, canManage, photoSrc }) => (
+export const MembershipProfileSection = ({ personId, membership, canManage, canRegularize, photoSrc, onChanged }) => (
   <section className="space-y-5" data-testid="profile-membership-section">
     <div className="rounded-lg border border-[#E8E5DE] bg-white p-5">
       <div className="flex items-start gap-3"><BadgeCheck className="mt-1 h-6 w-6 text-emerald-700" /><div><h2 className="font-['Spectral'] text-2xl font-semibold text-[#101D36]">Membresía</h2><p className="text-sm text-slate-500">Estado institucional conectado al mismo Perfil 360.</p></div></div>
@@ -22,6 +23,7 @@ export const MembershipProfileSection = ({ personId, membership, canManage, phot
         <div className="border bg-slate-50 p-4"><span className="text-xs uppercase text-slate-500">Número</span><strong className="mt-1 block text-[#0879BE]" data-testid="profile-membership-number">{membership?.member_number || 'Pendiente'}</strong></div>
         <div className="border bg-slate-50 p-4"><span className="text-xs uppercase text-slate-500">Origen</span><strong className="mt-1 block">{membership?.legacy_membership ? 'Miembro preexistente' : membership ? 'Carta de Membresía' : 'Sin registro'}</strong></div>
       </div>
+      <div className="mt-4 flex flex-wrap items-center gap-3">{!membership?.status && canRegularize && <RegularizeMembershipDialog personId={personId} onChanged={onChanged} />}{membership?.membership_origin === 'historical_regularization' && <p className="text-sm text-slate-600" data-testid="membership-regularization-details">Regularizada {membership.regularized_at?.slice?.(0,10)} · Fecha histórica {membership.historical_membership_date || 'desconocida'}</p>}</div>
       {!canManage && <p className="mt-4 border-l-4 border-amber-500 bg-amber-50 p-3 text-sm text-amber-900" data-testid="membership-read-only-notice">Consulta de estado disponible. La emisión de documentos requiere autorización de Membresía.</p>}
     </div>
     {canManage && <MembershipDocumentsSection personId={personId} photoSrc={photoSrc} />}
@@ -48,6 +50,7 @@ export const BaptismSection = ({ personId, record, canWrite, API, getAuthHeaders
       <div className="space-y-2"><Label>Estado</Label><Select value={form.status} onValueChange={(value) => setForm((old) => ({ ...old, status: value }))} disabled={!canWrite}><SelectTrigger data-testid="baptism-status-select"><SelectValue /></SelectTrigger><SelectContent className="bg-white"><SelectItem value="pending">Pendiente</SelectItem><SelectItem value="scheduled">Programado</SelectItem><SelectItem value="completed">Completado</SelectItem></SelectContent></Select></div>
       <div className="space-y-2"><Label htmlFor="baptism-date"><CalendarDays className="mr-1 inline h-4 w-4" />Fecha</Label><Input id="baptism-date" type="date" value={form.baptism_date || ''} onChange={(event) => setForm((old) => ({ ...old, baptism_date: event.target.value }))} disabled={!canWrite} data-testid="baptism-date-input" /></div>
       <div className="space-y-2"><Label htmlFor="baptism-location"><MapPin className="mr-1 inline h-4 w-4" />Lugar</Label><Input id="baptism-location" value={form.location || ''} onChange={(event) => setForm((old) => ({ ...old, location: event.target.value }))} disabled={!canWrite} data-testid="baptism-location-input" /></div>
+      <div className="space-y-2"><Label htmlFor="baptism-church">Iglesia</Label><Input id="baptism-church" value={form.church_name || ''} onChange={(event) => setForm((old) => ({ ...old, church_name: event.target.value }))} disabled={!canWrite} data-testid="baptism-church-input" /></div>
       <div className="space-y-2"><Label htmlFor="baptism-officiant"><UserRound className="mr-1 inline h-4 w-4" />Ministro bautizador</Label><Input id="baptism-officiant" value={form.officiant_name || ''} onChange={(event) => setForm((old) => ({ ...old, officiant_name: event.target.value }))} disabled={!canWrite} data-testid="baptism-officiant-input" /></div>
       <div className="space-y-2 md:col-span-2"><Label htmlFor="baptism-testimony">Testimonio</Label><Textarea id="baptism-testimony" value={form.testimony || ''} onChange={(event) => setForm((old) => ({ ...old, testimony: event.target.value }))} disabled={!canWrite} data-testid="baptism-testimony-input" /></div>
       <div className="space-y-2 md:col-span-2"><Label htmlFor="baptism-notes">Notas</Label><Textarea id="baptism-notes" value={form.notes || ''} onChange={(event) => setForm((old) => ({ ...old, notes: event.target.value }))} disabled={!canWrite} data-testid="baptism-notes-input" /></div>

@@ -37,6 +37,8 @@ import PresentacionImprimirPage from './pages/PresentacionImprimirPage';
 import PresentacionNotasPage from './pages/PresentacionNotasPage';
 import CodigosInvitacionPage from './pages/CodigosInvitacionPage';
 import CoreGovernancePage from './pages/CoreGovernancePage';
+import FormationAdminPage from './pages/formation/FormationAdminPage';
+import FormationCohortPage from './pages/formation/FormationCohortPage';
 import ChangePasswordPage from './pages/ChangePasswordPage';
 import AccessOnboardingPage from './pages/AccessOnboardingPage';
 import MembershipVerificationPage from './pages/MembershipVerificationPage';
@@ -76,7 +78,7 @@ import BoardMeetingsPage from './pages/board/BoardMeetingsPage';
 import BoardMeetingDetailPage from './pages/board/BoardMeetingDetailPage';
 import BoardMinutesPage from './pages/board/BoardMinutesPage';
 import AppLayout from './components/AppLayout';
-import { canManageDirectMembership, canViewCare, canViewFinanceModule, canViewFrontGroups, canViewGeo, canViewLeadership, canViewOperations, hasAnyCapability, isPastoralAuthority } from './lib/accessControl';
+import { canManageDirectMembership, canViewCare, canViewFinanceModule, canViewFormation, canViewFrontGroups, canViewGeo, canViewLeadership, canViewOperations, hasAnyCapability, isPastoralAuthority } from './lib/accessControl';
 import { useBoardAccess } from './hooks/useBoardAccess';
 import './App.css';
 
@@ -122,6 +124,14 @@ function FinanceRoute({ children }) {
   if (loading) return <div className="flex min-h-screen items-center justify-center">Cargando…</div>;
   if (!user) return <Navigate to="/login" replace />;
   if (!canViewFinanceModule(user)) return <Navigate to="/" replace />;
+  return children;
+}
+
+function FormationRoute({ children }) {
+  const { user, loading } = useAuth();
+  if (loading) return <div className="flex min-h-screen items-center justify-center" data-testid="formation-route-loading">Cargando…</div>;
+  if (!user) return <Navigate to="/login" replace />;
+  if (!canViewFormation(user)) return <Navigate to="/" replace />;
   return children;
 }
 
@@ -176,6 +186,8 @@ function App() {
             <Route path="procesos/consolidacion" element={<ConsolidationPage />} />
             <Route path="procesos/consolidacion/:enrollmentId" element={<ConsolidationDetailPage />} />
             <Route path="procesos/discipulado" element={<DiscipleshipPage />} />
+            <Route path="formacion" element={<FormationRoute><FormationAdminPage /></FormationRoute>} />
+            <Route path="formacion/cohortes/:cohortId" element={<FormationRoute><FormationCohortPage /></FormationRoute>} />
             <Route path="grupos-frontales" element={<CapabilityRoute allowed={canViewFrontGroups}><FrontGroupsPage /></CapabilityRoute>} />
             <Route path="liderazgo" element={<CapabilityRoute allowed={canViewLeadership}><LeadershipPage /></CapabilityRoute>} />
             <Route path="mapas" element={<CapabilityRoute allowed={canViewGeo}><Suspense fallback={<div className="flex min-h-[60vh] items-center justify-center" data-testid="geo-page-loading">Cargando Mapa 360…</div>}><GeoMapsPage /></Suspense></CapabilityRoute>} />

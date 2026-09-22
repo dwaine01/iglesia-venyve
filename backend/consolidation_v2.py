@@ -1,6 +1,7 @@
 """API oficial de Consolidación v2: cuatro entradas, Fiesta, Retiro y Discipulado."""
 from datetime import datetime, timezone
 from typing import Literal, Optional
+from uuid import uuid4
 import re
 import unicodedata
 
@@ -388,8 +389,16 @@ async def close_retreat(enrollment_id: str, payload: RetreatClose, current_user:
         "updated_by_user_id": current_user["user_id"],
         "updated_at": now,
     }})
-    discipleship, _ = await create_enrollment(db, "discipleship", enrollment["person_id"], enrollment.get("mentor_person_id"), current_user["user_id"], status="active", next_action="Realizar orientación de Discipulado", source="consolidation_retreat", source_id=enrollment_id)
-    await db.process_enrollments.update_one({"enrollment_id": discipleship["enrollment_id"]}, {"$set": {"front_group_id": enrollment.get("front_group_id"), "previous_process_enrollment_id": enrollment_id, "updated_at": now}})
+    program = await db.formation_programs.find_one({"purpose": "discipleship", "active": True}, {"_id": 0}, sort=[("created_at", 1)])
+    module = await db.formation_modules.find_one({"program_id": program["program_id"], "active": True}, {"_id": 0}, sort=[("order", 1)]) if program else None
+    recommendation_id = None
+    if program and module:
+        recommendation_id = str(uuid4())
+        await db.formation_recommendations.update_one(
+            {"person_id": enrollment["person_id"], "module_id": module["module_id"], "status": "recommended"},
+            {"$setOnInsert": {"_id": recommendation_id, "recommendation_id": recommendation_id, "person_id": enrollment["person_id"], "program_id": program["program_id"], "module_id": module["module_id"], "program_name_snapshot": program["name"], "module_name_snapshot": module["name"], "source": "consolidation_retreat", "source_enrollment_id": enrollment_id, "status": "recommended", "created_by_user_id": current_user["user_id"], "created_at": now}},
+            upsert=True,
+        )
     for stage_key in ["retreat", "discipleship_handoff"]:
         stage = await db.process_stage_progress.find_one({"enrollment_id": enrollment_id, "stage_key": stage_key})
         if stage:
@@ -400,10 +409,10 @@ async def close_retreat(enrollment_id: str, payload: RetreatClose, current_user:
     await db.process_enrollments.update_one({"enrollment_id": enrollment_id}, {"$set": {
         "status": "completed", "consolidation_status": "completed", "progress_pct": 100,
         "current_stage_key": "discipleship_handoff", "retreat_completed_at": payload.retreat_date,
-        "discipleship_enrollment_id": discipleship["enrollment_id"], "completed_at": now,
-        "next_action": "Continuar Educación / Discipulado", "next_action_at": None, "updated_at": now,
+        "formation_recommendation_id": recommendation_id, "completed_at": now,
+        "next_action": f"Inscribir en {module['name']}" if module else "Configurar programa de Formación / Discipulado", "next_action_at": None, "updated_at": now,
     }})
-    await record_event(db, enrollment, current_user["user_id"], "retreat_closed", "Consolidación cerrada en Retiro", f"Discipulado {discipleship['enrollment_id']}")
+    await record_event(db, enrollment, current_user["user_id"], "retreat_closed", "Consolidación cerrada en Retiro", f"Formación recomendada {module['name']}" if module else "Formación pendiente de configuración")
     return await enrollment_detail(db, await load_consolidation(db, enrollment_id))
 
 

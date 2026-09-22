@@ -165,6 +165,7 @@ async def enrollment_detail(db, enrollment: dict) -> dict:
     timeline = await db.process_timeline.find({"enrollment_id": enrollment["enrollment_id"]}, {"_id": 0}).sort("occurred_at", -1).to_list(500)
     membership = await db.person_memberships.find_one({"person_id": enrollment["person_id"]}, {"_id": 0})
     discipleship = await db.process_enrollments.find_one({"process_key": "discipleship", "source_id": enrollment["enrollment_id"]}, {"_id": 0})
+    formation_recommendation = await db.formation_recommendations.find_one({"source_enrollment_id": enrollment["enrollment_id"], "status": "recommended"}, {"_id": 0})
     person = await db.persons.find_one({"_id": ObjectId(enrollment["person_id"])}, {"_id": 0, "nombre": 1, "apellido": 1, "person_number": 1})
     result = serialize(enrollment)
     result.update({
@@ -173,6 +174,7 @@ async def enrollment_detail(db, enrollment: dict) -> dict:
         "mentor_assignments": serialize(assignments),
         "membership": serialize(membership),
         "discipleship": serialize(discipleship),
+        "formation_recommendation": serialize(formation_recommendation),
         "timeline": serialize(timeline),
     })
     return result

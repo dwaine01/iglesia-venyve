@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from motor.motor_asyncio import AsyncIOMotorGridFSBucket
 from PIL import Image
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
@@ -43,6 +43,26 @@ class MembershipSettingsInput(BaseModel):
 class IssueDocumentInput(BaseModel):
     issue_date: date = Field(default_factory=date.today)
     existing_member_number: Optional[str] = Field(default=None, pattern=r"^[A-Za-z0-9-]{1,20}$")
+
+
+class MembershipRegularizationInput(BaseModel):
+    existing_member_number: Optional[str] = Field(default=None, pattern=r"^[A-Za-z0-9-]{1,20}$")
+    historical_membership_date: Optional[str] = None
+    historical_date_precision: Literal["exact", "month", "year", "unknown"] = "unknown"
+    reason: str = Field(min_length=3, max_length=1000)
+
+    @model_validator(mode="after")
+    def validate_history(self):
+        if self.historical_membership_date:
+            try:
+                datetime.fromisoformat(self.historical_membership_date)
+            except ValueError as exc:
+                raise ValueError("Fecha histórica inválida") from exc
+            if self.historical_date_precision == "unknown":
+                self.historical_date_precision = "exact"
+        elif self.historical_date_precision != "unknown":
+            raise ValueError("Sin fecha histórica, la precisión debe ser desconocida")
+        return self
 
 
 class RenewCardInput(BaseModel):
@@ -194,7 +214,7 @@ async def allocate_member_number(person: dict, requested: Optional[str] = None) 
                 "member_number": candidate,
                 "person_id": person_id,
                 "reserved_at": now_utc(),
-                "source": "membership_acceptance",
+                "source": "membership_number_allocation",
             })
             return candidate
         except DuplicateKeyError:
@@ -297,11 +317,14 @@ async def activate_preexisting_membership(
     actor_id: str,
     requested_number: Optional[str] = None,
     source: str = "manual_direct",
+    historical_membership_date: Optional[str] = None,
+    historical_date_precision: str = "unknown",
+    reason: str = "Regularización de miembro existente",
 ) -> tuple[dict, bool]:
     """Activa una membresía histórica sin inventar una inscripción de Consolidación."""
     person_id = person["person_id"]
     existing = await db.person_memberships.find_one({"person_id": person_id}, {"_id": 0})
-    if existing and existing.get("direct_membership") is True and existing.get("status") == "active":
+    if existing and existing.get("membership_origin") == "historical_regularization" and existing.get("status") == "active":
         return serialize(existing), False
     now = now_utc()
     if existing:
@@ -310,20 +333,23 @@ async def activate_preexisting_membership(
     else:
         membership_id = str(uuid4())
         member_number = await allocate_member_number(person, requested_number)
+    before = serialize(existing) if existing else None
     fields = {
         "membership_id": membership_id,
         "person_id": person_id,
         "member_number": member_number,
         "status": "active",
-        "acceptance_signed_at": existing.get("acceptance_signed_at") if existing else now,
-        "acceptance_verified_at": existing.get("acceptance_verified_at") if existing else now,
-        "acceptance_verified_by_user_id": existing.get("acceptance_verified_by_user_id") if existing else actor_id,
-        "acceptance_notes": existing.get("acceptance_notes") if existing else "Membresía activa preexistente registrada por autoridad",
         "legacy_membership": True,
         "direct_membership": True,
         "direct_membership_source": source,
         "direct_membership_activated_at": now,
         "direct_membership_activated_by_user_id": actor_id,
+        "membership_origin": "historical_regularization",
+        "historical_membership_date": historical_membership_date,
+        "historical_date_precision": historical_date_precision if historical_membership_date else "unknown",
+        "regularized_at": now,
+        "regularized_by_user_id": actor_id,
+        "regularization_reason": reason,
         "benefits_enabled_at": existing.get("benefits_enabled_at") if existing else now,
         "certificate_eligible_at": existing.get("certificate_eligible_at") if existing else now,
         "certificate_delivery_status": existing.get("certificate_delivery_status") if existing else "available",
@@ -355,10 +381,18 @@ async def activate_preexisting_membership(
         "event_id": event_id,
         "membership_id": membership_id,
         "person_id": person_id,
-        "event_type": "direct_membership_activated",
-        "source": source,
+        "event_type": "membership_historical_regularized",
+        "source": "persona_360_historical_regularization" if source == "manual_direct" else source,
         "actor_user_id": actor_id,
+        "before": before,
+        "after": serialize(await db.person_memberships.find_one({"membership_id": membership_id}, {"_id": 0})),
+        "reason": reason,
         "occurred_at": now,
+    })
+    await db.person_activity.insert_one({
+        "_id": str(uuid4()), "person_id": person_id, "domain": "membership",
+        "action": "historical_regularization", "summary": f"Membresía histórica regularizada · {member_number}",
+        "actor_user_id": actor_id, "created_at": now,
     })
     membership = await db.person_memberships.find_one({"membership_id": membership_id}, {"_id": 0})
     return serialize(membership), True
@@ -464,6 +498,30 @@ async def person_membership(person_id: str, current_user: dict = Depends(managed
     person = await canonical_person(person_id)
     membership = await db.person_memberships.find_one({"person_id": person["person_id"]}, {"_id": 0})
     return {"exists": bool(membership), "data": await render_data(person, membership) if membership else {"person": {"person_id": person["person_id"], "full_name": full_name(person), "position": await position_from_profile(person["person_id"])}}}
+
+
+@router.post("/api/membership/persons/{person_id}/regularize", response_model=dict)
+async def regularize_existing_membership(person_id: str, payload: MembershipRegularizationInput, current_user: dict = Depends(get_current_user)):
+    require_direct_membership_manager(current_user)
+    person = await canonical_person(person_id)
+    membership, created = await activate_preexisting_membership(
+        person,
+        current_user["user_id"],
+        payload.existing_member_number,
+        "persona_360",
+        payload.historical_membership_date,
+        payload.historical_date_precision,
+        payload.reason,
+    )
+    return {"membership": membership, "regularized": created}
+
+
+@router.get("/api/membership/persons/{person_id}/events", response_model=dict)
+async def membership_event_history(person_id: str, current_user: dict = Depends(get_current_user)):
+    require_direct_membership_manager(current_user)
+    person = await canonical_person(person_id)
+    items = await db.membership_events.find({"person_id": person["person_id"]}, {"_id": 0}).sort("occurred_at", -1).to_list(500)
+    return {"items": serialize(items), "total": len(items)}
 
 
 @router.post("/api/membership/persons/{person_id}/documents/{document_type}/issue", response_model=dict, status_code=201)

@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-09-22 — Membresía histórica + Formación configurable
+
+- Añadida regularización de miembros existentes desde Persona 360, sin `acceptance_signed_at` artificial ni procesos iniciales falsos.
+- Implementado dominio Formación completo con programas, módulos, prerrequisitos, cohortes, docentes, sesiones, asistencia, notas, progreso, históricos, promoción, reportes y auditoría.
+- Integrados Bautismo separado, evidencias privadas GridFS, certificados controlados y Discipulado legado read-only.
+- Certificación: backend 280/280, Formación focal 39/39, P0 22/22, frontend 27/27, desktop/móvil y testing independiente 100%.
+
 ## 2026-09-22 — RBAC estricto de Junta y Finanzas
 
 - Cerrada la causa raíz: grants históricos aditivos, gates por capability sin grupo, membresía de Junta sin `board.access` y reutilización de `finance.read` para Persona 360.

@@ -169,7 +169,13 @@ async def test_fiesta_membership_retreat_discipleship_and_scoped_leadership():
     front_leader_person_id = await create_person("Lider Frontal")
     _, front_leader_email = await create_user("Lider Frontal", "lider", front_leader_person_id, ["leadership.promote"])
     client, headers = await auth_client(pastor_email)
+    formation_program_id = None
     try:
+        program = await client.post("/api/formation/programs", json={"name": "QA Discipulado Configurable E2E", "purpose": "discipleship", "active": True, "certificate_enabled": False}, headers=headers)
+        assert program.status_code == 201, program.text
+        formation_program_id = program.json()["program_id"]
+        module = await client.post(f"/api/formation/programs/{formation_program_id}/modules", json={"name": "QA Formación Inicial E2E", "order": 1, "approval_policy": {"method": "manual", "minimum_attendance_pct": 0, "minimum_grade_pct": 0, "late_weight": 0.5, "excused_policy": "exclude", "manual_confirmation_required": True, "custom_requirements": []}}, headers=headers)
+        assert module.status_code == 201, module.text
         group = await client.post("/api/front-groups", json={"name": "QA Grupo Frontal Integral", "description": "E2E", "linked_structures": []}, headers=headers)
         assert group.status_code == 201, group.text
         group_id = group.json()["front_group_id"]
@@ -200,9 +206,15 @@ async def test_fiesta_membership_retreat_discipleship_and_scoped_leadership():
         closed = await client.post(f"/api/processes/consolidation/{enrollment_id}/retreat-close", json={"certificate_delivery_status": "pending_exception", "card_delivery_status": "not_applicable", "delivery_notes": "Entrega documentada como pendiente"}, headers=headers)
         assert closed.status_code == 200, closed.text
         assert closed.json()["consolidation_status"] == "completed"
-        assert closed.json()["discipleship"]["process_key"] == "discipleship"
-        discipleship_id = closed.json()["discipleship"]["enrollment_id"]
-        await server.db.process_enrollments.update_one({"enrollment_id": discipleship_id}, {"$set": {"status": "completed", "completed_at": datetime.now(timezone.utc)}})
+        assert closed.json()["discipleship"] is None
+        assert closed.json()["next_action"] in {"Configurar programa de Formación / Discipulado"} or closed.json().get("formation_recommendation")
+        assert not await server.db.process_enrollments.find_one({"person_id": candidate_person_id, "process_key": "discipleship", "source_id": enrollment_id})
+        recommendation = closed.json().get("formation_recommendation")
+        if recommendation:
+            modules = await server.db.formation_modules.find({"program_id": recommendation["program_id"], "active": True}, {"_id": 0}).to_list(100)
+            for module in modules:
+                achievement_id = str(uuid.uuid4())
+                await server.db.formation_achievements.update_one({"person_id": candidate_person_id, "module_id": module["module_id"], "active": True}, {"$setOnInsert": {"_id": achievement_id, "achievement_id": achievement_id, "person_id": candidate_person_id, "program_id": recommendation["program_id"], "module_id": module["module_id"], "status": "completed", "source": "calculated_completion", "program_name_snapshot": recommendation["program_name_snapshot"], "module_name_snapshot": module["name"], "completed_at": datetime.now(timezone.utc), "active": True}}, upsert=True)
         cap_id = str(uuid.uuid4())
         await server.db.cap_assessments.insert_one({"_id": cap_id, "cap_id": cap_id, "person_id": candidate_person_id, "status": "completed", "selected_door_key": "service"})
         await server.db.ministry_assignments.insert_one({"_id": str(uuid.uuid4()), "person_id": candidate_person_id, "activo": True, "ministry_id": "qa-service", "role": "server"})
@@ -226,7 +238,15 @@ async def test_fiesta_membership_retreat_discipleship_and_scoped_leadership():
         assert candidate_user["rol"] == "persona"
         assert await server.db.person_leadership_status.find_one({"person_id": candidate_person_id, "status": "leader"})
     finally:
-        await client.aclose(); await cleanup()
+        await client.aclose()
+        if formation_program_id:
+            module_ids = await server.db.formation_modules.distinct("module_id", {"program_id": formation_program_id})
+            await server.db.formation_achievements.delete_many({"program_id": formation_program_id})
+            await server.db.formation_recommendations.delete_many({"program_id": formation_program_id})
+            await server.db.formation_module_prerequisites.delete_many({"$or": [{"module_id": {"$in": module_ids}}, {"prerequisite_module_id": {"$in": module_ids}}]})
+            await server.db.formation_modules.delete_many({"program_id": formation_program_id})
+            await server.db.formation_programs.delete_one({"program_id": formation_program_id})
+        await cleanup()
 
 
 @pytest.mark.asyncio

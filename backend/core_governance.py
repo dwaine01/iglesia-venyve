@@ -20,6 +20,7 @@ from access_control import (
     DOOR_BOARD_CAPABILITIES,
     CORE_GOVERNANCE_MANAGE,
     FINANCE_CAPABILITIES,
+    FORMATION_CAPABILITIES,
     JOURNEY_GOVERNANCE_CAPABILITIES,
     MEMBERSHIP_DOCUMENTS_MANAGE,
     MEMBERSHIP_DIRECT_IMPORT,
@@ -147,7 +148,8 @@ def access_defaults(level: str, privilege_groups: Optional[list[str]] = None) ->
     groups = sorted(set(privilege_groups or ([] if level not in {"pastor", "coordinador_general"} else ["membership"])))
     if level == "coordinador_general":
         groups = sorted(set([*groups, "care"]))
-        defaults["capabilities"] = sorted(set([*defaults["capabilities"], *CARE_CAPABILITIES, MEMBERSHIP_DIRECT_IMPORT]))
+        coordinator_formation = [item for item in FORMATION_CAPABILITIES if item not in {"formation.programs.manage", "formation.certificates.issue", "baptism.certificates.issue"}]
+        defaults["capabilities"] = sorted(set([*defaults["capabilities"], *CARE_CAPABILITIES, *coordinator_formation, MEMBERSHIP_DIRECT_IMPORT]))
     if level in {"coordinador_general", "director"}:
         defaults["capabilities"] = sorted(set([*defaults["capabilities"], CORE_ACCESS_MANAGE]))
     if "membership" not in groups:
@@ -420,7 +422,7 @@ async def update_user_access(
         if active_pastors <= 1:
             raise HTTPException(status_code=400, detail="Debe existir al menos un pastor activo")
     defaults = access_defaults(requested_level, requested_groups)
-    allowed = set(PERSON_DOMAIN_CAPABILITIES + PROCESS_CAPABILITIES + CELLULAR_CAPABILITIES + DOOR_BOARD_CAPABILITIES + FINANCE_CAPABILITIES + JOURNEY_GOVERNANCE_CAPABILITIES + OPERATIONS_CAPABILITIES + CARE_CAPABILITIES + [MEMBERSHIP_DOCUMENTS_MANAGE, MEMBERSHIP_DIRECT_IMPORT, BOARD_ACCESS, PERSON_PASTORAL_NOTES_READ, CORE_GOVERNANCE_MANAGE, CORE_ACCESS_MANAGE, "person.profile.read"])
+    allowed = set(PERSON_DOMAIN_CAPABILITIES + PROCESS_CAPABILITIES + CELLULAR_CAPABILITIES + DOOR_BOARD_CAPABILITIES + FINANCE_CAPABILITIES + JOURNEY_GOVERNANCE_CAPABILITIES + OPERATIONS_CAPABILITIES + CARE_CAPABILITIES + FORMATION_CAPABILITIES + [MEMBERSHIP_DOCUMENTS_MANAGE, MEMBERSHIP_DIRECT_IMPORT, BOARD_ACCESS, PERSON_PASTORAL_NOTES_READ, CORE_GOVERNANCE_MANAGE, CORE_ACCESS_MANAGE, "person.profile.read"])
     capabilities = defaults["capabilities"]
     if payload.capabilities is not None:
         if not is_global_pastoral_authority(current_user):
@@ -429,7 +431,7 @@ async def update_user_access(
         invalid = sorted(set(payload.capabilities) - allowed - existing_capabilities)
         if invalid:
             raise HTTPException(status_code=400, detail=f"Capabilities inválidas: {', '.join(invalid)}")
-        customizable = set(JOURNEY_GOVERNANCE_CAPABILITIES + OPERATIONS_CAPABILITIES + [MEMBERSHIP_DOCUMENTS_MANAGE, MEMBERSHIP_DIRECT_IMPORT])
+        customizable = set(JOURNEY_GOVERNANCE_CAPABILITIES + OPERATIONS_CAPABILITIES + FORMATION_CAPABILITIES + [MEMBERSHIP_DOCUMENTS_MANAGE, MEMBERSHIP_DIRECT_IMPORT])
         non_customizable = sorted(set(payload.capabilities) - set(defaults["capabilities"]) - customizable - existing_capabilities)
         if non_customizable:
             raise HTTPException(status_code=400, detail=f"Capabilities no personalizables para este nivel: {', '.join(non_customizable)}")

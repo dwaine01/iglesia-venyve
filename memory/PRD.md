@@ -370,6 +370,14 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - Junta exige simultáneamente `board.access`, grupo `board`, membresía activa y permiso funcional del cargo; Coordinación o Finanzas sin concesión reciben 403.
 - Cierre Iteración 41: matriz granular/inventario 16/16, regresión relacionada 41/41 e independiente 28/28 PASS; 63/63 rutas Finanzas y 41/41 rutas Junta con gate. Desktop/móvil 6/6 roles; estado Junta móvil centralizado; cero fixtures.
 
+## Membresía histórica y Formación configurable — completado 2026-09-22
+
+- Persona 360 permite regularizar miembros existentes sin fabricar firma, Consolidación o formación previa; conserva fecha histórica opcional, fecha/actor de regularización y auditoría before/after.
+- Nuevo dominio Formación: programas/módulos configurables, prerrequisitos, cohortes, staff, sesiones, inscripción, asistencia, notas, aprobación, reposición, promoción, reportes e históricos.
+- Preparación bautismal y evento real de Bautismo permanecen separados; documentos privados usan GridFS con SHA-256 y RBAC.
+- Discipulado legado es read-only; Retiro futuro crea recomendación configurable y no convierte etapas antiguas automáticamente.
+- Certificación Iteración 46: backend completo 280/280, focal 39/39, P0 Junta/Finanzas 22/22, frontend 27/27, agente independiente 100%, cero FAIL/SKIP y fixtures en cero.
+
 ### P0 — Mega‑Bloque G — CONTABILIDAD Y FINANZAS — IMPLEMENTADO Y CERTIFICADO 2026‑09‑16
 
 - Jurisdicción operativa: Columbus, Ohio, Estados Unidos; base contable de efectivo configurable.

@@ -1,4 +1,4 @@
-import { canCheckInOperations, canManageDirectMembership, canManageMembershipDocuments, canManageOperations, canUseTerritorialMap, canViewFinanceModule, canViewGeo, canViewOperations, canViewPrivatePersonFinance, hasCapability, isPastoralAuthority } from './accessControl';
+import { canAccreditHistoricalFormation, canCheckInOperations, canManageDirectMembership, canManageMembershipDocuments, canManageOperations, canRegularizeMembership, canUseTerritorialMap, canViewFinanceModule, canViewFormation, canViewGeo, canViewOperations, canViewPrivatePersonFinance, hasCapability, isPastoralAuthority } from './accessControl';
 
 describe('geo access control', () => {
   test('pastoral authority receives map access', () => {
@@ -47,5 +47,14 @@ describe('geo access control', () => {
     expect(canViewFinanceModule({ rol: 'lider', capabilities: ['finance.read'], privilege_groups: ['finance'] })).toBe(true);
     expect(canViewPrivatePersonFinance({ rol: 'lider', capabilities: ['finance.read'], privilege_groups: ['finance'] })).toBe(false);
     expect(canViewPrivatePersonFinance({ rol: 'pastora', capabilities: [] })).toBe(true);
+  });
+
+  test('formation and historical membership use dedicated capabilities', () => {
+    const professor = { rol: 'lider', capabilities: ['formation.read', 'formation.attendance.write'] };
+    expect(canViewFormation(professor)).toBe(true);
+    expect(canAccreditHistoricalFormation(professor)).toBe(false);
+    expect(canRegularizeMembership(professor)).toBe(false);
+    expect(canRegularizeMembership({ rol: 'lider', capabilities: ['membership.direct_import'] })).toBe(true);
+    expect(canAccreditHistoricalFormation({ rol: 'lider', capabilities: ['formation.historical_credit.manage'] })).toBe(true);
   });
 });

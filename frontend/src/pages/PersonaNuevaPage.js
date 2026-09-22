@@ -11,7 +11,7 @@ import { UserPlus, ArrowLeft, AlertTriangle, BadgeCheck, Loader2 } from 'lucide-
 import { toast } from 'sonner';
 import { canManageDirectMembership } from '../lib/accessControl';
 
-const emptyForm = { nombre: '', apellido: '', telefono: '', email: '', fecha_nacimiento: '', preexisting_active_member: false, existing_member_number: '' };
+const emptyForm = { nombre: '', apellido: '', telefono: '', email: '', fecha_nacimiento: '', preexisting_active_member: false, existing_member_number: '', historical_membership_date: '', historical_date_precision: 'unknown', membership_regularization_reason: '' };
 
 export default function PersonaNuevaPage() {
   const { API, getAuthHeaders, user } = useAuth();
@@ -70,6 +70,9 @@ export default function PersonaNuevaPage() {
         idempotency_key: idempotencyKey || genKey(),
         preexisting_active_member: canDirect && form.preexisting_active_member,
         existing_member_number: canDirect && form.preexisting_active_member && form.existing_member_number ? form.existing_member_number.trim() : null,
+        historical_membership_date: canDirect && form.preexisting_active_member && form.historical_membership_date ? form.historical_membership_date : null,
+        historical_date_precision: canDirect && form.preexisting_active_member && form.historical_membership_date ? form.historical_date_precision : 'unknown',
+        membership_regularization_reason: canDirect && form.preexisting_active_member ? (form.membership_regularization_reason || 'Alta inicial de miembro histórico') : null,
       };
       const res = await axios.post(`${API}/api/core/persons`, payload, getAuthHeaders());
       if (res.data.membership?.direct) toast.success(`Membresía directa activada · N.º ${res.data.membership.member_number}`);
@@ -149,9 +152,9 @@ export default function PersonaNuevaPage() {
                 {canDirect && <div className="border-l-4 border-emerald-600 bg-emerald-50 p-4" data-testid="direct-membership-section">
                   <div className="flex items-start gap-3">
                     <Checkbox id="preexisting-active-member" checked={form.preexisting_active_member} onCheckedChange={(checked) => setForm((current) => ({ ...current, preexisting_active_member: Boolean(checked), existing_member_number: checked ? current.existing_member_number : '' }))} data-testid="toggle-direct-membership-checkbox" />
-                    <div className="min-w-0 flex-1"><Label htmlFor="preexisting-active-member" className="flex items-center gap-2 font-semibold text-emerald-950"><BadgeCheck className="h-4 w-4" />Miembro activo preexistente</Label><p className="mt-1 text-xs leading-5 text-emerald-800">Omite el proceso de nuevos miembros y habilita de inmediato el número, carnet y certificado.</p></div>
+                    <div className="min-w-0 flex-1"><Label htmlFor="preexisting-active-member" className="flex items-center gap-2 font-semibold text-emerald-950"><BadgeCheck className="h-4 w-4" />Miembro activo preexistente</Label><p className="mt-1 text-xs leading-5 text-emerald-800">Regulariza su membresía sin fabricar firma, Consolidación ni formación anterior.</p></div>
                   </div>
-                  {form.preexisting_active_member && <div className="mt-4 space-y-1.5"><Label htmlFor="existing-member-number">Número existente (opcional)</Label><Input id="existing-member-number" value={form.existing_member_number} onChange={update('existing_member_number')} placeholder="Déjelo vacío para asignar uno nuevo" maxLength={20} data-testid="input-membership-number" /></div>}
+                  {form.preexisting_active_member && <div className="mt-4 grid gap-3 sm:grid-cols-2"><div className="space-y-1.5"><Label htmlFor="existing-member-number">Número existente (opcional)</Label><Input id="existing-member-number" value={form.existing_member_number} onChange={update('existing_member_number')} placeholder="Vacío para asignar uno nuevo" maxLength={20} data-testid="input-membership-number" /></div><div className="space-y-1.5"><Label htmlFor="historical-membership-date">Fecha histórica conocida</Label><Input id="historical-membership-date" type="date" value={form.historical_membership_date} onChange={update('historical_membership_date')} data-testid="input-historical-membership-date" /></div><div className="space-y-1.5"><Label htmlFor="historical-date-precision">Precisión</Label><select id="historical-date-precision" value={form.historical_date_precision} onChange={update('historical_date_precision')} disabled={!form.historical_membership_date} className="h-10 w-full border bg-white px-3 text-sm" data-testid="select-historical-date-precision"><option value="exact">Exacta</option><option value="month">Mes aproximado</option><option value="year">Año aproximado</option><option value="unknown">Desconocida</option></select></div><div className="space-y-1.5"><Label htmlFor="membership-regularization-reason">Motivo</Label><Input id="membership-regularization-reason" value={form.membership_regularization_reason} onChange={update('membership_regularization_reason')} placeholder="Miembro activo previo a la plataforma" data-testid="input-membership-regularization-reason" /></div></div>}
                 </div>}
                 <Button
                   onClick={handleCheckDuplicates}
@@ -169,7 +172,7 @@ export default function PersonaNuevaPage() {
 
             {step === 'review' && (
               <div className="space-y-4">
-                {form.preexisting_active_member && <div className="border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900" data-testid="direct-membership-review-alert"><b>Alta directa:</b> al crear esta Persona se activará su membresía histórica y sus documentos oficiales.</div>}
+                {form.preexisting_active_member && <div className="border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900" data-testid="direct-membership-review-alert"><b>Regularización histórica:</b> se activará la membresía sin crear procesos ni fechas de aceptación artificiales.</div>}
                 {duplicates.length > 0 ? (
                   <div className="rounded-md border border-amber-300 bg-amber-50 p-4 space-y-3">
                     <div className="flex items-start gap-2 text-amber-800">

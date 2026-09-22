@@ -124,9 +124,37 @@ async def qa_cleanup_plan(db) -> dict:
         ("person_leadership_status", {"front_group_id": {"$in": qa_group_ids}}),
         ("front_groups", {"front_group_id": {"$in": qa_group_ids}}),
     ]
+    qa_programs = await db.formation_programs.find({"created_by_user_id": {"$in": user_ids}}, {"_id": 0, "program_id": 1}).to_list(100000)
+    qa_program_ids = [item["program_id"] for item in qa_programs]
+    qa_modules = await db.formation_modules.find({"program_id": {"$in": qa_program_ids}}, {"_id": 0, "module_id": 1}).to_list(100000)
+    qa_module_ids = [item["module_id"] for item in qa_modules]
+    qa_cohorts = await db.formation_cohorts.find({"$or": [{"program_id": {"$in": qa_program_ids}}, {"created_by_user_id": {"$in": user_ids}}]}, {"_id": 0, "cohort_id": 1}).to_list(100000)
+    qa_cohort_ids = [item["cohort_id"] for item in qa_cohorts]
+    qa_enrollments = await db.formation_enrollments.find({"$or": [{"person_id": {"$in": person_ids}}, {"cohort_id": {"$in": qa_cohort_ids}}]}, {"_id": 0, "enrollment_id": 1}).to_list(100000)
+    qa_enrollment_ids = [item["enrollment_id"] for item in qa_enrollments]
+    formation_files = await db["formation_documents.files"].find({"metadata.person_id": {"$in": person_ids}}, {"_id": 1}).to_list(100000)
+    formation_file_ids = [item["_id"] for item in formation_files]
+    formation_queries = [
+        ("formation_documents.chunks", {"files_id": {"$in": formation_file_ids}}),
+        ("formation_documents.files", {"_id": {"$in": formation_file_ids}}),
+        ("formation_attendance", {"$or": [{"person_id": {"$in": person_ids}}, {"enrollment_id": {"$in": qa_enrollment_ids}}]}),
+        ("formation_grades", {"$or": [{"person_id": {"$in": person_ids}}, {"enrollment_id": {"$in": qa_enrollment_ids}}]}),
+        ("formation_assessments", {"cohort_id": {"$in": qa_cohort_ids}}),
+        ("formation_sessions", {"cohort_id": {"$in": qa_cohort_ids}}),
+        ("formation_enrollments", {"$or": [{"person_id": {"$in": person_ids}}, {"cohort_id": {"$in": qa_cohort_ids}}]}),
+        ("formation_cohort_staff", {"$or": [{"person_id": {"$in": person_ids}}, {"cohort_id": {"$in": qa_cohort_ids}}]}),
+        ("formation_cohorts", {"cohort_id": {"$in": qa_cohort_ids}}),
+        ("formation_module_prerequisites", {"$or": [{"module_id": {"$in": qa_module_ids}}, {"prerequisite_module_id": {"$in": qa_module_ids}}]}),
+        ("formation_achievements", {"$or": [{"person_id": {"$in": person_ids}}, {"program_id": {"$in": qa_program_ids}}]}),
+        ("formation_recommendations", {"$or": [{"person_id": {"$in": person_ids}}, {"program_id": {"$in": qa_program_ids}}]}),
+        ("formation_certificate_issuances", {"$or": [{"person_id": {"$in": person_ids}}, {"program_id": {"$in": qa_program_ids}}]}),
+        ("formation_audit_events", {"$or": [{"person_id": {"$in": person_ids}}, {"actor_user_id": {"$in": user_ids}}, {"entity_id": {"$in": [*qa_program_ids, *qa_module_ids, *qa_cohort_ids, *qa_enrollment_ids]}}]}),
+        ("formation_modules", {"program_id": {"$in": qa_program_ids}}),
+        ("formation_programs", {"program_id": {"$in": qa_program_ids}}),
+    ]
     collection_ids = {}
     upload_ids = []
-    for collection_name, query in [*care_queries, *front_group_queries, *_queries(user_oids, user_ids, person_oids, person_ids)]:
+    for collection_name, query in [*care_queries, *front_group_queries, *formation_queries, *_queries(user_oids, user_ids, person_oids, person_ids)]:
         docs = await db[collection_name].find(query, {"_id": 1}).to_list(100000)
         ids = [item["_id"] for item in docs]
         if collection_name == "person_photo_uploads":
