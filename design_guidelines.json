@@ -1,129 +1,155 @@
 {
-  "project_title": "Sistema Integrado de Formación, Discipulado, Bautismo y Regularización de Membresía (Persona 360)",
-  "context_type": "DASHBOARDS_AND_ADMIN_PANELS",
-  "app_type": "hybrid_fullstack_administrative_church_SaaS",
-  "theme": {
-    "primary_mode": "light",
-    "supported_modes": ["light", "dark"],
-    "brand_identity": "Institucional Ecuménico de Alta Densidad, Sereno y Distinguido",
-    "color_archetype": "ARCHETYPE_5_LUXURY_AND_INSTITUTIONAL_SWISS"
-  },
-  "visual_language": {
-    "font_family_headings": "Spectral, serif",
-    "font_family_body": "IBM Plex Sans, sans-serif",
-    "font_family_mono": "IBM Plex Mono, monospace",
-    "palette": {
-      "navy_primary": "hsl(221, 46%, 20%)",
-      "gold_accent": "hsl(43, 52%, 55%)",
-      "teal_accent": "hsl(186, 55%, 38%)",
-      "background": "hsl(40, 33%, 98%)",
-      "card_surface": "hsl(40, 33%, 99%)",
-      "border": "hsl(40, 14%, 86%)",
-      "text_main": "hsl(222, 47%, 11%)",
-      "text_muted": "hsl(215, 16%, 35%)",
-      "badge_regularized_bg": "hsl(43, 52%, 92%)",
-      "badge_regularized_text": "hsl(43, 60%, 25%)",
-      "badge_baptism_prep_bg": "hsl(186, 55%, 92%)",
-      "badge_baptism_prep_text": "hsl(186, 65%, 20%)",
-      "badge_baptized_bg": "hsl(221, 46%, 92%)",
-      "badge_baptized_text": "hsl(221, 50%, 22%)"
-    }
-  },
-  "architecture_and_routes": {
-    "persona_360": {
-      "path": "/personas/:id",
-      "purpose": "Expediente único 360 de la persona. Muestra regularización de membresía, progreso de formación, historial de discipulado (read-only), estado de preparación bautismal vs bautismo real y próximo paso sugerido.",
-      "key_panels": [
-        "Membresía: Botón 'Activar / Regularizar Membresía Histórica' con modal de confirmación auditado (sin inventar acceptance_signed_at).",
-        "Línea de Vida Formativa: Muestra programas inscritos, cohorte actual, asistencias acumuladas, promedios de notas y certificado descargable.",
-        "Discipulado Legado: Vista de solo lectura (read-only) con aviso histórico y sellos de integridad.",
-        "Ruta Bautismal: Separación explícita entre 'Curso/Preparación Bautismal Finalizada' y 'Fecha/Lugar/Ministro de Bautismo Real'."
-      ]
-    },
-    "formacion_hub": {
-      "path": "/formacion",
-      "purpose": "Hub central de gestión académica y discipular para Pastores, Coordinadores y Docentes.",
-      "sub_routes": [
-        {
-          "path": "/formacion/programas",
-          "label": "Programas y Módulos",
-          "description": "Configuración ilimitada de programas formativos, módulos, horas lectivas, nota mínima y prerrequisitos encadenados."
-        },
-        {
-          "path": "/formacion/cohortes",
-          "label": "Cohortes y Clases",
-          "description": "Gestión de aperturas, cupos, asignación de docentes/auxiliares, horarios y aula."
-        },
-        {
-          "path": "/formacion/sesiones",
-          "label": "Sesiones y Asistencia",
-          "description": "Control de asistencia por QR o lista manual, registro de temas y justificaciones."
-        },
-        {
-          "path": "/formacion/calificaciones",
-          "label": "Evaluaciones y Notas",
-          "description": "Matriz de calificaciones por cohorte con cálculo automático de aprobación y promoción."
-        },
-        {
-          "path": "/formacion/historicos",
-          "label": "Acreditación Histórica",
-          "description": "Registro directo de formación realizada en el pasado sin forzar notas ni asistencias inventadas."
-        }
-      ]
-    },
-    "bautismo_hub": {
-      "path": "/bautismos",
-      "purpose": "Gestión de la ruta de bautismos en 2 fases separadas.",
-      "sections": [
-        "Elegibles por Preparación Bautismal (Personas con taller/curso completado).",
-        "Agenda de Servicios Bautismales (Fecha, estanque/lugar, pastor/ministro oficiante, testigos).",
-        "Generador e Impresor de Certificados Oficiales Preparados."
-      ]
-    },
-    "reportes_hub": {
-      "path": "/formacion/reportes",
-      "purpose": "Cuadro de mando con listas operativas de Graduados, Pendientes de Aprobación, Elegibles para Bautismo y Miembros Regularizados sin Formación."
-    }
-  },
-  "design_rules_and_patterns": {
-    "layout": {
-      "max_width": "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8",
-      "grid_density": "gap-4 sm:gap-6 md:grid-cols-12",
-      "table_density": "compact padded rows (py-3 px-4), tabular-nums for scores and dates",
-      "no_overflow_rule": "overflow-x-auto inside card containers for tables; scrollbars customized (`::-webkit-scrollbar` standardized)"
-    },
-    "rbac_visual_behavior": {
-      "Pastora_FULL": "Acceso total a regularizaciones, creación de programas, edición histórica, eliminación y firma de certificados.",
-      "Coordinador_AUTORIZADO": "Gestión de cohortes, inscripciones, sesiones de asistencia y emisión de reportes.",
-      "Profesor_COHORTE_ONLY": "Acceso restringido únicamente a sus cohortes asignadas, pase de lista y registro de notas.",
-      "Rule_Strict": "No mostrar ni enlazar ningún módulo de board.* ni finance.*."
-    },
-    "form_and_data_entry": {
-      "shadcn_components": ["Input", "Select", "Checkbox", "Dialog", "Tabs", "DropdownMenu", "Popover", "Calendar", "Table", "Badge", "Card"],
-      "accessibility": "Etiquetas visibles, aria-describedby para ayudas, keyboard focus rings dorados/navy, data-testid universal."
-    },
-    "animations": {
-      "micro_interactions": "hover:bg-slate-50 transition-colors duration-150 ease-in-out",
-      "dialog_transitions": "radix animation fade/zoom-in 0.2s cubic-bezier(0.16, 1, 0.3, 1)"
-    }
-  },
-  "testing_and_data_testid_convention": {
-    "rule": "Every interactive standard component and key analytical data item MUST carry data-testid in kebab-case format.",
-    "examples": [
-      "data-testid=\"btn-regularizar-membresia\"",
-      "data-testid=\"modal-regularizar-membresia\"",
-      "data-testid=\"select-programa-formacion\"",
-      "data-testid=\"btn-guardar-asistencia\"",
-      "data-testid=\"badge-estado-bautismal\"",
-      "data-testid=\"tab-discipulado-legado\"",
-      "data-testid=\"btn-emitir-certificado\""
+  "project_title": "Ven y Ve Church Brand Identity & Membership Presentation Boards (A, B, C)",
+  "context_type": "MARKETING & BRAND IDENTITY PRESENTATION",
+  "art_direction": {
+    "role": "Senior Graphic Director & Identity Architect",
+    "core_philosophy": "Riqueza visual nacida de composición, retícula, proporciones, tipografía, contraste, geometría de marca y espacio negativo. Sin adornos religiosos genéricos ni rellenos de plantilla.",
+    "brand_pillars": [
+      "Credencial institucional premium",
+      "Identidad corporativa moderna",
+      "Certificado universitario contemporáneo"
     ]
   },
-  "instructions_to_main_agent": [
-    "Mantener intactos los endpoints y la navegación de Junta directiva y Finanzas (sin renderizar componentes ni opciones board.*/finance.*).",
-    "Preservar el diseño institucional Spectral (títulos) + IBM Plex Sans (cuerpo) y los tonos Navy `#1b2a4a` / Dorado `#c8a951` / Teal `#1fa6a0`.",
-    "Asegurar que las tablas tengan scroll horizontal interno sin romper el viewport completo en pantallas de mobile o tablet.",
-    "Implementar los badges de estado con alto contraste y tooltip explicativo cuando los datos sean históricos o legados.",
-    "En Persona 360, destacar claramente el bloque 'Próximo Paso Sugerido' con llamadas a la acción directas según la matriz de elegibilidad."
-  ]
+  "typography": {
+    "anti_default_rules": "Prohibido usar Inter o fuentes genéricas para titulares principal o nombres en certificados. Utilizar fuentes de alta jerarquía y tensión visual.",
+    "concept_A": {
+      "heading_font": "Plus Jakarta Sans, sans-serif",
+      "body_font": "Inter, sans-serif",
+      "weights": {
+        "title": "font-bold tracking-tight text-slate-900",
+        "subtitle": "font-medium text-slate-500 uppercase tracking-widest text-xs",
+        "card_name": "font-extrabold text-slate-950 tracking-tight"
+      }
+    },
+    "concept_B": {
+      "heading_font": "Cormorant Garamond, Playfair Display, serif",
+      "body_font": "Plus Jakarta Sans, sans-serif",
+      "weights": {
+        "title": "font-serif font-bold text-slate-900 tracking-normal",
+        "subtitle": "font-sans uppercase text-[11px] tracking-[0.25em] text-slate-500",
+        "card_name": "font-serif font-bold text-slate-900"
+      }
+    },
+    "concept_C": {
+      "heading_font": "Outfit, Clash Display, sans-serif",
+      "body_font": "Plus Jakarta Sans, sans-serif",
+      "weights": {
+        "title": "font-bold tracking-tight text-slate-950",
+        "subtitle": "font-mono text-xs uppercase tracking-widest text-emerald-700",
+        "card_name": "font-black tracking-tight text-slate-900"
+      }
+    }
+  },
+  "colors": {
+    "real_logo_colors": {
+      "navy": "#0B1D3A",
+      "navy_light": "#1E3A8A",
+      "emerald_green": "#059669",
+      "green_accent": "#10B981",
+      "white": "#FFFFFF",
+      "cream_bg": "#FAFAF7",
+      "warm_gold_accent": "#D97706"
+    },
+    "concept_palettes": {
+      "concept_A": {
+        "name": "Institucional Contemporáneo",
+        "primary_bg": "#FFFFFF (65%)",
+        "authority_color": "#0B1D3A (Azul Marino)",
+        "accent": "#059669 (Verde del Logo solo como acento en badge/detalles)",
+        "card_ratio": "65% Blanco / 35% Identidad azul marino"
+      },
+      "concept_B": {
+        "name": "Clásico Contemporáneo",
+        "primary_bg": "#FAFAF7 (Marfil / Blanco Cálido)",
+        "authority_color": "#0B1D3A (Azul Marino Profundo)",
+        "accent": "#D97706 / #B45309 (Dorado Mínimo Solo Acento)",
+        "green_detail": "#047857 (Detalle verde ultra pequeño)"
+      },
+      "concept_C": {
+        "name": "Ven y Ve Contemporáneo",
+        "primary_bg": "#F8FAFC / Geometría de Óvalos y Líneas de Marca",
+        "authority_color": "#0F172A (Obsidiana / Azul Marino Noche)",
+        "accent": "#059669 (Verde Orgánico de Marca)",
+        "visual_language": "Extraído de la forma ovalada y curvaturas del logo real"
+      }
+    }
+  },
+  "layout_and_grid": {
+    "presentation_boards": {
+      "structure": "3 Tableros independientes y comparables (Concepto A, Concepto B, Concepto C)",
+      "board_sections": [
+        "Header de Presentación con Selector/Tabs de Concepto y Switch de Vista Comparativa",
+        "Carnet Frente (Proporción exacta CR80 horizontal/vertical)",
+        "Carnet Reverso (QR limpio, N° miembro, Verificación de membresía)",
+        "Certificado (US Letter Landscape, composición editorial limpia)"
+      ]
+    },
+    "dimensions_and_ratios": {
+      "cr80_card": "Proporción 3.375 x 2.125 (85.6mm x 53.98mm) con aspect ratio ~1.586",
+      "letter_landscape": "Proporción 11 x 8.5 (Letter Horizontal) aspect ratio ~1.294"
+    }
+  },
+  "exact_sample_data": {
+    "member_name": "María Fernanda Rodríguez",
+    "member_status": "MIEMBRO ACTIVO",
+    "member_id": "VV-0284",
+    "membership_date": "05-18-2014",
+    "signature_placeholder": "[PLACEHOLDER FIRMA PASTORA]",
+    "church_name": "Ven y Ve",
+    "verification_text": "Verificación de membresía",
+    "photo_url": "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMjd8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjB3b21hbiUyMHBvcnRyYWl0JTIwaGVhZHNob3QlMjBjb3Jwb3JhdGUlMjBleGVjdXRpdmV8ZW58MHx8fHwxNzkwMTEwNjE3fDA&ixlib=rb-4.1.0&q=85",
+    "logo_url": "/assets/membership/church-logo.png"
+  },
+  "concepts_definition": {
+    "concept_A": {
+      "title": "CONCEPTO A — INSTITUCIONAL CONTEMPORÁNEO",
+      "carnet_front": "65% blanco / 35% identidad azul marino. Forma geométrica limpia propia de la marca atravesando la composición sin ondas exageradas. Nombre en tipografía sans-serif profesional de gran legibilidad. Foto con presencia ejecutiva destacada.",
+      "carnet_back": "Principalmente azul marino institucional. Logo real prominente, QR de alta visibilidad con zona blanca limpia, ID VV-0284, 'Verificación de membresía' y texto conciso.",
+      "certificate": "US Letter Landscape. Fondo marfil/blanco cálido muy sutil. Marco institucional fino azul marino. Verde usado mínimamente. Nombre como protagonista absoluto. Firma '[PLACEHOLDER FIRMA PASTORA]' y QR inferior."
+    },
+    "concept_B": {
+      "title": "CONCEPTO B — CLÁSICO CONTEMPORÁNEO",
+      "carnet_front": "Azul marino y blanco con composición simétrica sobria. Detalle verde sutil. Tipografía Serif elegante para el nombre y sans-serif estructurada para metadatos.",
+      "carnet_back": "Fondo azul marino con marco de doble filete fino dorado/blanco. Logo centrado, QR discreto con caja limpia y tipografía editorial.",
+      "certificate": "Estructura de diploma universitario moderno. Marco doble muy fino con acentos dorados discretos. Logo centrado, tipografía serif de alta alcurnia, espacio amplio para firma de la pastora y QR discreto. Siente la solemnidad para enmarcar."
+    },
+    "concept_C": {
+      "title": "CONCEPTO C — VEN Y VE CONTEMPORÁNEO",
+      "carnet_front": "Sistemas gráficos derivados de las curvas ovaladas y líneas del logo original de Ven y Ve. Geometría contemporánea audaz sin caer en desorden. Paleta azul y verde integrada con ritmo.",
+      "carnet_back": "Fondo dinámico azul marino con arco ovalado derivado de la marca. QR destacado con bordes redondeados y sello de verificación gráfico.",
+      "certificate": "Diploma de autoría de la iglesia Ven y Ve. Filigrana matemática basada en el óvalo del logo, márgenes asimétricos equilibrados, tipografía moderna con carácter único e inconfundible."
+    }
+  },
+  "prohibited_elements": [
+    "iglesias de fondo",
+    "montañas",
+    "hojas decorativas",
+    "cruces gigantes",
+    "sellos inventados",
+    "escudos inventados",
+    "degradados excesivos",
+    "ondas por todas partes",
+    "múltiples versículos",
+    "muchos iconos",
+    "sombras exageradas",
+    "frases rellenando espacios"
+  ],
+  "testing_and_attributes": {
+    "rule": "All interactive buttons, tabs, card containers, and verification details must include data-testid attributes in kebab-case",
+    "examples": [
+      "data-testid=\"concept-selector-tab-a\"",
+      "data-testid=\"concept-selector-tab-b\"",
+      "data-testid=\"concept-selector-tab-c\"",
+      "data-testid=\"carnet-front-concept-a\"",
+      "data-testid=\"carnet-back-concept-a\"",
+      "data-testid=\"certificate-concept-a\"",
+      "data-testid=\"member-name-display\"",
+      "data-testid=\"signature-placeholder-pastora\""
+    ]
+  },
+  "instructions_to_main_agent": {
+    "execution_mode": "Pure visual polish and art presentation. Ensure zero wireframes or gray placeholders.",
+    "components": "Ensure components in src/components/membership/ handle high resolution rendering, print previews, and comparison modal views.",
+    "theme": "Light theme predominant for clean institutional paper aesthetic with deep navy blue accents."
+  }
 }

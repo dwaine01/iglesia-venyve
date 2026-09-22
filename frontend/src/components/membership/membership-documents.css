@@ -1,1 +1,247 @@
-.membership-certificate,.membership-card{box-sizing:border-box;position:relative;overflow:hidden;background:#fff;color:#102a2d;container-type:inline-size;font-family:"Manrope",sans-serif;letter-spacing:0}.membership-certificate{aspect-ratio:11/8.5;width:100%;border:1px solid #dce5e3}.certificate-frame{position:absolute;inset:1.5cqw;border:.22cqw solid #0f3441}.certificate-left-rail{position:absolute;inset:0 auto 0 0;width:22%;background:#0f3441}.certificate-rail-blue{position:absolute;inset:0 -24% 0 54%;background:#0879be;clip-path:polygon(0 0,100% 0,58% 100%,0 100%)}.certificate-rail-green{position:absolute;inset:0 -10% 0 83%;background:#45a848;clip-path:polygon(0 0,100% 0,58% 100%,0 100%)}.certificate-logo{position:absolute;left:2.7%;top:6%;width:17%;z-index:2}.certificate-watermark{position:absolute;right:7%;top:28%;width:43%;opacity:.035;filter:grayscale(1)}.certificate-content{position:absolute;inset:6% 5% 5% 27%;text-align:center}.certificate-church{margin:0;color:#0f3441;font-size:1.35cqw;font-weight:800}.certificate-kicker{margin:1.1cqw 0 0;color:#0879be;font-size:.9cqw;font-weight:800}.certificate-content h2{margin:2.4cqw 0 0;font-family:"Spectral",serif;font-size:6.4cqw;line-height:.9;color:#0f3441}.certificate-content h3{margin:.7cqw 0 0;color:#0879be;font-size:2.2cqw;font-weight:800;letter-spacing:.35cqw}.certificate-rule{width:14%;height:.28cqw;margin:1.7cqw auto;background:#45a848}.certificate-presents{margin:0;color:#607171;font-family:"Spectral",serif;font-size:1.4cqw;font-style:italic}.certificate-name{margin:.6cqw auto 0;max-width:90%;min-height:6.3cqw;color:#086fae;font-family:"Dancing Script",cursive;font-weight:700;line-height:1.05;white-space:nowrap}.certificate-verse{margin:.5cqw auto 0;max-width:82%;color:#42595d;font-family:"Spectral",serif;font-size:1.2cqw;font-style:italic;line-height:1.45}.certificate-reference{margin:.5cqw 0 0;color:#0f3441;font-size:.86cqw;font-weight:800}.certificate-signature-block,.certificate-date-block{position:absolute;bottom:1.5%;width:31%;display:flex;flex-direction:column;align-items:center}.certificate-signature-block{left:12%}.certificate-date-block{right:12%;bottom:3.2%}.certificate-signature-line{width:100%;height:5cqw;border-bottom:.12cqw solid #607171;display:flex;align-items:flex-end;justify-content:center}.certificate-signature-line img{width:80%;height:5.2cqw;object-fit:contain}.certificate-signature-block strong,.certificate-date-block strong{margin-top:.45cqw;font-family:"Spectral",serif;font-size:1.15cqw}.certificate-signature-block span,.certificate-date-block span{font-size:.68cqw;color:#718080;text-transform:uppercase}.membership-card{aspect-ratio:85.6/53.98;width:100%;border-radius:1.45cqw;box-shadow:0 .5cqw 1.7cqw rgba(16,42,45,.18)}.membership-card-front{background:#fff}.card-front-rail{position:absolute;inset:0 auto 0 0;width:37%;background:#0f3441}.card-front-blue-angle{position:absolute;left:25%;top:0;width:24%;height:100%;background:#0879be;clip-path:polygon(0 0,50% 0,100% 100%,50% 100%)}.card-front-green-angle{position:absolute;left:35%;top:0;width:4%;height:100%;background:#45a848;transform:skewX(-8deg)}.card-photo-wrap{position:absolute;left:5.4%;top:16%;width:27%;aspect-ratio:4/5;border:.65cqw solid #fff;border-radius:1.2cqw;overflow:hidden;background:#e6efee;box-shadow:0 .4cqw 1cqw rgba(0,0,0,.25);display:flex;align-items:center;justify-content:center;color:#0f3441;font-family:"Spectral",serif;font-size:6cqw}.card-photo-wrap img{width:100%;height:100%;object-fit:cover;object-position:center 28%}.card-logo{position:absolute;right:5%;top:5.5%;width:21%}.card-member-number{position:absolute;left:43%;top:8%;display:flex;flex-direction:column}.card-member-number span,.card-dates span{color:#6c7a7d;font-size:1.45cqw;font-weight:800}.card-member-number strong{color:#0879be;font-family:"Spectral",serif;font-size:4.2cqw;line-height:1}.card-identity{position:absolute;left:43%;right:4%;top:38%;border-left:.5cqw solid #45a848;padding-left:2cqw}.card-name{margin:0;color:#0f3441;font-family:"Spectral",serif;font-weight:800;line-height:1;white-space:nowrap}.card-position{margin:1.2cqw 0 0;color:#0879be;font-size:2.05cqw;font-weight:900}.card-dates{position:absolute;left:43%;bottom:13%;display:flex;gap:5cqw}.card-dates p{margin:0;display:flex;flex-direction:column}.card-dates strong{font-size:2.1cqw}.card-status-label{position:absolute;left:5%;bottom:5%;margin:0;color:#fff;font-size:1.38cqw;font-weight:800}.membership-card-back{background:#0f3441;color:#fff}.card-back-blue{position:absolute;inset:0 53% 0 0;background:#0879be;clip-path:polygon(0 0,100% 0,72% 100%,0 100%)}.card-back-green{position:absolute;left:37%;top:0;width:4%;height:100%;background:#45a848;transform:skewX(-8deg)}.card-back-logo{position:absolute;left:5%;top:8%;width:25%;background:#fff;border-radius:.7cqw}.card-back-copy{position:absolute;left:5%;top:43%;width:35%;display:flex;flex-direction:column}.card-back-copy p{margin:0;color:#d8f0df;font-size:1.45cqw;font-weight:800}.card-back-copy strong{margin-top:1cqw;font-family:"Spectral",serif;font-size:3cqw;line-height:1}.card-back-copy span{margin-top:.7cqw;font-size:1.6cqw;font-weight:800}.card-back-copy small{margin-top:2cqw;font-size:1.15cqw;line-height:1.45;color:#e7efef}.card-qr-wrap{position:absolute;right:9%;top:13%;width:32%;aspect-ratio:1;background:#fff;border-radius:1cqw;padding:2.1cqw;display:flex;flex-direction:column;align-items:center}.card-qr-wrap img{width:100%;height:100%;object-fit:contain}.card-qr-wrap span{margin-top:.6cqw;color:#0f3441;font-size:1.25cqw;font-weight:900}.card-back-footer{position:absolute;left:46%;right:5%;bottom:7%;display:flex;justify-content:space-between;border-top:.15cqw solid rgba(255,255,255,.35);padding-top:1.2cqw;font-size:1.15cqw;font-weight:700}.membership-preview-frame{width:min(100%,1100px);margin:0 auto}.membership-card-preview{width:min(100%,760px);margin:0 auto}.membership-export-stage{position:fixed;left:-20000px;top:0;z-index:-1}.membership-export-certificate{width:1408px}.membership-export-card{width:1011px}.document-export{box-shadow:none;border-radius:0}@media(max-width:640px){.membership-preview-frame,.membership-card-preview{width:100%}}
+:root {
+  --doc-navy: #0b192c;
+  --doc-blue: #1d5d9b;
+  --doc-teal: #0d7490;
+  --doc-green: #15803d;
+  --doc-gold: #c5a059;
+  --doc-ink: #0f172a;
+  --doc-muted: #526171;
+  --doc-paper: #fdfdfc;
+}
+
+.membership-card,
+.membership-certificate {
+  box-sizing: border-box;
+  position: relative;
+  overflow: hidden;
+  container-type: inline-size;
+  letter-spacing: 0;
+  color: var(--doc-ink);
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+
+.membership-card *,
+.membership-certificate * { box-sizing: border-box; }
+
+.membership-card {
+  width: 100%;
+  aspect-ratio: 85.6 / 53.98;
+  border-radius: 2.1cqw;
+  background: #fff;
+  font-family: "Manrope", sans-serif;
+  box-shadow: 0 1.2cqw 3.6cqw rgba(11, 25, 44, .18);
+}
+
+.card-top-rule {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 1.3%;
+  background: linear-gradient(90deg, var(--doc-navy) 0 52%, var(--doc-blue) 52% 78%, var(--doc-green) 78%);
+}
+
+.card-brand {
+  position: absolute;
+  left: 4.5%;
+  right: 4.5%;
+  top: 5%;
+  height: 17%;
+  display: flex;
+  align-items: center;
+  gap: 1.5cqw;
+  border-bottom: .13cqw solid #d8e0e6;
+  padding-bottom: 1.2cqw;
+}
+
+.card-brand img { width: 10.6cqw; height: 8cqw; object-fit: contain; }
+.card-brand div { display: flex; flex-direction: column; }
+.card-brand span { color: var(--doc-muted); font-size: 1.55cqw; font-weight: 700; text-transform: uppercase; }
+.card-brand strong { color: var(--doc-navy); font-family: "Spectral", serif; font-size: 3.2cqw; line-height: 1; }
+
+.card-photo-column {
+  position: absolute;
+  left: 4.5%;
+  top: 26%;
+  bottom: 9%;
+  width: 28%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.card-photo-frame {
+  width: 100%;
+  height: 79%;
+  overflow: hidden;
+  border: .45cqw solid #fff;
+  outline: .16cqw solid #bdc9d2;
+  background: #e8eef2;
+  box-shadow: 0 .7cqw 1.5cqw rgba(11, 25, 44, .14);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.card-photo-frame img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 20%;
+}
+
+.card-photo-frame span {
+  color: #fff;
+  background: var(--doc-navy);
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  font-family: "Spectral", serif;
+  font-size: 9cqw;
+  font-weight: 700;
+}
+
+.card-active-badge {
+  width: 100%;
+  margin: 2.2cqw 0 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1cqw;
+  color: var(--doc-green);
+  font-size: 1.65cqw;
+  font-weight: 800;
+}
+
+.card-active-badge i {
+  width: 1.2cqw;
+  height: 1.2cqw;
+  border-radius: 50%;
+  background: var(--doc-green);
+  box-shadow: 0 0 0 .6cqw rgba(21, 128, 61, .1);
+}
+
+.card-identity-panel {
+  position: absolute;
+  left: 37%;
+  right: 4.5%;
+  top: 28%;
+  bottom: 9%;
+  display: flex;
+  flex-direction: column;
+}
+
+.card-document-label { margin: 0; color: var(--doc-blue); font-size: 1.48cqw; font-weight: 800; }
+.card-identity-panel h2 { max-width: 100%; margin: 2.2cqw 0 0; color: var(--doc-navy); font-family: "Spectral", serif; font-weight: 700; line-height: .98; overflow-wrap: anywhere; }
+.card-identity-panel h2.document-name-short { font-size: 5.35cqw; }
+.card-identity-panel h2.document-name-medium { font-size: 4.45cqw; }
+.card-identity-panel h2.document-name-long { font-size: 3.55cqw; line-height: 1.04; }
+.card-position { margin: 1.15cqw 0 0; color: var(--doc-teal); font-size: 1.55cqw; font-weight: 800; text-transform: uppercase; }
+
+.card-facts {
+  margin: auto 0 0;
+  display: grid;
+  grid-template-columns: 1.35fr 1fr 1fr;
+  gap: 2.2cqw;
+}
+
+.card-facts-no-expiry { grid-template-columns: 1.35fr 1fr; }
+.card-facts div { min-width: 0; border-left: .22cqw solid #d7e0e6; padding-left: 1.35cqw; }
+.card-facts .card-fact-number { border-left-color: var(--doc-green); }
+.card-facts dt { color: #687786; font-size: 1.12cqw; font-weight: 800; text-transform: uppercase; }
+.card-facts dd { margin: .65cqw 0 0; color: var(--doc-navy); font-size: 1.85cqw; font-weight: 800; overflow-wrap: anywhere; }
+.card-facts .card-fact-number dd { color: var(--doc-blue); font-size: 2.5cqw; }
+
+.card-bottom-mark { position: absolute; left: 0; right: 0; bottom: 0; height: 2.2%; display: flex; }
+.card-bottom-mark span { width: 72%; background: var(--doc-navy); }
+.card-bottom-mark i { flex: 1; background: linear-gradient(90deg, var(--doc-blue), var(--doc-green)); }
+
+.membership-card-back { background: var(--doc-navy); color: #fff; }
+.card-back-watermark { position: absolute; left: -5%; bottom: -16%; width: 56%; opacity: .028; filter: grayscale(1) brightness(4); }
+.card-back-copy { position: absolute; inset: 7% 41% 10% 6%; border-right: .14cqw solid rgba(255, 255, 255, .22); padding-right: 4.5cqw; }
+.card-brand-compact { position: static; height: auto; padding: 0; border: 0; }
+.card-brand-compact img { width: 9.7cqw; height: 8.4cqw; background: #fff; padding: .65cqw; }
+.card-brand-compact span { color: #b8c6d2; }
+.card-brand-compact strong { color: #fff; }
+.card-back-eyebrow { margin: 4.2cqw 0 0; color: #79c897; font-size: 1.28cqw; font-weight: 800; }
+.card-back-copy h2 { margin: 1.2cqw 0 0; color: #fff; font-family: "Spectral", serif; font-size: 3.3cqw; line-height: 1.05; overflow-wrap: anywhere; }
+.card-back-number { display: flex; align-items: baseline; gap: 1.5cqw; margin: 1.7cqw 0 0; }
+.card-back-number span { color: #9fb0bf; font-size: 1.1cqw; font-weight: 800; }
+.card-back-number strong { color: #fff; font-size: 2cqw; }
+.card-verification-copy { max-width: 92%; margin: 2.2cqw 0 0; color: #d4dce3; font-size: 1.27cqw; line-height: 1.42; }
+
+.card-qr-panel { position: absolute; right: 5.2%; top: 12%; width: 29%; display: flex; flex-direction: column; align-items: center; }
+.card-qr-safe-zone { width: 100%; aspect-ratio: 1; background: #fff; padding: 2.6cqw; box-shadow: 0 .8cqw 2cqw rgba(0, 0, 0, .22); }
+.card-qr-safe-zone img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.card-qr-panel > strong { margin-top: 1.7cqw; color: #fff; font-size: 1.35cqw; }
+.card-qr-panel > span { margin-top: .5cqw; color: #aebdc9; font-size: 1.12cqw; }
+.card-back-footer { position: absolute; left: 6%; right: 6%; bottom: 4.5%; border-top: .12cqw solid rgba(255, 255, 255, .18); padding-top: 1.5cqw; color: #b9c7d2; font-family: "Spectral", serif; font-size: 1.18cqw; font-style: italic; }
+.card-back-footer strong { color: #fff; font-family: "Manrope", sans-serif; font-size: 1.02cqw; font-style: normal; }
+
+.membership-certificate {
+  width: 100%;
+  aspect-ratio: 11 / 8.5;
+  background: var(--doc-paper);
+  font-family: "Manrope", sans-serif;
+}
+
+.certificate-border { position: absolute; pointer-events: none; }
+.certificate-border-outer { inset: 1.35%; border: .13cqw solid var(--doc-gold); }
+.certificate-border-inner { inset: 2.45%; border: .18cqw solid var(--doc-navy); }
+.certificate-corner { position: absolute; width: 5.8cqw; height: 5.8cqw; border-color: var(--doc-gold); border-style: solid; }
+.certificate-corner-tl { left: 1.9%; top: 1.9%; border-width: .35cqw 0 0 .35cqw; }
+.certificate-corner-tr { right: 1.9%; top: 1.9%; border-width: .35cqw .35cqw 0 0; }
+.certificate-corner-bl { left: 1.9%; bottom: 1.9%; border-width: 0 0 .35cqw .35cqw; }
+.certificate-corner-br { right: 1.9%; bottom: 1.9%; border-width: 0 .35cqw .35cqw 0; }
+.certificate-watermark { position: absolute; left: 50%; top: 47%; width: 35%; transform: translate(-50%, -50%); opacity: .025; filter: grayscale(1); }
+
+.certificate-header { position: absolute; left: 8%; right: 8%; top: 6%; display: flex; flex-direction: column; align-items: center; }
+.certificate-header img { width: 9.5cqw; height: 7.5cqw; object-fit: contain; }
+.certificate-header p { margin: .7cqw 0 0; color: var(--doc-navy); font-family: "Spectral", serif; font-size: 1.55cqw; font-weight: 700; }
+.certificate-header span { margin: .55cqw 0 0; color: var(--doc-green); font-size: .74cqw; font-weight: 800; }
+.certificate-main { position: absolute; left: 10%; right: 10%; top: 23%; text-align: center; }
+.certificate-main h1 { margin: 0; color: var(--doc-navy); font-family: "Cormorant Garamond", "Spectral", serif; font-size: 4.6cqw; font-weight: 700; line-height: 1; }
+.certificate-title-rule { width: 32%; margin: 1.25cqw auto 1.55cqw; display: flex; align-items: center; gap: 1.2cqw; color: var(--doc-gold); }
+.certificate-title-rule i { height: .09cqw; flex: 1; background: var(--doc-gold); }
+.certificate-title-rule span { font-size: 1.1cqw; }
+.certificate-preamble { margin: 0; color: #697684; font-family: "Spectral", serif; font-size: 1.18cqw; font-style: italic; }
+.certificate-main h2 { max-width: 88%; margin: 1.1cqw auto 0; color: var(--doc-blue); font-family: "Cormorant Garamond", "Spectral", serif; font-weight: 700; line-height: .98; overflow-wrap: anywhere; }
+.certificate-main h2.document-name-short { font-size: 5.2cqw; }
+.certificate-main h2.document-name-medium { font-size: 4.45cqw; }
+.certificate-main h2.document-name-long { font-size: 3.7cqw; line-height: 1; }
+.certificate-statement { max-width: 67%; margin: 1.4cqw auto 0; color: #344454; font-family: "Spectral", serif; font-size: 1.05cqw; line-height: 1.45; }
+.certificate-statement strong { color: var(--doc-navy); }
+.certificate-verse { max-width: 68%; margin: 1.4cqw auto 0; color: #596878; font-family: "Spectral", serif; font-size: .82cqw; font-style: italic; }
+.certificate-verse strong { color: var(--doc-navy); font-style: normal; }
+
+.certificate-footer { position: absolute; left: 8%; right: 8%; bottom: 7%; height: 16%; display: grid; grid-template-columns: 1fr 1.45fr .85fr; align-items: end; gap: 3.2cqw; }
+.certificate-signature-block { text-align: center; }
+.certificate-signature-space { height: 5.2cqw; border-bottom: .11cqw solid var(--doc-gold); display: flex; align-items: flex-end; justify-content: center; }
+.certificate-signature-space img { display: block; max-width: 85%; height: 5.5cqw; object-fit: contain; }
+.certificate-signature-block > strong { display: block; margin-top: .7cqw; color: var(--doc-navy); font-family: "Spectral", serif; font-size: 1.02cqw; }
+.certificate-signature-block > span { display: block; margin-top: .2cqw; color: #6c7884; font-size: .68cqw; text-transform: uppercase; }
+.certificate-official-data { height: 100%; display: grid; grid-template-columns: repeat(3, 1fr); align-items: center; border-top: .11cqw solid #d9dee2; border-bottom: .11cqw solid #d9dee2; }
+.certificate-official-data div { min-width: 0; padding: 1.2cqw; text-align: center; border-right: .08cqw solid #d9dee2; }
+.certificate-official-data div:last-child { border-right: 0; }
+.certificate-official-data span { display: block; color: #71808c; font-size: .55cqw; font-weight: 800; }
+.certificate-official-data strong { display: block; margin-top: .6cqw; color: var(--doc-navy); font-size: .9cqw; overflow-wrap: anywhere; }
+.certificate-verification { display: flex; align-items: center; justify-content: flex-end; gap: 1cqw; }
+.certificate-qr-safe-zone { width: 7.5cqw; aspect-ratio: 1; background: #fff; border: .08cqw solid #d8dee2; padding: .65cqw; }
+.certificate-qr-safe-zone img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.certificate-verification > div:last-child { display: flex; flex-direction: column; }
+.certificate-verification strong { color: var(--doc-navy); font-size: .61cqw; }
+.certificate-verification span { margin-top: .2cqw; color: #788590; font-size: .55cqw; }
+
+.document-export { box-shadow: none; }
+.membership-export-stage { position: fixed; left: -20000px; top: 0; z-index: -1; }
+.membership-export-certificate { width: 1408px; }
+.membership-export-card { width: 1011px; }
+.membership-document-scroll { max-width: 100%; overflow: auto; padding: .35rem; }
+.membership-preview-zoom-shell { margin: 0 auto; transition: width 180ms ease; }
+
+@media (max-width: 640px) {
+  .membership-document-scroll { margin-inline: -.75rem; padding: .5rem .75rem; }
+  .membership-preview-zoom-shell { min-width: 100%; }
+}
