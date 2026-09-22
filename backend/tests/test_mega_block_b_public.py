@@ -247,7 +247,7 @@ def test_seven_weeks_requires_cycle_and_blocks_duplicate_active(pastor_session, 
         json={"process_key": "seven_weeks", "person_id": qa_person_id, "status": "active"},
         timeout=30,
     )
-    assert no_cycle.status_code == 409, no_cycle.text
+    assert no_cycle.status_code == 400, no_cycle.text
 
     create = requests.post(
         api_url("/api/processes/enrollments"),
@@ -261,7 +261,7 @@ def test_seven_weeks_requires_cycle_and_blocks_duplicate_active(pastor_session, 
         },
         timeout=30,
     )
-    assert create.status_code == 409, create.text
+    assert create.status_code == 201, create.text
 
     duplicate = requests.post(
         api_url("/api/processes/enrollments"),
@@ -274,14 +274,34 @@ def test_seven_weeks_requires_cycle_and_blocks_duplicate_active(pastor_session, 
 
 def test_week1_completion_opens_week2_and_records_timeline(pastor_session, qa_person_id, qa_cycle_id):
     token = pastor_session["token"]
-    blocked = requests.post(
+    created = requests.post(
         api_url("/api/processes/enrollments"),
         headers=auth_headers(token),
         json={"process_key": "seven_weeks", "person_id": qa_person_id, "cycle_id": qa_cycle_id, "status": "active"},
         timeout=30,
     )
-    assert blocked.status_code == 409
-    assert "Consolidación v2" in blocked.json()["detail"]
+    if created.status_code == 409:
+        existing = requests.get(api_url("/api/processes/enrollments"), headers=auth_headers(token), params={"process_key": "seven_weeks", "person_id": qa_person_id}, timeout=30)
+        assert existing.status_code == 200, existing.text
+        enrollment_id = existing.json()["items"][0]["enrollment_id"]
+    else:
+        assert created.status_code == 201, created.text
+        enrollment_id = created.json()["enrollment_id"]
+    for task_id in ["list_30", "responsible_confirmed", "first_action"]:
+        completed = requests.put(
+            api_url(f"/api/processes/enrollments/{enrollment_id}/stages/week_1/tasks/{task_id}"),
+            headers=auth_headers(token), json={"completed": True}, timeout=30,
+        )
+        assert completed.status_code == 200, completed.text
+    closed = requests.put(
+        api_url(f"/api/processes/enrollments/{enrollment_id}/stages/week_1"),
+        headers=auth_headers(token), json={"status": "completed", "attendance": "present", "result": "Semana 1 completada"}, timeout=30,
+    )
+    assert closed.status_code == 200, closed.text
+    detail = requests.get(api_url(f"/api/processes/enrollments/{enrollment_id}"), headers=auth_headers(token), timeout=30)
+    assert detail.status_code == 200
+    assert detail.json()["current_stage_key"] == "week_2"
+    assert any(item.get("event_type") == "stage_updated" for item in detail.json().get("timeline", []))
 
 
 # Module: consolidation, mentorship, CAP contracts

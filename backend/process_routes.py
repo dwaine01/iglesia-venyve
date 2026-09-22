@@ -232,6 +232,11 @@ async def load_enrollment(enrollment_id: str, current_user: dict) -> dict:
     return enrollment
 
 
+def reject_legacy_discipleship_write(enrollment: dict) -> None:
+    if enrollment.get("process_key") == "discipleship":
+        raise HTTPException(status_code=409, detail="El Discipulado legado es de solo lectura; use el módulo Formación")
+
+
 async def person_summary(person_id: str) -> dict:
     person = await db.persons.find_one({"_id": ObjectId(person_id)}, {"_id": 0, "nombre": 1, "apellido": 1, "person_number": 1})
     return {
@@ -382,6 +387,7 @@ async def enrollment_detail(enrollment_id: str, current_user: dict = Depends(req
 @router.put("/enrollments/{enrollment_id}", response_model=dict)
 async def update_enrollment(enrollment_id: str, payload: EnrollmentUpdate, current_user: dict = Depends(require_write)):
     enrollment = await load_enrollment(enrollment_id, current_user)
+    reject_legacy_discipleship_write(enrollment)
     update = payload.model_dump(exclude_none=True)
     if update.get("responsible_person_id"): await validate_staff_assignee(update["responsible_person_id"], current_user)
     if update.get("status") == "active" and enrollment.get("status") == "planned":
@@ -413,6 +419,7 @@ async def update_enrollment(enrollment_id: str, payload: EnrollmentUpdate, curre
 @router.put("/enrollments/{enrollment_id}/stages/{stage_key}", response_model=dict)
 async def update_stage(enrollment_id: str, stage_key: str, payload: StageUpdate, current_user: dict = Depends(require_participate)):
     enrollment = await load_enrollment(enrollment_id, current_user)
+    reject_legacy_discipleship_write(enrollment)
     if current_user.get("rol") == "persona" and enrollment["person_id"] != current_user.get("person_id"):
         raise HTTPException(status_code=403, detail="Solo puede actualizar su propio proceso")
     stage_doc = await db.process_stage_progress.find_one({"enrollment_id": enrollment_id, "stage_key": stage_key})
@@ -451,6 +458,7 @@ async def update_stage(enrollment_id: str, stage_key: str, payload: StageUpdate,
 @router.put("/enrollments/{enrollment_id}/stages/{stage_key}/tasks/{task_id}", response_model=dict)
 async def update_task(enrollment_id: str, stage_key: str, task_id: str, payload: TaskUpdate, current_user: dict = Depends(require_participate)):
     enrollment = await load_enrollment(enrollment_id, current_user)
+    reject_legacy_discipleship_write(enrollment)
     stage_doc = await db.process_stage_progress.find_one({"enrollment_id": enrollment_id, "stage_key": stage_key})
     if not stage_doc: raise HTTPException(status_code=404, detail="Etapa no encontrada")
     if enrollment.get("process_key") == "consolidation" and enrollment.get("definition_version", 1) >= 2 and stage_doc.get("status") == "locked":
@@ -470,6 +478,7 @@ async def update_task(enrollment_id: str, stage_key: str, task_id: str, payload:
 @router.post("/enrollments/{enrollment_id}/evidence", status_code=status.HTTP_201_CREATED, response_model=dict)
 async def add_evidence(enrollment_id: str, payload: EvidenceCreate, current_user: dict = Depends(require_participate)):
     enrollment = await load_enrollment(enrollment_id, current_user)
+    reject_legacy_discipleship_write(enrollment)
     if not payload.note and not payload.url: raise HTTPException(status_code=400, detail="Incluya nota o enlace de evidencia")
     stage = await db.process_stage_progress.find_one({"enrollment_id": enrollment_id, "stage_key": payload.stage_key})
     if not stage: raise HTTPException(status_code=404, detail="Etapa no encontrada")
@@ -488,6 +497,7 @@ async def add_evidence(enrollment_id: str, payload: EvidenceCreate, current_user
 @router.post("/enrollments/{enrollment_id}/contacts", status_code=status.HTTP_201_CREATED, response_model=dict)
 async def add_contact(enrollment_id: str, payload: ContactCreate, current_user: dict = Depends(require_write)):
     enrollment = await load_enrollment(enrollment_id, current_user)
+    reject_legacy_discipleship_write(enrollment)
     if enrollment["process_key"] not in {"consolidation", "mentorship"}: raise HTTPException(status_code=400, detail="Contacto no aplica a este proceso")
     if payload.advance_stage and enrollment.get("process_key") == "consolidation" and enrollment.get("definition_version", 1) >= 2 and enrollment.get("current_stage_key") == "visitor_followup":
         raise HTTPException(status_code=409, detail="Inicie MCD desde la acción formal para asignar mentor y registrar la respuesta")

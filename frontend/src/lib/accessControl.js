@@ -28,6 +28,14 @@ export const canViewFinanceModule = (user) => (
 
 export const canViewPrivatePersonFinance = (user) => isPastoralAuthority(user);
 
+export const canViewFormation = (user) => hasCapability(user, 'formation.read');
+export const canManageFormationPrograms = (user) => hasCapability(user, 'formation.programs.manage');
+export const canManageFormationCohorts = (user) => hasCapability(user, 'formation.cohorts.manage');
+export const canRegularizeMembership = (user) => hasCapability(user, 'membership.direct_import');
+export const canAccreditHistoricalFormation = (user) => hasCapability(user, 'formation.historical_credit.manage');
+export const canEnrollFormation = (user) => hasCapability(user, 'formation.enroll');
+export const canWriteBaptism = (user) => hasCapability(user, 'baptism.write');
+
 export const canViewFrontGroups = (user) => hasAnyCapability(user, [
   'front_groups.view',
   'front_groups.manage',

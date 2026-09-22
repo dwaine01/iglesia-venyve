@@ -12,7 +12,7 @@ const levels = ['persona', 'lider', 'equipo', 'secretario', 'tesorero', 'directo
 const groups = ['membership', 'board', 'finance'];
 const pastorOnlyGroups = new Set(['board', 'finance']);
 const delegatedCapabilities = [
-  ['membership.direct_import', 'Registrar miembro activo preexistente'],
+  ['membership.direct_import', 'Regularizar miembro existente'],
   ['membership.documents.manage', 'Emitir carnet/certificado'],
   ['membership.acceptance.manage', 'Registrar firma de membresía'],
   ['consolidation.mentor.transfer', 'Transferir mentor'],
@@ -26,6 +26,20 @@ const delegatedCapabilities = [
   ['geo.view_aggregate', 'Mapa 360 agregado'],
   ['geo.view_precise', 'Mapa 360 con hogares'],
   ['geo.manage_locations', 'Corregir ubicaciones'],
+  ['formation.read', 'Consultar Formación'],
+  ['formation.programs.manage', 'Administrar programas y módulos'],
+  ['formation.cohorts.manage', 'Administrar cohortes y clases'],
+  ['formation.enroll', 'Inscribir estudiantes'],
+  ['formation.attendance.write', 'Tomar asistencia'],
+  ['formation.grades.read', 'Consultar notas'],
+  ['formation.grades.write', 'Registrar notas'],
+  ['formation.progress.manage', 'Aprobar y gestionar progreso'],
+  ['formation.historical_credit.manage', 'Acreditar formación histórica'],
+  ['formation.promote', 'Promover estudiantes'],
+  ['formation.certificates.issue', 'Autorizar certificados de formación'],
+  ['baptism.read', 'Consultar Bautismo'],
+  ['baptism.write', 'Registrar Bautismo'],
+  ['baptism.certificates.issue', 'Emitir certificado de Bautismo'],
 ];
 
 const toggle = (items, value, checked) => checked

@@ -103,12 +103,26 @@ async def requirement_status(person_id: str, requirement: dict, front_group_id: 
     source = requirement["source_type"]
     status = "not_met"; evidence = None
     if source == "membership_active":
-        item = await db.person_memberships.find_one({"person_id": person_id, "status": "active", "acceptance_signed_at": {"$exists": True}}, {"_id": 0, "member_number": 1, "acceptance_signed_at": 1})
+        item = await db.person_memberships.find_one(
+            {"person_id": person_id, "status": "active", "$or": [
+                {"acceptance_signed_at": {"$ne": None}},
+                {"membership_origin": "historical_regularization", "regularized_at": {"$ne": None}},
+            ]},
+            {"_id": 0, "member_number": 1, "acceptance_signed_at": 1, "historical_membership_date": 1, "regularized_at": 1, "membership_origin": 1},
+        )
         status = "met" if item else "not_met"; evidence = serialize(item)
     elif source == "formation_completed":
+        formation_complete = None
+        async for program in db.formation_programs.find({"purpose": "discipleship", "active": True}, {"_id": 0, "program_id": 1, "name": 1}):
+            module_count = await db.formation_modules.count_documents({"program_id": program["program_id"], "active": True})
+            achievement_count = await db.formation_achievements.count_documents({"person_id": person_id, "program_id": program["program_id"], "active": True, "status": {"$in": ["completed", "historical_accredited"]}})
+            if module_count and achievement_count >= module_count:
+                formation_complete = {"program_id": program["program_id"], "program_name": program["name"], "completed_modules": achievement_count}
+                break
         complete = await db.process_enrollments.find_one({"person_id": person_id, "process_key": {"$in": ["mentorship", "discipleship"]}, "status": "completed"}, {"_id": 0, "process_key": 1, "completed_at": 1})
+        formation_active = await db.formation_enrollments.find_one({"person_id": person_id, "status": {"$in": ["enrolled", "in_progress", "remediation_required"]}}, {"_id": 0, "program_name_snapshot": 1, "module_name_snapshot": 1, "progress_pct": 1})
         active = await db.process_enrollments.find_one({"person_id": person_id, "process_key": {"$in": ["mentorship", "discipleship"]}, "status": {"$in": ["planned", "active", "paused"]}}, {"_id": 0, "process_key": 1, "progress_pct": 1})
-        status = "met" if complete else "pending" if active else "not_met"; evidence = serialize(complete or active)
+        status = "met" if formation_complete or complete else "pending" if formation_active or active else "not_met"; evidence = serialize(formation_complete or complete or formation_active or active)
     elif source == "cap_completed":
         item = await db.cap_assessments.find_one({"person_id": person_id}, {"_id": 0, "status": 1, "selected_door_key": 1})
         status = "met" if item and item.get("status") == "completed" else "pending" if item else "not_met"; evidence = serialize(item)

@@ -12,6 +12,8 @@ from fastapi import APIRouter, HTTPException, Depends
 
 from core_person import db, require_person_profile_user, serialize_person
 from access_control import (
+    BAPTISM_READ,
+    FORMATION_READ,
     PERSON_ADDRESSES_READ,
     PERSON_ADDRESSES_WRITE,
     PERSON_ARRIVAL_READ,
@@ -319,6 +321,10 @@ async def get_person_profile(person_id: str, current_user: dict = Depends(requir
             (available if tab_access[tab_key] else planned).append(tab_key)
         if permissions["procesos"]["read"]:
             available.extend(["membresia", "bautismo"])
+        if has_capability(current_user, BAPTISM_READ):
+            available.append("bautismo") if "bautismo" not in available else None
+        if has_capability(current_user, FORMATION_READ):
+            available.append("formacion")
 
         household = snapshot["household"]
         family = snapshot["familia"]
@@ -440,7 +446,7 @@ async def get_person_profile(person_id: str, current_user: dict = Depends(requir
         if permissions["procesos"]["read"]:
             membership = await db.person_memberships.find_one(
                 {"person_id": person_id},
-                {"_id": 0, "membership_id": 1, "member_number": 1, "status": 1, "legacy_membership": 1, "acceptance_signed_at": 1, "certificate_issue_date": 1, "card_issue_date": 1, "card_expiration_date": 1, "updated_at": 1},
+                {"_id": 0, "membership_id": 1, "member_number": 1, "status": 1, "legacy_membership": 1, "membership_origin": 1, "historical_membership_date": 1, "historical_date_precision": 1, "regularized_at": 1, "regularized_by_user_id": 1, "acceptance_signed_at": 1, "certificate_issue_date": 1, "card_issue_date": 1, "card_expiration_date": 1, "updated_at": 1},
             )
             response["membership"] = membership
             membership_summary = None

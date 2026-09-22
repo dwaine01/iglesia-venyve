@@ -9,7 +9,7 @@ import os
 import re
 import unicodedata
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Literal, Optional
 from uuid import uuid4
 
 import jwt
@@ -117,6 +117,9 @@ class PersonCreate(BaseModel):
     idempotency_key: str = Field(..., min_length=8)
     preexisting_active_member: bool = False
     existing_member_number: Optional[str] = Field(default=None, pattern=r"^[A-Za-z0-9-]{1,20}$")
+    historical_membership_date: Optional[str] = None
+    historical_date_precision: Literal["exact", "month", "year", "unknown"] = "unknown"
+    membership_regularization_reason: Optional[str] = Field(default=None, max_length=1000)
 
 
 class DuplicateCheck(BaseModel):
@@ -233,6 +236,10 @@ async def create_person(payload: PersonCreate, current_user: dict = Depends(requ
                 response,
                 current_user["user_id"],
                 payload.existing_member_number,
+                "person_create",
+                payload.historical_membership_date,
+                payload.historical_date_precision,
+                payload.membership_regularization_reason or "Alta inicial de miembro histórico",
             )
             response["membership"] = {"status": membership["status"], "member_number": membership["member_number"], "direct": True}
         return response
@@ -302,6 +309,10 @@ async def create_person(payload: PersonCreate, current_user: dict = Depends(requ
                 response,
                 current_user["user_id"],
                 payload.existing_member_number,
+                "person_create",
+                payload.historical_membership_date,
+                payload.historical_date_precision,
+                payload.membership_regularization_reason or "Alta inicial de miembro histórico",
             )
         except Exception:
             await db.membership_number_registry.delete_many({"person_id": person_id})

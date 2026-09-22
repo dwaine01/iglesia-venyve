@@ -33,6 +33,8 @@ from access_control import (
     PERSON_TALENTS_WRITE,
     PERSON_PROFILE_SENSITIVE_READ,
     PERSON_PROFILE_WRITE,
+    BAPTISM_READ,
+    BAPTISM_WRITE,
     PROCESSES_READ,
     PROCESSES_WRITE,
     authorize_person,
@@ -214,9 +216,14 @@ class ArrivalPayload(BaseModel):
 
 class BaptismPayload(BaseModel):
     status: Literal["pending", "scheduled", "completed"] = "pending"
+    baptized: bool = False
     baptism_date: Optional[str] = None
     location: Optional[str] = Field(default=None, max_length=180)
+    church_name: Optional[str] = Field(default=None, max_length=300)
+    officiant_person_id: Optional[str] = None
     officiant_name: Optional[str] = Field(default=None, max_length=140)
+    preparation_achievement_id: Optional[str] = None
+    certificate_document_id: Optional[str] = None
     testimony: Optional[str] = Field(default=None, max_length=3000)
     notes: Optional[str] = Field(default=None, max_length=2000)
 
@@ -231,14 +238,16 @@ class BaptismPayload(BaseModel):
                 raise ValueError("fecha de bautismo inválida") from exc
         return value
 
-    @field_validator("location", "officiant_name", "testimony", "notes")
+    @field_validator("location", "church_name", "officiant_name", "testimony", "notes")
     @classmethod
     def clean_baptism_fields(cls, value: Optional[str]) -> Optional[str]:
         return clean_optional(value)
 
     @model_validator(mode="after")
     def require_date_when_confirmed(self):
-        if self.status in {"scheduled", "completed"} and not self.baptism_date:
+        if self.status == "completed":
+            self.baptized = True
+        if (self.status in {"scheduled", "completed"} or self.baptized) and not self.baptism_date:
             raise ValueError("Indique la fecha de bautismo")
         return self
 
@@ -530,15 +539,28 @@ async def profile_domain_snapshot(person_id: str, current_user: dict) -> dict:
 
 @router.get("/{person_id}/baptism", response_model=dict)
 async def get_baptism(person_id: str, current_user: dict = Depends(require_person_profile_user)):
-    await authorize_domain(person_id, current_user, PROCESSES_READ)
+    try:
+        await authorize_domain(person_id, current_user, BAPTISM_READ)
+    except HTTPException:
+        await authorize_domain(person_id, current_user, PROCESSES_READ)
     record = await db.person_baptisms.find_one({"person_id": person_id}, {"_id": 0})
     return {"exists": bool(record), "record": record}
 
 
 @router.put("/{person_id}/baptism", response_model=dict)
 async def save_baptism(person_id: str, payload: BaptismPayload, current_user: dict = Depends(require_person_profile_user)):
-    await authorize_domain(person_id, current_user, PROCESSES_WRITE)
-    existing = await db.person_baptisms.find_one({"person_id": person_id}, {"_id": 0, "baptism_id": 1})
+    try:
+        await authorize_domain(person_id, current_user, BAPTISM_WRITE)
+    except HTTPException:
+        await authorize_domain(person_id, current_user, PROCESSES_WRITE)
+    if payload.officiant_person_id:
+        await authorize_domain(payload.officiant_person_id, current_user, BAPTISM_READ)
+    if payload.preparation_achievement_id:
+        achievement = await db.formation_achievements.find_one({"achievement_id": payload.preparation_achievement_id, "person_id": person_id, "active": True}, {"_id": 0})
+        if not achievement: raise HTTPException(status_code=422, detail="Preparación bautismal no encontrada para esta Persona")
+        program = await db.formation_programs.find_one({"program_id": achievement["program_id"], "purpose": "baptism_preparation"}, {"_id": 1})
+        if not program: raise HTTPException(status_code=422, detail="El logro no corresponde a preparación bautismal")
+    existing = await db.person_baptisms.find_one({"person_id": person_id}, {"_id": 0})
     now = now_utc()
     baptism_id = (existing or {}).get("baptism_id") or str(uuid4())
     values = {
@@ -555,7 +577,10 @@ async def save_baptism(person_id: str, payload: BaptismPayload, current_user: di
     )
     summary = "Bautismo completado" if payload.status == "completed" else "Bautismo actualizado"
     await record_activity(person_id, current_user, "bautismo", "updated", summary)
-    return await db.person_baptisms.find_one({"person_id": person_id}, {"_id": 0})
+    after = await db.person_baptisms.find_one({"person_id": person_id}, {"_id": 0})
+    from formation_engine import audit
+    await audit(db, current_user, "baptism_record_changed", "person_baptism", person_id, existing, after, person_id=person_id)
+    return after
 
 
 @router.put("/{person_id}/profile-basics")

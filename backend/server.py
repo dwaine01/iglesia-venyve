@@ -500,8 +500,13 @@ app.include_router(core_governance_router)
 from process_catalog import seed_process_catalog
 from process_engine import ensure_process_indexes, evaluate_alerts, migrate_legacy_processes
 from process_routes import router as process_router
+from formation_routes import router as formation_router
+from formation_engine import ensure_formation_indexes
+from formation_documents import router as formation_documents_router, ensure_document_indexes
 
 app.include_router(process_router)
+app.include_router(formation_router)
+app.include_router(formation_documents_router)
 
 # --- Mega-Bloque C: Sistema Celular ---
 from cellular_catalog import seed_cellular_catalog
@@ -629,6 +634,8 @@ async def startup():
     await migrate_core_identity(db, "system:startup")
     await seed_process_catalog(db)
     await ensure_process_indexes(db)
+    await ensure_formation_indexes(db)
+    await ensure_document_indexes()
     await ensure_front_group_indexes()
     await ensure_front_group_work_indexes()
     await ensure_front_group_routing_indexes()

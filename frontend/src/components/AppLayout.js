@@ -6,7 +6,7 @@ import { Separator } from './ui/separator';
 import {
   LayoutDashboard, BookOpen, Map, Calendar, Users, BarChart3, LogOut, Menu, ChevronRight,
   Crown, Star, Trophy, Presentation, NotebookPen, KeyRound, IdCard, Church, Search, DatabaseZap,
-  Activity, Award, BookHeart, Compass, HeartHandshake, Network, RadioTower, DoorOpen, Gavel, Landmark, MapPinned,
+  Activity, Award, BookHeart, Compass, GraduationCap, HeartHandshake, Network, RadioTower, DoorOpen, Gavel, Landmark, MapPinned,
   PanelLeftClose, PanelLeftOpen, ShieldCheck
 } from 'lucide-react';
 
@@ -15,7 +15,7 @@ import DisplayScaleToggle from './DisplayScaleToggle';
 import { ContextGuideButton } from './guides/ContextGuideButton';
 import { resolveRouteGuide } from './guides/guideRouteMap';
 import { BRAND } from '../config/brand';
-import { canViewCare, canViewFinanceModule, canViewFrontGroups, canViewGeo, canViewLeadership, canViewOperations, hasAnyCapability, isPastoralAuthority } from '../lib/accessControl';
+import { canViewCare, canViewFinanceModule, canViewFormation, canViewFrontGroups, canViewGeo, canViewLeadership, canViewOperations, hasAnyCapability, isPastoralAuthority } from '../lib/accessControl';
 import { useBoardAccess } from '../hooks/useBoardAccess';
 const LOGO_URL = LOGO_IGLESIA;
 
@@ -29,6 +29,7 @@ const getNavItems = (user, boardAllowed = false) => {
       { to: '/procesos/dashboard', icon: Activity, label: 'Panel de Procesos', testId: 'nav-process-dashboard' },
       { to: '/procesos/consolidacion', icon: Activity, label: 'Consolidación', testId: 'nav-consolidation' },
       { to: '/procesos/discipulado', icon: BookHeart, label: 'Educación / Discipulado', testId: 'nav-discipleship' },
+      { to: '/formacion', icon: GraduationCap, label: 'Formación', testId: 'nav-formation' },
       { to: '/grupos-frontales', icon: Network, label: 'Grupos Frontales', testId: 'nav-front-groups' },
       { to: '/liderazgo', icon: Award, label: 'Liderazgo', testId: 'nav-leadership' },
       { to: '/mapas', icon: MapPinned, label: 'Mapa 360', testId: 'nav-geo-maps' },
@@ -57,6 +58,7 @@ const getNavItems = (user, boardAllowed = false) => {
       { to: '/procesos/dashboard', icon: Trophy, label: 'Mi Progreso', end: true },
       { to: '/procesos/consolidacion', icon: Activity, label: 'Mi Consolidación' },
       { to: '/procesos/discipulado', icon: BookHeart, label: 'Mi Discipulado' },
+      { to: '/formacion', icon: GraduationCap, label: 'Mi Formación', testId: 'nav-formation' },
       { to: '/procesos/mentoria', icon: HeartHandshake, label: 'Mi Mentoría' },
       { to: '/procesos/cap', icon: Compass, label: 'Mi lugar para servir' },
       { to: '/celulas/dashboard', icon: RadioTower, label: 'Mi Célula', testId: 'nav-cellular' },
@@ -71,6 +73,7 @@ const getNavItems = (user, boardAllowed = false) => {
     { to: '/procesos/dashboard', icon: Activity, label: 'Panel de Procesos', testId: 'nav-process-dashboard' },
     { to: '/procesos/consolidacion', icon: Activity, label: 'Consolidación', testId: 'nav-consolidation' },
     { to: '/procesos/discipulado', icon: BookHeart, label: 'Educación / Discipulado', testId: 'nav-discipleship' },
+    { to: '/formacion', icon: GraduationCap, label: 'Formación', testId: 'nav-formation' },
     { to: '/grupos-frontales', icon: Network, label: 'Grupos Frontales', testId: 'nav-front-groups' },
     { to: '/liderazgo', icon: Award, label: 'Liderazgo', testId: 'nav-leadership' },
     { to: '/mapas', icon: MapPinned, label: 'Mapa 360', testId: 'nav-geo-maps' },
@@ -108,6 +111,8 @@ const getNavItems = (user, boardAllowed = false) => {
     item.to !== '/cuidado-pastoral' || canViewCare(user)
   ) && (
     item.to !== '/junta/dashboard' || boardAllowed
+  ) && (
+    item.to !== '/formacion' || canViewFormation(user)
   ));
 };
 
