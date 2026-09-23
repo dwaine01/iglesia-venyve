@@ -143,6 +143,7 @@ def _resident(feature: dict, address_inherited: bool = False) -> dict:
         "person_id": item["entity_id"], "name": item.get("name"), "person_number": item.get("person_number"),
         "household_role": item.get("household_role"), "categories": item.get("categories", []),
         "stage": item.get("stage"), "address_inherited": address_inherited,
+        "verification_status": item.get("verification_status"),
         "profile_path": f"/personas/{item['entity_id']}",
     }
 
@@ -195,6 +196,7 @@ async def household_features(db, current_user: dict, people: list[dict]) -> list
                 "entity_kind": "household", "entity_id": entity_id, "name": f"Hogar · {properties.get('address') or 'Dirección verificada'}",
                 "address": properties.get("address"), "resident_count": len(residents), "count": len(residents),
                 "residents": sorted(residents.values(), key=lambda item: (item.get("name") or "")), "household_ids": household_ids_at_address,
+                "verified_person_ids": sorted(item["person_id"] for item in residents.values() if item.get("verification_status") == "manual_verified"),
                 "normalized_address_key": key if not key.startswith("person:") else None,
                 "zone": properties.get("zone"), "zone_number": properties.get("zone_number"), "subzone": properties.get("subzone"),
                 "sector_id": properties.get("sector_id"), "sector_name": properties.get("sector_name"), "sector_order": properties.get("sector_order"),

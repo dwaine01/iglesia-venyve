@@ -792,3 +792,13 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - Iteración 54: doble descarga determinista, MediaBox/raster/QR público y responsive PASS. Frontend 17/17, contratos 5/5, prueba PDF 54 PASS.
 - Endurecido startup Mongo: reconciliación idempotente de `membership_number_registry` evita caída por ownership histórico obsoleto; prueba de dataset sucio pasa dos ejecuciones consecutivas.
 - Readiness GitHub → Railway: PASS sin bloqueadores. No se ejecutó merge ni deploy; el siguiente paso es `Save to GitHub` y esperar el redeploy automático de Railway.
+
+### MAPA 360 — PUNTOS INDIVIDUALES + MAPA/SATÉLITE 2026-09-23
+
+- Eliminados clusters y círculos numerados del modo preciso; todos los hogares/direcciones se muestran como puntos individuales desde la carga inicial.
+- Autoencuadre ajusta el viewport para incluir todos los puntos; el modo pastoral inicia en **Puntos**, mientras usuarios sin permiso preciso conservan privacidad agregada/Densidad.
+- Selector **Mapa | Satélite** con capas reales Esri World Street Map / World Imagery, atribución correcta y sin API key.
+- Zonas, subzonas y sectores redujeron opacidad, ancho de líneas y tamaño de etiquetas; subzonas/sectores aparecen solo en zoom útil.
+- Flujo “Confirmar que aquí vive”: seleccionar Persona → hogar → confirmar ubicación; endpoint protegido por `geo.manage`, idempotente, valida coordenadas y escribe auditoría.
+- Nueva variable obligatoria frontend/Railway: `REACT_APP_SATELLITE_TILE_URL`; `REACT_APP_MAP_TILE_URL` usa el callejero Esri normal.
+- Verificación Iteración 55: Map/Satélite, puntos, autoencuadre, búsqueda, confirmación, RBAC 403/409, tabs, desktop/móvil y build PASS. Backend final 13/13 y cero residuos QA.
