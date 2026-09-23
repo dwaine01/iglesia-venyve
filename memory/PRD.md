@@ -770,13 +770,14 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - Se conserva el rechazo 422 cuando realmente no existe fotografía y el 403 para usuarios sin autoridad ni `membership.documents.manage`; no se modificó RBAC de Junta o Finanzas.
 - Certificación Iteración 47: backend 3/3, frontend desktop/móvil, botón habilitado, emisión 201, vista previa e historial PASS; auto-regresión 4/4 PASS y cero datos QA residuales.
 
-### IDENTIDAD VEN Y VE — NUEVO DISEÑO APROBADO 2026-09-23
+### REPRODUCCIÓN DEL MASTER — PENDIENTE DE APROBACIÓN VISUAL 2026-09-23
 
-- El usuario descartó los diseños previos y aprobó explícitamente la nueva dirección moderna, limpia y minimalista basada en el logo oficial.
-- Paleta bloqueada: blanco, Azul Celeste `#01A1C8` y Verde Lima `#6ECE3C` para decoración; Plus Jakarta Sans y Cormorant Garamond locales.
-- Carnet: CR80 exacto 85.60 × 53.98 mm, Grid de foto izquierda / identidad central / QR derecha, nombre como foco, número oficial como segundo nivel y reverso blanco de bajo consumo con firma institucional.
-- Certificado: US Letter landscape exacto 11 × 8.5 in, marco geométrico fino azul/verde, jerarquía solemne centrada, firma, datos oficiales y QR con zona segura.
-- CSS aislado en `membership-identity-documents.css`; cero floats y `position:absolute` limitado a marcos/esquinas decorativas. PDFs capturados en PNG a escala 4 para QR robusto.
-- DESIGN LOCK: snapshots React, hashes de fuentes/logo/CSS/componentes, master visual y cuatro goldens de PDF certificados en Iteración 52.
-- Validación final: testing independiente backend/frontend y PDF/QR PASS; 14 pruebas frontend, 5 contratos visuales, build PASS, navegador desktop/móvil sin overflow y cero residuos QA.
-- Corregida además la visibilidad de “Configurar” para el rol `pastora` mediante el helper central `isPastoralAuthority`, sin ampliar JWT, RBAC, Junta ni Finanzas.
+- El usuario rechazó el concepto minimalista anterior. Sus estilos y goldens fueron retirados; no deben reutilizarse.
+- El adjunto exacto 1536 × 1024 quedó guardado como fuente única en `design-reference/membership-documents-master.png` (SHA-256 `43e86ca8…`).
+- Reconstrucción actual: coordenadas absolutas en mm/in, IDs `vv-membership-*`, sin clases globales internas, logo `contain`, foto `cover` y SVGs independientes para bandas, marcos, curvas y cruz de agua.
+- Carnet CR80 exacto: frente sin QR; foto/identidad/estado/número/fecha según master. Reverso ~90% blanco con mensaje exacto, teléfono, firma, divisor, QR y geometría inferior.
+- Certificado Letter landscape exacto: marca, título, nombre, texto, datos, firma, QR y geometrías institucionales. Preview y PDF comparten los mismos componentes.
+- Casos extremos: números de 22 caracteres y nombres de 78 caracteres usan escalado/líneas controladas; medición browser confirmó cero invasión y cero overflow de página en 1920×800 y 390×844.
+- Comparaciones visuales: `test_reports/master-compare-card-front-final.png`, `master-compare-card-back-final.png`, `master-compare-certificate-final.png`.
+- Certificación Iteración 53: backend/PDF/QR PASS; issue de número largo corregido y auto-verificado. Frontend 17/17, contratos visuales 5/5 y build PASS.
+- **Pendiente:** aprobación visual explícita del usuario. Hasta entonces no crear goldens de implementación, no merge y no deploy.

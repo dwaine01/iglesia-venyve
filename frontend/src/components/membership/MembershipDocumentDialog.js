@@ -55,20 +55,20 @@ export const MembershipDocumentDialog = ({ open, onOpenChange, documentType, dat
             <Button type="button" variant="outline" size="icon" title="Aumentar zoom" onClick={() => setZoom((value) => Math.min(1.5, value + .25))} disabled={zoom >= 1.5} data-testid="membership-preview-zoom-in"><Plus className="h-4 w-4" /></Button>
           </div>
         </div>
-        <div className="membership-document-scroll">
+        <div className="max-w-full overflow-auto p-2">
           {documentType === 'certificate' ? (
-            <div className="membership-preview-zoom-shell certificate" style={shellStyle}><MembershipCertificateTemplate data={data} signatureSrc={signatureSrc} qrSrc={qrSrc} /></div>
+            <div style={{ ...shellStyle, width: 'max-content', margin: '0 auto' }}><MembershipCertificateTemplate data={data} signatureSrc={signatureSrc} qrSrc={qrSrc} /></div>
           ) : (
             <Tabs defaultValue="front">
               <TabsList data-testid="membership-card-side-tabs"><TabsTrigger value="front" data-testid="membership-card-front-tab">Frente</TabsTrigger><TabsTrigger value="back" data-testid="membership-card-back-tab">Reverso</TabsTrigger></TabsList>
-              <TabsContent value="front"><div className="membership-preview-zoom-shell card" style={shellStyle}><MembershipCardFront data={data} photoSrc={photoSrc} qrSrc={qrSrc} /></div></TabsContent>
-              <TabsContent value="back"><div className="membership-preview-zoom-shell card" style={shellStyle}><MembershipCardBack data={data} signatureSrc={signatureSrc} /></div></TabsContent>
+              <TabsContent value="front"><div style={{ ...shellStyle, width: 'max-content', margin: '0 auto' }}><MembershipCardFront data={data} photoSrc={photoSrc} /></div></TabsContent>
+              <TabsContent value="back"><div style={{ ...shellStyle, width: 'max-content', margin: '0 auto' }}><MembershipCardBack data={data} qrSrc={qrSrc} signatureSrc={signatureSrc} /></div></TabsContent>
             </Tabs>
           )}
         </div>
         <div className="flex justify-end border-t pt-4"><Button onClick={download} disabled={downloading || !qrSrc} data-testid="download-membership-document-button"><Download className="h-4 w-4" />{downloading ? 'Generando PDF…' : 'Descargar PDF imprimible'}</Button></div>
-        <div className="membership-export-stage" aria-hidden="true">
-          {documentType === 'certificate' ? <div ref={certificateRef} className="membership-export-certificate"><MembershipCertificateTemplate data={data} signatureSrc={signatureSrc} qrSrc={qrSrc} exportMode /></div> : <><div ref={cardFrontRef} className="membership-export-card"><MembershipCardFront data={data} photoSrc={photoSrc} qrSrc={qrSrc} exportMode /></div><div ref={cardBackRef} className="membership-export-card"><MembershipCardBack data={data} signatureSrc={signatureSrc} exportMode /></div></>}
+        <div aria-hidden="true" style={{ position: 'fixed', left: '-20000px', top: 0, zIndex: -1 }}>
+          {documentType === 'certificate' ? <div ref={certificateRef} style={{ width: '11in', height: '8.5in' }}><MembershipCertificateTemplate data={data} signatureSrc={signatureSrc} qrSrc={qrSrc} exportMode /></div> : <><div ref={cardFrontRef} style={{ width: '85.6mm', height: '53.98mm' }}><MembershipCardFront data={data} photoSrc={photoSrc} exportMode /></div><div ref={cardBackRef} style={{ width: '85.6mm', height: '53.98mm' }}><MembershipCardBack data={data} qrSrc={qrSrc} signatureSrc={signatureSrc} exportMode /></div></>}
         </div>
       </DialogContent>
     </Dialog>

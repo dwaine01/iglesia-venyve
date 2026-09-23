@@ -24,7 +24,9 @@ test('master visual y archivos DESIGN LOCKED conservan sus hashes aprobados', ()
     'frontend/src/assets/fonts/CormorantGaramond-Variable.ttf',
     'frontend/src/assets/fonts/CormorantGaramond-Italic-Variable.ttf',
     'frontend/src/components/membership/membershipDocumentGeometry.js',
-    'frontend/src/components/membership/membership-identity-documents.css',
+    'frontend/src/components/membership/MembershipDocumentArtwork.js',
+    'frontend/src/components/membership/MembershipDocumentTokens.js',
+    'frontend/src/components/membership/membership-documents.css',
     'frontend/src/components/membership/MembershipCardTemplates.js',
     'frontend/src/components/membership/MembershipCertificateTemplate.js',
     'frontend/src/components/membership/membershipPdf.js',
@@ -33,11 +35,11 @@ test('master visual y archivos DESIGN LOCKED conservan sus hashes aprobados', ()
 });
 
 test('golden estructural del carnet frente', () => {
-  expect(renderToStaticMarkup(<MembershipCardFront data={fixture} photoSrc="golden-photo.jpg" qrSrc="golden-qr.png" />)).toMatchSnapshot();
+  expect(renderToStaticMarkup(<MembershipCardFront data={fixture} photoSrc="golden-photo.jpg" />)).toMatchSnapshot();
 });
 
 test('golden estructural del carnet reverso', () => {
-  expect(renderToStaticMarkup(<MembershipCardBack data={fixture} signatureSrc="golden-signature.png" />)).toMatchSnapshot();
+  expect(renderToStaticMarkup(<MembershipCardBack data={fixture} qrSrc="golden-qr.png" signatureSrc="golden-signature.png" />)).toMatchSnapshot();
 });
 
 test('golden estructural del certificado', () => {

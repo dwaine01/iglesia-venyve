@@ -1,6 +1,6 @@
 {
   "project_identity": "Identidad Ven y Ve - Sistema de Diseño de Carnet y Certificado",
-  "theme": "Light Theme (Fondo blanco institucional con acentos en Azul Celeste y Verde Lima)",
+  "theme": "Reproducción exacta del master adjunto: blanco institucional con navy, celeste y verde",
   "dimensions": {
     "carnet": {
       "width_mm": 85.60,
@@ -20,61 +20,59 @@
   "typography": {
     "font_family_primary": "Plus Jakarta Sans, sans-serif",
     "font_family_display": "Cormorant Garamond, serif",
-    "headline_hero": "text-2xl font-bold tracking-tight text-[#00A3E0]",
-    "section_title": "text-xl font-bold text-[#00A3E0]",
-    "member_name_carnet": "text-sm sm:text-base font-extrabold text-[#00A3E0] leading-snug break-words max-line-clamp-2",
-    "member_name_certificate": "text-3xl sm:text-4xl font-extrabold text-[#00A3E0] tracking-wide text-center uppercase break-words",
-    "labels": "text-[9px] uppercase tracking-widest font-semibold text-slate-400",
-    "values": "text-xs font-medium text-slate-800",
-    "certificate_body": "text-base leading-relaxed text-slate-700 text-center font-normal"
+    "member_name_carnet": "Cormorant Garamond 5.1mm máximo; dos líneas dentro de caja 31.7mm",
+    "member_name_certificate": "Cormorant Garamond italic con tamaño dinámico y caja máxima 8.3in",
+    "labels": "Plus Jakarta Sans, mayúsculas compactas",
+    "values": "Plus Jakarta Sans, negrita y escala dinámica para números largos",
+    "certificate_body": "Cormorant Garamond centrada, máximo dos líneas"
   },
   "colors": {
-    "brand_primary_sky_blue": "#01A1C8",
-    "brand_secondary_lime_green": "#6ECE3C",
+    "brand_navy": "#022E5A",
+    "brand_primary_sky_blue": "#0798C8",
+    "brand_secondary_lime_green": "#61B33B",
     "background_main": "#FFFFFF",
     "card_background": "#FFFFFF",
-    "text_primary": "#0F172A",
-    "text_secondary": "#475569",
-    "text_muted": "#94A3B8",
-    "border_light": "#E2E8F0",
-    "border_accent": "#01A1C8"
+    "off_white": "#F7F9F8",
+    "text_primary": "#101D35"
   },
   "grids_and_layouts": {
     "carnet_front": {
-      "layout_engine": "CSS Grid de tres columnas físicas",
-      "structure": "Grid 3 zonas principales: [Izquierda: foto 20mm con borde redondeado], [Centro: nombre Azul Celeste + cargo + número + fecha], [Derecha: QR 15mm + número oficial]",
-      "protection": "Overflow truncate con tooltip para nombres muy largos, min-width estricto, sin posicionamiento absoluto para contenidos de texto."
+      "layout_engine": "Coordenadas absolutas en milímetros tomadas del master",
+      "structure": "Logo y marca arriba; foto 24.8 × 34.8mm izquierda; identidad y estado al centro; número y fecha abajo; geometría SVG navy/celeste/verde al borde derecho; sin QR.",
+      "protection": "Nombre dentro de caja máxima 31.7mm y número con escala dinámica para impedir colisiones."
     },
     "carnet_back": {
-      "layout_engine": "CSS Grid (encabezado + contenido en dos columnas + pie)",
-      "structure": "Reverso blanco de bajo consumo: reconocimiento y contacto a la izquierda, firma autorizada a la derecha y misión institucional al pie."
+      "layout_engine": "Coordenadas absolutas en milímetros tomadas del master",
+      "structure": "Reverso 90% blanco: mensaje/teléfono/firma a la izquierda, divisor verde, verificación+número+QR a la derecha y SVG de esquina inferior."
     },
     "certificate": {
-      "layout_engine": "CSS Grid (1 columna central con padding de seguridad de 0.5in) + Flexbox para alineación vertical interna",
-      "structure": "Marco geométrico perimetral fino con esquinas en Azul Celeste (#01A1C8) y Verde Lima (#6ECE3C). Logo centrado, título y nombre solemnes en Cormorant Garamond, texto de acreditación y grid inferior de firma, datos oficiales y QR."
+      "layout_engine": "Coordenadas absolutas en pulgadas tomadas del master",
+      "structure": "Marco SVG completo con bandas curvas navy/celeste/verde, marca superior, título y nombre centrales, datos/firma/QR inferiores y cruz de agua."
     }
   },
   "security_layout_rules": {
     "zero_layout_bugs": [
       "No floats permitidos bajo ningún concepto.",
-      "Uso exclusivo de CSS Grid para la estructura base y Flexbox para la alineación del texto interno.",
-      "Posicionamiento position: absolute restringido ÚNICAMENTE a elementos decorativos de fondo (ondas/marcas de agua vectoriales).",
-      "Encapsulamiento estricto en el archivo membership-identity-documents.css bajo la clase .design-locked-document.",
+      "Coordenadas absolutas en mm/in para reproducir el master aprobado.",
+      "SVGs independientes detrás del contenido para ondas, bandas, marcos y marcas de agua.",
+      "Encapsulamiento por IDs vv-membership-* y data-vv-document; ninguna clase global dentro de los documentos.",
       "Medidas en milímetros (mm) e pulgadas (in) fijas en contenedores de impresión para garantizar paridad exactitud 1:1 entre pantalla y generación PDF."
     ],
     "long_name_handling": {
-      "carnet": "Ajuste dinámico de tamaño de fuente (clamp(0.75rem, 2.2vw, 1rem)) con salto de línea controlado (max-lines 2) para prevenir colisión visual con el código QR.",
-      "certificate": "Contenedor de ancho máximo con font-size adaptativo (clamp(1.5rem, 4vw, 2.5rem)) para nombres compuestos extensos."
+      "carnet": "Dos líneas en caja 31.7mm con tamaño dinámico; número oficial también reduce tamaño por longitud.",
+      "certificate": "Caja máxima 8.3in con tamaño dinámico por longitud."
     }
   },
   "image_urls": {
-    "logo_ven_y_ve": "https://customer-assets-4nw71qhi.emergentagent.net/job_e6542075-bbf9-4d6d-a5b2-89872da4370d/artifacts/ehvj00gl_image.png",
+    "master_visual": "https://customer-assets-4nw71qhi.emergentagent.net/job_e6542075-bbf9-4d6d-a5b2-89872da4370d/artifacts/9ss4wsx5_image.png",
+    "logo_ven_y_ve": "/assets/membership/church-logo.png",
     "member_avatar_male": "https://images.pexels.com/photos/39284040/pexels-photo-39284040.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
     "member_avatar_female": "https://images.pexels.com/photos/33722925/pexels-photo-33722925.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
     "qr_code_placeholder": "https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://venyve.org/verify/VV-894021"
   },
   "instructions_to_main_agent": [
-    "Crear estilos totalmente aislados (.design-locked-document) en un archivo CSS independiente.",
+    "Reconstruir el master; no rediseñar ni reinterpretar.",
+    "Mantener estilos aislados por IDs/data-vv-document en membership-documents.css.",
     "Asegurar que las dimensiones del Carnet sean exactamente 85.60mm x 53.98mm y el Certificado 11in x 8.5in.",
     "Implementar los testids (data-testid) en todos los elementos principales para validación automatizada.",
     "No generar modificaciones no aprobadas en el Layout hasta confirmación."

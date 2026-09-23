@@ -9,7 +9,7 @@ ROOT = Path("/app")
 def test_master_reference_and_local_assets_are_versioned():
     master = ROOT / "design-reference/membership-documents-master.png"
     assert master.exists()
-    assert hashlib.sha256(master.read_bytes()).hexdigest() == "1f4dd8f83801550a3f3f2496a991b4a4c1fc82a56b253d2c46665c705c2375f2"
+    assert hashlib.sha256(master.read_bytes()).hexdigest() == "43e86ca8eacbdff662bdfbe0d305afe57e8be9baac1eca94d1d0317a39cf8124"
     for path in (
         "frontend/public/assets/membership/church-logo.png",
         "frontend/src/assets/fonts/PlusJakartaSans-Variable.ttf",
@@ -31,7 +31,7 @@ def test_physical_geometry_and_institution_are_locked_in_source():
 def test_qr_and_pdf_contract_are_configured_for_print():
     dialog = (ROOT / "frontend/src/components/membership/MembershipDocumentDialog.js").read_text()
     pdf = (ROOT / "frontend/src/components/membership/membershipPdf.js").read_text()
-    css = (ROOT / "frontend/src/components/membership/membership-identity-documents.css").read_text()
+    css = (ROOT / "frontend/src/components/membership/membership-documents.css").read_text()
     assert "errorCorrectionLevel: 'Q'" in dialog
     assert "margin: 4" in dialog and "width: 900" in dialog
     assert "format: [85.6, 53.98]" in pdf
