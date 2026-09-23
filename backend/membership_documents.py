@@ -3,6 +3,7 @@ import base64
 import hashlib
 import hmac
 import io
+import logging
 import os
 import re
 from calendar import monthrange
@@ -26,6 +27,7 @@ from server import db, get_current_user
 
 
 router = APIRouter(tags=["membership-documents"])
+logger = logging.getLogger(__name__)
 SIGNATURE_MAX_BYTES = 500 * 1024
 SIGNATURE_BUCKET = "membership_signatures"
 TOKEN_SECRET = os.environ.get("JWT_SECRET")
@@ -596,10 +598,75 @@ async def public_membership_verification(token: str):
     return {"valid": credential_status == "active", "status": credential_status, "organization_name": settings.get("organization_name"), "member_number": membership["member_number"], "member_name": full_name(person), "position": membership.get("card_position_snapshot") or await position_from_profile(person["person_id"]), "issued": membership.get("card_issue_date"), "expires": expiry}
 
 
+async def _deduplicate_membership_registry():
+    for field in ("person_id", "member_number"):
+        pipeline = [
+            {"$match": {field: {"$type": "string", "$ne": ""}}},
+            {"$group": {"_id": f"${field}", "document_ids": {"$push": "$_id"}, "count": {"$sum": 1}}},
+            {"$match": {"count": {"$gt": 1}}},
+        ]
+        async for duplicate in db.membership_number_registry.aggregate(pipeline):
+            documents = await db.membership_number_registry.find(
+                {"_id": {"$in": duplicate["document_ids"]}}
+            ).to_list(length=None)
+            keep = None
+            for document in documents:
+                authoritative = await db.person_memberships.find_one(
+                    {"person_id": document.get("person_id"), "member_number": document.get("member_number")},
+                    {"_id": 1},
+                )
+                if authoritative:
+                    keep = document
+                    break
+            keep = keep or max(documents, key=lambda item: str(item.get("reserved_at") or ""))
+            stale_ids = [item["_id"] for item in documents if item["_id"] != keep["_id"]]
+            if stale_ids:
+                await db.membership_number_registry.delete_many({"_id": {"$in": stale_ids}})
+                logger.warning("Removed %s duplicate membership registry records for %s=%s", len(stale_ids), field, duplicate["_id"])
+
+
+async def _reconcile_membership_registry(membership: dict):
+    person_id = membership.get("person_id")
+    member_number = membership.get("member_number")
+    if not person_id or not member_number:
+        logger.warning("Skipped incomplete membership registry backfill for membership_id=%s", membership.get("membership_id"))
+        return
+
+    by_person = await db.membership_number_registry.find_one({"person_id": person_id})
+    if by_person and by_person.get("member_number") != member_number:
+        await db.membership_number_registry.delete_one({"_id": by_person["_id"]})
+        logger.warning("Replaced stale membership number %s for person_id=%s", by_person.get("member_number"), person_id)
+
+    by_number = await db.membership_number_registry.find_one({"member_number": member_number})
+    if by_number and by_number.get("person_id") != person_id:
+        authoritative_owner = await db.person_memberships.find_one(
+            {"person_id": by_number.get("person_id"), "member_number": member_number},
+            {"_id": 1},
+        )
+        if authoritative_owner:
+            logger.error("Registry conflict retained for member_number=%s; two canonical owners require manual review", member_number)
+            return
+        await db.membership_number_registry.delete_one({"_id": by_number["_id"]})
+        logger.warning("Removed stale registry owner %s for member_number=%s", by_number.get("person_id"), member_number)
+
+    try:
+        await db.membership_number_registry.update_one(
+            {"person_id": person_id},
+            {
+                "$set": {"member_number": member_number, "person_id": person_id},
+                "$setOnInsert": {"reserved_at": now_utc(), "source": "legacy_backfill"},
+            },
+            upsert=True,
+        )
+    except DuplicateKeyError:
+        logger.exception("Membership registry reconciliation conflict for person_id=%s member_number=%s", person_id, member_number)
+
+
 async def ensure_membership_documents():
     await db.person_memberships.create_index("membership_id", unique=True)
     await db.person_memberships.create_index("person_id", unique=True)
     await db.person_memberships.create_index("member_number", unique=True)
+    await _deduplicate_membership_registry()
     await db.membership_number_registry.create_index("member_number", unique=True)
     await db.membership_number_registry.create_index("person_id", unique=True)
     await db.membership_document_issuances.create_index("issuance_id", unique=True)
@@ -607,11 +674,7 @@ async def ensure_membership_documents():
     await db.membership_events.create_index("event_id", unique=True)
     await db.membership_events.create_index([("person_id", 1), ("occurred_at", -1)])
     async for membership in db.person_memberships.find({}, {"_id": 0, "membership_id": 1, "person_id": 1, "member_number": 1, "acceptance_signed_at": 1}):
-        await db.membership_number_registry.update_one(
-            {"member_number": membership["member_number"]},
-            {"$setOnInsert": {"member_number": membership["member_number"], "person_id": membership["person_id"], "reserved_at": now_utc(), "source": "legacy_backfill"}},
-            upsert=True,
-        )
+        await _reconcile_membership_registry(membership)
         if not membership.get("acceptance_signed_at"):
             await db.person_memberships.update_one({"membership_id": membership["membership_id"]}, {"$set": {"legacy_membership": True}})
     now = now_utc()
