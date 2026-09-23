@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-23 — Mapa 360 simplificado y confirmación de vivienda
+
+- Sustituidos clusters por puntos individuales visibles desde la carga inicial y autoencuadre de todas las direcciones.
+- Añadido selector Mapa/Satélite sin API key y capas territoriales discretas/zoom-aware.
+- Implementada confirmación auditada “aquí vive” para la Persona seleccionada con RBAC `geo.manage` y validación de coordenadas.
+- Iteración 55: frontend E2E, RBAC, backend 13/13, build y responsive PASS; sin flujos rotos.
+- Railway debe definir `REACT_APP_MAP_TILE_URL` y `REACT_APP_SATELLITE_TILE_URL` durante build.
+
 ## 2026-09-23 — PDF de carnet/certificado y startup Mongo corregidos
 
 - Corregida pérdida intermitente de capas SVG en PDFs mediante raster temporal de alta resolución antes de html2canvas.

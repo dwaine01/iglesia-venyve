@@ -1,85 +1,118 @@
 {
-  "project_identity": "Identidad Ven y Ve - Sistema de Diseño de Carnet y Certificado",
-  "theme": "Reproducción exacta del master adjunto: blanco institucional con navy, celeste y verde",
-  "dimensions": {
-    "carnet": {
-      "width_mm": 85.60,
-      "height_mm": 53.98,
-      "aspect_ratio": "85.6mm / 53.98mm (ISO/IEC 7810 ID-1 standard)",
-      "orientation": "horizontal"
-    },
-    "certificate": {
-      "width_in": 11,
-      "height_in": 8.5,
-      "width_mm": 279.4,
-      "height_mm": 215.9,
-      "aspect_ratio": "11in / 8.5in (US Letter Landscape)",
-      "orientation": "landscape"
-    }
+  "project_name": "Mapa 360 Territorial & Geospatial Operations Dashboard",
+  "archetype": "The Performance Pro / Swiss High-Contrast Precision",
+  "app_type": "dashboard geospatial operations tool",
+  "component_path": "/app/frontend/src/components/geo/",
+  "pages_path": "/app/frontend/src/pages/GeoMapsPage.js",
+  "instructions_to_main_agent": "Refactor Map 360 geospatial application according to user feedback: 1) Display all addresses as individual points/pins directly upon load without circle clustering by default, auto-framing bounds so all points are visible at once. 2) Implement a clear Basemap switcher between 'Mapa claro' (Light vector/OSM) and 'Satélite' (Esri World Imagery raster) with label overlay options. 3) Add an authenticated 'Aquí vivo yo' / 'Confirmar que [Persona] vive aquí' confirmation action on selected person/household locations that updates verification status and displays a verified badge. 4) Clean up zone and subzone labels so letters and numbers are discrete, zoom-aware, and non-obtrusive, avoiding map visual noise. 5) Preserve all existing Map 360 capabilities: filters, search, sector polygon editor, review queue, unlocated drawer, evangelism minicenso, 2to1 presentation mode, comparison band, and strict RBAC capabilities.",
+  "UNIVERSAL GUIDELINES FOR MAIN AGENT": {
+    "anti_ai_slop": "Avoid generic centered layouts, default blue/purple gradients, and dense crowded toolbars. Use crisp, high-contrast Swiss typography, generous functional padding, layered z-index hierarchy, and purpose-built geospatial control bars.",
+    "hover_active_contrast": "Ensure text remains 100% legible against high-contrast backgrounds during hover, focus, and active states. Always explicitly specify text colors on hover (e.g. hover:bg-slate-900 hover:text-white).",
+    "header_overlays": "DO NOT use complete transparent backgrounds for headers, floating map toolbars, or detail panels. Use heavy backdrop blur glassmorphism (backdrop-blur-xl bg-white/90 or bg-slate-950/90) with subtle borders (border-slate-200/80 or border-slate-800/80).",
+    "testing_attributes": "All interactive buttons, inputs, tabs, map controls, popups, badges, and modals MUST include a data-testid attribute in kebab-case format (e.g., data-testid='basemap-toggle-satellite', data-testid='confirm-person-location-button', data-testid='geo-household-pin-123')."
   },
   "typography": {
-    "font_family_primary": "Plus Jakarta Sans, sans-serif",
-    "font_family_display": "Cormorant Garamond, serif",
-    "member_name_carnet": "Cormorant Garamond 5.1mm máximo; dos líneas dentro de caja 31.7mm",
-    "member_name_certificate": "Cormorant Garamond italic con tamaño dinámico y caja máxima 8.3in",
-    "labels": "Plus Jakarta Sans, mayúsculas compactas",
-    "values": "Plus Jakarta Sans, negrita y escala dinámica para números largos",
-    "certificate_body": "Cormorant Garamond centrada, máximo dos líneas"
+    "font_family_headings": "Spectral, serif",
+    "font_family_body": "Plus Jakarta Sans, sans-serif",
+    "font_family_mono": "JetBrains Mono, monospace",
+    "text_sizes": {
+      "page_title": "text-xl font-semibold font-['Spectral'] tracking-tight text-slate-900",
+      "section_heading": "text-lg font-bold font-['Spectral'] text-slate-900",
+      "sub_heading": "text-sm font-semibold text-slate-700",
+      "body_text": "text-sm text-slate-600 leading-relaxed",
+      "caption_label": "text-xs font-medium text-slate-500 uppercase tracking-wider",
+      "map_pin_badge": "text-[11px] font-extrabold text-slate-950 font-mono"
+    }
   },
   "colors": {
-    "brand_navy": "#022E5A",
-    "brand_primary_sky_blue": "#0798C8",
-    "brand_secondary_lime_green": "#61B33B",
-    "background_main": "#FFFFFF",
-    "card_background": "#FFFFFF",
-    "off_white": "#F7F9F8",
-    "text_primary": "#101D35"
-  },
-  "grids_and_layouts": {
-    "carnet_front": {
-      "layout_engine": "Coordenadas absolutas en milímetros tomadas del master",
-      "structure": "Logo y marca arriba; foto 24.8 × 34.8mm izquierda; identidad y estado al centro; número y fecha abajo; geometría SVG navy/celeste/verde al borde derecho; sin QR.",
-      "protection": "Nombre dentro de caja máxima 31.7mm y número con escala dinámica para impedir colisiones."
-    },
-    "carnet_back": {
-      "layout_engine": "Coordenadas absolutas en milímetros tomadas del master",
-      "structure": "Reverso 90% blanco: mensaje/teléfono/firma a la izquierda, divisor verde, verificación+número+QR a la derecha y SVG de esquina inferior."
-    },
-    "certificate": {
-      "layout_engine": "Coordenadas absolutas en pulgadas tomadas del master",
-      "structure": "Marco SVG completo con bandas curvas navy/celeste/verde, marca superior, título y nombre centrales, datos/firma/QR inferiores y cruz de agua."
+    "theme_mode": "Light Dashboard with Dark Obsidian & Satin Slate Accents",
+    "palette": {
+      "background": "#F8F6F0",
+      "surface_card": "#FFFFFF",
+      "surface_dark": "#0B0F17",
+      "border": "#E2E8F0",
+      "border_dark": "#1E293B",
+      "primary_accent": "#B7791F",
+      "primary_hover": "#975A16",
+      "zone_north": "#1E6091",
+      "zone_east": "#2D6A4F",
+      "zone_south": "#D97706",
+      "zone_west": "#B91C1C",
+      "pin_household": "#D97706",
+      "pin_cell": "#059669",
+      "pin_front_group": "#0284C7",
+      "pin_church": "#9F1239",
+      "verified_emerald": "#10B981"
     }
   },
-  "security_layout_rules": {
-    "zero_layout_bugs": [
-      "No floats permitidos bajo ningún concepto.",
-      "Coordenadas absolutas en mm/in para reproducir el master aprobado.",
-      "SVGs independientes detrás del contenido para ondas, bandas, marcos y marcas de agua.",
-      "Encapsulamiento por IDs vv-membership-* y data-vv-document; ninguna clase global dentro de los documentos.",
-      "Medidas en milímetros (mm) e pulgadas (in) fijas en contenedores de impresión para garantizar paridad exactitud 1:1 entre pantalla y generación PDF."
-    ],
-    "long_name_handling": {
-      "carnet": "Dos líneas en caja 31.7mm con tamaño dinámico; número oficial también reduce tamaño por longitud.",
-      "certificate": "Caja máxima 8.3in con tamaño dinámico por longitud."
+  "geospatial_map_specifications": {
+    "clustering_behavior": "Disabled by default for precise household and person view. Mode defaults to 'pins' (puntos individuales), rendering every address as an individual custom canvas pin with resident counts.",
+    "auto_fit_bounds": "Upon initial load or filter/kind update, compute the bounding box of all loaded feature coordinates and trigger map.fitBounds(bounds, { padding: 60, maxZoom: 16 }) so all address points are framed at once.",
+    "zone_label_rules": {
+      "opacity": "Zone fills rendered at opacity 0.08 - 0.12. Zone outlines set to thin 1.5px line.",
+      "label_zoom_awareness": "Zone labels ('Zona 1 · Norte', etc.) and subzone letters ('1-A', '2-B') use zoom thresholds. Below zoom 11, show clean discrete badges with maxzoom/minzoom rules so text does not obstruct address pins. At high zoom (>14), fade out zone fill/labels completely to spotlight street detail."
+    },
+    "basemap_switcher": {
+      "modes": [
+        {
+          "key": "clear",
+          "label": "Mapa Claro",
+          "type": "raster",
+          "tiles": ["process.env.REACT_APP_MAP_TILE_URL || https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+          "attribution": "© OpenStreetMap contributors"
+        },
+        {
+          "key": "satellite",
+          "label": "Satélite",
+          "type": "raster",
+          "tiles": ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
+          "attribution": "Tiles © Esri, Maxar, Earthstar Geographics, USDA, USGS, AeroGRID, IGN, GIS Community"
+        }
+      ],
+      "control_ui": "Floating or toolbar segment with icon buttons 'Mapa Claro' (Map icon) and 'Satélite' (Globe/Satellite icon) in GeoMapToolbar and on-map floating toggle control."
+    },
+    "confirm_person_location": {
+      "trigger_action": "Button 'Aquí vivo yo' / 'Confirmar esta ubicación' inside GeoDetailPanel, GeoPersonSearch popup, and Person Profile Geo card.",
+      "api_flow": "Calls POST /api/geo/review-queue/{review_id}/resolve or PUT /api/person_addresses/{id} with manual_verified status.",
+      "visual_feedback": "Instant toast via Sonner 'Ubicación confirmada para [Persona]', updates pin indicator to show green verified checkmark badge, and logs audit record."
     }
   },
-  "image_urls": {
-    "master_visual": "https://customer-assets-4nw71qhi.emergentagent.net/job_e6542075-bbf9-4d6d-a5b2-89872da4370d/artifacts/9ss4wsx5_image.png",
-    "logo_ven_y_ve": "/assets/membership/church-logo.png",
-    "member_avatar_male": "https://images.pexels.com/photos/39284040/pexels-photo-39284040.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
-    "member_avatar_female": "https://images.pexels.com/photos/33722925/pexels-photo-33722925.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
-    "qr_code_placeholder": "https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://venyve.org/verify/VV-894021"
+  "layouts": {
+    "toolbar": "Streamlined single-line GeoMapToolbar with clear visual hierarchy: Title/Icon -> Kind Tabs (Personas / Células / Casas) -> Basemap Selector (Mapa Claro / Satélite) -> Mode Selector (Puntos / Densidad / Clusters) -> Persona Search -> Filters & Action Buttons.",
+    "map_workspace": "Full-bleed relative flex-1 container with absolute floating controls, detail panel drawer, search dropdown overlay, and comparison band.",
+    "detail_panel": "Floating right-aligned drawer (md:right-4 md:top-4 md:w-80) with frosted glass header, address details, category tags, 'Aquí vivo yo' confirmation CTA, and links to 360 profile."
   },
-  "instructions_to_main_agent": [
-    "Reconstruir el master; no rediseñar ni reinterpretar.",
-    "Mantener estilos aislados por IDs/data-vv-document en membership-documents.css.",
-    "Asegurar que las dimensiones del Carnet sean exactamente 85.60mm x 53.98mm y el Certificado 11in x 8.5in.",
-    "Implementar los testids (data-testid) en todos los elementos principales para validación automatizada.",
-    "No generar modificaciones no aprobadas en el Layout hasta confirmación."
-  ],
-  "UNIVERSAL GUIDELINES FOR MAIN AGENT": {
-    "data_testid_requirement": "Todos los elementos interactivos e informativos clave DEBEN incluir data-testid.",
-    "contrast_standards": "Asegurar un contraste mínimo de 4.5:1 entre textos y fondos.",
-    "design_isolation": "DESIGN LOCKED: Ninguna regla CSS de los documentos debe salirse del ámbito encapsulado."
-  }
+  "grids": {
+    "dashboard_grid": "MODE B: High Density Grid for Geo Analytics sidebar and statistics modals.",
+    "filters_grid": "grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 p-4"
+  },
+  "motion": {
+    "map_camera": "map.flyTo and map.fitBounds with duration 800ms and ease-in-out easing.",
+    "panel_entrance": "transition-all duration-200 ease-out transform translate-y-0 opacity-100",
+    "pin_hover": "transition-transform duration-150 ease-in-out hover:-translate-y-1 hover:scale-110"
+  },
+  "accessibility": {
+    "keyboard_nav": "Full tab index and ARIA labels on all toolbar buttons, layer toggles, and search inputs.",
+    "contrast_ratio": "APCA high contrast for text badges on satellite basemaps. Text overlays on satellite tiles use translucent dark scrims (bg-slate-950/80 text-white).",
+    "screen_readers": "All map markers have aria-label describing entity kind and resident/member count."
+  },
+  "media": {
+    "image_urls": {
+      "satellite_preview": "https://images.pexels.com/photos/30596226/pexels-photo-30596226.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "terrain_map_preview": "https://images.pexels.com/photos/108942/pexels-photo-108942.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940"
+    }
+  },
+  "3d_libraries": {
+    "map_engine": "MapLibre GL JS (maplibregl)",
+    "usage": "2.5D raster and vector tile rendering, 3D pitch/bearing controls when exploring terrain or satellite basemaps."
+  },
+  "key_functionalities": [
+    "Mapa 360 territorial existente con personas, hogares, células, zonas, subzonas, sectores y casas por visitar",
+    "Todos los hogares/direcciones precisos visibles como puntos individuales sin clustering por defecto (modo 'pins')",
+    "Autoencuadre automático de todos los puntos al cargar y filtrar",
+    "Selector de basemap Mapa claro vs. Satélite en la barra superior y mapa",
+    "Capas de zona y sector discretas con etiquetas zoom-aware para evitar ruido visual",
+    "Búsqueda/selección de persona con acción autenticada 'Aquí vivo yo' / 'Confirmar que aquí vive esta persona'",
+    "Filtros, búsqueda, sectores, presentación 2-a-1 y RBAC preservados e intactos"
+  ]
 }
