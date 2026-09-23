@@ -1,0 +1,81 @@
+{
+  "cr80": {
+    "physical_mm": [
+      85.6,
+      53.98
+    ],
+    "canvas_px": [
+      856,
+      540
+    ],
+    "safe_mm": 3,
+    "inner_width_mm": 79.6,
+    "grid_width_mm": 79.596,
+    "vertical_rhythm_mm": 48,
+    "front_photo": {
+      "columns": [
+        1,
+        5
+      ],
+      "rows": [
+        4,
+        21
+      ]
+    },
+    "front_identity": {
+      "columns": [
+        6,
+        12
+      ],
+      "rows": [
+        4,
+        22
+      ]
+    },
+    "back_information": {
+      "columns": [
+        1,
+        7
+      ],
+      "rows": [
+        4,
+        22
+      ]
+    },
+    "back_verification": {
+      "columns": [
+        8,
+        12
+      ],
+      "rows": [
+        4,
+        22
+      ]
+    }
+  },
+  "letter_landscape": {
+    "physical_mm": [
+      279.4,
+      215.9
+    ],
+    "canvas_px": [
+      1118,
+      864
+    ],
+    "frame_mm": 6.35,
+    "safe_mm": 12.7,
+    "inner_width_mm": 254,
+    "grid_width_mm": 254.0,
+    "vertical_rhythm_mm": 190.5,
+    "zones_rows": [
+      6,
+      15,
+      7,
+      2
+    ]
+  },
+  "fonts": [
+    "Plus Jakarta Sans",
+    "Cormorant Garamond"
+  ]
+}

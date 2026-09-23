@@ -14,7 +14,7 @@ const capture = async (element) => {
   await document.fonts?.ready;
   await waitForImages(element);
   return html2canvas(element, {
-    scale: 2,
+    scale: 4,
     useCORS: true,
     backgroundColor: '#ffffff',
     logging: false,
@@ -28,15 +28,15 @@ export const downloadMembershipPdf = async ({ documentType, data, certificate, c
   if (documentType === 'certificate') {
     const canvas = await capture(certificate);
     const pdf = new jsPDF({ orientation: 'landscape', unit: 'in', format: [11, 8.5], compress: true });
-    pdf.addImage(canvas.toDataURL('image/jpeg', 0.98), 'JPEG', 0, 0, 11, 8.5, undefined, 'FAST');
+    pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, 11, 8.5, undefined, 'FAST');
     pdf.save(`certificado-membresia-${safeName}.pdf`);
     return;
   }
   const front = await capture(cardFront);
   const back = await capture(cardBack);
   const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: [85.6, 53.98], compress: true });
-  pdf.addImage(front.toDataURL('image/jpeg', 0.98), 'JPEG', 0, 0, 85.6, 53.98, undefined, 'FAST');
+  pdf.addImage(front.toDataURL('image/png'), 'PNG', 0, 0, 85.6, 53.98, undefined, 'FAST');
   pdf.addPage([85.6, 53.98], 'landscape');
-  pdf.addImage(back.toDataURL('image/jpeg', 0.98), 'JPEG', 0, 0, 85.6, 53.98, undefined, 'FAST');
+  pdf.addImage(back.toDataURL('image/png'), 'PNG', 0, 0, 85.6, 53.98, undefined, 'FAST');
   pdf.save(`carnet-miembro-${safeName}.pdf`);
 };

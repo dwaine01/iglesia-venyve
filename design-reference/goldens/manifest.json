@@ -1,0 +1,34 @@
+{
+  "membership-card-back.png": {
+    "sha256": "6f4d86e58999eef4a6424fe070aaad525f31662b90f87c3913bb033769f44bd4",
+    "pixels": [
+      1296,
+      816
+    ],
+    "signature": "qa-placeholder-dynamic-field"
+  },
+  "membership-card-front.png": {
+    "sha256": "9f77bc7f8e9fe263e71dbed82d9a895f1bec68facd113e0fbfbe0db1a0db34c0",
+    "pixels": [
+      1296,
+      816
+    ],
+    "signature": "qa-placeholder-dynamic-field"
+  },
+  "membership-certificate-pdf.png": {
+    "sha256": "ff0ac7bfeaa4c72cc2c422e80c4c8758d995a9e4e110e3e7e5fc841fe96c2d1a",
+    "pixels": [
+      4224,
+      3264
+    ],
+    "signature": "qa-placeholder-dynamic-field"
+  },
+  "membership-certificate.png": {
+    "sha256": "ff0ac7bfeaa4c72cc2c422e80c4c8758d995a9e4e110e3e7e5fc841fe96c2d1a",
+    "pixels": [
+      4224,
+      3264
+    ],
+    "signature": "qa-placeholder-dynamic-field"
+  }
+}

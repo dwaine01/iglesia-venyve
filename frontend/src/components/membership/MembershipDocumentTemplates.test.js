@@ -2,7 +2,8 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import { MembershipCardBack, MembershipCardFront, MembershipCertificateTemplate } from './MembershipDocumentTemplates';
-import { formatMembershipDate, memberInitials, membershipDate, nameLengthClass } from './membershipDocumentUtils';
+import { cardNameLines, formatMembershipDate, memberInitials, membershipDate, nameLengthClass } from './membershipDocumentUtils';
+import { CR80, INSTITUTION, LETTER_LANDSCAPE } from './membershipDocumentGeometry';
 
 const data = {
   person: { full_name: 'María de los Ángeles Santos Francisco-Gómez', position: 'LÍDER DE BIENVENIDA' },
@@ -22,17 +23,22 @@ test('prioriza la fecha real de membresía y adapta nombres', () => {
   expect(formatMembershipDate('2014-05-18T12:30:00Z')).toBe('05-18-2014');
   expect(nameLengthClass(data.person.full_name)).toBe('document-name-long');
   expect(memberInitials('Ana Pérez')).toBe('AP');
+  expect(cardNameLines('María Fernanda Rodríguez')).toEqual(['María Fernanda', 'Rodríguez']);
 });
 
 test('el carnet usa número oficial, fallback de foto y vencimiento condicional', () => {
-  const front = renderToStaticMarkup(<MembershipCardFront data={data} photoSrc={null} />);
-  const back = renderToStaticMarkup(<MembershipCardBack data={data} qrSrc="data:image/png;base64,qr" />);
+  const front = renderToStaticMarkup(<MembershipCardFront data={data} photoSrc={null} qrSrc="data:image/png;base64,qr" />);
+  const back = renderToStaticMarkup(<MembershipCardBack data={data} signatureSrc="blob:firma" />);
   expect(front).toContain('MIEMBRO ACTIVO');
   expect(front).toContain('VV-2026-0842');
   expect(front).toContain('MF');
   expect(front).not.toContain('Válido hasta');
   expect(front).not.toContain('internal-uuid-never-visible');
-  expect(back).toContain('VV-2026-0842');
+  expect(front).toContain('data:image/png;base64,qr');
+  expect(back).toContain(INSTITUTION.legalName);
+  expect(back).toContain(INSTITUTION.brandName);
+  expect(back).toContain('614-508-0303');
+  expect(back).toContain('blob:firma');
   expect(back).not.toContain('internal-uuid-never-visible');
 });
 
@@ -42,19 +48,26 @@ test('el certificado incluye firma, QR y las tres referencias oficiales', () => 
   expect(certificate).toContain('VV-2026-0842');
   expect(certificate).toContain('05-18-2014');
   expect(certificate).toContain('09-22-2026');
-  expect(certificate).toContain('Pastora Ana Martínez');
+  expect(certificate).toContain('PASTORA PRINCIPAL');
+  expect(certificate).toContain(INSTITUTION.legalName);
+  expect(certificate).toContain(INSTITUTION.brandName);
   expect(certificate).not.toContain('internal-uuid-never-visible');
 });
 
-test('adapta nombre corto, fotografía y vencimiento sin inventar datos', () => {
+test('adapta nombre corto y fotografía sin inventar vencimiento', () => {
   const shortData = {
     ...data,
     person: { full_name: 'Ana Pérez' },
     membership: { ...data.membership, card_expiration_date: '2027-09-22' },
   };
-  const front = renderToStaticMarkup(<MembershipCardFront data={shortData} photoSrc="blob:foto-horizontal" />);
+  const front = renderToStaticMarkup(<MembershipCardFront data={shortData} photoSrc="blob:foto-horizontal" qrSrc="data:image/png;base64,qr" />);
   expect(front).toContain('document-name-short');
   expect(front).toContain('blob:foto-horizontal');
-  expect(front).toContain('Válido hasta');
-  expect(front).toContain('09-22-2027');
+  expect(front).not.toContain('Válido hasta');
+  expect(front).not.toContain('09-22-2027');
+});
+
+test('conserva las dimensiones físicas oficiales', () => {
+  expect(CR80).toEqual({ width: 85.6, height: 53.98 });
+  expect(LETTER_LANDSCAPE).toEqual({ width: 279.4, height: 215.9 });
 });

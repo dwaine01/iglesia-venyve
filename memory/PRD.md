@@ -770,10 +770,13 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - Se conserva el rechazo 422 cuando realmente no existe fotografía y el 403 para usuarios sin autoridad ni `membership.documents.manage`; no se modificó RBAC de Junta o Finanzas.
 - Certificación Iteración 47: backend 3/3, frontend desktop/móvil, botón habilitado, emisión 201, vista previa e historial PASS; auto-regresión 4/4 PASS y cero datos QA residuales.
 
-### IDENTIDAD OFICIAL — CONCEPTO A APROBADO 2026-09-22
+### IDENTIDAD VEN Y VE — NUEVO DISEÑO APROBADO 2026-09-23
 
-- El usuario seleccionó y aprobó visualmente el sistema **Institucional Contemporáneo** para carnet y certificado.
-- Carnet: CR80 exacto, frente 65% blanco/35% navy, fotografía proporcional, número oficial y vencimiento condicional; reverso navy con QR verificable y texto mínimo.
-- Certificado: US Letter landscape exacto, composición editorial asimétrica, fondo cálido, marco navy, acento verde, firma dinámica y QR discreto.
-- Preview y PDF comparten plantilla; carnet genera 2 páginas de 85.60 × 53.98 mm y certificado 1 página de 11 × 8.5 pulgadas.
-- Validación final: 31 pruebas frontend + 11 regresiones backend PASS; QR de ambas piezas decodificado contra endpoint público; nombres/números largos, fotos vertical/horizontal, móvil y RBAC verificados sin solapes ni residuos QA.
+- El usuario descartó los diseños previos y aprobó explícitamente la nueva dirección moderna, limpia y minimalista basada en el logo oficial.
+- Paleta bloqueada: blanco, Azul Celeste `#01A1C8` y Verde Lima `#6ECE3C` para decoración; Plus Jakarta Sans y Cormorant Garamond locales.
+- Carnet: CR80 exacto 85.60 × 53.98 mm, Grid de foto izquierda / identidad central / QR derecha, nombre como foco, número oficial como segundo nivel y reverso blanco de bajo consumo con firma institucional.
+- Certificado: US Letter landscape exacto 11 × 8.5 in, marco geométrico fino azul/verde, jerarquía solemne centrada, firma, datos oficiales y QR con zona segura.
+- CSS aislado en `membership-identity-documents.css`; cero floats y `position:absolute` limitado a marcos/esquinas decorativas. PDFs capturados en PNG a escala 4 para QR robusto.
+- DESIGN LOCK: snapshots React, hashes de fuentes/logo/CSS/componentes, master visual y cuatro goldens de PDF certificados en Iteración 52.
+- Validación final: testing independiente backend/frontend y PDF/QR PASS; 14 pruebas frontend, 5 contratos visuales, build PASS, navegador desktop/móvil sin overflow y cero residuos QA.
+- Corregida además la visibilidad de “Configurar” para el rol `pastora` mediante el helper central `isPastoralAuthority`, sin ampliar JWT, RBAC, Junta ni Finanzas.

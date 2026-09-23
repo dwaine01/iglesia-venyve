@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-09-23 — Nueva identidad Ven y Ve DESIGN LOCKED
+
+- Sustituidos desde cero el carnet y certificado por el concepto moderno/minimalista aprobado: blanco, Azul Celeste y Verde Lima exactos del logo.
+- Implementados CR80 y Letter landscape con Grid/Flexbox, CSS independiente, reverso blanco, tipografías locales, jerarquía nombre→número→QR y adaptación de nombres largos.
+- Exportación PDF migrada a PNG escala 4; QR de carnet y certificado decodificados desde PDF en Iteración 52.
+- Regenerados master y goldens oficiales; snapshots/hashes bloquean CSS, componentes, logo, fuentes y renders PDF.
+- Alineado el botón “Configurar” para `pastora` con la autoridad pastoral backend existente, sin cambiar RBAC restringido.
+- Certificación: Iteración 52 backend/frontend PASS, 14 pruebas frontend, 5 contratos visuales, build y responsive desktop/móvil PASS; cero fixtures residuales.
+
 ## 2026-09-22 — Identidad oficial Concepto A aprobada
 
 - Reemplazada completamente la presentación del carnet y certificado por el sistema Institucional Contemporáneo elegido por el usuario.

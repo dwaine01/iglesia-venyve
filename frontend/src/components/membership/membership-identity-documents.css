@@ -1,0 +1,504 @@
+@font-face {
+  font-family: "VenYVe Sans";
+  src: url("../../assets/fonts/PlusJakartaSans-Variable.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 400 800;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "VenYVe Serif";
+  src: url("../../assets/fonts/CormorantGaramond-Variable.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+}
+
+.design-locked-document {
+  --vyv-blue: #01a1c8;
+  --vyv-green: #6ece3c;
+  --vyv-ink: #16252b;
+  --vyv-muted: #52646b;
+  --vyv-paper: #fff;
+  box-sizing: border-box;
+  color: var(--vyv-ink);
+  background: var(--vyv-paper);
+  font-family: "VenYVe Sans", sans-serif;
+  letter-spacing: 0;
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+
+.design-locked-document *,
+.design-locked-document *::before,
+.design-locked-document *::after { box-sizing: border-box; }
+
+.design-locked-document img { display: block; }
+
+.membership-card.design-locked-document {
+  width: 85.6mm;
+  height: 53.98mm;
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: 10.5mm minmax(0, 1fr) 1mm;
+  gap: 2.2mm;
+  padding: 3.2mm 3.8mm 2.8mm;
+  border: .35mm solid var(--vyv-blue);
+  border-radius: 2.4mm;
+  box-shadow: 0 2.2mm 6mm rgba(22, 37, 43, .14);
+  container-type: inline-size;
+}
+
+.design-locked-document .card-brand {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 22mm minmax(0, 1fr);
+  align-items: center;
+  gap: 2.6mm;
+  border-bottom: .35mm solid var(--vyv-green);
+}
+
+.design-locked-document .card-brand-logo {
+  width: 21mm;
+  height: 9mm;
+  object-fit: contain;
+}
+
+.design-locked-document .card-brand-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+.design-locked-document .card-brand-copy strong {
+  color: var(--vyv-blue);
+  font-size: 2.65mm;
+  font-weight: 800;
+  line-height: 1.08;
+}
+
+.design-locked-document .card-brand-copy span {
+  margin-top: .7mm;
+  color: var(--vyv-muted);
+  font-size: 1.55mm;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.design-locked-document .card-front-grid {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 20mm minmax(0, 1fr) 16.5mm;
+  gap: 2.6mm;
+  align-items: stretch;
+}
+
+.design-locked-document .card-photo-frame {
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: .35mm solid var(--vyv-blue);
+  border-radius: 2mm;
+  background: var(--vyv-paper);
+}
+
+.design-locked-document .card-photo-frame img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 20%;
+}
+
+.design-locked-document .card-photo-fallback {
+  color: var(--vyv-blue);
+  font-family: "VenYVe Serif", serif;
+  font-size: 8mm;
+  font-weight: 700;
+}
+
+.design-locked-document .card-member-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+.design-locked-document .card-document-kicker {
+  margin: 0 0 1.3mm;
+  color: var(--vyv-muted);
+  font-size: 1.45mm;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.design-locked-document .card-member-name {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  color: var(--vyv-blue);
+  font-size: 4.1mm;
+  font-weight: 800;
+  line-height: 1.03;
+  overflow-wrap: anywhere;
+}
+
+.design-locked-document .card-member-name.document-name-medium { font-size: 3.65mm; }
+.design-locked-document .card-member-name.document-name-long { font-size: 3.15mm; }
+.design-locked-document .card-member-name.document-name-extra-long { font-size: 2.7mm; }
+.design-locked-document .card-member-name span { display: block; }
+
+.design-locked-document .card-member-position {
+  max-width: 100%;
+  margin: 1mm 0 0;
+  color: var(--vyv-green);
+  font-size: 1.65mm;
+  font-weight: 800;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.design-locked-document .card-member-facts {
+  width: 100%;
+  margin: auto 0 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.6mm;
+}
+
+.design-locked-document .card-member-facts div {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.design-locked-document .card-member-facts dt {
+  color: var(--vyv-muted);
+  font-size: 1.25mm;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.design-locked-document .card-member-facts dd {
+  margin: .55mm 0 0;
+  color: var(--vyv-ink);
+  font-size: 2.05mm;
+  font-weight: 800;
+  line-height: 1.05;
+  overflow-wrap: anywhere;
+}
+
+.design-locked-document .card-member-facts div:first-child dd { color: var(--vyv-blue); }
+
+.design-locked-document .card-front-verification {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-left: .3mm solid var(--vyv-green);
+  padding-left: 2mm;
+}
+
+.design-locked-document .card-qr-safe-zone {
+  width: 15mm;
+  height: 15mm;
+  padding: .65mm;
+  border: .3mm solid var(--vyv-blue);
+  background: var(--vyv-paper);
+}
+
+.design-locked-document .card-qr-safe-zone img,
+.design-locked-document .certificate-qr-safe-zone img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.design-locked-document .card-front-verification strong {
+  margin-top: 1.15mm;
+  color: var(--vyv-blue);
+  font-size: 1.75mm;
+  font-weight: 800;
+  line-height: 1;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.design-locked-document .card-front-verification span {
+  margin-top: .65mm;
+  color: var(--vyv-muted);
+  font-size: 1.05mm;
+  font-weight: 700;
+  line-height: 1.15;
+  text-align: center;
+}
+
+.design-locked-document .card-color-rule {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 1mm;
+}
+
+.design-locked-document .card-color-rule i:first-child { background: var(--vyv-blue); }
+.design-locked-document .card-color-rule i:last-child { background: var(--vyv-green); }
+
+.membership-card-back.design-locked-document {
+  grid-template-rows: 10.5mm minmax(0, 1fr) 4.5mm;
+}
+
+.design-locked-document .card-back-grid {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
+  gap: 4mm;
+}
+
+.design-locked-document .card-back-recognition,
+.design-locked-document .card-back-official {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.design-locked-document .card-back-recognition {
+  padding-right: 3.8mm;
+  border-right: .3mm solid var(--vyv-blue);
+}
+
+.design-locked-document .card-back-recognition p {
+  margin: 0;
+  color: var(--vyv-ink);
+  font-family: "VenYVe Serif", serif;
+  font-size: 2.45mm;
+  font-weight: 600;
+  line-height: 1.28;
+}
+
+.design-locked-document .card-back-contact {
+  margin-top: 2mm;
+  display: flex;
+  align-items: baseline;
+  gap: 1.5mm;
+}
+
+.design-locked-document .card-back-contact strong {
+  color: var(--vyv-blue);
+  font-size: 2.25mm;
+  font-weight: 800;
+}
+
+.design-locked-document .card-back-contact span {
+  color: var(--vyv-muted);
+  font-size: 1.2mm;
+  font-weight: 700;
+}
+
+.design-locked-document .card-back-official { align-items: center; text-align: center; }
+.design-locked-document .card-back-signature-image { width: 24mm; height: 8.5mm; display: flex; align-items: flex-end; justify-content: center; }
+.design-locked-document .card-back-signature-image img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.design-locked-document .card-back-signature-image span { color: var(--vyv-muted); font-size: 1.2mm; }
+.design-locked-document .card-back-signature-line { width: 25mm; height: .3mm; background: var(--vyv-blue); }
+.design-locked-document .card-back-official strong { margin-top: .8mm; color: var(--vyv-green); font-size: 1.6mm; font-weight: 800; }
+.design-locked-document .card-back-official small { margin-top: .55mm; color: var(--vyv-muted); font-size: 1.05mm; font-weight: 700; }
+
+.design-locked-document .card-back-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2mm;
+  border-top: .35mm solid var(--vyv-green);
+  color: var(--vyv-muted);
+  font-size: 1.12mm;
+  font-weight: 700;
+}
+
+.design-locked-document .card-back-footer strong { color: var(--vyv-blue); font-size: 1.35mm; }
+
+.membership-certificate.design-locked-document {
+  width: 11in;
+  height: 8.5in;
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: 1.22in minmax(0, 1fr) 1.45in .34in;
+  gap: .12in;
+  padding: .48in .62in .4in;
+  background: var(--vyv-paper);
+  box-shadow: 0 .14in .4in rgba(22, 37, 43, .13);
+  container-type: inline-size;
+}
+
+.membership-certificate.design-locked-document::before,
+.membership-certificate.design-locked-document::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+}
+
+.membership-certificate.design-locked-document::before {
+  inset: .2in;
+  border: .025in solid var(--vyv-blue);
+}
+
+.membership-certificate.design-locked-document::after {
+  inset: .28in;
+  border: .012in solid var(--vyv-green);
+}
+
+.design-locked-document .certificate-corner-accent {
+  position: absolute;
+  width: .58in;
+  height: .58in;
+  pointer-events: none;
+}
+
+.design-locked-document .certificate-corner-accent::before,
+.design-locked-document .certificate-corner-accent::after {
+  content: "";
+  position: absolute;
+  background: var(--vyv-paper);
+}
+
+.design-locked-document .certificate-corner-accent::before { width: .34in; height: .07in; }
+.design-locked-document .certificate-corner-accent::after { width: .07in; height: .34in; }
+.design-locked-document .certificate-corner-accent.top-left { left: .17in; top: .17in; border-left: .06in solid var(--vyv-green); border-top: .06in solid var(--vyv-blue); }
+.design-locked-document .certificate-corner-accent.top-right { right: .17in; top: .17in; border-right: .06in solid var(--vyv-green); border-top: .06in solid var(--vyv-blue); }
+.design-locked-document .certificate-corner-accent.bottom-left { left: .17in; bottom: .17in; border-left: .06in solid var(--vyv-blue); border-bottom: .06in solid var(--vyv-green); }
+.design-locked-document .certificate-corner-accent.bottom-right { right: .17in; bottom: .17in; border-right: .06in solid var(--vyv-blue); border-bottom: .06in solid var(--vyv-green); }
+
+.design-locked-document .certificate-header {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.design-locked-document .certificate-logo { width: 1.62in; height: .82in; object-fit: contain; }
+.design-locked-document .certificate-legal-name { margin: .07in 0 0; color: var(--vyv-green); font-size: .1in; font-weight: 800; line-height: 1; }
+
+.design-locked-document .certificate-main {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.design-locked-document .certificate-title {
+  margin: 0;
+  color: var(--vyv-blue);
+  font-family: "VenYVe Serif", serif;
+  font-size: .49in;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.design-locked-document .certificate-title-rule {
+  width: 1.1in;
+  height: .025in;
+  margin: .12in 0 .18in;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+.design-locked-document .certificate-title-rule i:first-child { background: var(--vyv-blue); }
+.design-locked-document .certificate-title-rule i:last-child { background: var(--vyv-green); }
+.design-locked-document .certificate-recognition { margin: 0; color: var(--vyv-muted); font-family: "VenYVe Serif", serif; font-size: .2in; font-weight: 600; }
+
+.design-locked-document .certificate-member-name {
+  width: 8.6in;
+  margin: .08in 0 .1in;
+  color: var(--vyv-blue);
+  font-family: "VenYVe Serif", serif;
+  font-size: .56in;
+  font-weight: 700;
+  line-height: 1;
+  overflow-wrap: anywhere;
+}
+
+.design-locked-document .certificate-member-name.document-name-medium { font-size: .51in; }
+.design-locked-document .certificate-member-name.document-name-long { font-size: .45in; }
+.design-locked-document .certificate-member-name.document-name-extra-long { font-size: .39in; line-height: 1.04; }
+
+.design-locked-document .certificate-statement {
+  width: 7.9in;
+  margin: 0;
+  color: var(--vyv-ink);
+  font-family: "VenYVe Serif", serif;
+  font-size: .19in;
+  font-weight: 500;
+  line-height: 1.38;
+}
+
+.design-locked-document .certificate-footer-grid {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 2.45in minmax(0, 1fr) 1.55in;
+  gap: .32in;
+  align-items: stretch;
+  border-top: .018in solid var(--vyv-green);
+  padding-top: .12in;
+}
+
+.design-locked-document .certificate-signature,
+.design-locked-document .certificate-data-grid,
+.design-locked-document .certificate-verification {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.design-locked-document .certificate-signature-image { width: 2.1in; height: .64in; display: flex; align-items: flex-end; justify-content: center; }
+.design-locked-document .certificate-signature-image img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.design-locked-document .certificate-signature-image span { color: var(--vyv-muted); font-size: .1in; }
+.design-locked-document .certificate-signature-line { width: 2.1in; height: .018in; background: var(--vyv-blue); }
+.design-locked-document .certificate-signature strong { margin-top: .07in; color: var(--vyv-blue); font-size: .11in; font-weight: 800; }
+.design-locked-document .certificate-signature small { margin-top: .03in; color: var(--vyv-muted); font-size: .075in; font-weight: 700; }
+
+.design-locked-document .certificate-data-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: .12in;
+}
+
+.design-locked-document .certificate-data-item {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.design-locked-document .certificate-data-item + .certificate-data-item { border-left: .014in solid var(--vyv-blue); }
+.design-locked-document .certificate-data-item span { color: var(--vyv-muted); font-size: .085in; font-weight: 800; line-height: 1.15; }
+.design-locked-document .certificate-data-item strong { margin-top: .08in; color: var(--vyv-green); font-size: .14in; font-weight: 800; line-height: 1.1; overflow-wrap: anywhere; }
+
+.design-locked-document .certificate-qr-safe-zone { width: 1.02in; height: 1.02in; padding: .035in; border: .018in solid var(--vyv-blue); background: var(--vyv-paper); }
+.design-locked-document .certificate-verification strong { margin-top: .06in; color: var(--vyv-blue); font-size: .08in; font-weight: 800; line-height: 1.1; }
+.design-locked-document .certificate-mission { margin: 0; display: flex; align-items: center; justify-content: center; color: var(--vyv-green); font-size: .085in; font-weight: 800; text-align: center; }
+
+.document-export { border-radius: 0 !important; box-shadow: none !important; }
+.membership-export-stage { position: fixed; left: -20000px; top: 0; z-index: -1; }
+.membership-export-certificate { width: 11in; height: 8.5in; }
+.membership-export-card { width: 85.6mm; height: 53.98mm; }
+.membership-document-scroll { max-width: 100%; overflow: auto; padding: .5rem; }
+.membership-preview-zoom-shell { width: max-content; margin: 0 auto; transform-origin: top center; }
+
+@media (max-width: 640px) {
+  .membership-document-scroll { margin-inline: -.75rem; padding: .5rem .75rem; }
+  .membership-preview-zoom-shell { margin-inline: 0; }
+}

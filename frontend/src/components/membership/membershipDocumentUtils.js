@@ -25,7 +25,14 @@ export const memberInitials = (name = '') => {
 };
 
 export const nameLengthClass = (name = '') => {
+  if (name.length > 52) return 'document-name-extra-long';
   if (name.length > 38) return 'document-name-long';
   if (name.length > 27) return 'document-name-medium';
   return 'document-name-short';
+};
+
+export const cardNameLines = (name = '') => {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (words.length < 3) return [name.trim() || '—'];
+  return [words.slice(0, -1).join(' '), words.at(-1)];
 };
