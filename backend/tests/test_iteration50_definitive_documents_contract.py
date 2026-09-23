@@ -36,6 +36,10 @@ def test_qr_and_pdf_contract_are_configured_for_print():
     assert "margin: 4" in dialog and "width: 900" in dialog
     assert "format: [85.6, 53.98]" in pdf
     assert "format: [11, 8.5]" in pdf
-    assert "scale: 4" in pdf
+    assert "CARD_CAPTURE" in pdf
+    assert "width: 2764, height: 1743" in pdf
+    assert "width: 2112, height: 1632" in pdf
+    assert "prepareSvgLayers" in pdf
+    assert "layer.toDataURL('image/png')" in pdf
     assert "toDataURL('image/png')" in pdf
     assert "image-rendering: pixelated" in css

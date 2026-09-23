@@ -7,7 +7,7 @@
 - **P0 RBAC listo para revisión manual:** cierre Iteración 41 sin FAIL/SKIP dentro de la matriz; resultado retenido, sin merge ni despliegue.
 - **Completado:** membresía histórica y Formación/Educación configurable integradas con Persona 360, Bautismo y certificados preparados; Iteración 46 sin FAIL/SKIP.
 - **Completado:** hotfix de emisión de carnet con fotografía visible; Iteración 47 backend/frontend y responsive PASS.
-- **P0 — revisión visual del usuario:** reproducción del master adjunto para carnet CR80 y certificado Letter; comparativas generadas, PDFs/QR/casos extremos verificados. Sin goldens, merge ni deploy hasta aprobación explícita.
+- **P0 — verificación en producción:** publicar mediante `Save to GitHub` → Railway, volver a descargar carnet/certificado y confirmar corrección con datos reales. PDFs locales, QR, startup Mongo y readiness ya pasan.
 
 ## P1 — Seguimiento
 

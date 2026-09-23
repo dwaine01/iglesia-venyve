@@ -28,6 +28,7 @@ export const MembershipCardFront = ({ data, photoSrc, exportMode = false }) => {
       <section id={`${rootId}-identity`} data-vv-role="identity">
         <p data-vv-role="kicker">CARNET OFICIAL DE MIEMBRO</p>
         <h2 data-vv-role="member-name" style={{ fontSize: memberNameSize(person.full_name) }} data-testid={testIdFor('membership-card-name', exportMode)}>{cardNameLines(person.full_name).map((line) => <span key={line}>{line}</span>)}</h2>
+        <p data-vv-role="position" data-testid={testIdFor('membership-card-position', exportMode)}>{person.position || 'MIEMBRO'}</p>
         <p data-vv-role="status" data-testid={testIdFor('membership-card-status', exportMode)}>{memberStatus(membership.status)}</p>
       </section>
       <dl id={`${rootId}-facts`} data-vv-role="facts">

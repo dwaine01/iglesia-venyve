@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-23 — PDF de carnet/certificado y startup Mongo corregidos
+
+- Corregida pérdida intermitente de capas SVG en PDFs mediante raster temporal de alta resolución antes de html2canvas.
+- Eliminado recorte de nombre/texto serif; agregado cargo actual; fecha separada de bandas; cruz alargada y curvas del certificado extendidas a los bordes.
+- Normalizados raster CR80 2764×1743 y Letter 2112×1632 sin deformación; doble descarga determinista y QR validados en Iteración 54.
+- Reconciliación idempotente de `membership_number_registry` evita que registros históricos obsoletos tumben el startup.
+- Readiness Railway PASS; sin merge ni deploy automático desde el agente.
+
 ## 2026-09-23 — Reconstrucción fiel del master en revisión
 
 - Retirados el CSS y los goldens del concepto rechazado; el adjunto exacto del usuario quedó como único master inmutable.
