@@ -33,16 +33,14 @@
 [id^="vv-membership-card-front-"] [data-vv-role="photo"] span { color: var(--vv-blue); font: 700 7mm var(--vv-serif); }
 [id^="vv-membership-card-front-"] [data-vv-role="identity"] { left: 31.2mm; top: 17.9mm; width: 31.7mm; height: 23.4mm; }
 [id^="vv-membership-card-front-"] [data-vv-role="kicker"] { color: var(--vv-navy); font-size: 1.8mm; line-height: 1; font-weight: 700; white-space: nowrap; }
-[id^="vv-membership-card-front-"] [data-vv-role="member-name"] { max-width: 31.7mm; max-height: 11mm; margin-top: 1.15mm; overflow: visible; color: var(--vv-navy); font-family: var(--vv-serif); font-weight: 700; line-height: 1.05; }
-[id^="vv-membership-card-front-"] [data-vv-role="member-name"] span { display: block; white-space: nowrap; overflow: visible; }
-[id^="vv-membership-card-front-"] [data-vv-role="position"] { left: 0; top: 14.1mm; width: 30mm; height: 2mm; color: var(--vv-blue); font-size: 1.25mm; line-height: 1.2; font-weight: 800; text-transform: uppercase; white-space: nowrap; overflow: visible; }
-[id^="vv-membership-card-front-"] [data-vv-role="status"] { left: 0; top: 17mm; min-width: 27.3mm; height: 5.6mm; padding: 1.18mm 2mm 0; border-radius: 1.2mm; background: var(--vv-green); color: var(--vv-white); font-size: 2.45mm; line-height: 1; font-weight: 800; text-align: center; }
-[id^="vv-membership-card-front-"] [data-vv-role="facts"] { left: 31.2mm; top: 42.8mm; width: 34mm; height: 8.4mm; display: grid; grid-template-columns: 17mm 17mm; }
+[id^="vv-membership-card-front-"] [data-vv-role="member-name"] { max-width: 31.7mm; max-height: 12mm; margin-top: 1.45mm; overflow: hidden; color: var(--vv-navy); font-family: var(--vv-serif); font-weight: 700; line-height: .91; }
+[id^="vv-membership-card-front-"] [data-vv-role="member-name"] span { display: block; white-space: nowrap; overflow: hidden; text-overflow: clip; }
+[id^="vv-membership-card-front-"] [data-vv-role="status"] { left: 0; top: 15.6mm; min-width: 27.3mm; height: 5.6mm; padding: 1.18mm 2mm 0; border-radius: 1.2mm; background: var(--vv-green); color: var(--vv-white); font-size: 2.45mm; line-height: 1; font-weight: 800; text-align: center; }
+[id^="vv-membership-card-front-"] [data-vv-role="facts"] { left: 31.2mm; top: 42.8mm; width: 36.7mm; height: 8.4mm; display: grid; grid-template-columns: 18.2mm 18.5mm; }
 [id^="vv-membership-card-front-"] [data-vv-role="facts"] div { min-width: 0; }
-[id^="vv-membership-card-front-"] [data-vv-role="facts"] div + div { border-left: .28mm solid var(--vv-green); padding-left: 1mm; }
+[id^="vv-membership-card-front-"] [data-vv-role="facts"] div + div { border-left: .28mm solid var(--vv-green); padding-left: 4.1mm; }
 [id^="vv-membership-card-front-"] dt { font-size: 1.35mm; line-height: 1; font-weight: 700; white-space: nowrap; }
 [id^="vv-membership-card-front-"] dd { margin: 1.1mm 0 0; font-size: 2.85mm; line-height: 1; font-weight: 800; white-space: nowrap; }
-[id^="vv-membership-card-front-"] [data-vv-role="facts"] div + div dd { font-size: 2.25mm; }
 
 [id^="vv-membership-card-back-"] [data-vv-art="back"] { right: 0; bottom: 0; width: 14.4mm; height: 14.4mm; }
 [id^="vv-membership-card-back-"] [data-vv-role="logo"] { left: 3.25mm; top: 2.05mm; width: 19.4mm; height: 12.5mm; object-fit: contain; }
@@ -93,8 +91,8 @@
 [id^="vv-membership-certificate-"] [data-vv-role="title"] { left: 1.55in; top: 1.65in; width: 7.9in; height: .65in; color: var(--vv-navy); font-family: var(--vv-serif); font-size: .55in; line-height: 1; font-weight: 700; text-align: center; white-space: nowrap; }
 [id^="vv-membership-certificate-"] [data-vv-role="title-rule"] { left: 4.15in; top: 2.62in; width: 2.7in; height: .025in; background: var(--vv-green); }
 [id^="vv-membership-certificate-"] [data-vv-role="recognition"] { left: 3.6in; top: 2.9in; width: 3.8in; font-family: var(--vv-serif); font-size: .32in; line-height: 1; text-align: center; }
-[id^="vv-membership-certificate-"] [data-vv-role="member-name"] { left: 1.35in; top: 3.22in; width: 8.3in; max-width: 8.3in; color: var(--vv-navy); font-family: var(--vv-serif); font-style: italic; font-weight: 600; text-align: center; }
-[id^="vv-membership-certificate-"] [data-vv-role="statement"] { left: 1.35in; top: 4.52in; width: 8.3in; min-height: .88in; font-family: var(--vv-serif); font-size: .24in; line-height: 1.3; text-align: center; }
+[id^="vv-membership-certificate-"] [data-vv-role="member-name"] { left: 1.35in; top: 3.37in; width: 8.3in; max-width: 8.3in; height: .72in; overflow: hidden; color: var(--vv-navy); font-family: var(--vv-serif); font-style: italic; font-weight: 600; line-height: 1; text-align: center; white-space: nowrap; }
+[id^="vv-membership-certificate-"] [data-vv-role="statement"] { left: 1.35in; top: 4.48in; width: 8.3in; max-height: .68in; overflow: hidden; font-family: var(--vv-serif); font-size: .24in; line-height: 1.22; text-align: center; }
 [id^="vv-membership-certificate-"] [data-vv-role="facts"] { left: .9in; top: 6.02in; width: 4.85in; height: .73in; display: grid; grid-template-columns: 1.35in 1.58in 1.92in; }
 [id^="vv-membership-certificate-"] [data-vv-role="facts"] div { min-width: 0; text-align: center; }
 [id^="vv-membership-certificate-"] [data-vv-role="facts"] div + div { border-left: .014in solid var(--vv-green); }

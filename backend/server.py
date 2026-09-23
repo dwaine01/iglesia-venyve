@@ -994,7 +994,7 @@ async def list_invite_codes(authorization: Optional[str] = Header(None)):
     if rol != "lider" and not is_global_pastoral_authority(payload):
         raise HTTPException(status_code=403, detail="Solo pastores y lideres pueden ver codigos")
 
-    cursor = db.invite_codes.find({"created_by_user_id": creator_id}).sort("created_at", -1).limit(100)
+    cursor = db.invite_codes.find({"created_by_user_id": creator_id}).sort("created_at", -1)
     items = []
     now_utc = datetime.now(timezone.utc)
     async for doc in cursor:
