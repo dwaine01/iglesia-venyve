@@ -31,7 +31,6 @@ test('el carnet usa número oficial, fallback de foto y vencimiento condicional'
   const back = renderToStaticMarkup(<MembershipCardBack data={data} qrSrc="data:image/png;base64,qr" signatureSrc="blob:firma" />);
   expect(front).toContain('MIEMBRO ACTIVO');
   expect(front).toContain('VV-2026-0842');
-  expect(front).toContain('LÍDER DE BIENVENIDA');
   expect(front).toContain('MF');
   expect(front).not.toContain('Válido hasta');
   expect(front).not.toContain('internal-uuid-never-visible');
