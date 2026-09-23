@@ -78,18 +78,6 @@ class ManualLocation(BaseModel):
     reason: str = Field(min_length=3, max_length=1000)
 
 
-class LocationConfirmation(BaseModel):
-    latitude: float = Field(ge=-90, le=90)
-    longitude: float = Field(ge=-180, le=180)
-
-
-class LocationConfirmationResponse(BaseModel):
-    person_id: str
-    address_id: str
-    verification_status: Literal["manual_verified"]
-    confirmed_at: str
-
-
 class SectorCreate(BaseModel):
     zone_id: Literal["north", "east", "south", "west"]
     name: Optional[str] = Field(default=None, max_length=120)
@@ -482,43 +470,6 @@ async def precise_map(
 async def search_locations(q: str = Query(min_length=2, max_length=120), limit: int = Query(default=10, ge=1, le=25), current_user: dict = Depends(require_precise)):
     items = await search_person_locations(db, current_user, q, limit)
     return {"items": items, "total": len(items)}
-
-
-@router.post("/persons/{person_id}/confirm-location", response_model=LocationConfirmationResponse)
-async def confirm_person_location(
-    person_id: str,
-    payload: LocationConfirmation,
-    current_user: dict = Depends(require_manage),
-):
-    if not ObjectId.is_valid(person_id):
-        raise HTTPException(status_code=404, detail="Persona no encontrada")
-    person = await db.persons.find_one({"_id": ObjectId(person_id), "status": {"$ne": "archived"}}, {"_id": 1})
-    if not person:
-        raise HTTPException(status_code=404, detail="Persona no encontrada")
-    address = await db.person_addresses.find_one(
-        {"person_id": person_id, "location.type": "Point", "coordinates_stale": {"$ne": True}},
-        sort=[("es_principal", -1), ("updated_at", -1)],
-    )
-    if not address:
-        raise HTTPException(status_code=409, detail="La persona no tiene una dirección ubicable para confirmar")
-    coordinates = (address.get("location") or {}).get("coordinates") or []
-    if len(coordinates) != 2 or abs(coordinates[0] - payload.longitude) > 0.00075 or abs(coordinates[1] - payload.latitude) > 0.00075:
-        raise HTTPException(status_code=409, detail="El punto seleccionado no coincide con la dirección actual de la persona")
-    now = now_utc()
-    await db.person_addresses.update_one({"_id": address["_id"]}, {"$set": {
-        "verification_status": "manual_verified", "coordinates_stale": False,
-        "location_confirmed_at": now, "location_confirmed_by_user_id": current_user["user_id"],
-        "location_confirmation_source": "map_360",
-    }})
-    await db.geo_audit_log.insert_one({
-        "audit_id": f"location_confirmed:{person_id}:{now.timestamp()}", "actor_user_id": current_user["user_id"],
-        "action": "person_location_confirmed", "entity_type": "person_address", "entity_id": str(address["_id"]),
-        "person_id": person_id, "coordinates": [payload.longitude, payload.latitude], "occurred_at": now,
-    })
-    return {
-        "person_id": person_id, "address_id": str(address["_id"]),
-        "verification_status": "manual_verified", "confirmed_at": now.isoformat(),
-    }
 
 
 @router.get("/comparison", response_model=dict)

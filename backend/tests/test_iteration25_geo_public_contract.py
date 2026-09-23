@@ -136,25 +136,3 @@ def test_geo_review_queue_visible_for_manage_role(auth_headers):
     payload = response.json()
     assert isinstance(payload.get("items"), list)
     assert isinstance(payload.get("total"), int)
-
-
-def test_geo_manager_can_confirm_selected_person_location(auth_headers):
-    search = requests.get(
-        f"{BASE_URL_NORM}/api/geo/search",
-        params={"q": "Ana Norte", "limit": 10},
-        headers=auth_headers,
-        timeout=25,
-    )
-    assert search.status_code == 200, search.text
-    person = next(item for item in search.json()["items"] if "ana" in item["name"].lower())
-    response = requests.post(
-        f"{BASE_URL_NORM}/api/geo/persons/{person['person_id']}/confirm-location",
-        json={"latitude": person["latitude"], "longitude": person["longitude"]},
-        headers=auth_headers,
-        timeout=25,
-    )
-    assert response.status_code == 200, response.text
-    payload = response.json()
-    assert payload["person_id"] == person["person_id"]
-    assert payload["verification_status"] == "manual_verified"
-    assert payload["address_id"]
