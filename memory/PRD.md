@@ -770,10 +770,14 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - Se conserva el rechazo 422 cuando realmente no existe fotografía y el 403 para usuarios sin autoridad ni `membership.documents.manage`; no se modificó RBAC de Junta o Finanzas.
 - Certificación Iteración 47: backend 3/3, frontend desktop/móvil, botón habilitado, emisión 201, vista previa e historial PASS; auto-regresión 4/4 PASS y cero datos QA residuales.
 
-### IDENTIDAD OFICIAL — CONCEPTO A APROBADO 2026-09-22
+### REPRODUCCIÓN DEL MASTER — PENDIENTE DE APROBACIÓN VISUAL 2026-09-23
 
-- El usuario seleccionó y aprobó visualmente el sistema **Institucional Contemporáneo** para carnet y certificado.
-- Carnet: CR80 exacto, frente 65% blanco/35% navy, fotografía proporcional, número oficial y vencimiento condicional; reverso navy con QR verificable y texto mínimo.
-- Certificado: US Letter landscape exacto, composición editorial asimétrica, fondo cálido, marco navy, acento verde, firma dinámica y QR discreto.
-- Preview y PDF comparten plantilla; carnet genera 2 páginas de 85.60 × 53.98 mm y certificado 1 página de 11 × 8.5 pulgadas.
-- Validación final: 31 pruebas frontend + 11 regresiones backend PASS; QR de ambas piezas decodificado contra endpoint público; nombres/números largos, fotos vertical/horizontal, móvil y RBAC verificados sin solapes ni residuos QA.
+- El usuario rechazó el concepto minimalista anterior. Sus estilos y goldens fueron retirados; no deben reutilizarse.
+- El adjunto exacto 1536 × 1024 quedó guardado como fuente única en `design-reference/membership-documents-master.png` (SHA-256 `43e86ca8…`).
+- Reconstrucción actual: coordenadas absolutas en mm/in, IDs `vv-membership-*`, sin clases globales internas, logo `contain`, foto `cover` y SVGs independientes para bandas, marcos, curvas y cruz de agua.
+- Carnet CR80 exacto: frente sin QR; foto/identidad/estado/número/fecha según master. Reverso ~90% blanco con mensaje exacto, teléfono, firma, divisor, QR y geometría inferior.
+- Certificado Letter landscape exacto: marca, título, nombre, texto, datos, firma, QR y geometrías institucionales. Preview y PDF comparten los mismos componentes.
+- Casos extremos: números de 22 caracteres y nombres de 78 caracteres usan escalado/líneas controladas; medición browser confirmó cero invasión y cero overflow de página en 1920×800 y 390×844.
+- Comparaciones visuales: `test_reports/master-compare-card-front-final.png`, `master-compare-card-back-final.png`, `master-compare-certificate-final.png`.
+- Certificación Iteración 53: backend/PDF/QR PASS; issue de número largo corregido y auto-verificado. Frontend 17/17, contratos visuales 5/5 y build PASS.
+- **Pendiente:** aprobación visual explícita del usuario. Hasta entonces no crear goldens de implementación, no merge y no deploy.

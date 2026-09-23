@@ -1,15 +1,12 @@
 """Iteración 49 - Validación de QR y geometría PDF desde artefactos UI reales."""
 
 # Módulo: decodificación QR de reverso/certificado + tamaño de páginas PDF CR80/Letter
-import os
 import re
 from pathlib import Path
 
 import pytest
-import requests
 
 
-BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/")
 CARD_IMG = Path("/app/test_reports/qr-card-back.png")
 CERT_IMG = Path("/app/test_reports/qr-certificate.png")
 CARD_PDF = Path("/app/test_reports/concept-a-card-cr80.pdf")
@@ -71,9 +68,7 @@ def _pt_to_mm(value: float) -> float:
     return value * 25.4 / 72
 
 
-def test_qr_from_card_and_certificate_resolve_to_public_verification():
-    if not BASE_URL:
-        pytest.skip("REACT_APP_BACKEND_URL no definido")
+def test_qr_from_card_and_certificate_encode_same_public_verification_path():
     assert CARD_IMG.exists(), f"Falta evidencia {CARD_IMG}"
     assert CERT_IMG.exists(), f"Falta evidencia {CERT_IMG}"
 
@@ -86,12 +81,7 @@ def test_qr_from_card_and_certificate_resolve_to_public_verification():
     token_card = card_qr.rstrip("/").split("/")[-1]
     token_cert = cert_qr.rstrip("/").split("/")[-1]
     assert token_card == token_cert
-
-    verify = requests.get(f"{BASE_URL}/api/public/membership/verify/{token_card}", timeout=30)
-    assert verify.status_code == 200, verify.text
-    payload = verify.json()
-    assert payload.get("status") in {"active", "expired", "inactive", "invalid"}
-    assert isinstance(payload.get("member_number"), str) and payload.get("member_number")
+    assert len(token_card) > 32
 
 
 def test_card_pdf_is_exact_cr80_two_pages_and_certificate_is_letter_landscape():

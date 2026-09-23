@@ -25,7 +25,41 @@ export const memberInitials = (name = '') => {
 };
 
 export const nameLengthClass = (name = '') => {
+  if (name.length > 52) return 'document-name-extra-long';
   if (name.length > 38) return 'document-name-long';
   if (name.length > 27) return 'document-name-medium';
   return 'document-name-short';
+};
+
+export const cardNameLines = (name = '') => {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (words.length < 3) return [name.trim() || '—'];
+  if (name.trim().length > 60 && words.length > 3) {
+    let best = [1, 2];
+    let smallestSpread = Number.POSITIVE_INFINITY;
+    for (let first = 1; first < words.length - 1; first += 1) {
+      for (let second = first + 1; second < words.length; second += 1) {
+        const lengths = [words.slice(0, first), words.slice(first, second), words.slice(second)]
+          .map((parts) => parts.join(' ').length);
+        const spread = Math.max(...lengths) - Math.min(...lengths);
+        if (spread < smallestSpread) {
+          best = [first, second];
+          smallestSpread = spread;
+        }
+      }
+    }
+    return [words.slice(0, best[0]).join(' '), words.slice(best[0], best[1]).join(' '), words.slice(best[1]).join(' ')];
+  }
+  let splitAt = 1;
+  let smallestDifference = Number.POSITIVE_INFINITY;
+  for (let index = 1; index < words.length; index += 1) {
+    const first = words.slice(0, index).join(' ');
+    const second = words.slice(index).join(' ');
+    const difference = Math.abs(first.length - second.length);
+    if (difference < smallestDifference) {
+      splitAt = index;
+      smallestDifference = difference;
+    }
+  }
+  return [words.slice(0, splitAt).join(' '), words.slice(splitAt).join(' ')];
 };

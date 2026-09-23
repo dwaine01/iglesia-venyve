@@ -1,155 +1,85 @@
 {
-  "project_title": "Ven y Ve Church Brand Identity & Membership Presentation Boards (A, B, C)",
-  "context_type": "MARKETING & BRAND IDENTITY PRESENTATION",
-  "art_direction": {
-    "role": "Senior Graphic Director & Identity Architect",
-    "core_philosophy": "Riqueza visual nacida de composición, retícula, proporciones, tipografía, contraste, geometría de marca y espacio negativo. Sin adornos religiosos genéricos ni rellenos de plantilla.",
-    "brand_pillars": [
-      "Credencial institucional premium",
-      "Identidad corporativa moderna",
-      "Certificado universitario contemporáneo"
-    ]
+  "project_identity": "Identidad Ven y Ve - Sistema de Diseño de Carnet y Certificado",
+  "theme": "Reproducción exacta del master adjunto: blanco institucional con navy, celeste y verde",
+  "dimensions": {
+    "carnet": {
+      "width_mm": 85.60,
+      "height_mm": 53.98,
+      "aspect_ratio": "85.6mm / 53.98mm (ISO/IEC 7810 ID-1 standard)",
+      "orientation": "horizontal"
+    },
+    "certificate": {
+      "width_in": 11,
+      "height_in": 8.5,
+      "width_mm": 279.4,
+      "height_mm": 215.9,
+      "aspect_ratio": "11in / 8.5in (US Letter Landscape)",
+      "orientation": "landscape"
+    }
   },
   "typography": {
-    "anti_default_rules": "Prohibido usar Inter o fuentes genéricas para titulares principal o nombres en certificados. Utilizar fuentes de alta jerarquía y tensión visual.",
-    "concept_A": {
-      "heading_font": "Plus Jakarta Sans, sans-serif",
-      "body_font": "Inter, sans-serif",
-      "weights": {
-        "title": "font-bold tracking-tight text-slate-900",
-        "subtitle": "font-medium text-slate-500 uppercase tracking-widest text-xs",
-        "card_name": "font-extrabold text-slate-950 tracking-tight"
-      }
-    },
-    "concept_B": {
-      "heading_font": "Cormorant Garamond, Playfair Display, serif",
-      "body_font": "Plus Jakarta Sans, sans-serif",
-      "weights": {
-        "title": "font-serif font-bold text-slate-900 tracking-normal",
-        "subtitle": "font-sans uppercase text-[11px] tracking-[0.25em] text-slate-500",
-        "card_name": "font-serif font-bold text-slate-900"
-      }
-    },
-    "concept_C": {
-      "heading_font": "Outfit, Clash Display, sans-serif",
-      "body_font": "Plus Jakarta Sans, sans-serif",
-      "weights": {
-        "title": "font-bold tracking-tight text-slate-950",
-        "subtitle": "font-mono text-xs uppercase tracking-widest text-emerald-700",
-        "card_name": "font-black tracking-tight text-slate-900"
-      }
-    }
+    "font_family_primary": "Plus Jakarta Sans, sans-serif",
+    "font_family_display": "Cormorant Garamond, serif",
+    "member_name_carnet": "Cormorant Garamond 5.1mm máximo; dos líneas dentro de caja 31.7mm",
+    "member_name_certificate": "Cormorant Garamond italic con tamaño dinámico y caja máxima 8.3in",
+    "labels": "Plus Jakarta Sans, mayúsculas compactas",
+    "values": "Plus Jakarta Sans, negrita y escala dinámica para números largos",
+    "certificate_body": "Cormorant Garamond centrada, máximo dos líneas"
   },
   "colors": {
-    "real_logo_colors": {
-      "navy": "#0B1D3A",
-      "navy_light": "#1E3A8A",
-      "emerald_green": "#059669",
-      "green_accent": "#10B981",
-      "white": "#FFFFFF",
-      "cream_bg": "#FAFAF7",
-      "warm_gold_accent": "#D97706"
+    "brand_navy": "#022E5A",
+    "brand_primary_sky_blue": "#0798C8",
+    "brand_secondary_lime_green": "#61B33B",
+    "background_main": "#FFFFFF",
+    "card_background": "#FFFFFF",
+    "off_white": "#F7F9F8",
+    "text_primary": "#101D35"
+  },
+  "grids_and_layouts": {
+    "carnet_front": {
+      "layout_engine": "Coordenadas absolutas en milímetros tomadas del master",
+      "structure": "Logo y marca arriba; foto 24.8 × 34.8mm izquierda; identidad y estado al centro; número y fecha abajo; geometría SVG navy/celeste/verde al borde derecho; sin QR.",
+      "protection": "Nombre dentro de caja máxima 31.7mm y número con escala dinámica para impedir colisiones."
     },
-    "concept_palettes": {
-      "concept_A": {
-        "name": "Institucional Contemporáneo",
-        "primary_bg": "#FFFFFF (65%)",
-        "authority_color": "#0B1D3A (Azul Marino)",
-        "accent": "#059669 (Verde del Logo solo como acento en badge/detalles)",
-        "card_ratio": "65% Blanco / 35% Identidad azul marino"
-      },
-      "concept_B": {
-        "name": "Clásico Contemporáneo",
-        "primary_bg": "#FAFAF7 (Marfil / Blanco Cálido)",
-        "authority_color": "#0B1D3A (Azul Marino Profundo)",
-        "accent": "#D97706 / #B45309 (Dorado Mínimo Solo Acento)",
-        "green_detail": "#047857 (Detalle verde ultra pequeño)"
-      },
-      "concept_C": {
-        "name": "Ven y Ve Contemporáneo",
-        "primary_bg": "#F8FAFC / Geometría de Óvalos y Líneas de Marca",
-        "authority_color": "#0F172A (Obsidiana / Azul Marino Noche)",
-        "accent": "#059669 (Verde Orgánico de Marca)",
-        "visual_language": "Extraído de la forma ovalada y curvaturas del logo real"
-      }
+    "carnet_back": {
+      "layout_engine": "Coordenadas absolutas en milímetros tomadas del master",
+      "structure": "Reverso 90% blanco: mensaje/teléfono/firma a la izquierda, divisor verde, verificación+número+QR a la derecha y SVG de esquina inferior."
+    },
+    "certificate": {
+      "layout_engine": "Coordenadas absolutas en pulgadas tomadas del master",
+      "structure": "Marco SVG completo con bandas curvas navy/celeste/verde, marca superior, título y nombre centrales, datos/firma/QR inferiores y cruz de agua."
     }
   },
-  "layout_and_grid": {
-    "presentation_boards": {
-      "structure": "3 Tableros independientes y comparables (Concepto A, Concepto B, Concepto C)",
-      "board_sections": [
-        "Header de Presentación con Selector/Tabs de Concepto y Switch de Vista Comparativa",
-        "Carnet Frente (Proporción exacta CR80 horizontal/vertical)",
-        "Carnet Reverso (QR limpio, N° miembro, Verificación de membresía)",
-        "Certificado (US Letter Landscape, composición editorial limpia)"
-      ]
-    },
-    "dimensions_and_ratios": {
-      "cr80_card": "Proporción 3.375 x 2.125 (85.6mm x 53.98mm) con aspect ratio ~1.586",
-      "letter_landscape": "Proporción 11 x 8.5 (Letter Horizontal) aspect ratio ~1.294"
+  "security_layout_rules": {
+    "zero_layout_bugs": [
+      "No floats permitidos bajo ningún concepto.",
+      "Coordenadas absolutas en mm/in para reproducir el master aprobado.",
+      "SVGs independientes detrás del contenido para ondas, bandas, marcos y marcas de agua.",
+      "Encapsulamiento por IDs vv-membership-* y data-vv-document; ninguna clase global dentro de los documentos.",
+      "Medidas en milímetros (mm) e pulgadas (in) fijas en contenedores de impresión para garantizar paridad exactitud 1:1 entre pantalla y generación PDF."
+    ],
+    "long_name_handling": {
+      "carnet": "Dos líneas en caja 31.7mm con tamaño dinámico; número oficial también reduce tamaño por longitud.",
+      "certificate": "Caja máxima 8.3in con tamaño dinámico por longitud."
     }
   },
-  "exact_sample_data": {
-    "member_name": "María Fernanda Rodríguez",
-    "member_status": "MIEMBRO ACTIVO",
-    "member_id": "VV-0284",
-    "membership_date": "05-18-2014",
-    "signature_placeholder": "[PLACEHOLDER FIRMA PASTORA]",
-    "church_name": "Ven y Ve",
-    "verification_text": "Verificación de membresía",
-    "photo_url": "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMjd8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjB3b21hbiUyMHBvcnRyYWl0JTIwaGVhZHNob3QlMjBjb3Jwb3JhdGUlMjBleGVjdXRpdmV8ZW58MHx8fHwxNzkwMTEwNjE3fDA&ixlib=rb-4.1.0&q=85",
-    "logo_url": "/assets/membership/church-logo.png"
+  "image_urls": {
+    "master_visual": "https://customer-assets-4nw71qhi.emergentagent.net/job_e6542075-bbf9-4d6d-a5b2-89872da4370d/artifacts/9ss4wsx5_image.png",
+    "logo_ven_y_ve": "/assets/membership/church-logo.png",
+    "member_avatar_male": "https://images.pexels.com/photos/39284040/pexels-photo-39284040.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+    "member_avatar_female": "https://images.pexels.com/photos/33722925/pexels-photo-33722925.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+    "qr_code_placeholder": "https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://venyve.org/verify/VV-894021"
   },
-  "concepts_definition": {
-    "concept_A": {
-      "title": "CONCEPTO A — INSTITUCIONAL CONTEMPORÁNEO",
-      "carnet_front": "65% blanco / 35% identidad azul marino. Forma geométrica limpia propia de la marca atravesando la composición sin ondas exageradas. Nombre en tipografía sans-serif profesional de gran legibilidad. Foto con presencia ejecutiva destacada.",
-      "carnet_back": "Principalmente azul marino institucional. Logo real prominente, QR de alta visibilidad con zona blanca limpia, ID VV-0284, 'Verificación de membresía' y texto conciso.",
-      "certificate": "US Letter Landscape. Fondo marfil/blanco cálido muy sutil. Marco institucional fino azul marino. Verde usado mínimamente. Nombre como protagonista absoluto. Firma '[PLACEHOLDER FIRMA PASTORA]' y QR inferior."
-    },
-    "concept_B": {
-      "title": "CONCEPTO B — CLÁSICO CONTEMPORÁNEO",
-      "carnet_front": "Azul marino y blanco con composición simétrica sobria. Detalle verde sutil. Tipografía Serif elegante para el nombre y sans-serif estructurada para metadatos.",
-      "carnet_back": "Fondo azul marino con marco de doble filete fino dorado/blanco. Logo centrado, QR discreto con caja limpia y tipografía editorial.",
-      "certificate": "Estructura de diploma universitario moderno. Marco doble muy fino con acentos dorados discretos. Logo centrado, tipografía serif de alta alcurnia, espacio amplio para firma de la pastora y QR discreto. Siente la solemnidad para enmarcar."
-    },
-    "concept_C": {
-      "title": "CONCEPTO C — VEN Y VE CONTEMPORÁNEO",
-      "carnet_front": "Sistemas gráficos derivados de las curvas ovaladas y líneas del logo original de Ven y Ve. Geometría contemporánea audaz sin caer en desorden. Paleta azul y verde integrada con ritmo.",
-      "carnet_back": "Fondo dinámico azul marino con arco ovalado derivado de la marca. QR destacado con bordes redondeados y sello de verificación gráfico.",
-      "certificate": "Diploma de autoría de la iglesia Ven y Ve. Filigrana matemática basada en el óvalo del logo, márgenes asimétricos equilibrados, tipografía moderna con carácter único e inconfundible."
-    }
-  },
-  "prohibited_elements": [
-    "iglesias de fondo",
-    "montañas",
-    "hojas decorativas",
-    "cruces gigantes",
-    "sellos inventados",
-    "escudos inventados",
-    "degradados excesivos",
-    "ondas por todas partes",
-    "múltiples versículos",
-    "muchos iconos",
-    "sombras exageradas",
-    "frases rellenando espacios"
+  "instructions_to_main_agent": [
+    "Reconstruir el master; no rediseñar ni reinterpretar.",
+    "Mantener estilos aislados por IDs/data-vv-document en membership-documents.css.",
+    "Asegurar que las dimensiones del Carnet sean exactamente 85.60mm x 53.98mm y el Certificado 11in x 8.5in.",
+    "Implementar los testids (data-testid) en todos los elementos principales para validación automatizada.",
+    "No generar modificaciones no aprobadas en el Layout hasta confirmación."
   ],
-  "testing_and_attributes": {
-    "rule": "All interactive buttons, tabs, card containers, and verification details must include data-testid attributes in kebab-case",
-    "examples": [
-      "data-testid=\"concept-selector-tab-a\"",
-      "data-testid=\"concept-selector-tab-b\"",
-      "data-testid=\"concept-selector-tab-c\"",
-      "data-testid=\"carnet-front-concept-a\"",
-      "data-testid=\"carnet-back-concept-a\"",
-      "data-testid=\"certificate-concept-a\"",
-      "data-testid=\"member-name-display\"",
-      "data-testid=\"signature-placeholder-pastora\""
-    ]
-  },
-  "instructions_to_main_agent": {
-    "execution_mode": "Pure visual polish and art presentation. Ensure zero wireframes or gray placeholders.",
-    "components": "Ensure components in src/components/membership/ handle high resolution rendering, print previews, and comparison modal views.",
-    "theme": "Light theme predominant for clean institutional paper aesthetic with deep navy blue accents."
+  "UNIVERSAL GUIDELINES FOR MAIN AGENT": {
+    "data_testid_requirement": "Todos los elementos interactivos e informativos clave DEBEN incluir data-testid.",
+    "contrast_standards": "Asegurar un contraste mínimo de 4.5:1 entre textos y fondos.",
+    "design_isolation": "DESIGN LOCKED: Ninguna regla CSS de los documentos debe salirse del ámbito encapsulado."
   }
 }

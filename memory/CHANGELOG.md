@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-09-23 — Reconstrucción fiel del master en revisión
+
+- Retirados el CSS y los goldens del concepto rechazado; el adjunto exacto del usuario quedó como único master inmutable.
+- Reconstruidos carnet frente/reverso y certificado con coordenadas físicas absolutas y SVGs independientes; QR solo en reverso.
+- Aislados los documentos por IDs/data attributes, sin clases globales internas; preview y PDF comparten componentes.
+- Comparación MASTER | IMPLEMENTACIÓN iterada y guardada; números/nombres extremos ya no se superponen.
+- Iteración 53 validó backend, PDFs, dimensiones y QR; frontend 17/17, contratos 5/5 y build PASS.
+- No se crearon goldens de implementación, merge ni deploy: falta aprobación visual explícita del usuario.
+
 ## 2026-09-22 — Identidad oficial Concepto A aprobada
 
 - Reemplazada completamente la presentación del carnet y certificado por el sistema Institucional Contemporáneo elegido por el usuario.
