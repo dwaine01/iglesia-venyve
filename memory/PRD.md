@@ -802,3 +802,5 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - Flujo “Confirmar que aquí vive”: seleccionar Persona → hogar → confirmar ubicación; endpoint protegido por `geo.manage`, idempotente, valida coordenadas y escribe auditoría.
 - Nueva variable obligatoria frontend/Railway: `REACT_APP_SATELLITE_TILE_URL`; `REACT_APP_MAP_TILE_URL` usa el callejero Esri normal.
 - Verificación Iteración 55: Map/Satélite, puntos, autoencuadre, búsqueda, confirmación, RBAC 403/409, tabs, desktop/móvil y build PASS. Backend final 13/13 y cero residuos QA.
+- Hotfix de visibilidad: `REACT_APP_SATELLITE_TILE_URL` pasó de obligatoria a opcional. Si Railway aún no la define, el mapa normal y todos los datos existentes cargan; Satélite queda deshabilitado con explicación en vez de bloquear la página completa.
+- Regresión añadida `GeoMapCanvas.test.js`: importar/renderizar sin variable satelital no falla y clusters siguen ausentes. Smoke final desktop/móvil confirmó Mapa visible, Puntos activo y overflow vacío.

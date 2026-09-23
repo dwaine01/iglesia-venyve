@@ -7,6 +7,7 @@
 - Implementada confirmación auditada “aquí vive” para la Persona seleccionada con RBAC `geo.manage` y validación de coordenadas.
 - Iteración 55: frontend E2E, RBAC, backend 13/13, build y responsive PASS; sin flujos rotos.
 - Railway debe definir `REACT_APP_MAP_TILE_URL` y `REACT_APP_SATELLITE_TILE_URL` durante build.
+- Hotfix: Satélite ahora es opcional; su ausencia en Railway nunca vuelve a ocultar el mapa normal ni los datos territoriales. Prueba automática y smoke desktop/móvil PASS.
 
 ## 2026-09-23 — PDF de carnet/certificado y startup Mongo corregidos
 

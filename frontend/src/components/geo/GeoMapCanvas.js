@@ -7,7 +7,7 @@ const requiredMapEnv = (name) => {
 };
 
 const TILE_URL = requiredMapEnv('REACT_APP_MAP_TILE_URL');
-const SATELLITE_TILE_URL = requiredMapEnv('REACT_APP_SATELLITE_TILE_URL');
+const SATELLITE_TILE_URL = process.env.REACT_APP_SATELLITE_TILE_URL || null;
 const zoneColors = { north: '#247BA0', east: '#2F8F6B', south: '#D97706', west: '#C0266D' };
 const emptyCollection = () => ({ type: 'FeatureCollection', features: [] });
 const imageKey = (value) => String(value || '').replace(/[^a-z0-9-]+/gi, '-').toLowerCase();
@@ -112,13 +112,10 @@ export const GeoMapCanvas = ({ center, features = [], zones, subzones, sectors =
 
   useEffect(() => {
     if (!maplibregl || !center || mapRef.current || !containerRef.current) return undefined;
-    const map = new maplibregl.Map({ container: containerRef.current, center: [center.longitude, center.latitude], zoom: 10.7, attributionControl: true, style: { version: 8, sources: {
-      'basemap-clear-source': { type: 'raster', tiles: [TILE_URL], tileSize: 256, attribution: 'Tiles © Esri, HERE, Garmin, USGS, Intermap, INCREMENT P, NRCan, Esri Japan, METI, Esri China, and the GIS User Community' },
-      'basemap-satellite-source': { type: 'raster', tiles: [SATELLITE_TILE_URL], tileSize: 256, attribution: 'Tiles © Esri, Maxar, Earthstar Geographics, and the GIS User Community' },
-    }, layers: [
-      { id: 'basemap-clear', type: 'raster', source: 'basemap-clear-source', layout: { visibility: valuesRef.current.basemap === 'clear' ? 'visible' : 'none' } },
-      { id: 'basemap-satellite', type: 'raster', source: 'basemap-satellite-source', layout: { visibility: valuesRef.current.basemap === 'satellite' ? 'visible' : 'none' } },
-    ] } });
+    const sources = { 'basemap-clear-source': { type: 'raster', tiles: [TILE_URL], tileSize: 256, attribution: 'Tiles © Esri, HERE, Garmin, USGS, Intermap, INCREMENT P, NRCan, Esri Japan, METI, Esri China, and the GIS User Community' } };
+    const layers = [{ id: 'basemap-clear', type: 'raster', source: 'basemap-clear-source', layout: { visibility: valuesRef.current.basemap === 'clear' || !SATELLITE_TILE_URL ? 'visible' : 'none' } }];
+    if (SATELLITE_TILE_URL) { sources['basemap-satellite-source'] = { type: 'raster', tiles: [SATELLITE_TILE_URL], tileSize: 256, attribution: 'Tiles © Esri, Maxar, Earthstar Geographics, and the GIS User Community' }; layers.push({ id: 'basemap-satellite', type: 'raster', source: 'basemap-satellite-source', layout: { visibility: valuesRef.current.basemap === 'satellite' ? 'visible' : 'none' } }); }
+    const map = new maplibregl.Map({ container: containerRef.current, center: [center.longitude, center.latitude], zoom: 10.7, attributionControl: true, style: { version: 8, sources, layers } });
     const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 14 }); map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
     map.on('load', () => {
       addOverlayLayers(map, valuesRef.current, center, selectedSectorId); setVisibility(map, valuesRef.current.mode, valuesRef.current.presentationLevel); containerRef.current.dataset.basemap = valuesRef.current.basemap;
@@ -145,7 +142,7 @@ export const GeoMapCanvas = ({ center, features = [], zones, subzones, sectors =
   useEffect(() => { const map = mapRef.current; if (!map?.isStyleLoaded()) return; setVisibility(map, mode, presentationLevel); if (presentationLevel === 'households') renderPresentationMarkers(map, maplibregl, features, onSelect, presentationMarkersRef); else { presentationMarkersRef.current.forEach((marker) => marker.remove()); presentationMarkersRef.current = []; } }, [features, maplibregl, mode, onSelect, presentationLevel]);
   useEffect(() => { const source = mapRef.current?.getSource('geo-zones'); if (source && zones) source.setData(zones); }, [zones]);
   useEffect(() => { const source = mapRef.current?.getSource('geo-subzones'); if (source && subzones) source.setData(subzones); }, [subzones]);
-  useEffect(() => { const map = mapRef.current; if (!map?.getLayer('basemap-clear') || !map.getLayer('basemap-satellite')) return; map.setLayoutProperty('basemap-clear', 'visibility', basemap === 'clear' ? 'visible' : 'none'); map.setLayoutProperty('basemap-satellite', 'visibility', basemap === 'satellite' ? 'visible' : 'none'); if (containerRef.current) { containerRef.current.dataset.basemap = basemap; containerRef.current.dataset.clearLayer = map.getLayoutProperty('basemap-clear', 'visibility'); containerRef.current.dataset.satelliteLayer = map.getLayoutProperty('basemap-satellite', 'visibility'); } }, [basemap]);
+  useEffect(() => { const map = mapRef.current; if (!map?.getLayer('basemap-clear')) return; const satelliteLayer = map.getLayer('basemap-satellite'); const effectiveBasemap = basemap === 'satellite' && satelliteLayer ? 'satellite' : 'clear'; map.setLayoutProperty('basemap-clear', 'visibility', effectiveBasemap === 'clear' ? 'visible' : 'none'); if (satelliteLayer) map.setLayoutProperty('basemap-satellite', 'visibility', effectiveBasemap === 'satellite' ? 'visible' : 'none'); if (containerRef.current) { containerRef.current.dataset.basemap = effectiveBasemap; containerRef.current.dataset.satelliteAvailable = satelliteLayer ? 'true' : 'false'; containerRef.current.dataset.clearLayer = map.getLayoutProperty('basemap-clear', 'visibility'); containerRef.current.dataset.satelliteLayer = satelliteLayer ? map.getLayoutProperty('basemap-satellite', 'visibility') : 'unavailable'; } }, [basemap]);
   useEffect(() => { const map = mapRef.current; const source = map?.getSource('geo-search-highlight'); if (!source) return; if (!focusTarget) { source.setData(emptyCollection()); return; } const coordinates = [focusTarget.longitude, focusTarget.latitude]; source.setData({ type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'Point', coordinates }, properties: { name: focusTarget.name } }] }); map.flyTo({ center: coordinates, zoom: 16, essential: true }); }, [focusTarget]);
   useEffect(() => { const map = mapRef.current; const bounds = boundsForGeometry(focusGeometry); if (!map || !bounds) return; if (bounds[0][0] === bounds[1][0] && bounds[0][1] === bounds[1][1]) map.flyTo({ center: bounds[0], zoom: 16, essential: true }); else map.fitBounds(bounds, { padding: 80, duration: 900, maxZoom: 16 }); }, [focusGeometry]);
   if (!maplibregl) return <div className="flex h-full min-h-0 items-center justify-center border bg-amber-50 p-6 text-center text-sm text-amber-900" data-testid="geo-map-library-error">No se pudo cargar la biblioteca cartográfica local.</div>;

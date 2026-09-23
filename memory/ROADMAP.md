@@ -1,6 +1,7 @@
 # Roadmap
 
 - **Completado — Mapa 360:** puntos individuales, autoencuadre, mapa claro/satélite, etiquetas territoriales discretas y confirmación auditada de vivienda para Persona seleccionada.
+- **P0 — producción:** publicar hotfix de variable satelital opcional y confirmar que el Mapa normal muestra inmediatamente los datos existentes; configurar Satélite después sin bloquear operación.
 
 ## P0 — Operación real
 
