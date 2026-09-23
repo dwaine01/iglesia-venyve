@@ -1,7 +1,5 @@
 # Roadmap
 
-- **Completado — Mapa 360:** puntos individuales, autoencuadre, mapa claro/satélite, etiquetas territoriales discretas y confirmación auditada de vivienda para Persona seleccionada.
-
 ## P0 — Operación real
 
 - **Completado:** RBAC deny-by-default de Junta/Finanzas y privacidad pastoral de Persona 360 certificado en Iteración 40.
