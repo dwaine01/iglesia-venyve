@@ -1,8 +1,46 @@
 import React, { useEffect, useRef } from 'react';
 
 const TILE_URL = process.env.REACT_APP_MAP_TILE_URL;
+const SATELLITE_TILE_URL = process.env.REACT_APP_SATELLITE_TILE_URL;
 const zoneColors = { north: '#247BA0', east: '#2F8F6B', south: '#D97706', west: '#C0266D' };
 const emptyCollection = () => ({ type: 'FeatureCollection', features: [] });
+
+const baseMapStyle = () => ({
+  version: 8,
+  sources: {
+    osm: { type: 'raster', tiles: [TILE_URL], tileSize: 256, attribution: '© OpenStreetMap contributors' },
+    ...(SATELLITE_TILE_URL ? { satellite: { type: 'raster', tiles: [SATELLITE_TILE_URL], tileSize: 256, attribution: '© OpenStreetMap contributors' } } : {}),
+  },
+  layers: [
+    { id: 'osm', type: 'raster', source: 'osm' },
+    ...(SATELLITE_TILE_URL ? [{ id: 'satellite', type: 'raster', source: 'satellite', layout: { visibility: 'none' } }] : []),
+  ],
+});
+
+const createBaseMapControl = () => {
+  let map; let container; let select; let changeHandler;
+  return {
+    onAdd(nextMap) {
+      map = nextMap;
+      container = document.createElement('div'); container.className = 'maplibregl-ctrl maplibregl-ctrl-group';
+      select = document.createElement('select'); select.setAttribute('aria-label', 'Tipo de mapa'); select.title = 'Tipo de mapa';
+      select.style.cssText = 'height:29px;border:0;background:#fff;padding:0 8px;font:12px sans-serif;cursor:pointer;';
+      const streetOption = document.createElement('option'); streetOption.value = 'street'; streetOption.textContent = 'Mapa';
+      const satelliteOption = document.createElement('option'); satelliteOption.value = 'satellite'; satelliteOption.textContent = 'Satélite'; satelliteOption.disabled = !SATELLITE_TILE_URL;
+      select.append(streetOption, satelliteOption);
+      changeHandler = () => {
+        const satelliteSelected = select.value === 'satellite' && Boolean(SATELLITE_TILE_URL);
+        if (map.getLayer('osm')) map.setLayoutProperty('osm', 'visibility', satelliteSelected ? 'none' : 'visible');
+        if (map.getLayer('satellite')) map.setLayoutProperty('satellite', 'visibility', satelliteSelected ? 'visible' : 'none');
+      };
+      select.addEventListener('change', changeHandler); container.appendChild(select);
+      return container;
+    },
+    onRemove() {
+      select?.removeEventListener('change', changeHandler); container?.remove(); map = undefined;
+    },
+  };
+};
 
 const createPinImage = (kind, color, large = false) => {
   const width = large ? 96 : 82; const height = large ? 112 : 96;
@@ -119,10 +157,11 @@ export const GeoMapCanvas = ({
     if (!maplibregl || !center || mapRef.current || !containerRef.current) return undefined;
     const map = new maplibregl.Map({
       container: containerRef.current, center: [center.longitude, center.latitude], zoom: 10.7,
-      style: { version: 8, sources: { osm: { type: 'raster', tiles: [TILE_URL], tileSize: 256, attribution: '© OpenStreetMap contributors' } }, layers: [{ id: 'osm', type: 'raster', source: 'osm' }] }, attributionControl: true,
+      style: baseMapStyle(), attributionControl: true,
     });
     const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 18 });
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+    map.addControl(createBaseMapControl(), 'top-right');
     map.on('load', () => {
       registerImages(map);
       registerSectorImages(map, valuesRef.current.sectors);
