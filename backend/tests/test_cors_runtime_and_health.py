@@ -98,7 +98,7 @@ class TestCorsRuntimeAndHealth:
 
     def test_arbitrary_preview_subdomain_is_not_credentialed(self):
         base_url = _require_base_url()
-        origin = "https://pdf-layout-fix-16.preview.emergentagent.com"
+        origin = "https://formation-hub-60.preview.emergentagent.com"
         headers = {
             "Origin": origin,
             "Access-Control-Request-Method": "POST",
