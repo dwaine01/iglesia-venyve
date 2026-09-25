@@ -92,7 +92,7 @@
 [id^="vv-membership-certificate-"] [data-vv-role="title-rule"] { left: 4.15in; top: 2.62in; width: 2.7in; height: .025in; background: var(--vv-green); }
 [id^="vv-membership-certificate-"] [data-vv-role="recognition"] { left: 3.6in; top: 2.9in; width: 3.8in; font-family: var(--vv-serif); font-size: .32in; line-height: 1; text-align: center; }
 [id^="vv-membership-certificate-"] [data-vv-role="member-name"] { left: 1.35in; top: 3.37in; width: 8.3in; max-width: 8.3in; height: .72in; overflow: hidden; color: var(--vv-navy); font-family: var(--vv-serif); font-style: italic; font-weight: 600; line-height: 1; text-align: center; white-space: nowrap; }
-[id^="vv-membership-certificate-"] [data-vv-role="statement"] { left: 1.35in; top: 4.48in; width: 8.3in; max-height: .68in; overflow: hidden; font-family: var(--vv-serif); font-size: .24in; line-height: 1.22; text-align: center; }
+[id^="vv-membership-certificate-"] [data-vv-role="statement"] { left: 1.35in; top: 4.48in; width: 8.3in; max-height: .85in; overflow: hidden; font-family: var(--vv-serif); font-size: .24in; line-height: 1.22; text-align: center; }
 [id^="vv-membership-certificate-"] [data-vv-role="facts"] { left: .9in; top: 6.02in; width: 4.85in; height: .73in; display: grid; grid-template-columns: 1.35in 1.58in 1.92in; }
 [id^="vv-membership-certificate-"] [data-vv-role="facts"] div { min-width: 0; text-align: center; }
 [id^="vv-membership-certificate-"] [data-vv-role="facts"] div + div { border-left: .014in solid var(--vv-green); }
