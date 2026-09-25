@@ -23,7 +23,7 @@ export const MembershipCertificateTemplate = ({ data, signatureSrc, qrSrc, expor
       <h1 id={`${rootId}-title`} data-vv-role="title">CERTIFICADO DE MEMBRESÍA</h1>
       <i id={`${rootId}-title-rule`} data-vv-role="title-rule" aria-hidden="true" />
       <p id={`${rootId}-recognition`} data-vv-role="recognition">Se certifica que</p>
-      <h2 id={`${rootId}-name`} data-vv-role="member-name" style={{ fontSize: memberNameSize(person.full_name, 'certificate'), whiteSpace: wrapsName ? 'normal' : 'nowrap', height: wrapsName ? '1in' : '.72in', lineHeight: wrapsName ? .92 : 1 }} data-testid={testIdFor('certificate-member-name', exportMode)}>{person.full_name}</h2>
+      <h2 id={`${rootId}-name`} data-vv-role="member-name" style={{ fontSize: memberNameSize(person.full_name, 'certificate'), whiteSpace: wrapsName ? 'normal' : 'nowrap', top: wrapsName ? '3.34in' : '3.30in', height: wrapsName ? '1.06in' : '1.0in', lineHeight: wrapsName ? .92 : 1.15, display: wrapsName ? '-webkit-box' : 'block', WebkitLineClamp: wrapsName ? 3 : undefined, WebkitBoxOrient: wrapsName ? 'vertical' : undefined, overflow: 'hidden', textOverflow: 'ellipsis' }} data-testid={testIdFor('certificate-member-name', exportMode)}>{person.full_name}</h2>
       <p id={`${rootId}-statement`} data-vv-role="statement" data-testid={testIdFor('certificate-membership-statement', exportMode)}>{statement}</p>
       <dl id={`${rootId}-facts`} data-vv-role="facts" data-testid={testIdFor('certificate-official-data', exportMode)}>
         <div><dt>N.º DE MIEMBRO</dt><dd style={{ fontSize: membershipNumberSize(membership.member_number, 'certificate') }} data-testid={testIdFor('certificate-member-number', exportMode)}>{membership.member_number || '—'}</dd></div>
