@@ -593,6 +593,16 @@ Documento operativo: `/app/memory/MIGRATION_BLUEPRINT.md`.
 - Archivos principales: backend `geo_address.py`, `geo_sector_service.py`, `geo_provider.py`, `geo_service.py`, `geo_queries.py`, `geo_routes.py`; frontend `GeoMapCanvas.js`, `GeoSectorEditorDrawer.js`, `GeoPersonSearch.js`, `Presentation2To1Shell.js`, `GeoMapsPage.js`, `GeoMapToolbar.js`, `GeoDetailPanel.js`, `geoGeometry.js`, `App.css`; pruebas `test_geo_maps.py`, `test_iteration27_geo_public_manage_contract.py`, `ui_geo_fixture.py`.
 - **Única operación pendiente del administrador:** entrar a `/mapas` y crear/dibujar los sectores territoriales reales desde el editor.
 
+### HOTFIX — Exportación PDF de carnet/certificado: nombres largos y clipping de glifos — RESUELTO 2026‑09‑22
+
+- Eliminado el hack `revealExportText` en `membershipPdf.js` que desactivaba `overflow`/`maxHeight` durante la captura html2canvas: ahora `overflow:hidden` permanece siempre activo, garantizando que un nombre nunca invada foto, QR, firma o fecha en el carnet/certificado exportado.
+- Nombre del certificado (`MembershipCertificateTemplate.js`): añadido `textOverflow:ellipsis` como red de seguridad dura; en nombres largos (>48 car.) usa `WebkitLineClamp:3` para truncar con elipsis en vez de desbordar.
+- Corregido clipping vertical de glifos en el PDF descargado (regresión detectada tras el fix anterior, invisible en la vista previa): altura/posición del nombre ajustadas (`top:3.30in/height:1.0in/lineHeight:1.15` para una línea; `top:3.34in/height:1.06in/lineHeight:.92` para nombre largo) y el párrafo de la declaración (`statement`) perdió `overflow:hidden`/`max-height` fijo (es texto de plantilla fijo, sin riesgo de invasión) y ganó `padding-bottom:.1in` + `lineHeight:1.3`.
+- SVGs decorativos siguen 100% inline (nunca archivos externos) y se rasterizan a canvas antes de la captura (`prepareSvgLayers`), confirmando arte presente en el PDF final.
+- `@page` con unidades físicas ya existente: mm para carnet (85.6×53.98mm) y pulgadas para certificado (11×8.5in); sin cambios necesarios.
+- Snapshots Jest de "DESIGN LOCKED" regeneradas para los 3 archivos modificados; **17/17 PASS**, build de producción PASS.
+- Verificación con PDF real descargado (no solo vista previa) en 3 rondas de testing agent: ronda 1 detectó regresión de clipping vertical de glifos; ronda 2 corrigió el caso de nombre largo pero dejó nombre corto y párrafo de declaración clippeados; ronda 3 confirmó **100% PASS** — nombre corto, nombre largo `'María Fernanda de los Ángeles Santos Francisco Gómez'` y declaración completos, sin invasión de áreas, dimensiones PDF exactas (Letter 792×612pt 1 página; CR80 242.65×153.01pt 2 páginas), arte SVG presente, sin errores de consola.
+
 ### MEMBRESÍA HISTÓRICA + MINICENSO EVANGELÍSTICO — IMPLEMENTADO 2026‑09‑19
 
 - **Alta Directa:** `POST /api/core/persons` acepta `preexisting_active_member` y número histórico opcional. Solo Pastor/Pastora o Coordinación General pueden usar el bypass; un payload forzado por Líder ordinario recibe 403.
