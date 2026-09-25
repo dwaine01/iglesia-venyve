@@ -1,153 +1,137 @@
 <analysis>**original_problem_statement**: 
-The user requires the implementation of a single block for Historical Membership Regularization and a fully configurable Formation/Discipleship/Baptism system integrated with Persona 360. 
-PRODUCT REQUIREMENTS:
-1. Membership: Allow Activate / Regularize existing membership for legacy members.
-2. Independence: Active membership does not strictly require Discipleship completion.
-3. Formation Engine: Configurable Programs, Modules, Cohorts, Sessions, Attendance, Grades, and Promotion paths.
-4. Historical Credits: Authorize historical formation credits.
-5. Baptism: Separate Baptism preparation classes from the actual Baptism event record.
-6. Persona 360: Update the profile to show formation progress, enrollments, etc.
-7. RBAC: Maintain the strict P0 RBAC for Junta/Finanzas.
-*NEW BUG REPORTED*: The user cannot generate the Membership Card (carnet). Even though the photo is uploaded and displayed, the system throws an error saying a photo must be added.
+The user reported a bug regarding the PDF export functionality for membership cards (carnet) and certificates. When downloading the PDF, the design is distorted, stretched vertically, and loses its original layout/proportions. Additionally, the user requested adding a direct Print button alongside the existing Download button so users can print without having to download the PDF first.
 
-**User's preferred language**: Spanish (INSTRUCT NEXT AGENT: El próximo agente DEBE responder única y exclusivamente en Español.)
+**User's preferred language**: The user's primary language is Spanish. **INSTRUCT next agent to respond in Spanish.**
 
-**what currently exists?** 
-The entire Configurable Formation Engine and Historical Membership Regularization was implemented and tested successfully in previous sessions. However, a critical bug exists in the membership ID card generation flow due to photo validation failing. The current session was paused before any code changes could be made.
+**what currently exists?**: 
+A full-stack application (React, FastAPI, MongoDB) for church management (VEN Y VE 360). The membership module uses  and  to generate membership cards and certificates. Currently, the PDF export captures the DOM elements but fails to maintain the strict CR80/Letter aspect ratios, causing visual distortion and clipping.
 
 **Last working item**: 
-    - Last item agent was working: Investigating the membership card generation bug. The issue traces back to  (around line 536) which requires . The agent was paused before debugging or applying patches.
+    - Last item agent was working: Fixing the PDF distortion bug in  by rasterizing SVGs safely, capturing exact proportions, and normalizing the canvas. Also, adding a direct Print button ( icon) to . The agent was running snapshot tests and visual screenshot verifications when execution paused.
     - Status: IN PROGRESS
-    - Agent Testing Done: N
-    - Which testing method agent to use? testing agent (MANDATORY REQUIREMENT by user for this bug)
+    - Agent Testing Done: Y (partially done using screenshot tool and test suites)
+    - Which testing method agent to use?: Frontend testing agent & screenshot tool to verify the PDF layout.
     - User Testing Done: N
 
 **All Pending/In progress Issue list**: 
-  Issue 1: Membership Card Generation fails claiming no photo exists (P0)
-     - Attempted fixes: None applied in this session (execution paused). 
-     - Next debug checklist: 
-       - Backend: Check  (line 536). Investigate if photo uploads in  (or similar profile endpoints) are correctly setting the  flag in MongoDB when a photo is uploaded, or if the document validation logic is too strict.
-       - Frontend: Verify if  is sending or checking the correct state.
-     - Why fix this issue and what will be achieved with the fix? Core functionality blockage. User cannot print the physical/digital ID cards for members.
+  - Issue 1: PDF Export Distortion & Missing Print Button (P0)
+     - Attempted fixes: Modified  to strictly enforce  and  dimensions. Added a print function and button in .
+     - Next debug checklist: Check  to ensure scaling and canvas normalization work correctly. Verify that  passes with the updated snapshots.
+     - Why fix this issue and what will be achieved with the fix?: Ensures that printed and downloaded membership cards retain their exact UI design without stretching or clipping. Provides better UX with a direct print option.
      - Status: IN PROGRESS
-     - Is recurring issue? N
-     - Should Test frontend/backend/both after fix? both (MUST use )
-     - Blocked on other issue: None
-
-  Issue 2: Board Meeting Live Timer logic is broken (P1)
-     - Attempted fixes: None.
-     - Next debug checklist: Inspect  and .
-     - Why fix this issue and what will be achieved with the fix? Fulfills explicit user requirement for meeting management.
-     - Status: NOT STARTED
-     - Is recurring issue? Y
-     - Should Test frontend/backend/both after fix? Frontend
+     - Is recurring issue?: N
+     - Should Test frontend/backend/both after fix?: Frontend
      - Blocked on other issue: None
 
 **In progress Task List**: 
-None
+  - Task 1: Finalize PDF fixes and Print functionality
+     - Where to resume: Review the recent edits in  and . Ensure the React test suite () passes without ESLint/undefined variable errors (the previous agent was fixing missing  and  imports in the test files). Validate the PDF visual output.
+     - What will be achieved with this?: Resolution of the user's reported bug.
+     - Status: IN PROGRESS
+     - Should Test frontend/backend/both after fix?: Frontend
+     - Blocked on something: Nothing
 
-**Upcoming and Future Tasks**
-    Upcoming Tasks:
-    - P1: Board Meeting Live Timer logic (Elapsed + Remaining / Exceeded) (Pending from earlier session).
-    - P1: Speaker Mapping to Persona 360 in Junta Directiva.
-    - P1: Full Transcript, Summary Minuta, and PDF Generation (using ).
-    
-    Future Tasks:
-    - P2: Mega-Bloque H (Automation + AI).
-    - P2: Permanent Biometric Voice Fingerprinting (Explicitly deferred).
+**Upcoming and Future Tasks**:
+  - Wait for user approval to use the Save to GitHub UI feature for the PDF distortion fix (similar to how the Map hotfix was handled).
 
-**Completed work in this session**
-- Phase 1-7 for Configurable Formation Engine (DONE in previous context, no new tasks completed in this paused session).
+**Completed work in this session**:
+- Implemented optional satellite map layer toggle in  (DONE)
+- Updated  with  and  for  to fix production build mapping (DONE)
 
-**Earlier issues found/mentioned but not fixed**
-   Issue 1: Board Meeting Live Timer logic is broken.
-   - Debug checklist: Inspect  and .
-   - Why to solve this issue and what will be achieved with this? Fulfills explicit user requirement for meeting management.
-   - Should Test frontend/backend/both after fix: Frontend
-   - Is recurring issue? Y
+**Earlier issues found/mentioned but not fixed**:
+  - None
 
-**Known issue recurrence from previous fork**
-  - Issue recurrence in previous fork: None applicable
+**Known issue recurrence from previous fork**:
   - Recurrence count: 0
   - Status: N/A
 
-**Code Architecture**
-- Frontend: React, Tailwind CSS, React Router.
-- Backend: FastAPI, Motor (Async MongoDB).
-- Configurable Formations use new domain models and collections (, , , , , , ).
+**Code Architecture**:
+-  - Contains templates, CSS, and PDF generation logic for membership documents.
+-  - Geographic map components (MapLibre).
+- Backend APIs served via FastAPI (), utilizing MongoDB.
 
-**Key Technical Concepts**
-- RBAC is enforced strictly. Formation operations use  capabilities.  is reused for historical membership regularization.
-- Historical records are append-only.
-- Document generation relies on checking database states (e.g., photo existence for cards).
+**Key Technical Concepts**:
+React, MapLibre GL JS, html2canvas, jsPDF, Tailwind CSS, Docker.
 
-**key DB schema**
-  - : {person_id, membership_origin, historical_membership_date, regularized_at}
-  - : {program_id, name, description, status}
-  - : {enrollment_id, cohort_id, person_id, status, progress_pct}
-  - : {person_id, is_current} -> SOURCE OF P0 BUG.
+**key DB schema**:
+  - users: 
+  - person_memberships: 
 
-**changes in tech stack**
+**changes in tech stack**:
   - None.
 
-**All files of reference** 
-  -  (Contains the bug failing card generation)
-  -  (Handles person photo uploads/fetching)
+**All files of reference**:
+  -  (In Progress - Core logic for PDF canvas generation)
+  -  (In Progress - UI modal holding Download and Print buttons)
+  -  (In Progress - Snapshots updated for visual locks)
+  -  (Completed - Added build args for Satellite URL)
+  -  (Completed - Added map/satellite toggle)
+  -  (System file - MUST be reverted/excluded from commits before saving to GitHub)
+
+**Areas that need refactoring**:
+  - The React test files ( etc.) were throwing  errors for  and . These were partially fixed but require verification to ensure smooth CI/CD pipelines.
+
+**key api endpoints**:
   - 
   - 
 
-**Areas that need refactoring**: 
-  - Photo upload and status management ( flag) logic between  collection and the  document is inconsistent.
+**Critical Info for New Agent**:
+  - **Git Operations:** The user explicitly relies on the Save to GitHub button from the chat interface rather than direct On branch main
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   .emergent/cron/webhook-crons
+	modified:   frontend/src/components/membership/MembershipDocumentDialog.js
+	modified:   frontend/src/components/membership/__snapshots__/MembershipDocumentVisualLock.test.js.snap
+	modified:   frontend/src/components/membership/membershipPdf.js
 
-**key api endpoints**
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	.screenshots/
+	frontend/public/__qa_pdf/
+
+no changes added to commit (use "git add" and/or "git commit -a")/ commands. You must finalize the code, revert any system-modified files like , and ask the user to use the UI button.
+  - **PDF Generation Constraint:** Do not change the UI design, templates, or CSS of the membership cards. Only modify  to rasterize safely and preserve the existing dimensions.
+  - **Test Credentials:**  / 
+
+**documents and test reports created in this job**:
   - 
-  -  (Specifically the carnet generation endpoint).
+  -  (Created temporarily to test PDF rendering via screenshot)
 
-**Critical Info for New Agent**
-- **LANGUAGE**: Habla estrictamente en Español.
-- **MANDATORY INITIAL ACTION**: You must start by using the  tool to share the proposed plan for fixing the P0 bug as explicitly requested by the user in the latest message.
-- **CRITICAL BUG FIX INSTRUCTION**: After applying the bug fix for the membership card, you MUST call the  subagent to verify it against the reported issue — this is required before you finish, not optional.
-- Do not modify or relax the  or  RBAC rules. The deny-by-default logic for Coordinador General must remain intact.
+**Last 10 User Messages and any pending HUMAN messages**:
+ - [Execution paused by user] (Pending)
+ - Edit was successful. (Done)
+ - Edit was successful. (Done)
+ - 7cf5eb3522402791e06c303d92d3b14392dec9288be3ba27d860e1e234259058 frontend/src/components/membership/membershipPdf.js (Done)
+ - Edit was successful. (Done)
+ - Edit was successful. (Done)
+ - PASS lower certificate rendered (Done)
+ - PASS certificate rendered (Done)
+ - Exit code: 0 (Done)
+ - Create successful: /app/frontend/public/__qa_pdf/pdfjs-viewer.html (Done)
 
-**documents and test reports created in this job**
-  -  
-  - 
-  - 
+**Project Health Check**:
+  - Broken: React test suite was temporarily failing due to linter issues ( and  undefined) introduced or exposed during testing. 
 
-**Last 10 User Messages and any pending HUMAN messages** 
- 1. User: Please use ask_human tool and confirm your plan now. -> **PENDING HUMAN ACTION**: The new agent MUST immediately run  to confirm the debugging and fixing plan for the Membership Card (carnet) issue.
- 2. User: [Execution paused by user] -> Execution was halted before the agent could formulate the plan.
+**3rd Party Integrations**:
+  - ArcGIS Maps (Requires environment variables  and )
 
-**Project Health Check:**
-- Broken: Membership Card generation (Photo Validation).
-- Mocked: Pushpay (Payments).
+**Testing status**:
+  - Testing agent used after significant changes: YES
+  - Troubleshoot agent used after agent stuck in loop: YES
+  - Test files created: 
+  - Known regressions: PDF export distortion (Currently being fixed)
 
-**3rd Party Integrations**
-- OpenAI (STT with Diarization) — requires User API Key () - Uses Emergent LLM Key.
-- Pushpay — Mocked due to lack of sandbox credentials.
+**Credentials to test flow**:
+  - Email: 
+  - Password: 
 
-**Testing status**
-  - Testing agent used after significant changes: NO (Required for the upcoming bug fix).
-  - Troubleshoot agent used after agent stuck in loop: NO.
-  - Test files created: None this session.
-  - Known regressions: Membership card generation fails photo validation.
-
-**Credentials to test flow:**
-  - Check  for standard admin, pastor, and coordinator accounts.
-
-**What agent forgot to execute**
-The agent in the previous session was paused before it could execute the  plan validation. The incoming agent MUST initiate the conversation using  outlining the plan to debug and fix the  photo validation bug in .
+**What agent forgot to execute**:
+  - The agent was in the middle of executing edits for  to finalize the PDF distortion fix and verify via screenshots. The task paused mid-execution, so the final code validation and user sign-off for Save to GitHub are still pending.
 
 **Debugging checklist for current issue**
-    Issue: Membership card generation fails with a photo missing error, despite the photo being uploaded.
-    
-    Backend files to check: 
-    -  (Line ~536, inside  or similar logic checking ).
-    -  (Check how photos are saved and if  is correctly updated to  during upload).
-    
-    Frontend files to check:
-    - 
-    - 
-    
-    Database to check:
-    - Collection:  (Verify if documents actually have  flag set when a photo is uploaded, or if it's defaulting to False/null).</analysis>
+    Issue: PDF distortion on download and adding direct Print capability.
+    Frontend files to check: 
+    -  (Verify html2canvas scale and jsPDF format arrays)
+    -  (Verify  logic correctly triggers browser print without downloading)
+    -  (Verify snapshot matches)</analysis>

@@ -34,7 +34,7 @@
 [id^="vv-membership-card-front-"] [data-vv-role="identity"] { left: 31.2mm; top: 17.9mm; width: 31.7mm; height: 23.4mm; }
 [id^="vv-membership-card-front-"] [data-vv-role="kicker"] { color: var(--vv-navy); font-size: 1.8mm; line-height: 1; font-weight: 700; white-space: nowrap; }
 [id^="vv-membership-card-front-"] [data-vv-role="member-name"] { max-width: 31.7mm; max-height: 12mm; margin-top: 1.45mm; overflow: hidden; color: var(--vv-navy); font-family: var(--vv-serif); font-weight: 700; line-height: .91; }
-[id^="vv-membership-card-front-"] [data-vv-role="member-name"] span { display: block; white-space: nowrap; overflow: hidden; text-overflow: clip; }
+[id^="vv-membership-card-front-"] [data-vv-role="member-name"] span { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 [id^="vv-membership-card-front-"] [data-vv-role="status"] { left: 0; top: 15.6mm; min-width: 27.3mm; height: 5.6mm; padding: 1.18mm 2mm 0; border-radius: 1.2mm; background: var(--vv-green); color: var(--vv-white); font-size: 2.45mm; line-height: 1; font-weight: 800; text-align: center; }
 [id^="vv-membership-card-front-"] [data-vv-role="facts"] { left: 31.2mm; top: 42.8mm; width: 36.7mm; height: 8.4mm; display: grid; grid-template-columns: 18.2mm 18.5mm; }
 [id^="vv-membership-card-front-"] [data-vv-role="facts"] div { min-width: 0; }

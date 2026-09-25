@@ -1,17 +1,18 @@
 import React, { useEffect, useRef, useState } from 'react';
 import QRCode from 'qrcode';
-import { Download, Minus, Plus } from 'lucide-react';
+import { Download, Minus, Plus, Printer } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Button } from '../ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { MembershipCardBack, MembershipCardFront, MembershipCertificateTemplate } from './MembershipDocumentTemplates';
-import { downloadMembershipPdf } from './membershipPdf';
+import { downloadMembershipPdf, printMembershipDocument } from './membershipPdf';
 
 export const MembershipDocumentDialog = ({ open, onOpenChange, documentType, data, photoSrc, signatureSrc }) => {
   const [qrSrc, setQrSrc] = useState('');
   const [downloading, setDownloading] = useState(false);
+  const [printing, setPrinting] = useState(false);
   const [zoom, setZoom] = useState(1);
   const certificateRef = useRef(null);
   const cardFrontRef = useRef(null);
@@ -36,6 +37,18 @@ export const MembershipDocumentDialog = ({ open, onOpenChange, documentType, dat
       toast.success('PDF listo para impresión profesional');
     } catch { toast.error('No se pudo generar el PDF'); }
     finally { setDownloading(false); }
+  };
+
+  const print = async () => {
+    setPrinting(true);
+    try {
+      await printMembershipDocument({
+        documentType, certificate: certificateRef.current,
+        cardFront: cardFrontRef.current, cardBack: cardBackRef.current,
+      });
+      toast.success('Documento preparado para impresión');
+    } catch { toast.error('No se pudo preparar la impresión'); }
+    finally { setPrinting(false); }
   };
 
   if (!data) return null;
@@ -66,7 +79,10 @@ export const MembershipDocumentDialog = ({ open, onOpenChange, documentType, dat
             </Tabs>
           )}
         </div>
-        <div className="flex justify-end border-t pt-4"><Button onClick={download} disabled={downloading || !qrSrc} data-testid="download-membership-document-button"><Download className="h-4 w-4" />{downloading ? 'Generando PDF…' : 'Descargar PDF imprimible'}</Button></div>
+        <div className="flex flex-wrap justify-end gap-2 border-t pt-4">
+          <Button variant="outline" onClick={print} disabled={printing || downloading || !qrSrc} data-testid="print-membership-document-button"><Printer className="h-4 w-4" />{printing ? 'Preparando impresión…' : 'Imprimir directamente'}</Button>
+          <Button onClick={download} disabled={downloading || printing || !qrSrc} data-testid="download-membership-document-button"><Download className="h-4 w-4" />{downloading ? 'Generando PDF…' : 'Descargar PDF imprimible'}</Button>
+        </div>
         <div aria-hidden="true" style={{ position: 'fixed', left: '-20000px', top: 0, zIndex: -1 }}>
           {documentType === 'certificate' ? <div ref={certificateRef} style={{ width: '11in', height: '8.5in' }}><MembershipCertificateTemplate data={data} signatureSrc={signatureSrc} qrSrc={qrSrc} exportMode /></div> : <><div ref={cardFrontRef} style={{ width: '85.6mm', height: '53.98mm' }}><MembershipCardFront data={data} photoSrc={photoSrc} exportMode /></div><div ref={cardBackRef} style={{ width: '85.6mm', height: '53.98mm' }}><MembershipCardBack data={data} qrSrc={qrSrc} signatureSrc={signatureSrc} exportMode /></div></>}
         </div>
