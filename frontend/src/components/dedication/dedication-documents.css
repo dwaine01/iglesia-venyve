@@ -35,7 +35,7 @@
 [id^="vv-dedication-certificate-"] [data-vv-role="brand"] strong { font-size: .12in; line-height: 1; font-weight: 700; letter-spacing: .04em; white-space: nowrap; color: var(--vd-navy); }
 [id^="vv-dedication-certificate-"] [data-vv-role="brand"] b { font-family: "Cormorant Garamond", serif; font-size: .3in; line-height: 1.05; font-weight: 700; }
 [id^="vv-dedication-certificate-"] [data-vv-role="brand"] span { margin-top: .05in; color: var(--vd-sky); font-size: .1in; line-height: 1; font-weight: 600; font-style: italic; white-space: nowrap; }
-[id^="vv-dedication-certificate-"] [data-vv-role="title"] { left: 1.4in; top: 1.5in; width: 8.2in; height: .58in; color: var(--vd-navy); font-family: "Cormorant Garamond", serif; font-size: .48in; line-height: 1; font-weight: 700; text-align: center; white-space: nowrap; }
+[id^="vv-dedication-certificate-"] [data-vv-role="title"] { left: .7in; top: 1.5in; width: 9.6in; height: .58in; color: var(--vd-navy); font-family: "Cormorant Garamond", serif; font-size: .42in; line-height: 1; font-weight: 700; text-align: center; white-space: nowrap; }
 [id^="vv-dedication-certificate-"] [data-vv-role="title-rule"] { left: 4.15in; top: 2.15in; width: 2.7in; height: .022in; background: var(--vd-lime); border-radius: 2px; }
 [id^="vv-dedication-certificate-"] [data-vv-role="verse"] { left: 2.75in; top: 2.32in; width: 5.5in; color: var(--vd-sky); font-family: "Cormorant Garamond", serif; font-style: italic; font-size: .19in; line-height: 1.15; text-align: center; }
 [id^="vv-dedication-certificate-"] [data-vv-role="recognition"] { left: 3.6in; top: 2.98in; width: 3.8in; font-family: "Cormorant Garamond", serif; font-size: .3in; line-height: 1; text-align: center; color: var(--vd-muted); }

@@ -130,7 +130,7 @@ export default function DedicationEventsPage() {
         status: standalone.status,
       }, getAuthHeaders());
       toast.success('Presentación individual registrada'); setStandaloneOpen(false); setStandalone(EMPTY_STANDALONE);
-      if (standalone.status === 'completed') setPreview({ open: false, data: response.data.data });
+      if (standalone.status === 'completed') setPreview({ open: true, data: response.data.data });
     } catch (error) { toast.error(error?.response?.data?.detail || 'No se pudo registrar la presentación'); }
     finally { setStandaloneSaving(false); }
   };
