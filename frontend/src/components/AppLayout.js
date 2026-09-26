@@ -7,7 +7,7 @@ import {
   LayoutDashboard, BookOpen, Map, Calendar, Users, BarChart3, LogOut, Menu, ChevronRight,
   Crown, Star, Trophy, Presentation, NotebookPen, KeyRound, IdCard, Church, Search, DatabaseZap,
   Activity, Award, BookHeart, Compass, GraduationCap, HeartHandshake, Network, RadioTower, DoorOpen, Gavel, Landmark, MapPinned,
-  PanelLeftClose, PanelLeftOpen, ShieldCheck, Droplets
+  PanelLeftClose, PanelLeftOpen, ShieldCheck, Droplets, Baby
 } from 'lucide-react';
 
 import { LOGO_IGLESIA } from '../data/presentationData';
@@ -15,7 +15,7 @@ import DisplayScaleToggle from './DisplayScaleToggle';
 import { ContextGuideButton } from './guides/ContextGuideButton';
 import { resolveRouteGuide } from './guides/guideRouteMap';
 import { BRAND } from '../config/brand';
-import { canManageBaptismEvents, canViewCare, canViewFinanceModule, canViewFormation, canViewFrontGroups, canViewGeo, canViewLeadership, canViewOperations, hasAnyCapability, isPastoralAuthority } from '../lib/accessControl';
+import { canManageBaptismEvents, canManageDedicationEvents, canViewCare, canViewFinanceModule, canViewFormation, canViewFrontGroups, canViewGeo, canViewLeadership, canViewOperations, hasAnyCapability, isPastoralAuthority } from '../lib/accessControl';
 import { useBoardAccess } from '../hooks/useBoardAccess';
 const LOGO_URL = LOGO_IGLESIA;
 
@@ -30,6 +30,7 @@ const getNavItems = (user, boardAllowed = false) => {
       { to: '/procesos/consolidacion', icon: Activity, label: 'Consolidación', testId: 'nav-consolidation' },
       { to: '/procesos/discipulado', icon: BookHeart, label: 'Educación / Discipulado', testId: 'nav-discipleship' },
       { to: '/bautismos', icon: Droplets, label: 'Bautismos', testId: 'nav-baptism' },
+      { to: '/presentaciones', icon: Baby, label: 'Presentación de Niños', testId: 'nav-dedication' },
       { to: '/formacion', icon: GraduationCap, label: 'Formación', testId: 'nav-formation' },
       { to: '/grupos-frontales', icon: Network, label: 'Grupos Frontales', testId: 'nav-front-groups' },
       { to: '/liderazgo', icon: Award, label: 'Liderazgo', testId: 'nav-leadership' },
@@ -75,6 +76,7 @@ const getNavItems = (user, boardAllowed = false) => {
     { to: '/procesos/consolidacion', icon: Activity, label: 'Consolidación', testId: 'nav-consolidation' },
     { to: '/procesos/discipulado', icon: BookHeart, label: 'Educación / Discipulado', testId: 'nav-discipleship' },
     { to: '/bautismos', icon: Droplets, label: 'Bautismos', testId: 'nav-baptism' },
+    { to: '/presentaciones', icon: Baby, label: 'Presentación de Niños', testId: 'nav-dedication' },
     { to: '/formacion', icon: GraduationCap, label: 'Formación', testId: 'nav-formation' },
     { to: '/grupos-frontales', icon: Network, label: 'Grupos Frontales', testId: 'nav-front-groups' },
     { to: '/liderazgo', icon: Award, label: 'Liderazgo', testId: 'nav-leadership' },
@@ -117,6 +119,8 @@ const getNavItems = (user, boardAllowed = false) => {
     item.to !== '/formacion' || canViewFormation(user)
   ) && (
     item.to !== '/bautismos' || canManageBaptismEvents(user)
+  ) && (
+    item.to !== '/presentaciones' || canManageDedicationEvents(user)
   ));
 };
 
@@ -138,6 +142,7 @@ const breadcrumbMap = {
   '/personas/nueva': 'Nueva Persona',
   '/personas/importar': 'Importar membresía',
   '/bautismos': 'Bautismos',
+  '/presentaciones': 'Presentación de Niños',
   '/operaciones': 'Operaciones',
   '/operaciones/eventos': 'Eventos',
   '/cuidado-pastoral': 'Cuidado Pastoral',

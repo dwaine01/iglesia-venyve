@@ -1,0 +1,61 @@
+@page { size: 11in 8.5in; margin: 0; }
+
+[data-vv-document="dedication-certificate"] *,
+[data-vv-document="dedication-certificate"] *::before,
+[data-vv-document="dedication-certificate"] *::after { box-sizing: border-box; }
+[id^="vv-dedication-certificate-"] [data-vv-art] { position: absolute; z-index: 0; pointer-events: none; }
+[id^="vv-dedication-certificate-"] [data-vv-role] { position: absolute; z-index: 2; margin: 0; }
+
+[data-vv-document="dedication-certificate"] {
+  --vd-navy: #022E5A;
+  --vd-sky: #0798C8;
+  --vd-lime: #61B33B;
+  --vd-cream: #FDFBF7;
+  --vd-ice-blue: #EFF8FA;
+  --vd-mint: #F2F9F0;
+  --vd-sky-border: #BCE3F2;
+  --vd-lime-border: #CCEBBF;
+  --vd-muted: #4A607A;
+  width: 11in;
+  height: 8.5in;
+  position: relative;
+  overflow: hidden;
+  box-sizing: border-box;
+  background: var(--vd-cream);
+  color: var(--vd-navy);
+  font-family: "Plus Jakarta Sans", sans-serif;
+  box-shadow: 0 .12in .32in rgba(2,46,90,.14);
+  letter-spacing: 0;
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+[id^="vv-dedication-certificate-"] [data-vv-art="dedication-certificate"] { inset: 0; width: 11in; height: 8.5in; }
+[id^="vv-dedication-certificate-"] [data-vv-role="logo"] { left: 3.6in; top: .32in; width: 1.4in; height: .82in; object-fit: contain; }
+[id^="vv-dedication-certificate-"] [data-vv-role="brand"] { left: 5.1in; top: .48in; width: 3.15in; height: .68in; display: flex; flex-direction: column; justify-content: center; }
+[id^="vv-dedication-certificate-"] [data-vv-role="brand"] strong { font-size: .12in; line-height: 1; font-weight: 700; letter-spacing: .04em; white-space: nowrap; color: var(--vd-navy); }
+[id^="vv-dedication-certificate-"] [data-vv-role="brand"] b { font-family: "Cormorant Garamond", serif; font-size: .3in; line-height: 1.05; font-weight: 700; }
+[id^="vv-dedication-certificate-"] [data-vv-role="brand"] span { margin-top: .05in; color: var(--vd-sky); font-size: .1in; line-height: 1; font-weight: 600; font-style: italic; white-space: nowrap; }
+[id^="vv-dedication-certificate-"] [data-vv-role="title"] { left: 1.4in; top: 1.5in; width: 8.2in; height: .58in; color: var(--vd-navy); font-family: "Cormorant Garamond", serif; font-size: .48in; line-height: 1; font-weight: 700; text-align: center; white-space: nowrap; }
+[id^="vv-dedication-certificate-"] [data-vv-role="title-rule"] { left: 4.15in; top: 2.15in; width: 2.7in; height: .022in; background: var(--vd-lime); border-radius: 2px; }
+[id^="vv-dedication-certificate-"] [data-vv-role="verse"] { left: 2.75in; top: 2.32in; width: 5.5in; color: var(--vd-sky); font-family: "Cormorant Garamond", serif; font-style: italic; font-size: .19in; line-height: 1.15; text-align: center; }
+[id^="vv-dedication-certificate-"] [data-vv-role="recognition"] { left: 3.6in; top: 2.98in; width: 3.8in; font-family: "Cormorant Garamond", serif; font-size: .3in; line-height: 1; text-align: center; color: var(--vd-muted); }
+[id^="vv-dedication-certificate-"] [data-vv-role="child-name"] { left: 1.35in; top: 3.42in; width: 8.3in; max-width: 8.3in; height: 1in; overflow: hidden; color: var(--vd-navy); font-family: "Cormorant Garamond", serif; font-style: italic; font-weight: 700; line-height: 1.1; text-align: center; white-space: nowrap; text-overflow: ellipsis; }
+[id^="vv-dedication-certificate-"] [data-vv-role="birth-line"] { left: 1.35in; top: 4.36in; width: 8.3in; font-size: .15in; line-height: 1; text-align: center; color: var(--vd-muted); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+[id^="vv-dedication-certificate-"] [data-vv-role="statement"] { left: 1.35in; top: 4.72in; width: 8.3in; padding-bottom: .1in; font-family: "Cormorant Garamond", serif; font-size: .2in; line-height: 1.25; text-align: center; color: var(--vd-navy); }
+[id^="vv-dedication-certificate-"] [data-vv-role="facts"] { left: .7in; top: 5.9in; width: 9.6in; height: .85in; display: grid; grid-template-columns: 3.1in 3.1in 3.1in; }
+[id^="vv-dedication-certificate-"] [data-vv-role="facts"] div { min-width: 0; text-align: center; padding: 0 .12in; }
+[id^="vv-dedication-certificate-"] [data-vv-role="facts"] div + div { border-left: .014in solid var(--vd-lime-border); }
+[id^="vv-dedication-certificate-"] dt { font-size: .095in; line-height: 1; font-weight: 700; letter-spacing: .05em; white-space: nowrap; color: var(--vd-muted); }
+[id^="vv-dedication-certificate-"] dd { margin: .12in 0 0; font-size: .135in; line-height: 1.25; font-weight: 700; color: var(--vd-navy); overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+[id^="vv-dedication-certificate-"] [data-vv-role="signature"] { left: 6.1in; top: 6.98in; width: 2.2in; height: 1.2in; text-align: center; }
+[id^="vv-dedication-certificate-"] [data-vv-role="signature"] div { width: 2.2in; height: .68in; display: flex; align-items: flex-end; justify-content: center; }
+[id^="vv-dedication-certificate-"] [data-vv-role="signature"] img { max-width: 100%; max-height: 100%; object-fit: contain; }
+[id^="vv-dedication-certificate-"] [data-vv-role="signature"] i { display: block; width: 2.2in; height: .012in; background: var(--vd-navy); }
+[id^="vv-dedication-certificate-"] [data-vv-role="signature"] strong { display: block; margin-top: .07in; font-size: .085in; line-height: 1; color: var(--vd-navy); }
+[id^="vv-dedication-certificate-"] [data-vv-role="signature"] small { display: block; margin-top: .05in; font-family: "Cormorant Garamond", serif; font-size: .07in; line-height: 1; color: var(--vd-muted); }
+[id^="vv-dedication-certificate-"] [data-vv-role="verification"] { left: 8.72in; top: 6.96in; width: 1.15in; height: 1.4in; text-align: center; }
+[id^="vv-dedication-certificate-"] [data-vv-role="qr"] { left: 0; top: 0; width: 1.1in; height: 1.1in; padding: .05in; border: .012in solid var(--vd-sky-border); border-radius: .1in; background: var(--vd-cream); }
+[id^="vv-dedication-certificate-"] [data-vv-role="qr"] img { width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; }
+[id^="vv-dedication-certificate-"] [data-vv-role="verification"] > strong { position: absolute; top: 1.18in; left: 0; width: 100%; font-size: .07in; line-height: 1; white-space: nowrap; color: var(--vd-muted); }
+[id^="vv-dedication-certificate-"] [data-vv-role="mission"] { left: 2.1in; top: 8.02in; width: 6.8in; display: flex; align-items: center; justify-content: center; gap: .14in; color: var(--vd-navy); font-size: .07in; line-height: 1; font-weight: 600; letter-spacing: .02in; white-space: nowrap; }
+[id^="vv-dedication-certificate-"] [data-vv-role="mission"] i { width: .5in; height: .012in; background: var(--vd-lime); border-radius: 2px; }

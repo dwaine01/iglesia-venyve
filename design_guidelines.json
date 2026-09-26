@@ -1,85 +1,116 @@
 {
-  "project_identity": "Identidad Ven y Ve - Sistema de Diseño de Carnet y Certificado",
-  "theme": "Reproducción exacta del master adjunto: blanco institucional con navy, celeste y verde",
-  "dimensions": {
-    "carnet": {
-      "width_mm": 85.60,
-      "height_mm": 53.98,
-      "aspect_ratio": "85.6mm / 53.98mm (ISO/IEC 7810 ID-1 standard)",
-      "orientation": "horizontal"
+  "project_name": "Iglesia OS Ven y Ve - Certificado de Presentación de Niño/a",
+  "document_type": "Child Dedication / Baby Presentation Certificate (Certificado de Presentación de Niño/a)",
+  "physical_format": {
+    "dimensions": "Letter Landscape 11in x 8.5in (1056px x 816px at standard 96DPI display ratio)",
+    "aspect_ratio": "11:8.5 landscape",
+    "print_ready": true,
+    "margins": "0.4in to 0.5in inner safety margin (padding: 2.25rem)"
+  },
+  "color_palette": {
+    "primary_navy": {
+      "hex": "#022E5A",
+      "usage": "Main text titles, heavy structural elements, primary branding borders, QR code fill",
+      "apca_contrast": "High contrast on white/light backgrounds (14.2:1 contrast ratio)"
     },
-    "certificate": {
-      "width_in": 11,
-      "height_in": 8.5,
-      "width_mm": 279.4,
-      "height_mm": 215.9,
-      "aspect_ratio": "11in / 8.5in (US Letter Landscape)",
-      "orientation": "landscape"
+    "sky_blue": {
+      "hex": "#0798C8",
+      "usage": "Primary accent, ribbon borders, icon highlights, subheadings",
+      "apca_contrast": "Subheading emphasis and decorative linework"
+    },
+    "lime_green": {
+      "hex": "#61B33B",
+      "usage": "Secondary soft accent, leaf/organic flourishes, seal accents, vitality highlights"
+    },
+    "soft_tints": {
+      "background_cream": "#FDFBF7",
+      "soft_ice_blue": "#EFF8FA",
+      "soft_mint_tint": "#F2F9F0",
+      "card_surface": "#FFFFFF",
+      "soft_sky_border": "#BCE3F2",
+      "soft_lime_border": "#CCEBBF",
+      "soft_navy_tint": "#1A426F",
+      "muted_text": "#4A607A"
     }
   },
   "typography": {
-    "font_family_primary": "Plus Jakarta Sans, sans-serif",
-    "font_family_display": "Cormorant Garamond, serif",
-    "member_name_carnet": "Cormorant Garamond 5.1mm máximo; dos líneas dentro de caja 31.7mm",
-    "member_name_certificate": "Cormorant Garamond italic con tamaño dinámico y caja máxima 8.3in",
-    "labels": "Plus Jakarta Sans, mayúsculas compactas",
-    "values": "Plus Jakarta Sans, negrita y escala dinámica para números largos",
-    "certificate_body": "Cormorant Garamond centrada, máximo dos líneas"
-  },
-  "colors": {
-    "brand_navy": "#022E5A",
-    "brand_primary_sky_blue": "#0798C8",
-    "brand_secondary_lime_green": "#61B33B",
-    "background_main": "#FFFFFF",
-    "card_background": "#FFFFFF",
-    "off_white": "#F7F9F8",
-    "text_primary": "#101D35"
-  },
-  "grids_and_layouts": {
-    "carnet_front": {
-      "layout_engine": "Coordenadas absolutas en milímetros tomadas del master",
-      "structure": "Logo y marca arriba; foto 24.8 × 34.8mm izquierda; identidad y estado al centro; número y fecha abajo; geometría SVG navy/celeste/verde al borde derecho; sin QR.",
-      "protection": "Nombre dentro de caja máxima 31.7mm y número con escala dinámica para impedir colisiones."
-    },
-    "carnet_back": {
-      "layout_engine": "Coordenadas absolutas en milímetros tomadas del master",
-      "structure": "Reverso 90% blanco: mensaje/teléfono/firma a la izquierda, divisor verde, verificación+número+QR a la derecha y SVG de esquina inferior."
-    },
-    "certificate": {
-      "layout_engine": "Coordenadas absolutas en pulgadas tomadas del master",
-      "structure": "Marco SVG completo con bandas curvas navy/celeste/verde, marca superior, título y nombre centrales, datos/firma/QR inferiores y cruz de agua."
+    "heading_font": "Cormorant Garamond / Spectral (Serif)",
+    "body_font": "Plus Jakarta Sans (Sans-Serif)",
+    "script_accent_font": "Dancing Script (Script flourish for child name / dedication blessing)",
+    "hierarchy": {
+      "institution_header": "Plus Jakarta Sans, 11px, Bold, Tracking 0.25em, Uppercase (#022E5A)",
+      "certificate_title": "Cormorant Garamond, 34px - 38px, Bold / SemiBold, Tracking tight (#022E5A)",
+      "dedication_subtitle": "Plus Jakarta Sans, 12px, Medium, Italic (#0798C8)",
+      "child_name_hero": "Cormorant Garamond, 36px - 42px, Bold, Text-Primary (#022E5A) with soft sky-blue underlines or script overlay",
+      "statement_text": "Plus Jakarta Sans / Spectral, 13px - 14px, Regular, Leading Relaxed (#2C3E50)",
+      "facts_labels": "Plus Jakarta Sans, 10px, SemiBold, Uppercase, Tracking 0.15em (#4A607A)",
+      "facts_values": "Plus Jakarta Sans, 12px - 13px, Bold (#022E5A)",
+      "signature_title": "Plus Jakarta Sans, 11px, Bold, Uppercase (#022E5A)",
+      "signature_role": "Plus Jakarta Sans, 9px, Regular, Uppercase (#4A607A)"
     }
   },
-  "security_layout_rules": {
-    "zero_layout_bugs": [
-      "No floats permitidos bajo ningún concepto.",
-      "Coordenadas absolutas en mm/in para reproducir el master aprobado.",
-      "SVGs independientes detrás del contenido para ondas, bandas, marcos y marcas de agua.",
-      "Encapsulamiento por IDs vv-membership-* y data-vv-document; ninguna clase global dentro de los documentos.",
-      "Medidas en milímetros (mm) e pulgadas (in) fijas en contenedores de impresión para garantizar paridad exactitud 1:1 entre pantalla y generación PDF."
-    ],
-    "long_name_handling": {
-      "carnet": "Dos líneas en caja 31.7mm con tamaño dinámico; número oficial también reduce tamaño por longitud.",
-      "certificate": "Caja máxima 8.3in con tamaño dinámico por longitud."
+  "svg_artwork_motif": {
+    "style": "Soft organic waves, rounded concentric halos, stylized dove of peace with olive leaf",
+    "elements": [
+      {
+        "name": "Organic Wave Corners",
+        "description": "Rounded fluid SVG background waves blending Sky Blue (#0798C8, opacity 0.08) and Lime Green (#61B33B, opacity 0.06) at the top left and bottom right corners, replacing sharp geometric diagonals with gentle curves."
+      },
+      {
+        "name": "Central Halo Emblem",
+        "description": "A delicate double-ringed SVG halo with soft leaf tendrils framing the church logo or top emblem, using Sky Blue (#0798C8) and Lime Green (#61B33B)."
+      },
+      {
+        "name": "Dove & Olive Branch Motif",
+        "description": "Minimalist, elegant vector outline of a dove carrying a small leaf, symbolizing dedication, blessing, and new life in Christ."
+      },
+      {
+        "name": "Framing Border",
+        "description": "Dual inner border: Outer 2px soft sky blue (#BCE3F2) line, Inner 1px soft lime green (#CCEBBF) line with 12px rounded corner radiuses (rx=12, ry=12)."
+      }
+    ]
+  },
+  "layout_zones": [
+    {
+      "zone_id": "header_institutional",
+      "elements": ["Church Logo", "IGLESIA EVANGÉLICA VEN Y VE", "Sub-department: Ministerio de Niños / Familia"]
+    },
+    {
+      "zone_id": "certificate_title",
+      "elements": ["CERTIFICADO DE PRESENTACIÓN DE NIÑO/A", "Dedication verse text (e.g. Samuel 1:27-28 or Mateo 19:14)"]
+    },
+    {
+      "zone_id": "child_hero_block",
+      "elements": ["Recognition phrase ('Presentamos con gozo a:')", "Full Child Name (Hero Typography)", "Date of Birth & Place of Birth"]
+    },
+    {
+      "zone_id": "facts_grid_3col",
+      "elements": [
+        "Col 1: Padres (Mother & Father Names)",
+        "Col 2: Fecha y Lugar de Presentación",
+        "Col 3: Testigos / Padrinos"
+      ]
+    },
+    {
+      "zone_id": "signature_block",
+      "elements": ["MINISTRO OFICIANTE (Pastoral signature)", "Padres / Tutores signature", "Official Embossed Seal graphic"]
+    },
+    {
+      "zone_id": "verification_footer",
+      "elements": ["QR Code for public digital verification", "Unique Certificate Code", "Church Mission Statement Footer"]
     }
-  },
-  "image_urls": {
-    "master_visual": "https://customer-assets-4nw71qhi.emergentagent.net/job_e6542075-bbf9-4d6d-a5b2-89872da4370d/artifacts/9ss4wsx5_image.png",
-    "logo_ven_y_ve": "/assets/membership/church-logo.png",
-    "member_avatar_male": "https://images.pexels.com/photos/39284040/pexels-photo-39284040.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
-    "member_avatar_female": "https://images.pexels.com/photos/33722925/pexels-photo-33722925.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
-    "qr_code_placeholder": "https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://venyve.org/verify/VV-894021"
-  },
-  "instructions_to_main_agent": [
-    "Reconstruir el master; no rediseñar ni reinterpretar.",
-    "Mantener estilos aislados por IDs/data-vv-document en membership-documents.css.",
-    "Asegurar que las dimensiones del Carnet sean exactamente 85.60mm x 53.98mm y el Certificado 11in x 8.5in.",
-    "Implementar los testids (data-testid) en todos los elementos principales para validación automatizada.",
-    "No generar modificaciones no aprobadas en el Layout hasta confirmación."
   ],
-  "UNIVERSAL GUIDELINES FOR MAIN AGENT": {
-    "data_testid_requirement": "Todos los elementos interactivos e informativos clave DEBEN incluir data-testid.",
-    "contrast_standards": "Asegurar un contraste mínimo de 4.5:1 entre textos y fondos.",
-    "design_isolation": "DESIGN LOCKED: Ninguna regla CSS de los documentos debe salirse del ámbito encapsulado."
-  }
+  "component_path": "frontend/src/components/membership/PresentationCertificateTemplate.js",
+  "instructions_to_main_agent": [
+    "Ensure the certificate strictly maintains the 11in x 8.5in Letter landscape proportions.",
+    "Use exact church brand colors (#022E5A, #0798C8, #61B33B) mixed with soft pastel tints for a warm, child-friendly feel.",
+    "Use organic, rounded SVG curves and dove/leaf motifs instead of harsh geometric diagonal cuts.",
+    "Include data-testid attributes on key certificate fields for automated testing (e.g. data-testid='presentation-cert-child-name', data-testid='presentation-cert-officiant', data-testid='presentation-cert-qr').",
+    "Re-use html2canvas + jsPDF export flow matching existing certificate dialogs."
+  ],
+  "UNIVERSAL GUIDELINES FOR MAIN AGENT": [
+    "All interactive and key informational elements MUST include a data-testid attribute.",
+    "Do not use dark gradients or pure #000000 colors.",
+    "Keep typography accessible, elegant, and perfectly aligned."
+  ]
 }

@@ -453,6 +453,8 @@ from membership_import import router as membership_import_router
 app.include_router(membership_import_router)
 from baptism_documents import router as baptism_documents_router, ensure_baptism_documents
 app.include_router(baptism_documents_router)
+from dedication_documents import router as dedication_documents_router, ensure_dedication_documents
+app.include_router(dedication_documents_router)
 from front_groups import router as front_groups_router, ensure_front_group_indexes
 app.include_router(front_groups_router)
 from front_group_work import router as front_group_work_router, ensure_front_group_work_indexes
@@ -634,6 +636,7 @@ async def startup():
     await finance_ensure_indexes()
     await ensure_membership_documents()
     await ensure_baptism_documents()
+    await ensure_dedication_documents()
     await migrate_core_identity(db, "system:startup")
     await seed_process_catalog(db)
     await ensure_process_indexes(db)
