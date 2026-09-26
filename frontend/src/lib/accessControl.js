@@ -74,6 +74,18 @@ export const canManageMembershipDocuments = (user) => (
   || (user?.capabilities || []).includes('membership.documents.manage')
 );
 
+export const canManageBaptismEvents = (user) => (
+  isPastoralAuthority(user)
+  || ['coordinador_general', 'general_coordinator'].includes(String(user?.access_level || user?.rol || user?.role || '').trim().toLowerCase())
+  || (user?.capabilities || []).includes('baptism.events.manage')
+);
+
+export const canIssueBaptismCertificates = (user) => (
+  isPastoralAuthority(user)
+  || ['coordinador_general', 'general_coordinator'].includes(String(user?.access_level || user?.rol || user?.role || '').trim().toLowerCase())
+  || (user?.capabilities || []).includes('baptism.certificates.issue')
+);
+
 export const canViewOperations = (user) => Boolean(user) && (isPastoralAuthority(user) || hasCapability(user, 'operations.view'));
 export const canManageOperations = (user) => isPastoralAuthority(user) || hasCapability(user, 'operations.manage');
 export const canCheckInOperations = (user) => canManageOperations(user) || hasCapability(user, 'operations.checkin');
