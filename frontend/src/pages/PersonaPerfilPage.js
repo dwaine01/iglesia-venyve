@@ -24,7 +24,7 @@ import { FormationProfileSection } from '../components/formation/FormationProfil
 import { PersonArchiveDialog } from '../components/PersonArchiveDialog';
 import { PersonJourneyStatusStrip } from '../components/PersonJourneyStatusStrip';
 import { toast } from 'sonner';
-import { canManageMembershipDocuments, canRegularizeMembership, canWriteBaptism, isPastoralAuthority } from '../lib/accessControl';
+import { canIssueBaptismCertificates, canManageMembershipDocuments, canRegularizeMembership, canWriteBaptism, isPastoralAuthority } from '../lib/accessControl';
 
 // P-001 Slice 2A - Person Profile 360 (shell full-screen).
 // Consume unicamente el read-model /api/core/persons/{id}/profile.
@@ -118,6 +118,7 @@ export default function PersonaPerfilPage() {
   const canManageMembershipDocs = canManageMembershipDocuments(user);
   const canRegularize = canRegularizeMembership(user);
   const baptismCanWrite = canWriteBaptism(user);
+  const baptismCanIssueCertificate = canIssueBaptismCertificates(user);
   const canArchive = isPastoralAuthority(user) && user?.person_id !== personId && profile?.identity?.account_role !== 'pastor';
   const allSections = [
     'resumen', 'contacto', 'direcciones', 'household',
@@ -299,7 +300,7 @@ export default function PersonaPerfilPage() {
 
           {available.includes('bautismo') && (
             <TabsContent value="bautismo" className="mt-0">
-              <BaptismSection personId={personId} record={profile.bautismo} canWrite={baptismCanWrite} API={API} getAuthHeaders={getAuthHeaders} onChanged={refreshProfile} />
+              <BaptismSection personId={personId} record={profile.bautismo} canWrite={baptismCanWrite} canIssueCertificate={baptismCanIssueCertificate} API={API} getAuthHeaders={getAuthHeaders} onChanged={refreshProfile} />
             </TabsContent>
           )}
 

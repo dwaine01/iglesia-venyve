@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 
 import { MembershipDocumentsSection } from './membership/MembershipDocumentsSection';
 import { RegularizeMembershipDialog } from './membership/RegularizeMembershipDialog';
+import { BaptismCertificateSection } from './baptism/BaptismCertificateSection';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -30,7 +31,7 @@ export const MembershipProfileSection = ({ personId, membership, canManage, canR
   </section>
 );
 
-export const BaptismSection = ({ personId, record, canWrite, API, getAuthHeaders, onChanged }) => {
+export const BaptismSection = ({ personId, record, canWrite, canIssueCertificate, API, getAuthHeaders, onChanged }) => {
   const [form, setForm] = useState(() => (record ? { ...EMPTY_BAPTISM, ...record } : EMPTY_BAPTISM));
   const [saving, setSaving] = useState(false);
   useEffect(() => { setForm(record ? { ...EMPTY_BAPTISM, ...record } : EMPTY_BAPTISM); }, [record]);
@@ -56,5 +57,6 @@ export const BaptismSection = ({ personId, record, canWrite, API, getAuthHeaders
       <div className="space-y-2 md:col-span-2"><Label htmlFor="baptism-notes">Notas</Label><Textarea id="baptism-notes" value={form.notes || ''} onChange={(event) => setForm((old) => ({ ...old, notes: event.target.value }))} disabled={!canWrite} data-testid="baptism-notes-input" /></div>
       {canWrite && <Button type="submit" disabled={saving} className="justify-self-end bg-[#132443] md:col-span-2" data-testid="save-baptism-button">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}Guardar Bautismo</Button>}
     </form>
+    <BaptismCertificateSection personId={personId} canIssue={canIssueCertificate} />
   </section>;
 };
