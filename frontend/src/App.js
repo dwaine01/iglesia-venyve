@@ -44,6 +44,8 @@ import AccessOnboardingPage from './pages/AccessOnboardingPage';
 import MembershipVerificationPage from './pages/MembershipVerificationPage';
 import BaptismVerificationPage from './pages/BaptismVerificationPage';
 import BaptismEventsPage from './pages/BaptismEventsPage';
+import DedicationVerificationPage from './pages/DedicationVerificationPage';
+import DedicationEventsPage from './pages/DedicationEventsPage';
 import FinanceDashboardPage from './pages/finance/FinanceDashboardPage';
 import FinanceSetupPage from './pages/finance/FinanceSetupPage';
 import FinanceJournalsPage from './pages/finance/FinanceJournalsPage';
@@ -80,7 +82,7 @@ import BoardMeetingsPage from './pages/board/BoardMeetingsPage';
 import BoardMeetingDetailPage from './pages/board/BoardMeetingDetailPage';
 import BoardMinutesPage from './pages/board/BoardMinutesPage';
 import AppLayout from './components/AppLayout';
-import { canManageDirectMembership, canManageBaptismEvents, canViewCare, canViewFinanceModule, canViewFormation, canViewFrontGroups, canViewGeo, canViewLeadership, canViewOperations, hasAnyCapability, isPastoralAuthority } from './lib/accessControl';
+import { canManageDirectMembership, canManageBaptismEvents, canManageDedicationEvents, canViewCare, canViewFinanceModule, canViewFormation, canViewFrontGroups, canViewGeo, canViewLeadership, canViewOperations, hasAnyCapability, isPastoralAuthority } from './lib/accessControl';
 import { useBoardAccess } from './hooks/useBoardAccess';
 import './App.css';
 
@@ -171,6 +173,7 @@ function App() {
           <Route path="/acuerdo-confidencialidad" element={<AccessOnboardingPage />} />
           <Route path="/verificar/carnet/:token" element={<MembershipVerificationPage />} />
           <Route path="/verificar/bautismo/:token" element={<BaptismVerificationPage />} />
+          <Route path="/verificar/presentacion/:token" element={<DedicationVerificationPage />} />
           {/* Rutas de presentación full-screen (fuera del AppLayout) */}
           <Route path="/presentacion/presenter" element={<StaffRoute><PresentacionPresenterPage /></StaffRoute>} />
           <Route path="/presentacion/audiencia/:code" element={<PresentacionAudiencePage />} />
@@ -236,6 +239,7 @@ function App() {
             <Route path="personas/nueva" element={<StaffRoute><PersonaNuevaPage /></StaffRoute>} />
             <Route path="personas/importar" element={<CapabilityRoute allowed={canManageDirectMembership}><MembershipImportPage /></CapabilityRoute>} />
             <Route path="bautismos" element={<CapabilityRoute allowed={canManageBaptismEvents}><BaptismEventsPage /></CapabilityRoute>} />
+            <Route path="presentaciones" element={<CapabilityRoute allowed={canManageDedicationEvents}><DedicationEventsPage /></CapabilityRoute>} />
             <Route path="operaciones" element={<CapabilityRoute allowed={canViewOperations}><OperationsDashboardPage /></CapabilityRoute>} />
             <Route path="operaciones/eventos" element={<CapabilityRoute allowed={canViewOperations}><OperationsEventsPage /></CapabilityRoute>} />
             <Route path="operaciones/eventos/:eventId" element={<CapabilityRoute allowed={canViewOperations}><OperationEventDetailPage /></CapabilityRoute>} />
