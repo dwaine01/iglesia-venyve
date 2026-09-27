@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 
 import { MembershipDocumentsSection } from './membership/MembershipDocumentsSection';
 import { RegularizeMembershipDialog } from './membership/RegularizeMembershipDialog';
+import { EditMembershipDateDialog } from './membership/EditMembershipDateDialog';
 import { BaptismCertificateSection } from './baptism/BaptismCertificateSection';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
@@ -24,7 +25,7 @@ export const MembershipProfileSection = ({ personId, membership, canManage, canR
         <div className="border bg-slate-50 p-4"><span className="text-xs uppercase text-slate-500">Número</span><strong className="mt-1 block text-[#0879BE]" data-testid="profile-membership-number">{membership?.member_number || 'Pendiente'}</strong></div>
         <div className="border bg-slate-50 p-4"><span className="text-xs uppercase text-slate-500">Origen</span><strong className="mt-1 block">{membership?.legacy_membership ? 'Miembro preexistente' : membership ? 'Carta de Membresía' : 'Sin registro'}</strong></div>
       </div>
-      <div className="mt-4 flex flex-wrap items-center gap-3">{!membership?.status && canRegularize && <RegularizeMembershipDialog personId={personId} onChanged={onChanged} />}{membership?.membership_origin === 'historical_regularization' && <p className="text-sm text-slate-600" data-testid="membership-regularization-details">Regularizada {membership.regularized_at?.slice?.(0,10)} · Fecha histórica {membership.historical_membership_date || 'desconocida'}</p>}</div>
+      <div className="mt-4 flex flex-wrap items-center gap-3">{!membership?.status && canRegularize && <RegularizeMembershipDialog personId={personId} onChanged={onChanged} />}{membership?.status && canRegularize && <EditMembershipDateDialog personId={personId} membership={membership} onChanged={onChanged} />}{membership?.membership_origin === 'historical_regularization' && <p className="text-sm text-slate-600" data-testid="membership-regularization-details">Regularizada {membership.regularized_at?.slice?.(0,10)} · Fecha histórica {membership.historical_membership_date || 'desconocida'}</p>}</div>
       {!canManage && <p className="mt-4 border-l-4 border-amber-500 bg-amber-50 p-3 text-sm text-amber-900" data-testid="membership-read-only-notice">Consulta de estado disponible. La emisión de documentos requiere autorización de Membresía.</p>}
     </div>
     {canManage && <MembershipDocumentsSection personId={personId} photoSrc={photoSrc} />}

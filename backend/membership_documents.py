@@ -65,6 +65,25 @@ class MembershipRegularizationInput(BaseModel):
         return self
 
 
+class MembershipDateUpdateInput(BaseModel):
+    historical_membership_date: Optional[str] = None
+    historical_date_precision: Literal["exact", "month", "year", "unknown"] = "unknown"
+    reason: str = Field(default="", max_length=1000)
+
+    @model_validator(mode="after")
+    def validate_history(self):
+        if self.historical_membership_date:
+            try:
+                datetime.fromisoformat(self.historical_membership_date)
+            except ValueError as exc:
+                raise ValueError("Fecha histórica inválida") from exc
+            if self.historical_date_precision == "unknown":
+                self.historical_date_precision = "exact"
+        else:
+            self.historical_date_precision = "unknown"
+        return self
+
+
 class RenewCardInput(BaseModel):
     issue_date: date = Field(default_factory=date.today)
 
@@ -518,6 +537,47 @@ async def regularize_existing_membership(person_id: str, payload: MembershipRegu
         payload.reason,
     )
     return {"membership": membership, "regularized": created}
+
+
+@router.put("/api/membership/persons/{person_id}/membership-date", response_model=dict)
+async def update_membership_date(person_id: str, payload: MembershipDateUpdateInput, current_user: dict = Depends(get_current_user)):
+    require_direct_membership_manager(current_user)
+    person = await canonical_person(person_id)
+    existing = await db.person_memberships.find_one({"person_id": person["person_id"]}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="La persona no tiene membresía registrada")
+    now = now_utc()
+    fields = {
+        "historical_membership_date": payload.historical_membership_date,
+        "historical_date_precision": payload.historical_date_precision,
+        "membership_date_updated_at": now,
+        "membership_date_updated_by_user_id": current_user["user_id"],
+        "updated_by_user_id": current_user["user_id"],
+        "updated_at": now,
+    }
+    await db.person_memberships.update_one({"membership_id": existing["membership_id"]}, {"$set": fields})
+    membership = await db.person_memberships.find_one({"membership_id": existing["membership_id"]}, {"_id": 0})
+    event_id = str(uuid4())
+    await db.membership_events.insert_one({
+        "_id": event_id,
+        "event_id": event_id,
+        "membership_id": existing["membership_id"],
+        "person_id": person["person_id"],
+        "event_type": "membership_date_updated",
+        "source": "persona_360_membership_date_edit",
+        "actor_user_id": current_user["user_id"],
+        "before": serialize(existing),
+        "after": serialize(membership),
+        "reason": payload.reason or None,
+        "occurred_at": now,
+    })
+    await db.person_activity.insert_one({
+        "_id": str(uuid4()), "person_id": person["person_id"], "domain": "membership",
+        "action": "membership_date_updated",
+        "summary": f"Fecha de membresía actualizada a {payload.historical_membership_date or 'desconocida'}",
+        "actor_user_id": current_user["user_id"], "created_at": now,
+    })
+    return {"membership": serialize(membership)}
 
 
 @router.get("/api/membership/persons/{person_id}/events", response_model=dict)
