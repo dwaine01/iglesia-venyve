@@ -46,7 +46,7 @@
 [id^="vv-dedication-certificate-"] [data-vv-role="facts"] div { min-width: 0; text-align: center; padding: 0 .12in; }
 [id^="vv-dedication-certificate-"] [data-vv-role="facts"] div + div { border-left: .014in solid var(--vd-lime-border); }
 [id^="vv-dedication-certificate-"] dt { font-size: .095in; line-height: 1; font-weight: 700; letter-spacing: .05em; white-space: nowrap; color: var(--vd-muted); }
-[id^="vv-dedication-certificate-"] dd { margin: .12in 0 0; font-size: .135in; line-height: 1.25; font-weight: 700; color: var(--vd-navy); overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+[id^="vv-dedication-certificate-"] dd { margin: .12in 0 0; max-height: .51in; font-size: .135in; line-height: 1.25; font-weight: 700; color: var(--vd-navy); overflow: hidden; text-overflow: ellipsis; white-space: normal; }
 [id^="vv-dedication-certificate-"] [data-vv-role="signature"] { left: 6.1in; top: 6.98in; width: 2.2in; height: 1.2in; text-align: center; }
 [id^="vv-dedication-certificate-"] [data-vv-role="signature"] div { width: 2.2in; height: .68in; display: flex; align-items: flex-end; justify-content: center; }
 [id^="vv-dedication-certificate-"] [data-vv-role="signature"] img { max-width: 100%; max-height: 100%; object-fit: contain; }
