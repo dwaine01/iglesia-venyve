@@ -22,9 +22,12 @@ pydantic==2.6.3
 pydantic_core==2.16.3
 PyJWT==2.8.0
 pymongo==4.6.2
+pytest==9.1.1
+pytest-asyncio==1.4.0
 python-dotenv==1.0.1
 python-multipart==0.0.9
 reportlab==5.0.1
+requests==2.34.2
 sniffio==1.3.1
 starlette==0.37.2
 typing_extensions==4.16.0

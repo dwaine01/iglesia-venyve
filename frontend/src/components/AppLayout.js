@@ -13,9 +13,10 @@ import {
 import { LOGO_IGLESIA } from '../data/presentationData';
 import DisplayScaleToggle from './DisplayScaleToggle';
 import { ContextGuideButton } from './guides/ContextGuideButton';
+import { FloatingLibraryScanButton } from './library/FloatingLibraryScanButton';
 import { resolveRouteGuide } from './guides/guideRouteMap';
 import { BRAND } from '../config/brand';
-import { canManageBaptismEvents, canManageDedicationEvents, canViewCare, canViewFinanceModule, canViewFormation, canViewFrontGroups, canViewGeo, canViewLeadership, canViewOperations, hasAnyCapability, isPastoralAuthority } from '../lib/accessControl';
+import { canManageBaptismEvents, canManageDedicationEvents, canViewCare, canViewFinanceModule, canViewFormation, canViewFrontGroups, canViewGeo, canViewLeadership, canViewLibraryModule, canViewOperations, hasAnyCapability, isPastoralAuthority } from '../lib/accessControl';
 import { useBoardAccess } from '../hooks/useBoardAccess';
 const LOGO_URL = LOGO_IGLESIA;
 
@@ -32,6 +33,7 @@ const getNavItems = (user, boardAllowed = false) => {
       { to: '/bautismos', icon: Droplets, label: 'Bautismos', testId: 'nav-baptism' },
       { to: '/presentaciones', icon: Baby, label: 'Presentación de Niños', testId: 'nav-dedication' },
       { to: '/formacion', icon: GraduationCap, label: 'Formación', testId: 'nav-formation' },
+      { to: '/libreria', icon: BookOpen, label: 'Librería 360', testId: 'nav-library' },
       { to: '/grupos-frontales', icon: Network, label: 'Grupos Frontales', testId: 'nav-front-groups' },
       { to: '/liderazgo', icon: Award, label: 'Liderazgo', testId: 'nav-leadership' },
       { to: '/mapas', icon: MapPinned, label: 'Mapa 360', testId: 'nav-geo-maps' },
@@ -78,6 +80,7 @@ const getNavItems = (user, boardAllowed = false) => {
     { to: '/bautismos', icon: Droplets, label: 'Bautismos', testId: 'nav-baptism' },
     { to: '/presentaciones', icon: Baby, label: 'Presentación de Niños', testId: 'nav-dedication' },
     { to: '/formacion', icon: GraduationCap, label: 'Formación', testId: 'nav-formation' },
+    { to: '/libreria', icon: BookOpen, label: 'Librería 360', testId: 'nav-library' },
     { to: '/grupos-frontales', icon: Network, label: 'Grupos Frontales', testId: 'nav-front-groups' },
     { to: '/liderazgo', icon: Award, label: 'Liderazgo', testId: 'nav-leadership' },
     { to: '/mapas', icon: MapPinned, label: 'Mapa 360', testId: 'nav-geo-maps' },
@@ -105,6 +108,8 @@ const getNavItems = (user, boardAllowed = false) => {
   }
   return items.filter((item) => (
     item.to !== '/grupos-frontales' || canViewFrontGroups(user)
+  ) && (
+    item.to !== '/libreria' || canViewLibraryModule(user)
   ) && (
     item.to !== '/liderazgo' || canViewLeadership(user)
   ) && (
@@ -369,6 +374,7 @@ export default function AppLayout() {
         <div className={`min-h-0 flex-1 ${isMapRoute ? 'overflow-hidden' : 'overflow-y-auto'}`} data-testid="app-page-scroll-container">
           <Outlet />
         </div>
+        <FloatingLibraryScanButton />
       </main>
     </div>
   );
