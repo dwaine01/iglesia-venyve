@@ -366,7 +366,7 @@ async def apply_movement(payload: MovementInput, actor_user_id: str, is_reversal
 
 @router.get("/dashboard", response_model=dict)
 async def library_dashboard(current_user: dict = Depends(participant)):
-    books = await db.library_books.find({}, {"_id": 0}).to_list(2000)
+    books = await db.library_books.find({"is_active": True}, {"_id": 0}).to_list(2000)
     holdings = await db.library_holdings.find({}, {"_id": 0}).to_list(5000)
     by_book: dict[str, list] = {}
     for holding in holdings:
@@ -410,7 +410,7 @@ async def library_dashboard(current_user: dict = Depends(participant)):
 
 @router.get("/inventory", response_model=dict)
 async def library_inventory(current_user: dict = Depends(manager)):
-    books = await db.library_books.find({}, {"_id": 0}).sort("name", 1).to_list(2000)
+    books = await db.library_books.find({"is_active": True}, {"_id": 0}).sort("name", 1).to_list(2000)
     holdings = await db.library_holdings.find({}, {"_id": 0}).to_list(5000)
     by_book: dict[str, list] = {}
     for holding in holdings:
