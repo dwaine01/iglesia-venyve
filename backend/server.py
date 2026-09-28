@@ -529,6 +529,7 @@ from door_board_routes import router as door_board_router
 from board_recording_routes import router as board_recording_router
 from care_routes import router as care_router
 from care_service import ensure_care_indexes
+from library_module import router as library_router, ensure_indexes_and_seed as library_ensure_indexes
 
 app.include_router(cellular_router)
 app.include_router(geo_router)
@@ -539,6 +540,7 @@ app.include_router(module_guides_router)
 app.include_router(door_board_router)
 app.include_router(board_recording_router)
 app.include_router(care_router)
+app.include_router(library_router)
 
 
 # --- Default Checklists ---
@@ -660,6 +662,7 @@ async def startup():
     await seed_door_board_catalog(db)
     await ensure_door_board_indexes(db)
     await ensure_care_indexes(db)
+    await library_ensure_indexes()
     print("Core Person (P-001) indexes created")
 
 

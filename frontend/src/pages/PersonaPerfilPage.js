@@ -24,7 +24,8 @@ import { FormationProfileSection } from '../components/formation/FormationProfil
 import { PersonArchiveDialog } from '../components/PersonArchiveDialog';
 import { PersonJourneyStatusStrip } from '../components/PersonJourneyStatusStrip';
 import { toast } from 'sonner';
-import { canIssueBaptismCertificates, canManageMembershipDocuments, canRegularizeMembership, canWriteBaptism, isPastoralAuthority } from '../lib/accessControl';
+import { canDeliverLibraryBooks, canIssueBaptismCertificates, canManageMembershipDocuments, canRegularizeMembership, canWriteBaptism, isPastoralAuthority } from '../lib/accessControl';
+import { LibraryPersonSection } from '../components/library/LibraryPersonSection';
 
 // P-001 Slice 2A - Person Profile 360 (shell full-screen).
 // Consume unicamente el read-model /api/core/persons/{id}/profile.
@@ -42,6 +43,7 @@ const SECTION_LABELS = {
   membresia: 'Carnet y certificado',
   bautismo: 'Bautismo',
   formacion: 'Formación',
+  libreria: 'Libros y Materiales',
 };
 
 export default function PersonaPerfilPage() {
@@ -115,6 +117,7 @@ export default function PersonaPerfilPage() {
   const available = profile?.sections_available || ['resumen'];
   const planned = profile?.sections_planned || [];
   const canViewFinance = profile?.private_finance_can_read === true;
+  const canViewLibrary = canDeliverLibraryBooks(user);
   const canManageMembershipDocs = canManageMembershipDocuments(user);
   const canRegularize = canRegularizeMembership(user);
   const baptismCanWrite = canWriteBaptism(user);
@@ -122,7 +125,7 @@ export default function PersonaPerfilPage() {
   const canArchive = isPastoralAuthority(user) && user?.person_id !== personId && profile?.identity?.account_role !== 'pastor';
   const allSections = [
     'resumen', 'contacto', 'direcciones', 'household',
-    'familia', 'procesos', ...(available.includes('formacion') ? ['formacion'] : []), 'asistencia', 'historial', ...(available.includes('membresia') ? ['membresia'] : []), ...(available.includes('bautismo') ? ['bautismo'] : []), ...(canViewFinance ? ['finanzas'] : []),
+    'familia', 'procesos', ...(available.includes('formacion') ? ['formacion'] : []), 'asistencia', 'historial', ...(available.includes('membresia') ? ['membresia'] : []), ...(available.includes('bautismo') ? ['bautismo'] : []), ...(canViewFinance ? ['finanzas'] : []), ...(canViewLibrary ? ['libreria'] : []),
   ];
 
   const archivePerson = async () => {
@@ -209,7 +212,7 @@ export default function PersonaPerfilPage() {
                   key={section}
                   value={section}
                   data-testid={`profile-tab-${section}`}
-                  disabled={!available.includes(section) && section !== 'finanzas'}
+                  disabled={!available.includes(section) && section !== 'finanzas' && section !== 'libreria'}
                   className="min-h-9 rounded-lg px-2 text-xs font-medium text-gray-600 data-[state=active]:bg-white data-[state=active]:text-[#101D36] data-[state=active]:shadow-sm sm:text-sm"
                 >
                   {SECTION_LABELS[section] || displayLabel(section, 'Sección')}
@@ -301,6 +304,12 @@ export default function PersonaPerfilPage() {
           {available.includes('bautismo') && (
             <TabsContent value="bautismo" className="mt-0">
               <BaptismSection personId={personId} record={profile.bautismo} canWrite={baptismCanWrite} canIssueCertificate={baptismCanIssueCertificate} API={API} getAuthHeaders={getAuthHeaders} onChanged={refreshProfile} />
+            </TabsContent>
+          )}
+
+          {canViewLibrary && (
+            <TabsContent value="libreria" className="mt-0">
+              <LibraryPersonSection personId={personId} user={user} />
             </TabsContent>
           )}
 

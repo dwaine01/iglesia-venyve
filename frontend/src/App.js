@@ -46,6 +46,9 @@ import BaptismVerificationPage from './pages/BaptismVerificationPage';
 import BaptismEventsPage from './pages/BaptismEventsPage';
 import DedicationVerificationPage from './pages/DedicationVerificationPage';
 import DedicationEventsPage from './pages/DedicationEventsPage';
+import LibraryDashboardPage from './pages/library/LibraryDashboardPage';
+import LibraryCatalogPage from './pages/library/LibraryCatalogPage';
+import LibraryMyInventoryPage from './pages/library/LibraryMyInventoryPage';
 import FinanceDashboardPage from './pages/finance/FinanceDashboardPage';
 import FinanceSetupPage from './pages/finance/FinanceSetupPage';
 import FinanceJournalsPage from './pages/finance/FinanceJournalsPage';
@@ -82,7 +85,7 @@ import BoardMeetingsPage from './pages/board/BoardMeetingsPage';
 import BoardMeetingDetailPage from './pages/board/BoardMeetingDetailPage';
 import BoardMinutesPage from './pages/board/BoardMinutesPage';
 import AppLayout from './components/AppLayout';
-import { canManageDirectMembership, canManageBaptismEvents, canManageDedicationEvents, canViewCare, canViewFinanceModule, canViewFormation, canViewFrontGroups, canViewGeo, canViewLeadership, canViewOperations, hasAnyCapability, isPastoralAuthority } from './lib/accessControl';
+import { canManageDirectMembership, canManageBaptismEvents, canManageDedicationEvents, canViewCare, canViewFinanceModule, canViewFormation, canViewFrontGroups, canViewGeo, canViewLeadership, canViewLibraryModule, canManageLibraryInventory, canViewOperations, hasAnyCapability, isPastoralAuthority } from './lib/accessControl';
 import { useBoardAccess } from './hooks/useBoardAccess';
 import './App.css';
 
@@ -240,6 +243,9 @@ function App() {
             <Route path="personas/importar" element={<CapabilityRoute allowed={canManageDirectMembership}><MembershipImportPage /></CapabilityRoute>} />
             <Route path="bautismos" element={<CapabilityRoute allowed={canManageBaptismEvents}><BaptismEventsPage /></CapabilityRoute>} />
             <Route path="presentaciones" element={<CapabilityRoute allowed={canManageDedicationEvents}><DedicationEventsPage /></CapabilityRoute>} />
+            <Route path="libreria" element={<CapabilityRoute allowed={canViewLibraryModule}><LibraryDashboardPage /></CapabilityRoute>} />
+            <Route path="libreria/catalogo" element={<CapabilityRoute allowed={canManageLibraryInventory}><LibraryCatalogPage /></CapabilityRoute>} />
+            <Route path="libreria/mi-inventario" element={<CapabilityRoute allowed={canViewLibraryModule}><LibraryMyInventoryPage /></CapabilityRoute>} />
             <Route path="operaciones" element={<CapabilityRoute allowed={canViewOperations}><OperationsDashboardPage /></CapabilityRoute>} />
             <Route path="operaciones/eventos" element={<CapabilityRoute allowed={canViewOperations}><OperationsEventsPage /></CapabilityRoute>} />
             <Route path="operaciones/eventos/:eventId" element={<CapabilityRoute allowed={canViewOperations}><OperationEventDetailPage /></CapabilityRoute>} />
