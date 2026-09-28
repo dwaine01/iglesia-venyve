@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
-import { Loader2, Save } from 'lucide-react';
+import QRCode from 'qrcode';
+import { Loader2, QrCode, Save } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { useAuth } from '../../context/AuthContext';
@@ -16,7 +17,7 @@ import { BookThumbnail } from './BookThumbnail';
 const EMPTY = {
   sku: '', name: '', description: '', item_type: 'libro', process_key: '', level: '', edition: '', provider: '',
   cost_price: '0', member_price: '0', inventory_kind: 'consumable', is_active: true, min_stock: '10', ideal_stock: '40',
-  location: '', qr_code: '', cover_image_url: '',
+  location: '', qr_code: '', barcode: '', cover_image_url: '',
 };
 
 const centsToDollars = (cents) => String(((cents || 0) / 100).toFixed(2));
@@ -26,6 +27,7 @@ export const LibraryBookFormDialog = ({ open, onOpenChange, book, onSaved }) => 
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
   const [coverFile, setCoverFile] = useState(null);
+  const [qrImage, setQrImage] = useState(null);
 
   useEffect(() => {
     if (book) {
@@ -33,8 +35,13 @@ export const LibraryBookFormDialog = ({ open, onOpenChange, book, onSaved }) => 
     } else {
       setForm(EMPTY);
     }
-    setCoverFile(null);
+    setCoverFile(null); setQrImage(null);
   }, [book, open]);
+
+  const generateQr = async () => {
+    const dataUrl = await QRCode.toDataURL(`VYV-LIB-${book.book_id}`, { width: 260 });
+    setQrImage(dataUrl);
+  };
 
   const submit = async (event) => {
     event.preventDefault();
@@ -44,7 +51,7 @@ export const LibraryBookFormDialog = ({ open, onOpenChange, book, onSaved }) => 
         ...form, cost_price_cents: Math.round(Number(form.cost_price || 0) * 100), member_price_cents: Math.round(Number(form.member_price || 0) * 100),
         min_stock: Number(form.min_stock || 0), ideal_stock: Number(form.ideal_stock || 0),
         sku: form.sku || null, process_key: form.process_key || null, level: form.level || null, edition: form.edition || null,
-        provider: form.provider || null, location: form.location || null, qr_code: form.qr_code || null, cover_image_url: form.cover_image_url || null,
+        provider: form.provider || null, location: form.location || null, qr_code: form.qr_code || null, barcode: form.barcode || null, cover_image_url: form.cover_image_url || null,
       };
       let bookId = book?.book_id;
       if (book) await axios.put(`${API}/api/library/books/${bookId}`, payload, getAuthHeaders());
@@ -70,7 +77,11 @@ export const LibraryBookFormDialog = ({ open, onOpenChange, book, onSaved }) => 
           <div><Label>Foto de portada (JPG, PNG, WebP)</Label><Input type="file" accept="image/jpeg,image/png,image/webp" onChange={(e) => setCoverFile(e.target.files?.[0] || null)} data-testid="library-book-cover-input" /></div>
         </div>
         <div><Label>SKU / Código</Label><Input value={form.sku || ''} onChange={(e) => setForm({ ...form, sku: e.target.value })} data-testid="library-book-sku-input" /></div>
-        <div><Label>Código QR / barras</Label><Input value={form.qr_code || ''} onChange={(e) => setForm({ ...form, qr_code: e.target.value })} data-testid="library-book-qr-input" /></div>
+        <div><Label>Código de barras físico (ISBN/EAN, opcional)</Label><Input value={form.barcode || ''} onChange={(e) => setForm({ ...form, barcode: e.target.value })} placeholder="Si el material ya trae uno impreso" data-testid="library-book-barcode-input" /></div>
+        {book && <div className="flex items-center gap-3 sm:col-span-2">
+          <Button type="button" variant="outline" onClick={generateQr} data-testid="generate-library-book-qr-button"><QrCode className="h-4 w-4" />Generar QR interno para imprimir</Button>
+          {qrImage && <img src={qrImage} alt="QR interno del material" className="h-20 w-20" data-testid="library-book-qr-image" />}
+        </div>}
         <div><Label>Tipo</Label><Select value={form.item_type} onValueChange={(v) => setForm({ ...form, item_type: v })}><SelectTrigger data-testid="library-book-type-select"><SelectValue /></SelectTrigger><SelectContent className="bg-white">
           <SelectItem value="libro">Libro</SelectItem><SelectItem value="manual">Manual</SelectItem><SelectItem value="cuaderno">Cuaderno</SelectItem>
           <SelectItem value="guia">Guía</SelectItem><SelectItem value="material_retiro">Material de retiro</SelectItem><SelectItem value="otro">Otro</SelectItem>

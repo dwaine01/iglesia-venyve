@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Input } from '../ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../ui/table';
 import { Textarea } from '../ui/textarea';
+import { ScannerInput } from './ScannerInput';
 
 const STATUS_LABEL = { draft: 'Borrador', submitted: 'Enviada a Finanzas', approved: 'Aprobada', rejected: 'Rechazada', changes_requested: 'Devuelta para cambios', ordered: 'Ordenada', partially_received: 'Recibida parcial', received: 'Recibida completa', closed: 'Cerrada', cancelled: 'Cancelada' };
 
@@ -23,6 +24,7 @@ export const PurchaseOrderDetailDialog = ({ poId, trigger, onChanged }) => {
   const [comment, setComment] = useState('');
   const [files, setFiles] = useState([]);
   const [busy, setBusy] = useState(false);
+  const [receiveScanMethod, setReceiveScanMethod] = useState('MANUAL');
   const canDecide = canDecideLibraryPO(user);
 
   const refresh = useCallback(async () => {
@@ -47,7 +49,20 @@ export const PurchaseOrderDetailDialog = ({ poId, trigger, onChanged }) => {
   const markOrdered = () => act(() => axios.post(`${API}/api/library/purchase-orders/${poId}/mark-ordered`, {}, getAuthHeaders()));
   const closeOrder = () => act(() => axios.post(`${API}/api/library/purchase-orders/${poId}/close`, {}, getAuthHeaders()));
   const cancelOrder = () => act(() => axios.post(`${API}/api/library/purchase-orders/${poId}/cancel`, {}, getAuthHeaders()));
-  const receive = () => act(() => axios.post(`${API}/api/library/purchase-orders/${poId}/receive`, { lines: po.lines.map((l) => ({ book_id: l.book_id, quantity_received_now: Number(receiveQty[l.book_id] || 0) })) }, getAuthHeaders()));
+  const receive = () => act(() => axios.post(`${API}/api/library/purchase-orders/${poId}/receive`, { lines: po.lines.map((l) => ({ book_id: l.book_id, quantity_received_now: Number(receiveQty[l.book_id] || 0) })), scan_method: receiveScanMethod }, getAuthHeaders()));
+  const onReceiveScan = async (code, method) => {
+    try {
+      const { data } = await axios.get(`${API}/api/library/scan/resolve-material`, { ...getAuthHeaders(), params: { code } });
+      const line = po.lines.find((l) => l.book_id === data.book_id);
+      if (!line) return toast.error('Ese material no pertenece a esta orden');
+      const remaining = line.quantity_ordered - line.quantity_received;
+      const current = Number(receiveQty[line.book_id] || 0);
+      if (current >= remaining) return toast.error('Ya se registró toda la cantidad pendiente para este material');
+      setReceiveQty({ ...receiveQty, [line.book_id]: current + 1 });
+      setReceiveScanMethod(method);
+      toast.success(`+1 ${line.book_name} (${current + 1}/${remaining})`);
+    } catch { toast.error('No se encontró ningún material con ese código'); }
+  };
   const addComment = () => act(async () => { await axios.post(`${API}/api/library/purchase-orders/${poId}/comments`, { text: comment }, getAuthHeaders()); setComment(''); });
   const uploadFile = async (event) => {
     const file = event.target.files?.[0]; if (!file) return;
@@ -62,6 +77,10 @@ export const PurchaseOrderDetailDialog = ({ poId, trigger, onChanged }) => {
         <DialogHeader><DialogTitle className="flex items-center gap-2">{po.po_number}<Badge data-testid="po-status-badge">{STATUS_LABEL[po.status]}</Badge></DialogTitle><DialogDescription>Detalle, aprobación, recepción y documentos de la orden de compra {po.po_number}.</DialogDescription></DialogHeader>
         <div className="max-h-[70vh] space-y-4 overflow-y-auto pr-1">
           <p className="text-sm text-slate-600">Proveedor: <strong>{po.provider_name}</strong> · Total: <strong>${(po.total_cents / 100).toFixed(2)}</strong> {po.expected_date && `· Esperado: ${po.expected_date}`}</p>
+          {['ordered', 'partially_received'].includes(po.status) && <div className="rounded-lg border border-slate-200 bg-slate-50 p-3" data-testid="po-receive-scan-panel">
+            <p className="mb-2 text-sm font-medium text-slate-700">Recepción rápida: escanee cada material para sumar 1 unidad</p>
+            <ScannerInput onDetected={onReceiveScan} testIdPrefix="po-receive-scanner" placeholder="Código del material a recibir" />
+          </div>}
           <Table><TableHeader><TableRow><TableHead>Material</TableHead><TableHead>Ordenado</TableHead><TableHead>Recibido</TableHead><TableHead>Costo unit.</TableHead>{['ordered', 'partially_received'].includes(po.status) && <TableHead>Recibir ahora</TableHead>}</TableRow></TableHeader>
             <TableBody>{po.lines.map((line) => <TableRow key={line.book_id} data-testid={`po-detail-line-${line.book_id}`}>
               <TableCell>{line.book_name}</TableCell><TableCell>{line.quantity_ordered}</TableCell><TableCell>{line.quantity_received}</TableCell><TableCell>${(line.unit_cost_cents / 100).toFixed(2)}</TableCell>

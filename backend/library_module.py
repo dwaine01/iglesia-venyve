@@ -23,6 +23,7 @@ MOVEMENT_TYPES = Literal[
 ]
 HOLDER_TYPES = Literal["warehouse", "user", "person", "writeoff"]
 PAYMENT_STATUSES = Literal["pagado", "pendiente", "exonerado", "beca", "descuento", "pago_parcial", "no_aplica"]
+SCAN_METHODS = Literal["QR_SCAN", "BARCODE_SCAN", "MANUAL"]
 CENTRAL_HOLDER = {"type": "warehouse", "id": "central"}
 
 
@@ -146,6 +147,7 @@ class LibraryBookInput(BaseModel):
     ideal_stock: int = Field(default=0, ge=0)
     location: Optional[str] = Field(default=None, max_length=160)
     qr_code: Optional[str] = Field(default=None, max_length=120)
+    barcode: Optional[str] = Field(default=None, max_length=64)
 
 
 class MovementInput(BaseModel):
@@ -162,6 +164,7 @@ class MovementInput(BaseModel):
     payment_method: Optional[str] = Field(default=None, max_length=40)
     due_date: Optional[date] = None
     notes: str = Field(default="", max_length=1000)
+    scan_method: Optional[SCAN_METHODS] = None
 
     @model_validator(mode="after")
     def validate_holders(self):
@@ -191,6 +194,7 @@ class DeliverBookInput(BaseModel):
     notes: str = Field(default="", max_length=1000)
     as_loan: bool = False
     due_date: Optional[date] = None
+    scan_method: Optional[SCAN_METHODS] = None
 
 
 class RequestBookInput(BaseModel):
@@ -343,6 +347,7 @@ async def apply_movement(payload: MovementInput, actor_user_id: str, is_reversal
         "payment_status": payload.payment_status, "amount_charged_cents": payload.amount_charged_cents,
         "amount_paid_cents": payload.amount_paid_cents, "payment_method": payload.payment_method,
         "due_date": payload.due_date, "notes": payload.notes, "actor_user_id": actor_user_id,
+        "scan_method": payload.scan_method or "MANUAL", "list_price_cents": book.get("member_price_cents", 0),
         "occurred_at": now, "created_at": now, "is_reversal": is_reversal, "reversed_movement_id": reversed_movement_id,
         "reversed_by_movement_id": None, "finance_contribution_id": None,
     }
@@ -532,6 +537,24 @@ async def person_materials(person_id: str, current_user: dict = Depends(particip
     return {"person_id": person["person_id"], "items": serialize(movements)}
 
 
+async def release_reservations_for_delivery(book_id: str, person_id: str, actor_user_id: str) -> None:
+    """Al entregar un material, libera cualquier reserva automática activa de esa
+    persona para ese material (la necesidad ya fue cubierta) — evita que quede
+    stock reservado indefinidamente tras la entrega."""
+    reservations = await db.library_reservations.find({"book_id": book_id, "person_id": person_id, "status": "active"}, {"_id": 0}).to_list(20)
+    for reservation in reservations:
+        movement = await apply_movement(
+            MovementInput(book_id=book_id, movement_type="RESERVATION_RELEASE", quantity=reservation["quantity"],
+                          from_holder=HolderInput(**CENTRAL_HOLDER), person_id=person_id, process_key=reservation.get("process_key"),
+                          notes="Liberación automática · material entregado"),
+            actor_user_id,
+        )
+        await db.library_reservations.update_one(
+            {"reservation_id": reservation["reservation_id"]},
+            {"$set": {"status": "released", "released_at": now_utc(), "release_movement_id": movement["movement_id"], "release_reason": "delivered"}},
+        )
+
+
 @router.post("/persons/{person_id}/deliver", response_model=dict, status_code=201)
 async def deliver_book(person_id: str, payload: DeliverBookInput, current_user: dict = Depends(participant)):
     person = await canonical_person(person_id)
@@ -544,9 +567,10 @@ async def deliver_book(person_id: str, payload: DeliverBookInput, current_user: 
         from_holder=HolderInput(**from_holder), to_holder=HolderInput(type="person", id=person["person_id"]),
         person_id=person["person_id"], process_key=payload.process_key, payment_status=payload.payment_status,
         amount_paid_cents=payload.amount_paid_cents, payment_method=payload.payment_method, notes=payload.notes,
-        due_date=payload.due_date,
+        due_date=payload.due_date, scan_method=payload.scan_method,
     )
     movement = await apply_movement(movement_payload, current_user["user_id"])
+    await release_reservations_for_delivery(payload.book_id, person["person_id"], current_user["user_id"])
     if payload.amount_paid_cents:
         book = await canonical_book(payload.book_id)
         await record_library_income(person, book, payload.amount_paid_cents, payload.payment_method, current_user["user_id"], movement["movement_id"])

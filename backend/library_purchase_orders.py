@@ -77,6 +77,7 @@ class POReceiveLineInput(BaseModel):
 class POReceiveInput(BaseModel):
     lines: list[POReceiveLineInput]
     notes: str = Field(default="", max_length=500)
+    scan_method: Optional[Literal["QR_SCAN", "BARCODE_SCAN", "MANUAL"]] = None
 
     @model_validator(mode="after")
     def non_empty(self):
@@ -333,7 +334,7 @@ async def receive_purchase_order(po_id: str, payload: POReceiveInput, current_us
         if entry.quantity_received_now > remaining:
             raise HTTPException(status_code=422, detail=f"No puede recibir más de lo pendiente para {line['book_name']} (pendiente: {remaining})")
         if entry.quantity_received_now > 0:
-            movement_payload = MovementInput(book_id=entry.book_id, movement_type="PURCHASE_RECEIPT", quantity=entry.quantity_received_now, to_holder=HolderInput(**CENTRAL_HOLDER), notes=f"Recepción {po['po_number']}: {payload.notes}")
+            movement_payload = MovementInput(book_id=entry.book_id, movement_type="PURCHASE_RECEIPT", quantity=entry.quantity_received_now, to_holder=HolderInput(**CENTRAL_HOLDER), notes=f"Recepción {po['po_number']}: {payload.notes}", scan_method=payload.scan_method)
             await apply_movement(movement_payload, current_user["user_id"])
             line["quantity_received"] += entry.quantity_received_now
             lines_by_book[entry.book_id] = line

@@ -110,3 +110,4 @@ export const canDeliverLibraryBooks = (user) => hasAnyCapability(user, ['library
 export const canViewLibraryModule = (user) => canDeliverLibraryBooks(user);
 export const canDecideLibraryPO = (user) => hasCapability(user, 'finance.manage');
 export const canViewLibraryPurchaseOrders = (user) => canManageLibraryInventory(user) || canDecideLibraryPO(user);
+export const canViewLibraryReports = (user) => canManageLibraryInventory(user) || hasCapability(user, 'library.reports.read') || canDeliverLibraryBooks(user);

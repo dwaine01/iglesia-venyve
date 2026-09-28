@@ -533,6 +533,8 @@ from library_module import router as library_router, ensure_indexes_and_seed as 
 from library_files import router as library_files_router, ensure_indexes as library_files_ensure_indexes
 from library_purchase_orders import router as library_po_router, ensure_indexes as library_po_ensure_indexes
 from library_reservations import router as library_reservations_router, ensure_indexes as library_reservations_ensure_indexes
+from library_scan import router as library_scan_router
+from library_reports import router as library_reports_router
 
 app.include_router(cellular_router)
 app.include_router(geo_router)
@@ -547,6 +549,8 @@ app.include_router(library_router)
 app.include_router(library_files_router)
 app.include_router(library_po_router)
 app.include_router(library_reservations_router)
+app.include_router(library_scan_router)
+app.include_router(library_reports_router)
 
 
 # --- Default Checklists ---

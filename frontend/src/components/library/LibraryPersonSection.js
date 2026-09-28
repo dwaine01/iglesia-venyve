@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
-import { BookOpen } from 'lucide-react';
+import { BookOpen, FileSpreadsheet, FileText } from 'lucide-react';
 
 import { useAuth } from '../../context/AuthContext';
 import { canDeliverLibraryBooks } from '../../lib/accessControl';
 import { Badge } from '../ui/badge';
+import { Button } from '../ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../ui/table';
 import { DeliverBookDialog } from './DeliverBookDialog';
 import { BookThumbnail } from './BookThumbnail';
@@ -29,10 +30,24 @@ export const LibraryPersonSection = ({ personId, user }) => {
 
   useEffect(() => { refresh(); }, [refresh]);
 
+  const exportHistory = async (format) => {
+    try {
+      const response = await axios.get(`${API}/api/library/reports/person_ledger`, { ...getAuthHeaders(), params: { person_id: personId, format }, responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url; link.download = `historial_libreria.${format}`; document.body.appendChild(link); link.click(); link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch { /* noop */ }
+  };
+
   return <section className="rounded-2xl border border-slate-200 bg-white p-5" data-testid="library-person-section">
     <div className="flex flex-wrap items-center justify-between gap-3">
       <h3 className="flex items-center gap-2 font-serif text-lg text-[#132443]"><BookOpen className="h-5 w-5" />Libros y Materiales</h3>
-      {canDeliverLibraryBooks(user) && <DeliverBookDialog personId={personId} onDelivered={refresh} />}
+      <div className="flex gap-2">
+        <Button size="sm" variant="outline" onClick={() => exportHistory('pdf')} data-testid="export-person-library-pdf"><FileText className="h-4 w-4" />PDF</Button>
+        <Button size="sm" variant="outline" onClick={() => exportHistory('xlsx')} data-testid="export-person-library-xlsx"><FileSpreadsheet className="h-4 w-4" />Excel</Button>
+        {canDeliverLibraryBooks(user) && <DeliverBookDialog personId={personId} onDelivered={refresh} />}
+      </div>
     </div>
     {loading ? <p className="mt-4 text-sm text-slate-500">Cargando…</p> : items.length === 0 ? (
       <p className="mt-4 text-sm text-slate-500" data-testid="library-person-empty">Sin materiales registrados todavía.</p>
