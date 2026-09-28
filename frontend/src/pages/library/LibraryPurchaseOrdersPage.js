@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
+import { AlertTriangle } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 import { useAuth } from '../../context/AuthContext';
@@ -31,12 +32,21 @@ export default function LibraryPurchaseOrdersPage() {
 
   useEffect(() => { refresh(); }, [refresh]);
 
+  const overdueOrders = orders.filter((po) => po.is_overdue);
+
   return <main className="min-h-screen bg-[#F4F1EA] px-4 py-6 sm:px-8" data-testid="library-purchase-orders-page">
     <div className="mx-auto max-w-6xl space-y-5">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div><Link to="/libreria" className="text-sm text-[#0879BE]">← Librería 360</Link><h1 className="font-serif text-3xl text-[#132443]">Órdenes de compra</h1></div>
         <PurchaseOrderFormDialog onSaved={refresh} />
       </header>
+
+      {overdueOrders.length > 0 && <div className="rounded-2xl border border-red-200 bg-red-50 p-4" data-testid="po-overdue-alert-panel">
+        <p className="flex items-center gap-2 font-medium text-red-800"><AlertTriangle className="h-4 w-4" />{overdueOrders.length} orden(es) de compra retrasada(s)</p>
+        <ul className="mt-2 space-y-1 text-sm text-red-700">{overdueOrders.map((po) => <li key={po.po_id} data-testid={`po-overdue-item-${po.po_id}`}>
+          {po.po_number} · {po.provider_name} · esperado {po.expected_date?.slice(0, 10)} · {po.days_overdue} día(s) de retraso · {po.pending_quantity} unidad(es) pendiente(s)
+        </li>)}</ul>
+      </div>}
 
       <div className="flex items-center gap-2">
         <Select value={statusFilter} onValueChange={setStatusFilter}>
@@ -55,7 +65,7 @@ export default function LibraryPurchaseOrdersPage() {
             <TableCell>{po.provider_name}</TableCell>
             <TableCell>${(po.total_cents / 100).toFixed(2)}</TableCell>
             <TableCell>{po.expected_date || '—'}</TableCell>
-            <TableCell><Badge className={STATUS_BADGE[po.status]}>{STATUS_LABEL[po.status]}</Badge></TableCell>
+            <TableCell className="flex items-center gap-2"><Badge className={STATUS_BADGE[po.status]}>{STATUS_LABEL[po.status]}</Badge>{po.is_overdue && <Badge className="bg-red-100 text-red-700" data-testid={`po-overdue-badge-${po.po_id}`}>Retrasada · {po.days_overdue}d</Badge>}</TableCell>
             <TableCell className="flex gap-2">
               {po.status === 'draft' && <PurchaseOrderFormDialog po={po} onSaved={refresh} />}
               <PurchaseOrderDetailDialog poId={po.po_id} onChanged={refresh} trigger={<Button size="sm" variant="outline" data-testid={`open-po-detail-${po.po_id}`}>Ver detalle</Button>} />

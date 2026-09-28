@@ -532,6 +532,7 @@ from care_service import ensure_care_indexes
 from library_module import router as library_router, ensure_indexes_and_seed as library_ensure_indexes
 from library_files import router as library_files_router, ensure_indexes as library_files_ensure_indexes
 from library_purchase_orders import router as library_po_router, ensure_indexes as library_po_ensure_indexes
+from library_reservations import router as library_reservations_router, ensure_indexes as library_reservations_ensure_indexes
 
 app.include_router(cellular_router)
 app.include_router(geo_router)
@@ -545,6 +546,7 @@ app.include_router(care_router)
 app.include_router(library_router)
 app.include_router(library_files_router)
 app.include_router(library_po_router)
+app.include_router(library_reservations_router)
 
 
 # --- Default Checklists ---
@@ -669,6 +671,7 @@ async def startup():
     await library_ensure_indexes()
     await library_files_ensure_indexes()
     await library_po_ensure_indexes()
+    await library_reservations_ensure_indexes()
     print("Core Person (P-001) indexes created")
 
 

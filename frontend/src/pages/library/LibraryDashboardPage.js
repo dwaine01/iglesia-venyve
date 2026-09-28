@@ -38,6 +38,7 @@ export default function LibraryDashboardPage() {
         <div className="flex gap-2">
           <Link to="/libreria/mi-inventario" className="rounded-lg border border-[#132443] px-4 py-2 text-sm text-[#132443]" data-testid="link-my-library-inventory">Mi inventario</Link>
           {isManager && <Link to="/libreria/catalogo" className="rounded-lg border border-[#132443] px-4 py-2 text-sm text-[#132443]" data-testid="link-library-catalog">Catálogo</Link>}
+          {isManager && <Link to="/libreria/reserva-automatica" className="rounded-lg border border-[#132443] px-4 py-2 text-sm text-[#132443]" data-testid="link-library-deficit">Reserva Automática</Link>}
           {canSeePOs && <Link to="/libreria/ordenes-compra" className="rounded-lg bg-[#132443] px-4 py-2 text-sm text-white" data-testid="link-library-purchase-orders">Órdenes de compra <ArrowRight className="ml-1 inline h-4 w-4" /></Link>}
         </div>
       </header>
@@ -49,10 +50,11 @@ export default function LibraryDashboardPage() {
         <div className="rounded-2xl border border-slate-200 bg-white p-4" data-testid="library-total-delivered"><BookOpen className="h-5 w-5 text-[#132443]" /><p className="mt-2 text-2xl font-semibold">{dashboard.totals.delivered}</p><p className="text-xs text-slate-500">entregados a personas</p></div>
       </div>}
 
-      {dashboard && (dashboard.alerts.critical.length > 0 || dashboard.alerts.low.length > 0) && <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4" data-testid="library-alerts-panel">
+      {dashboard && (dashboard.alerts.critical.length > 0 || dashboard.alerts.low.length > 0 || dashboard.alerts.overdue_purchase_orders > 0) && <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4" data-testid="library-alerts-panel">
         <p className="flex items-center gap-2 font-medium text-amber-800"><AlertTriangle className="h-4 w-4" />Alertas de inventario</p>
         {dashboard.alerts.critical.length > 0 && <p className="mt-1 text-sm text-red-700">🔴 Stock crítico: {dashboard.alerts.critical.join(', ')}</p>}
         {dashboard.alerts.low.length > 0 && <p className="mt-1 text-sm text-amber-700">🟠 Stock bajo: {dashboard.alerts.low.join(', ')}</p>}
+        {dashboard.alerts.overdue_purchase_orders > 0 && <p className="mt-1 text-sm text-red-700" data-testid="library-overdue-po-alert">📦 {dashboard.alerts.overdue_purchase_orders} orden(es) de compra retrasada(s) — <Link to="/libreria/ordenes-compra" className="underline">ver detalle</Link></p>}
       </div>}
 
       {isManager && <div className="rounded-2xl border border-slate-200 bg-white p-5" data-testid="library-inventory-panel">

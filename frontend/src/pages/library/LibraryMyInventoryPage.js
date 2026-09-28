@@ -13,6 +13,7 @@ import { ReceiveInventoryDialog } from '../../components/library/ReceiveInventor
 import { TransferBookDialog } from '../../components/library/TransferBookDialog';
 import { ReportDamageLossDialog } from '../../components/library/ReportDamageLossDialog';
 import { RequestBookDialog } from '../../components/library/RequestBookDialog';
+import { BookThumbnail } from '../../components/library/BookThumbnail';
 
 const REQUEST_STATUS = { pending: 'Pendiente', approved: 'Aprobada', partial: 'Aprobada parcial', rejected: 'Rechazada' };
 
@@ -63,8 +64,9 @@ export default function LibraryMyInventoryPage() {
       <div className="rounded-2xl border border-slate-200 bg-white p-5" data-testid="my-holdings-panel">
         <h2 className="font-serif text-lg text-[#132443]">Lo que tengo en mi poder</h2>
         {holdings.length === 0 ? <p className="mt-3 text-sm text-slate-500">No tiene materiales asignados actualmente.</p> : <Table className="mt-3">
-          <TableHeader><TableRow><TableHead>Material</TableHead><TableHead>En mi poder</TableHead><TableHead>Devolver</TableHead></TableRow></TableHeader>
+          <TableHeader><TableRow><TableHead /><TableHead>Material</TableHead><TableHead>En mi poder</TableHead><TableHead>Devolver</TableHead></TableRow></TableHeader>
           <TableBody>{holdings.map((h) => <TableRow key={h.book.book_id} data-testid={`my-holding-row-${h.book.book_id}`}>
+            <TableCell><BookThumbnail fileId={h.book.cover_file_id} size={28} /></TableCell>
             <TableCell>{h.book.name}</TableCell><TableCell>{h.on_hand}</TableCell>
             <TableCell className="flex gap-2">
               <Input type="number" min="1" max={h.on_hand} className="w-20" value={returnQty[h.book.book_id] ?? ''} onChange={(e) => setReturnQty({ ...returnQty, [h.book.book_id]: e.target.value })} data-testid={`return-quantity-${h.book.book_id}`} />

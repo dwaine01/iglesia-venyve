@@ -14,6 +14,7 @@ from library_module import (
     CENTRAL_HOLDER, HolderInput, MovementInput, apply_movement, canonical_book,
     is_library_manager, now_utc, require_library_manager, serialize,
 )
+from library_reservations import compute_book_deficit
 from server import db, get_current_user
 
 router = APIRouter(prefix="/api/library/purchase-orders", tags=["library-purchase-orders"])
@@ -86,6 +87,12 @@ class POReceiveInput(BaseModel):
 
 class POCommentInput(BaseModel):
     text: str = Field(min_length=1, max_length=1000)
+
+
+class POFromDeficitInput(BaseModel):
+    book_id: str
+    quantity: Optional[int] = Field(default=None, gt=0)
+    provider_name: Optional[str] = Field(default=None, min_length=2, max_length=160)
 
 
 async def next_po_number() -> str:
@@ -167,6 +174,20 @@ def compute_totals(lines: list[POLineInput], tax_cents: int, shipping_cents: int
     return {"subtotal_cents": subtotal, "tax_cents": tax_cents, "shipping_cents": shipping_cents, "total_cents": subtotal + tax_cents + shipping_cents}
 
 
+def po_overdue_info(po: dict) -> dict:
+    pending = sum(line["quantity_ordered"] - line["quantity_received"] for line in po["lines"])
+    expected = po.get("expected_date")
+    is_overdue = False
+    days_overdue = 0
+    if po["status"] in {"ordered", "partially_received"} and expected and pending > 0:
+        expected_date = expected.date() if isinstance(expected, datetime) else expected
+        today = date.today()
+        if expected_date < today:
+            is_overdue = True
+            days_overdue = (today - expected_date).days
+    return {"is_overdue": is_overdue, "days_overdue": days_overdue, "pending_quantity": pending}
+
+
 async def build_lines(lines: list[POLineInput]) -> list[dict]:
     result = []
     for line in lines:
@@ -179,13 +200,23 @@ async def build_lines(lines: list[POLineInput]) -> list[dict]:
 async def list_purchase_orders(current_user: dict = Depends(viewer), status: Optional[str] = None):
     query = {"status": status} if status else {}
     items = await db.library_purchase_orders.find(query, {"_id": 0}).sort("created_at", -1).to_list(500)
-    return {"items": serialize(items), "can_decide": can_decide_po(current_user)}
+    items = [{**item, **po_overdue_info(item)} for item in items]
+    overdue_count = sum(1 for item in items if item["is_overdue"])
+    return {"items": serialize(items), "can_decide": can_decide_po(current_user), "overdue_count": overdue_count}
+
+
+@router.get("/overdue-count", response_model=dict)
+async def overdue_count(current_user: dict = Depends(viewer)):
+    pos = await db.library_purchase_orders.find({"status": {"$in": ["ordered", "partially_received"]}}, {"_id": 0}).to_list(500)
+    enriched = [{**po, **po_overdue_info(po)} for po in pos]
+    overdue = [po for po in enriched if po["is_overdue"]]
+    return {"count": len(overdue), "items": serialize(overdue)}
 
 
 @router.get("/{po_id}", response_model=dict)
 async def get_purchase_order(po_id: str, current_user: dict = Depends(viewer)):
     po = await canonical_po(po_id)
-    return {**serialize(po), "can_decide": can_decide_po(current_user)}
+    return {**serialize(po), **po_overdue_info(po), "can_decide": can_decide_po(current_user)}
 
 
 @router.post("", response_model=dict, status_code=201)
@@ -209,7 +240,34 @@ async def create_purchase_order(payload: POCreateInput, current_user: dict = Dep
     return serialize(doc)
 
 
-@router.put("/{po_id}", response_model=dict)
+@router.post("/from-deficit", response_model=dict, status_code=201)
+async def create_po_from_deficit(payload: POFromDeficitInput, current_user: dict = Depends(manager)):
+    deficit_info = await compute_book_deficit(payload.book_id)
+    quantity = payload.quantity or deficit_info["deficit"]
+    if quantity <= 0:
+        raise HTTPException(status_code=422, detail="No hay déficit actual para este material")
+    book = await canonical_book(payload.book_id)
+    provider_name = payload.provider_name or book.get("provider") or "Proveedor por definir"
+    line = POLineInput(book_id=payload.book_id, quantity=quantity, unit_cost_cents=book.get("cost_price_cents", 0))
+    lines = await build_lines([line])
+    totals = compute_totals([line], 0, 0)
+    po_id = str(uuid4())
+    now = now_utc()
+    notes = (f"Generada automáticamente por Reserva Automática · {deficit_info['enrolled_count']} inscritos en "
+             f"{deficit_info['process_name']}, {deficit_info['available_real']} disponibles.")
+    doc = {
+        "_id": po_id, "po_id": po_id, "po_number": await next_po_number(), "status": "draft",
+        "provider_name": provider_name, "provider_contact": None, "lines": lines,
+        **totals, "expected_date": None, "notes": notes,
+        "requested_by_user_id": current_user["user_id"], "requested_at": None,
+        "approved_by_user_id": None, "approved_at": None, "rejected_by_user_id": None, "rejected_at": None,
+        "rejection_reason": None, "ordered_by_user_id": None, "ordered_at": None,
+        "closed_by_user_id": None, "closed_at": None, "linked_expense_id": None, "finance_sync_error": None,
+        "comments": [], "status_history": [{"status": "draft", "actor_user_id": current_user["user_id"], "at": now, "note": "Orden creada desde Reserva Automática"}],
+        "created_by_user_id": current_user["user_id"], "created_at": now, "updated_at": now,
+    }
+    await db.library_purchase_orders.insert_one(doc)
+    return serialize(doc)
 async def update_purchase_order(po_id: str, payload: POCreateInput, current_user: dict = Depends(manager)):
     po = await canonical_po(po_id)
     if po["status"] != "draft":

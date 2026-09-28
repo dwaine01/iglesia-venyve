@@ -381,9 +381,20 @@ async def library_dashboard(current_user: dict = Depends(participant)):
         elif on_hand <= book.get("min_stock", 0):
             low.append(book["name"])
     pending_requests = await db.library_requests.count_documents({"status": "pending"}) if is_library_manager(current_user) else 0
+    overdue_pos = 0
+    if is_library_manager(current_user):
+        pos = await db.library_purchase_orders.find({"status": {"$in": ["ordered", "partially_received"]}}, {"_id": 0, "expected_date": 1, "lines": 1}).to_list(500)
+        today = date.today()
+        for po in pos:
+            pending = sum(line["quantity_ordered"] - line["quantity_received"] for line in po["lines"])
+            expected = po.get("expected_date")
+            if expected and pending > 0:
+                expected_date = expected.date() if isinstance(expected, datetime) else expected
+                if expected_date < today:
+                    overdue_pos += 1
     return {
         "totals": {"registered": total_registered, "available": total_available, "with_leaders": total_with_leaders, "delivered": total_delivered},
-        "alerts": {"critical": critical, "low": low, "pending_requests": pending_requests},
+        "alerts": {"critical": critical, "low": low, "pending_requests": pending_requests, "overdue_purchase_orders": overdue_pos},
     }
 
 

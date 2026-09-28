@@ -7,6 +7,7 @@ import { canDeliverLibraryBooks } from '../../lib/accessControl';
 import { Badge } from '../ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../ui/table';
 import { DeliverBookDialog } from './DeliverBookDialog';
+import { BookThumbnail } from './BookThumbnail';
 
 const PAYMENT_LABELS = { pagado: 'Pagado', pendiente: 'Pendiente', exonerado: 'Exonerado', beca: 'Beca', descuento: 'Descuento', pago_parcial: 'Pago parcial', no_aplica: 'Gratis' };
 const TYPE_LABELS = { DELIVERY: 'Entregado', LOAN: 'Prestado', LOAN_RETURN: 'Devuelto', RETURN: 'Devuelto', ASSIGNMENT: 'Asignado' };
@@ -14,12 +15,15 @@ const TYPE_LABELS = { DELIVERY: 'Entregado', LOAN: 'Prestado', LOAN_RETURN: 'Dev
 export const LibraryPersonSection = ({ personId, user }) => {
   const { API, getAuthHeaders } = useAuth();
   const [items, setItems] = useState([]);
+  const [books, setBooks] = useState({});
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
     try {
       const { data } = await axios.get(`${API}/api/library/persons/${personId}/materials`, getAuthHeaders());
       setItems(data.items || []);
+      const booksRes = await axios.get(`${API}/api/library/books`, getAuthHeaders());
+      setBooks(Object.fromEntries((booksRes.data.items || []).map((b) => [b.book_id, b])));
     } finally { setLoading(false); }
   }, [API, personId]);
 
@@ -33,8 +37,9 @@ export const LibraryPersonSection = ({ personId, user }) => {
     {loading ? <p className="mt-4 text-sm text-slate-500">Cargando…</p> : items.length === 0 ? (
       <p className="mt-4 text-sm text-slate-500" data-testid="library-person-empty">Sin materiales registrados todavía.</p>
     ) : <Table className="mt-4" data-testid="library-person-materials-table">
-      <TableHeader><TableRow><TableHead>Material</TableHead><TableHead>Proceso</TableHead><TableHead>Fecha</TableHead><TableHead>Estado</TableHead><TableHead>Pago</TableHead></TableRow></TableHeader>
+      <TableHeader><TableRow><TableHead /><TableHead>Material</TableHead><TableHead>Proceso</TableHead><TableHead>Fecha</TableHead><TableHead>Estado</TableHead><TableHead>Pago</TableHead></TableRow></TableHeader>
       <TableBody>{items.map((item) => <TableRow key={item.movement_id} data-testid={`library-person-material-row-${item.movement_id}`}>
+        <TableCell><BookThumbnail fileId={books[item.book_id]?.cover_file_id} size={28} /></TableCell>
         <TableCell>{item.book_name}</TableCell>
         <TableCell>{item.process_key || '—'}</TableCell>
         <TableCell>{(item.occurred_at || '').slice(0, 10)}</TableCell>
