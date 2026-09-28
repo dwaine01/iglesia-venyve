@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 
 import { useAuth } from '../../context/AuthContext';
 import { Button } from '../ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '../ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '../ui/dialog';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
@@ -47,7 +47,7 @@ export const PurchaseOrderFormDialog = ({ po, onSaved }) => {
 
   return <Dialog open={open} onOpenChange={setOpen}>
     <DialogTrigger asChild><Button className="bg-[#132443]" data-testid={po ? `edit-po-${po.po_id}` : 'open-new-po-button'}><Plus className="h-4 w-4" />{po ? 'Editar orden' : 'Nueva orden de compra'}</Button></DialogTrigger>
-    <DialogContent className="max-w-2xl" data-testid="po-form-dialog"><DialogHeader><DialogTitle>{po ? `Editar ${po.po_number}` : 'Nueva orden de compra'}</DialogTitle></DialogHeader>
+    <DialogContent className="max-w-2xl" data-testid="po-form-dialog"><DialogHeader><DialogTitle>{po ? `Editar ${po.po_number}` : 'Nueva orden de compra'}</DialogTitle><DialogDescription>Complete el proveedor y los materiales para {po ? 'actualizar' : 'crear'} la orden de compra.</DialogDescription></DialogHeader>
       <form onSubmit={submit} className="space-y-3">
         <div className="grid grid-cols-2 gap-3">
           <div><Label>Proveedor</Label><Input value={providerName} onChange={(e) => setProviderName(e.target.value)} required data-testid="po-provider-input" /></div>

@@ -7,7 +7,7 @@ import { useAuth } from '../../context/AuthContext';
 import { canDecideLibraryPO } from '../../lib/accessControl';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '../ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '../ui/dialog';
 import { Input } from '../ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../ui/table';
 import { Textarea } from '../ui/textarea';
@@ -58,8 +58,8 @@ export const PurchaseOrderDetailDialog = ({ poId, trigger, onChanged }) => {
   return <Dialog open={open} onOpenChange={setOpen}>
     <DialogTrigger asChild>{trigger}</DialogTrigger>
     <DialogContent className="max-w-3xl" data-testid={`po-detail-dialog-${poId}`}>
-      {!po ? <p>Cargando…</p> : <>
-        <DialogHeader><DialogTitle className="flex items-center gap-2">{po.po_number}<Badge data-testid="po-status-badge">{STATUS_LABEL[po.status]}</Badge></DialogTitle></DialogHeader>
+      {!po ? <><DialogHeader><DialogTitle className="sr-only">Cargando orden de compra</DialogTitle><DialogDescription className="sr-only">Cargando detalle de la orden de compra</DialogDescription></DialogHeader><p>Cargando…</p></> : <>
+        <DialogHeader><DialogTitle className="flex items-center gap-2">{po.po_number}<Badge data-testid="po-status-badge">{STATUS_LABEL[po.status]}</Badge></DialogTitle><DialogDescription>Detalle, aprobación, recepción y documentos de la orden de compra {po.po_number}.</DialogDescription></DialogHeader>
         <div className="max-h-[70vh] space-y-4 overflow-y-auto pr-1">
           <p className="text-sm text-slate-600">Proveedor: <strong>{po.provider_name}</strong> · Total: <strong>${(po.total_cents / 100).toFixed(2)}</strong> {po.expected_date && `· Esperado: ${po.expected_date}`}</p>
           <Table><TableHeader><TableRow><TableHead>Material</TableHead><TableHead>Ordenado</TableHead><TableHead>Recibido</TableHead><TableHead>Costo unit.</TableHead>{['ordered', 'partially_received'].includes(po.status) && <TableHead>Recibir ahora</TableHead>}</TableRow></TableHeader>

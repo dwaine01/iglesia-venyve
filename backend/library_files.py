@@ -114,6 +114,14 @@ def can_view_po_attachment(current_user: dict) -> bool:
     )
 
 
+def can_upload_po_attachment(current_user: dict) -> bool:
+    return (
+        is_global_pastoral_authority(current_user) or is_general_coordinator(current_user)
+        or has_capability(current_user, "library.catalog.manage") or has_capability(current_user, "library.inventory.manage")
+        or has_capability(current_user, "finance.manage")
+    )
+
+
 @router.post("/cover/{book_id}", response_model=dict, status_code=201)
 async def upload_cover(book_id: str, file: UploadFile = File(...), current_user: dict = Depends(get_current_user)):
     if not (has_capability(current_user, "library.catalog.manage") or has_capability(current_user, "library.inventory.manage") or is_global_pastoral_authority(current_user) or is_general_coordinator(current_user)):
@@ -128,7 +136,7 @@ async def upload_cover(book_id: str, file: UploadFile = File(...), current_user:
 
 @router.post("/po-attachment/{po_id}", response_model=dict, status_code=201)
 async def upload_po_attachment(po_id: str, file: UploadFile = File(...), current_user: dict = Depends(get_current_user)):
-    if not can_view_po_attachment(current_user):
+    if not can_upload_po_attachment(current_user):
         raise HTTPException(status_code=403, detail="No tiene permiso para adjuntar documentos financieros")
     po = await db.library_purchase_orders.find_one({"po_id": po_id})
     if not po:
@@ -152,7 +160,7 @@ async def download_file(file_id: str, thumbnail: bool = False, current_user: dic
 @router.get("/by-owner/{owner_type}/{owner_id}", response_model=dict)
 async def list_owner_files(owner_type: str, owner_id: str, current_user: dict = Depends(get_current_user)):
     files = await db.library_files.find({"owner_type": owner_type, "owner_id": owner_id, "is_deleted": False}, {"_id": 0}).sort("uploaded_at", -1).to_list(200)
-    if files and files[0]["kind"] == "po_attachment" and not can_view_po_attachment(current_user):
+    if any(item["kind"] == "po_attachment" for item in files) and not can_view_po_attachment(current_user):
         raise HTTPException(status_code=403, detail="No tiene permiso para ver estos documentos")
     for item in files:
         item["uploaded_at"] = item["uploaded_at"].isoformat()
@@ -164,7 +172,7 @@ async def delete_file(file_id: str, current_user: dict = Depends(get_current_use
     record = await db.library_files.find_one({"file_id": file_id})
     if not record:
         raise HTTPException(status_code=404, detail="Archivo no encontrado")
-    if record["kind"] == "po_attachment" and not can_view_po_attachment(current_user):
+    if record["kind"] == "po_attachment" and not can_upload_po_attachment(current_user):
         raise HTTPException(status_code=403, detail="No tiene permiso para eliminar este documento")
     if record["kind"] == "cover" and not (has_capability(current_user, "library.catalog.manage") or has_capability(current_user, "library.inventory.manage") or is_global_pastoral_authority(current_user) or is_general_coordinator(current_user)):
         raise HTTPException(status_code=403, detail="No tiene permiso para eliminar la portada")

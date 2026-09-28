@@ -158,6 +158,10 @@ async def create_linked_expense(po: dict, actor_user_id: str) -> Optional[str]:
         return None
 
 
+def to_datetime(value: Optional[date]) -> Optional[datetime]:
+    return datetime.combine(value, datetime.min.time(), tzinfo=timezone.utc) if value else None
+
+
 def compute_totals(lines: list[POLineInput], tax_cents: int, shipping_cents: int) -> dict:
     subtotal = sum(line.quantity * line.unit_cost_cents for line in lines)
     return {"subtotal_cents": subtotal, "tax_cents": tax_cents, "shipping_cents": shipping_cents, "total_cents": subtotal + tax_cents + shipping_cents}
@@ -193,7 +197,7 @@ async def create_purchase_order(payload: POCreateInput, current_user: dict = Dep
     doc = {
         "_id": po_id, "po_id": po_id, "po_number": await next_po_number(), "status": "draft",
         "provider_name": payload.provider_name, "provider_contact": payload.provider_contact, "lines": lines,
-        **totals, "expected_date": payload.expected_date, "notes": payload.notes,
+        **totals, "expected_date": to_datetime(payload.expected_date), "notes": payload.notes,
         "requested_by_user_id": current_user["user_id"], "requested_at": None,
         "approved_by_user_id": None, "approved_at": None, "rejected_by_user_id": None, "rejected_at": None,
         "rejection_reason": None, "ordered_by_user_id": None, "ordered_at": None,
@@ -214,7 +218,7 @@ async def update_purchase_order(po_id: str, payload: POCreateInput, current_user
     totals = compute_totals(payload.lines, payload.tax_cents, payload.shipping_cents)
     await db.library_purchase_orders.update_one({"po_id": po_id}, {"$set": {
         "provider_name": payload.provider_name, "provider_contact": payload.provider_contact, "lines": lines,
-        **totals, "expected_date": payload.expected_date, "notes": payload.notes, "updated_at": now_utc(),
+        **totals, "expected_date": to_datetime(payload.expected_date), "notes": payload.notes, "updated_at": now_utc(),
     }})
     return serialize(await canonical_po(po_id))
 
