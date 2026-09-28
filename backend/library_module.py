@@ -325,6 +325,10 @@ async def ensure_library_finance_category() -> None:
 
 async def apply_movement(payload: MovementInput, actor_user_id: str, is_reversal: bool = False, reversed_movement_id: Optional[str] = None) -> dict:
     book = await canonical_book(payload.book_id)
+    if payload.payment_status == "pagado":
+        list_price_cents = book.get("member_price_cents", 0)
+        if (payload.amount_paid_cents or 0) < list_price_cents:
+            raise HTTPException(status_code=422, detail=f"payment_status='pagado' requiere amount_paid_cents >= {list_price_cents} (precio de lista). Use 'pago_parcial', 'exonerado' o 'beca' si corresponde.")
     from_holder = payload.from_holder.model_dump() if payload.from_holder else None
     to_holder = payload.to_holder.model_dump() if payload.to_holder else None
     reservation_types = {"RESERVATION", "RESERVATION_RELEASE"}
