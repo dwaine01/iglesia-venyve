@@ -13,6 +13,7 @@ import {
 import { LOGO_IGLESIA } from '../data/presentationData';
 import DisplayScaleToggle from './DisplayScaleToggle';
 import { ContextGuideButton } from './guides/ContextGuideButton';
+import { FloatingLibraryScanButton } from './library/FloatingLibraryScanButton';
 import { resolveRouteGuide } from './guides/guideRouteMap';
 import { BRAND } from '../config/brand';
 import { canManageBaptismEvents, canManageDedicationEvents, canViewCare, canViewFinanceModule, canViewFormation, canViewFrontGroups, canViewGeo, canViewLeadership, canViewLibraryModule, canViewOperations, hasAnyCapability, isPastoralAuthority } from '../lib/accessControl';
@@ -373,6 +374,7 @@ export default function AppLayout() {
         <div className={`min-h-0 flex-1 ${isMapRoute ? 'overflow-hidden' : 'overflow-y-auto'}`} data-testid="app-page-scroll-container">
           <Outlet />
         </div>
+        <FloatingLibraryScanButton />
       </main>
     </div>
   );

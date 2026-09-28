@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 
 import { useAuth } from '../../context/AuthContext';
+import { canManageLibraryInventory } from '../../lib/accessControl';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
@@ -31,10 +32,14 @@ export default function LibraryScanPage() {
   const [users, setUsers] = useState([]);
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({ quantity: '1', payment_status: 'no_aplica', amount_paid: '0', payment_method: 'efectivo', notes: '', target_user_id: '' });
+  const [matchingPOs, setMatchingPOs] = useState([]);
+  const [selectedPO, setSelectedPO] = useState(null);
+  const [receivePoQty, setReceivePoQty] = useState('1');
 
   const reset = () => {
     setStep('material'); setMaterial(null); setAction(null); setPerson(null); setSnapshot(null);
     setSearchResults([]); setSearchQuery(''); setForm({ quantity: '1', payment_status: 'no_aplica', amount_paid: '0', payment_method: 'efectivo', notes: '', target_user_id: '' });
+    setMatchingPOs([]); setSelectedPO(null); setReceivePoQty('1');
   };
 
   const onMaterialCode = async (code, method) => {
@@ -61,7 +66,28 @@ export default function LibraryScanPage() {
       const { data } = await axios.get(`${API}/api/core/governance/users`, getAuthHeaders()).catch(() => ({ data: { items: [] } }));
       setUsers(data.items || []);
     }
+    if (nextAction === 'receive_po') {
+      const [ordered, partial] = await Promise.all([
+        axios.get(`${API}/api/library/purchase-orders`, { ...getAuthHeaders(), params: { status: 'ordered' } }),
+        axios.get(`${API}/api/library/purchase-orders`, { ...getAuthHeaders(), params: { status: 'partially_received' } }),
+      ]);
+      const all = [...(ordered.data.items || []), ...(partial.data.items || [])];
+      setMatchingPOs(all.filter((po) => po.lines.some((l) => l.book_id === material.book_id)));
+      return setStep('receive_po');
+    }
     setStep(nextAction === 'lookup' ? 'lookup' : nextAction === 'transfer' ? 'confirm' : 'person');
+  };
+
+  const confirmReceivePo = async () => {
+    if (!selectedPO) return toast.error('Seleccione una orden de compra');
+    setBusy(true);
+    try {
+      await axios.post(`${API}/api/library/purchase-orders/${selectedPO.po_id}/receive`, {
+        lines: [{ book_id: material.book_id, quantity_received_now: Number(receivePoQty || 0) }], scan_method: materialScanMethod,
+      }, getAuthHeaders());
+      toast.success(`Recepción registrada en ${selectedPO.po_number}`); reset();
+    } catch (error) { toast.error(error?.response?.data?.detail || 'No se pudo registrar la recepción'); }
+    finally { setBusy(false); }
   };
 
   const onPersonCode = async (code, method) => {
@@ -142,12 +168,23 @@ export default function LibraryScanPage() {
       {step === 'action' && material && <div className="rounded-2xl border border-slate-200 bg-white p-5 space-y-4" data-testid="scan-step-action">
         <h2 className="font-serif text-lg text-[#132443]">2. Material identificado</h2>
         <div className="flex items-center gap-3"><BookThumbnail fileId={material.cover_file_id} size={64} /><div><p className="font-medium" data-testid="scan-material-name">{material.name}</p><p className="text-sm text-slate-500">{material.process_key || 'Sin proceso'} · {material.member_price_cents ? `$${(material.member_price_cents / 100).toFixed(2)}` : 'Gratis'}</p>{material.available_central !== undefined && <p className="text-xs text-slate-500">Disponible en central: {material.available_central}</p>}</div></div>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
           <Button onClick={() => chooseAction('deliver')} className="bg-[#132443]" data-testid="scan-action-deliver"><BookOpen className="h-4 w-4" />Entregar</Button>
           <Button onClick={() => chooseAction('transfer')} variant="outline" data-testid="scan-action-transfer">Transferir</Button>
           <Button onClick={() => chooseAction('return')} variant="outline" data-testid="scan-action-return">Recibir devolución</Button>
           <Button onClick={() => chooseAction('lookup')} variant="outline" data-testid="scan-action-lookup">Consultar ficha</Button>
+          {canManageLibraryInventory(user) && <Button onClick={() => chooseAction('receive_po')} variant="outline" data-testid="scan-action-receive-po">Recibir de OC</Button>}
         </div>
+      </div>}
+
+      {step === 'receive_po' && material && <div className="rounded-2xl border border-slate-200 bg-white p-5 space-y-4" data-testid="scan-step-receive-po">
+        <h2 className="font-serif text-lg text-[#132443]">Recibir de una orden de compra</h2>
+        {matchingPOs.length === 0 ? <p className="text-sm text-slate-500" data-testid="receive-po-empty">No hay órdenes abiertas (ordenadas o parcialmente recibidas) que incluyan este material.</p> : <>
+          <ul className="divide-y rounded-lg border" data-testid="receive-po-list">{matchingPOs.map((po) => <li key={po.po_id} className={`cursor-pointer p-2 text-sm ${selectedPO?.po_id === po.po_id ? 'bg-slate-100' : ''}`} onClick={() => setSelectedPO(po)} data-testid={`receive-po-option-${po.po_id}`}>{po.po_number} · {po.provider_name}</li>)}</ul>
+          {selectedPO && <div><Label>Cantidad a recibir ahora</Label><Input type="number" min="1" value={receivePoQty} onChange={(e) => setReceivePoQty(e.target.value)} data-testid="receive-po-quantity-input" />
+            <Button className="mt-3 w-full bg-[#132443]" disabled={busy} onClick={confirmReceivePo} data-testid="receive-po-confirm-button">{busy && <Loader2 className="h-4 w-4 animate-spin" />}CONFIRMAR RECEPCIÓN</Button>
+          </div>}
+        </>}
       </div>}
 
       {step === 'lookup' && material && <div className="rounded-2xl border border-slate-200 bg-white p-5 space-y-2" data-testid="scan-step-lookup">
@@ -196,7 +233,7 @@ export default function LibraryScanPage() {
         </Button>
       </div>}
 
-      {step !== 'material' && <Button variant="ghost" size="sm" onClick={() => setStep(step === 'confirm' && action !== 'transfer' ? 'person' : step === 'confirm' ? 'action' : step === 'person' ? 'action' : 'material')} data-testid="scan-back-button"><ArrowLeft className="h-4 w-4" />Atrás</Button>}
+      {step !== 'material' && <Button variant="ghost" size="sm" onClick={() => setStep(step === 'confirm' && action !== 'transfer' ? 'person' : ['confirm', 'person', 'lookup', 'receive_po'].includes(step) ? 'action' : 'material')} data-testid="scan-back-button"><ArrowLeft className="h-4 w-4" />Atrás</Button>}
     </div>
   </main>;
 }

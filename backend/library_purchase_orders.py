@@ -343,6 +343,9 @@ async def receive_purchase_order(po_id: str, payload: POReceiveInput, current_us
     new_status = "received" if fully_received else "partially_received"
     await db.library_purchase_orders.update_one({"po_id": po_id}, {"$set": {"lines": updated_lines, "updated_at": now_utc()}})
     await push_status(po_id, new_status, current_user["user_id"], payload.notes or "Recepción de mercancía registrada")
+    if new_status == "received":
+        from library_notifications import resolve_po_notifications
+        await resolve_po_notifications(po_id)
     return serialize(await canonical_po(po_id))
 
 
@@ -352,6 +355,8 @@ async def close_purchase_order(po_id: str, current_user: dict = Depends(manager)
     if po["status"] not in {"received", "partially_received"}:
         raise HTTPException(status_code=409, detail="Solo se puede cerrar una orden ya recibida (total o parcialmente)")
     await push_status(po_id, "closed", current_user["user_id"], "Orden cerrada administrativamente", {"closed_by_user_id": current_user["user_id"], "closed_at": now_utc()})
+    from library_notifications import resolve_po_notifications
+    await resolve_po_notifications(po_id)
     return serialize(await canonical_po(po_id))
 
 
@@ -361,6 +366,8 @@ async def cancel_purchase_order(po_id: str, current_user: dict = Depends(manager
     if po["status"] not in {"draft", "submitted", "approved", "changes_requested"}:
         raise HTTPException(status_code=409, detail="La orden ya no puede cancelarse en su estado actual")
     await push_status(po_id, "cancelled", current_user["user_id"], "Orden cancelada")
+    from library_notifications import resolve_po_notifications
+    await resolve_po_notifications(po_id)
     return serialize(await canonical_po(po_id))
 
 

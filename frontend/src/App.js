@@ -53,6 +53,7 @@ import LibraryPurchaseOrdersPage from './pages/library/LibraryPurchaseOrdersPage
 import LibraryDeficitPage from './pages/library/LibraryDeficitPage';
 import LibraryScanPage from './pages/library/LibraryScanPage';
 import LibraryReportsPage from './pages/library/LibraryReportsPage';
+import LibraryLabelsPage from './pages/library/LibraryLabelsPage';
 import FinanceDashboardPage from './pages/finance/FinanceDashboardPage';
 import FinanceSetupPage from './pages/finance/FinanceSetupPage';
 import FinanceJournalsPage from './pages/finance/FinanceJournalsPage';
@@ -254,6 +255,7 @@ function App() {
             <Route path="libreria/reserva-automatica" element={<CapabilityRoute allowed={canManageLibraryInventory}><LibraryDeficitPage /></CapabilityRoute>} />
             <Route path="libreria/escanear" element={<CapabilityRoute allowed={canViewLibraryModule}><LibraryScanPage /></CapabilityRoute>} />
             <Route path="libreria/reportes" element={<CapabilityRoute allowed={canViewLibraryReports}><LibraryReportsPage /></CapabilityRoute>} />
+            <Route path="libreria/etiquetas" element={<CapabilityRoute allowed={canManageLibraryInventory}><LibraryLabelsPage /></CapabilityRoute>} />
             <Route path="operaciones" element={<CapabilityRoute allowed={canViewOperations}><OperationsDashboardPage /></CapabilityRoute>} />
             <Route path="operaciones/eventos" element={<CapabilityRoute allowed={canViewOperations}><OperationsEventsPage /></CapabilityRoute>} />
             <Route path="operaciones/eventos/:eventId" element={<CapabilityRoute allowed={canViewOperations}><OperationEventDetailPage /></CapabilityRoute>} />

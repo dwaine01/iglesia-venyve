@@ -9,6 +9,7 @@ import { Badge } from '../../components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/ui/table';
 import { LibrarianManagerPanel } from '../../components/library/LibrarianManagerPanel';
 import { BookThumbnail } from '../../components/library/BookThumbnail';
+import { LibraryNotificationsBell } from '../../components/library/LibraryNotificationsBell';
 
 const STATUS_BADGE = { critico: 'bg-red-100 text-red-700', bajo: 'bg-amber-100 text-amber-700', suficiente: 'bg-emerald-100 text-emerald-700' };
 const STATUS_LABEL = { critico: '🔴 Stock crítico', bajo: '🟠 Stock bajo', suficiente: '🟢 Stock suficiente' };
@@ -35,11 +36,13 @@ export default function LibraryDashboardPage() {
     <div className="mx-auto max-w-6xl space-y-6">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div><h1 className="font-serif text-3xl text-[#132443]">Librería 360</h1><p className="text-sm text-slate-600">Inventario, distribución y trazabilidad de todos los materiales educativos.</p></div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
+          <LibraryNotificationsBell />
           <Link to="/libreria/mi-inventario" className="rounded-lg border border-[#132443] px-4 py-2 text-sm text-[#132443]" data-testid="link-my-library-inventory">Mi inventario</Link>
           <Link to="/libreria/escanear" className="rounded-lg border border-[#132443] px-4 py-2 text-sm text-[#132443]" data-testid="link-library-scan">Escanear</Link>
           {canViewLibraryReports(user) && <Link to="/libreria/reportes" className="rounded-lg border border-[#132443] px-4 py-2 text-sm text-[#132443]" data-testid="link-library-reports">Reportes</Link>}
           {isManager && <Link to="/libreria/catalogo" className="rounded-lg border border-[#132443] px-4 py-2 text-sm text-[#132443]" data-testid="link-library-catalog">Catálogo</Link>}
+          {isManager && <Link to="/libreria/etiquetas" className="rounded-lg border border-[#132443] px-4 py-2 text-sm text-[#132443]" data-testid="link-library-labels">Etiquetas</Link>}
           {isManager && <Link to="/libreria/reserva-automatica" className="rounded-lg border border-[#132443] px-4 py-2 text-sm text-[#132443]" data-testid="link-library-deficit">Reserva Automática</Link>}
           {canSeePOs && <Link to="/libreria/ordenes-compra" className="rounded-lg bg-[#132443] px-4 py-2 text-sm text-white" data-testid="link-library-purchase-orders">Órdenes de compra <ArrowRight className="ml-1 inline h-4 w-4" /></Link>}
         </div>
