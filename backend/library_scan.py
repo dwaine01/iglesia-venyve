@@ -9,12 +9,35 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 import re
 
-from library_module import canonical_person, participant, person_display_name, serialize
+from access_control import (
+    FINANCE_MANAGE, FINANCE_READ, LIBRARY_REPORTS_READ, has_capability, is_general_coordinator,
+    is_global_pastoral_authority,
+)
+from library_module import canonical_person, is_library_manager, participant, person_display_name, serialize
 from library_reservations import sync_process_reservations
 from membership_documents import membership_id_from_token
+from process_engine import access_person_ids
 from server import db
 
 router = APIRouter(prefix="/api/library/scan", tags=["library-scan"])
+
+
+async def has_library_snapshot_access(current_user: dict, target_person_id: str) -> bool:
+    """Acceso GLOBAL (Pastor/a, Coordinación General, Encargado de Librería,
+    Finanzas autorizado, admin) o acceso POR RELACIÓN válida con la persona
+    (mentor, responsable de proceso/consolidación, líder de grupo frontal,
+    profesor/maestro de un curso o discipulado) — reutiliza el mismo grafo de
+    relaciones (`access_person_ids`) que ya gobierna el acceso a Persona 360 en
+    el resto de la app. El escaneo del carnet solo resuelve el person_id; esta
+    validación se aplica siempre después, sin excepción."""
+    if is_library_manager(current_user) or is_global_pastoral_authority(current_user) or is_general_coordinator(current_user):
+        return True
+    if has_capability(current_user, LIBRARY_REPORTS_READ) or has_capability(current_user, FINANCE_MANAGE) or has_capability(current_user, FINANCE_READ):
+        return True
+    allowed = await access_person_ids(db, current_user)
+    if allowed is None:
+        return True
+    return target_person_id in allowed
 
 
 class ResolvePersonInput(BaseModel):
@@ -93,6 +116,8 @@ async def search_person(q: str, current_user: dict = Depends(participant)):
 @router.get("/persons/{person_id}/library-snapshot", response_model=dict)
 async def person_library_snapshot(person_id: str, current_user: dict = Depends(participant)):
     person = await canonical_person(person_id)
+    if not await has_library_snapshot_access(current_user, person["person_id"]):
+        raise HTTPException(status_code=403, detail="No tiene una relación vigente con esta persona para consultar su información de Librería")
     await sync_process_reservations()
     enrollments = await db.process_enrollments.find(
         {"person_id": person["person_id"], "status": {"$in": ["planned", "active", "paused"]}},
