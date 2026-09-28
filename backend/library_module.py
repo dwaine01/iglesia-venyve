@@ -4,13 +4,14 @@ custodia, entrega desde Persona 360, solicitudes internas y enlace con Finanzas.
 from datetime import date, datetime, timezone
 from typing import Literal, Optional
 from uuid import uuid4
+import re
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, model_validator
 
 from access_control import (
-    LIBRARY_CATALOG_MANAGE, LIBRARY_DELIVER, LIBRARY_INVENTORY_MANAGE,
+    LIBRARY_CATALOG_MANAGE, LIBRARY_DELIVER, LIBRARY_INVENTORY_MANAGE, LIBRARY_REPORTS_READ,
     has_capability, is_general_coordinator, is_global_pastoral_authority,
 )
 from server import db, get_current_user
@@ -453,7 +454,7 @@ async def list_books(current_user: dict = Depends(participant), item_type: Optio
     if active is not None:
         query["is_active"] = active
     if search:
-        query["name"] = {"$regex": search, "$options": "i"}
+        query["name"] = {"$regex": re.escape(search), "$options": "i"}
     books = await db.library_books.find(query, {"_id": 0}).sort("name", 1).to_list(2000)
     return {"items": serialize(books)}
 
@@ -488,9 +489,9 @@ async def create_movement(payload: MovementInput, current_user: dict = Depends(p
         allowed_types = {"DELIVERY", "LOAN", "RETURN", "LOAN_RETURN", "RESERVATION", "RESERVATION_RELEASE"}
         if payload.movement_type not in allowed_types:
             raise HTTPException(status_code=403, detail="Solo Encargado de Librería puede registrar este tipo de movimiento")
-        origin = payload.from_holder
-        if origin and not (origin.type == "user" and origin.id == current_user["user_id"]):
-            raise HTTPException(status_code=403, detail="Solo puede mover unidades de su propio inventario")
+        holder = payload.to_holder if payload.movement_type == "RESERVATION" else payload.from_holder
+        if not (holder and holder.type == "user" and holder.id == current_user["user_id"]):
+            raise HTTPException(status_code=403, detail="Solo puede mover o reservar unidades de su propio inventario, no del almacén central")
     movement = await apply_movement(payload, current_user["user_id"])
     if payload.person_id and payload.amount_paid_cents:
         person = await canonical_person(payload.person_id)
@@ -537,7 +538,10 @@ async def reverse_movement(movement_id: str, reason: str = Query(min_length=3, m
 @router.get("/persons/{person_id}/materials", response_model=dict)
 async def person_materials(person_id: str, current_user: dict = Depends(participant)):
     person = await canonical_person(person_id)
-    movements = await db.library_movements.find({"person_id": person["person_id"]}, {"_id": 0}).sort("occurred_at", -1).to_list(500)
+    query: dict = {"person_id": person["person_id"]}
+    if not (is_library_manager(current_user) or has_capability(current_user, LIBRARY_REPORTS_READ)):
+        query["actor_user_id"] = current_user["user_id"]
+    movements = await db.library_movements.find(query, {"_id": 0}).sort("occurred_at", -1).to_list(500)
     return {"person_id": person["person_id"], "items": serialize(movements)}
 
 

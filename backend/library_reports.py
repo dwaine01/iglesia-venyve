@@ -292,6 +292,8 @@ async def build_person_ledger(f: dict) -> tuple[list[str], list[list]]:
     if not person_id:
         raise HTTPException(status_code=422, detail="Debe indicar la persona para este reporte")
     query: dict = {"person_id": person_id, "movement_type": {"$nin": ["RESERVATION", "RESERVATION_RELEASE"]}}
+    if f.get("_restrict_actor_user_id"):
+        query["actor_user_id"] = f["_restrict_actor_user_id"]
     apply_common_filters(query, f)
     movements = await db.library_movements.find(query, {"_id": 0}).sort("occurred_at", -1).to_list(1000)
     rows = []
@@ -316,6 +318,15 @@ REPORT_BUILDERS = {
 }
 
 
+FORMULA_PREFIXES = ("=", "+", "-", "@")
+
+
+def sanitize_cell(value):
+    if isinstance(value, str) and value.startswith(FORMULA_PREFIXES):
+        return "'" + value
+    return value
+
+
 def export_xlsx(report_name: str, columns: list[str], rows: list[list]) -> bytes:
     workbook = Workbook()
     sheet = workbook.active
@@ -324,7 +335,7 @@ def export_xlsx(report_name: str, columns: list[str], rows: list[list]) -> bytes
     for cell in sheet[1]:
         cell.font = Font(bold=True)
     for row in rows:
-        sheet.append(list(row))
+        sheet.append([sanitize_cell(value) for value in row])
     for index in range(1, len(columns) + 1):
         sheet.column_dimensions[get_column_letter(index)].width = 22
     buffer = io.BytesIO()
@@ -389,16 +400,18 @@ async def get_report(
     builder = REPORT_BUILDERS.get(report_key)
     if not builder:
         raise HTTPException(status_code=404, detail="Reporte no encontrado")
+    filters = {"date_from": date_from, "date_to": date_to, "book_id": book_id, "process_key": process_key,
+               "person_id": person_id, "responsible_user_id": responsible_user_id, "status": status, "payment_type": payment_type}
     if report_key == "person_ledger":
         if not has_person_ledger_access(current_user):
             raise HTTPException(status_code=403, detail="No tiene acceso a este reporte")
         if not person_id:
             raise HTTPException(status_code=422, detail="Este reporte requiere seleccionar una persona")
+        if not has_reports_access(current_user):
+            filters["_restrict_actor_user_id"] = current_user["user_id"]
     elif not has_reports_access(current_user):
         raise HTTPException(status_code=403, detail="No tiene acceso al centro de reportes de Librería")
 
-    filters = {"date_from": date_from, "date_to": date_to, "book_id": book_id, "process_key": process_key,
-               "person_id": person_id, "responsible_user_id": responsible_user_id, "status": status, "payment_type": payment_type}
     columns, rows = await builder(filters)
     report_name = next((r["name"] for r in REPORTS_CATALOG if r["key"] == report_key), report_key)
 

@@ -7,6 +7,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+import re
 
 from library_module import canonical_person, participant, person_display_name, serialize
 from library_reservations import sync_process_reservations
@@ -35,9 +36,9 @@ async def resolve_material(code: str, current_user: dict = Depends(participant))
     if not book:
         book = await db.library_books.find_one({"barcode": raw}, {"_id": 0})
     if not book:
-        book = await db.library_books.find_one({"qr_code": {"$regex": f"^{raw}$", "$options": "i"}}, {"_id": 0})
+        book = await db.library_books.find_one({"qr_code": {"$regex": f"^{re.escape(raw)}$", "$options": "i"}}, {"_id": 0})
     if not book:
-        book = await db.library_books.find_one({"sku": {"$regex": f"^{raw}$", "$options": "i"}}, {"_id": 0})
+        book = await db.library_books.find_one({"sku": {"$regex": f"^{re.escape(raw)}$", "$options": "i"}}, {"_id": 0})
     if not book:
         raise HTTPException(status_code=404, detail="No se encontró ningún material con ese código")
     snapshot = await _book_holding_snapshot(book["book_id"])
@@ -72,12 +73,13 @@ async def search_person(q: str, current_user: dict = Depends(participant)):
     query = q.strip()
     if len(query) < 2:
         return {"items": []}
+    safe_query = re.escape(query)
     persons = await db.persons.find(
         {"is_archived": {"$ne": True}, "$or": [
-            {"display_name": {"$regex": query, "$options": "i"}},
-            {"full_name": {"$regex": query, "$options": "i"}},
-            {"nombre_completo": {"$regex": query, "$options": "i"}},
-            {"nombre": {"$regex": query, "$options": "i"}},
+            {"display_name": {"$regex": safe_query, "$options": "i"}},
+            {"full_name": {"$regex": safe_query, "$options": "i"}},
+            {"nombre_completo": {"$regex": safe_query, "$options": "i"}},
+            {"nombre": {"$regex": safe_query, "$options": "i"}},
         ]},
         {"_id": 1, "person_id": 1, "display_name": 1, "full_name": 1, "nombre_completo": 1, "nombre": 1, "apellido": 1},
     ).limit(15).to_list(15)
