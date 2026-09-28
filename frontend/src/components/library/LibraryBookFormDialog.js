@@ -11,6 +11,7 @@ import { Label } from '../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Switch } from '../ui/switch';
 import { Textarea } from '../ui/textarea';
+import { BookThumbnail } from './BookThumbnail';
 
 const EMPTY = {
   sku: '', name: '', description: '', item_type: 'libro', process_key: '', level: '', edition: '', provider: '',
@@ -24,6 +25,7 @@ export const LibraryBookFormDialog = ({ open, onOpenChange, book, onSaved }) => 
   const { API, getAuthHeaders } = useAuth();
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
+  const [coverFile, setCoverFile] = useState(null);
 
   useEffect(() => {
     if (book) {
@@ -31,6 +33,7 @@ export const LibraryBookFormDialog = ({ open, onOpenChange, book, onSaved }) => 
     } else {
       setForm(EMPTY);
     }
+    setCoverFile(null);
   }, [book, open]);
 
   const submit = async (event) => {
@@ -43,11 +46,17 @@ export const LibraryBookFormDialog = ({ open, onOpenChange, book, onSaved }) => 
         sku: form.sku || null, process_key: form.process_key || null, level: form.level || null, edition: form.edition || null,
         provider: form.provider || null, location: form.location || null, qr_code: form.qr_code || null, cover_image_url: form.cover_image_url || null,
       };
-      if (book) await axios.put(`${API}/api/library/books/${book.book_id}`, payload, getAuthHeaders());
-      else await axios.post(`${API}/api/library/books`, payload, getAuthHeaders());
+      let bookId = book?.book_id;
+      if (book) await axios.put(`${API}/api/library/books/${bookId}`, payload, getAuthHeaders());
+      else { const { data } = await axios.post(`${API}/api/library/books`, payload, getAuthHeaders()); bookId = data.book_id; }
+      if (coverFile) {
+        const formData = new FormData(); formData.append('file', coverFile);
+        await axios.post(`${API}/api/library/files/cover/${bookId}`, formData, getAuthHeaders());
+      }
       toast.success(book ? 'Material actualizado' : 'Material agregado al catálogo');
       onOpenChange(false); await onSaved();
     } catch (error) { toast.error(error?.response?.data?.detail || 'No se pudo guardar el material'); }
+
     finally { setSaving(false); }
   };
 
@@ -56,6 +65,10 @@ export const LibraryBookFormDialog = ({ open, onOpenChange, book, onSaved }) => 
       <DialogHeader><DialogTitle>{book ? 'Editar material' : 'Nuevo material'}</DialogTitle></DialogHeader>
       <form onSubmit={submit} className="grid gap-3 sm:grid-cols-2">
         <div className="sm:col-span-2"><Label>Nombre</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required data-testid="library-book-name-input" /></div>
+        <div className="flex items-center gap-3 sm:col-span-2">
+          <BookThumbnail fileId={book?.cover_file_id} size={64} />
+          <div><Label>Foto de portada (JPG, PNG, WebP)</Label><Input type="file" accept="image/jpeg,image/png,image/webp" onChange={(e) => setCoverFile(e.target.files?.[0] || null)} data-testid="library-book-cover-input" /></div>
+        </div>
         <div><Label>SKU / Código</Label><Input value={form.sku || ''} onChange={(e) => setForm({ ...form, sku: e.target.value })} data-testid="library-book-sku-input" /></div>
         <div><Label>Código QR / barras</Label><Input value={form.qr_code || ''} onChange={(e) => setForm({ ...form, qr_code: e.target.value })} data-testid="library-book-qr-input" /></div>
         <div><Label>Tipo</Label><Select value={form.item_type} onValueChange={(v) => setForm({ ...form, item_type: v })}><SelectTrigger data-testid="library-book-type-select"><SelectValue /></SelectTrigger><SelectContent className="bg-white">

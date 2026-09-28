@@ -11,6 +11,7 @@ import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Textarea } from '../ui/textarea';
+import { BookThumbnail } from './BookThumbnail';
 
 const EMPTY = { book_id: '', quantity: '1', payment_status: 'no_aplica', amount_paid: '0', payment_method: 'efectivo', notes: '', as_loan: false, due_date: '' };
 
@@ -73,7 +74,7 @@ export const DeliverBookDialog = ({ personId, trigger, onDelivered }) => {
           <SelectItem value="efectivo">Efectivo</SelectItem><SelectItem value="tarjeta">Tarjeta</SelectItem><SelectItem value="transferencia">Transferencia</SelectItem><SelectItem value="zelle">Zelle</SelectItem><SelectItem value="cheque">Cheque</SelectItem>
         </SelectContent></Select></div>}
         <div><Label>Notas (opcional)</Label><Textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} data-testid="deliver-book-notes-input" /></div>
-        {selectedBook && <p className="text-xs text-slate-500" data-testid="deliver-book-selected-info">Inventario tipo: {selectedBook.inventory_kind === 'loanable' ? 'Prestado' : 'Consumible'} · Precio de lista: {selectedBook.member_price_cents ? `$${(selectedBook.member_price_cents / 100).toFixed(2)}` : 'Gratis'}</p>}
+        {selectedBook && <p className="flex items-center gap-2 text-xs text-slate-500" data-testid="deliver-book-selected-info"><BookThumbnail fileId={selectedBook.cover_file_id} size={28} />Inventario tipo: {selectedBook.inventory_kind === 'loanable' ? 'Prestado' : 'Consumible'} · Precio de lista: {selectedBook.member_price_cents ? `$${(selectedBook.member_price_cents / 100).toFixed(2)}` : 'Gratis'}</p>}
         <Button type="submit" disabled={saving} className="w-full bg-[#132443]" data-testid="confirm-deliver-book-button">{saving && <Loader2 className="h-4 w-4 animate-spin" />}Confirmar entrega</Button>
       </form>
     </DialogContent>

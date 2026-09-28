@@ -108,3 +108,5 @@ export const canReadCareVault = (user) => isPastoralAuthority(user) || hasCapabi
 export const canManageLibraryInventory = (user) => hasAnyCapability(user, ['library.catalog.manage', 'library.inventory.manage']);
 export const canDeliverLibraryBooks = (user) => hasAnyCapability(user, ['library.deliver', 'library.catalog.manage', 'library.inventory.manage']);
 export const canViewLibraryModule = (user) => canDeliverLibraryBooks(user);
+export const canDecideLibraryPO = (user) => hasCapability(user, 'finance.manage');
+export const canViewLibraryPurchaseOrders = (user) => canManageLibraryInventory(user) || canDecideLibraryPO(user);

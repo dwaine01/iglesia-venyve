@@ -9,6 +9,7 @@ import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/ui/table';
 import { LibraryBookFormDialog } from '../../components/library/LibraryBookFormDialog';
+import { BookThumbnail } from '../../components/library/BookThumbnail';
 
 export default function LibraryCatalogPage() {
   const { API, getAuthHeaders } = useAuth();
@@ -39,8 +40,9 @@ export default function LibraryCatalogPage() {
       </header>
       <Input placeholder="Buscar por nombre o SKU…" value={search} onChange={(e) => setSearch(e.target.value)} data-testid="library-catalog-search-input" className="max-w-sm" />
       <div className="rounded-2xl border border-slate-200 bg-white p-2">
-        <Table><TableHeader><TableRow><TableHead>Material</TableHead><TableHead>SKU</TableHead><TableHead>Tipo</TableHead><TableHead>Proceso</TableHead><TableHead>Precio miembro</TableHead><TableHead>Costo</TableHead><TableHead>Estado</TableHead><TableHead /></TableRow></TableHeader>
+        <Table><TableHeader><TableRow><TableHead /><TableHead>Material</TableHead><TableHead>SKU</TableHead><TableHead>Tipo</TableHead><TableHead>Proceso</TableHead><TableHead>Precio miembro</TableHead><TableHead>Costo</TableHead><TableHead>Estado</TableHead><TableHead /></TableRow></TableHeader>
           <TableBody>{filtered.map((book) => <TableRow key={book.book_id} data-testid={`library-catalog-row-${book.book_id}`}>
+            <TableCell><BookThumbnail fileId={book.cover_file_id} /></TableCell>
             <TableCell>{book.name}</TableCell><TableCell>{book.sku || '—'}</TableCell><TableCell>{book.item_type}</TableCell><TableCell>{book.process_key || '—'}</TableCell>
             <TableCell>{book.member_price_cents ? `$${(book.member_price_cents / 100).toFixed(2)}` : 'Gratis'}</TableCell>
             <TableCell>${(book.cost_price_cents / 100).toFixed(2)}</TableCell>
