@@ -268,6 +268,9 @@ async def create_po_from_deficit(payload: POFromDeficitInput, current_user: dict
     }
     await db.library_purchase_orders.insert_one(doc)
     return serialize(doc)
+
+
+@router.put("/{po_id}", response_model=dict)
 async def update_purchase_order(po_id: str, payload: POCreateInput, current_user: dict = Depends(manager)):
     po = await canonical_po(po_id)
     if po["status"] != "draft":
