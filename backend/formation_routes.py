@@ -101,7 +101,7 @@ async def create_module(program_id: str, payload: ModuleInput, current_user: dic
 @router.put("/modules/{module_id}", response_model=dict)
 async def update_module(module_id: str, payload: ModuleInput, current_user: dict = Depends(get_current_user)):
     require(current_user, FORMATION_PROGRAMS_MANAGE); before = await module_doc(module_id)
-    updates = {**payload.model_dump(), "updated_by_user_id": current_user["user_id"], "updated_at": now_utc(), "version": int(before.get("version", 1)) + 1}
+    updates = {**payload.model_dump(exclude_unset=True), "updated_by_user_id": current_user["user_id"], "updated_at": now_utc(), "version": int(before.get("version", 1)) + 1}
     await db.formation_modules.update_one({"module_id": module_id}, {"$set": updates})
     after = await module_doc(module_id); await audit(db, current_user, "module_updated", "formation_module", module_id, before, after)
     return serialize(after)
@@ -311,7 +311,7 @@ async def historical_credit_program(person_id: str, program_id: str, payload: Pr
     accredited = []
     for module in modules:
         existing = await db.formation_achievements.find_one({"person_id": person_id, "module_id": module["module_id"], "active": True}, {"_id": 0})
-        if existing and existing.get("status") == "completed":
+        if existing and existing.get("status") in ("completed", "historical_accredited"):
             continue
         achievement_id = (existing or {}).get("achievement_id") or str(uuid4())
         data = {"achievement_id": achievement_id, "person_id": person_id, "program_id": program["program_id"], "module_id": module["module_id"], "status": "historical_accredited", "source": "historical_accreditation_bulk", "program_name_snapshot": program["name"], "module_name_snapshot": module["name"], "historical_completion_date": payload.historical_completion_date, "date_precision": payload.date_precision if payload.historical_completion_date else "unknown", "evidence_document_id": payload.evidence_document_id, "observation": payload.observation, "attendance_pct": None, "final_grade_pct": None, "accredited_by_user_id": current_user["user_id"], "accredited_at": now, "active": True, "updated_at": now}
