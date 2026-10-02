@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 from uuid import uuid4
 
@@ -19,8 +19,8 @@ from formation_engine import (
 from formation_models import (
     AssessmentInput, AttendanceBulkInput, CohortInput, CohortStaffInput,
     EnrollmentInput, EnrollmentStatusInput, GradeBulkInput,
-    HistoricalCreditInput, ManualApprovalInput, ModuleInput, ProgramInput, PromotionInput,
-    PrerequisitesInput, SessionInput,
+    HistoricalCreditInput, ManualApprovalInput, ModuleInput, ProgramHistoricalCreditInput,
+    ProgramInput, PromotionInput, PrerequisitesInput, SessionInput,
 )
 from server import db, get_current_user
 
@@ -149,7 +149,10 @@ async def list_cohorts(status_filter: Optional[str] = Query(default=None, alias=
 async def create_cohort(payload: CohortInput, current_user: dict = Depends(get_current_user)):
     require(current_user, FORMATION_COHORTS_MANAGE); module = await module_doc(payload.module_id); program = await program_doc(module["program_id"])
     cohort_id, now = str(uuid4()), now_utc()
-    doc = {"_id": cohort_id, "cohort_id": cohort_id, **payload.model_dump(), "program_id": module["program_id"], "program_name_snapshot": program["name"], "module_name_snapshot": module["name"], "created_by_user_id": current_user["user_id"], "created_at": now, "updated_at": now}
+    data = payload.model_dump()
+    if not data.get("end_date") and module.get("duration_days"):
+        data["end_date"] = (datetime.fromisoformat(data["start_date"]) + timedelta(days=module["duration_days"])).date().isoformat()
+    doc = {"_id": cohort_id, "cohort_id": cohort_id, **data, "program_id": module["program_id"], "program_name_snapshot": program["name"], "module_name_snapshot": module["name"], "created_by_user_id": current_user["user_id"], "created_at": now, "updated_at": now}
     await db.formation_cohorts.insert_one(doc); await audit(db, current_user, "cohort_created", "formation_cohort", cohort_id, None, doc)
     return serialize(doc)
 
@@ -295,6 +298,27 @@ async def historical_credit(person_id: str, payload: HistoricalCreditInput, curr
     await db.formation_achievements.update_one({"person_id": person_id, "module_id": payload.module_id, "active": True}, {"$set": data, "$setOnInsert": {"_id": achievement_id, "created_at": now}}, upsert=True)
     await audit(db, current_user, "historical_formation_accredited", "formation_achievement", achievement_id, before, data, payload.observation, person_id)
     return {**serialize(data), "person": person, "next_recommended": await next_recommended_module(db, person_id, program["program_id"])}
+
+
+@router.post("/persons/{person_id}/historical-credits/program/{program_id}", status_code=201, response_model=dict)
+async def historical_credit_program(person_id: str, program_id: str, payload: ProgramHistoricalCreditInput, current_user: dict = Depends(get_current_user)):
+    """Acredita de una sola vez TODOS los módulos de un programa para una persona que ya completó el programa entero."""
+    person = await require_person_access(db, current_user, person_id, FORMATION_HISTORICAL_CREDIT_MANAGE)
+    program = await program_doc(program_id)
+    modules = await db.formation_modules.find({"program_id": program_id, "active": True}, {"_id": 0}).sort("order", 1).to_list(1000)
+    if not modules: raise HTTPException(status_code=422, detail="El programa no tiene módulos activos")
+    now = now_utc()
+    accredited = []
+    for module in modules:
+        existing = await db.formation_achievements.find_one({"person_id": person_id, "module_id": module["module_id"], "active": True}, {"_id": 0})
+        if existing and existing.get("status") == "completed":
+            continue
+        achievement_id = (existing or {}).get("achievement_id") or str(uuid4())
+        data = {"achievement_id": achievement_id, "person_id": person_id, "program_id": program["program_id"], "module_id": module["module_id"], "status": "historical_accredited", "source": "historical_accreditation_bulk", "program_name_snapshot": program["name"], "module_name_snapshot": module["name"], "historical_completion_date": payload.historical_completion_date, "date_precision": payload.date_precision if payload.historical_completion_date else "unknown", "evidence_document_id": payload.evidence_document_id, "observation": payload.observation, "attendance_pct": None, "final_grade_pct": None, "accredited_by_user_id": current_user["user_id"], "accredited_at": now, "active": True, "updated_at": now}
+        await db.formation_achievements.update_one({"person_id": person_id, "module_id": module["module_id"], "active": True}, {"$set": data, "$setOnInsert": {"_id": achievement_id, "created_at": now}}, upsert=True)
+        accredited.append(data)
+    await audit(db, current_user, "historical_formation_program_accredited", "formation_program", program_id, None, {"accredited_module_ids": [item["module_id"] for item in accredited]}, payload.observation, person_id)
+    return {"program": serialize(program), "accredited": serialize(accredited), "total_modules": len(modules), "newly_accredited": len(accredited)}
 
 
 @router.post("/enrollments/{enrollment_id}/promote", status_code=201, response_model=dict)
