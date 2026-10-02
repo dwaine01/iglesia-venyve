@@ -29,6 +29,7 @@ class ModuleInput(BaseModel):
     active: bool = True
     approval_policy: ApprovalPolicy = Field(default_factory=ApprovalPolicy)
     certificate_enabled: bool = False
+    duration_days: Optional[int] = Field(default=None, ge=1, le=3650)
 
 
 class PrerequisitesInput(BaseModel):
@@ -105,6 +106,19 @@ class GradeBulkInput(BaseModel):
 
 class HistoricalCreditInput(BaseModel):
     module_id: str
+    historical_completion_date: Optional[str] = None
+    date_precision: Literal["exact", "month", "year", "unknown"] = "unknown"
+    observation: str = Field(min_length=3, max_length=3000)
+    evidence_document_id: Optional[str] = None
+
+    @model_validator(mode="after")
+    def validate_date(self):
+        if not self.historical_completion_date and self.date_precision != "unknown":
+            raise ValueError("Sin fecha, la precisión debe ser desconocida")
+        return self
+
+
+class ProgramHistoricalCreditInput(BaseModel):
     historical_completion_date: Optional[str] = None
     date_precision: Literal["exact", "month", "year", "unknown"] = "unknown"
     observation: str = Field(min_length=3, max_length=3000)

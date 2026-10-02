@@ -8,7 +8,7 @@ import { Input } from '../components/ui/input';
 import { Badge } from '../components/ui/badge';
 import { Skeleton } from '../components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
-import { Search, UserPlus, IdCard, FlaskConical, Upload } from 'lucide-react';
+import { Search, UserPlus, IdCard, FlaskConical, Upload, ChevronLeft, ChevronRight } from 'lucide-react';
 import PersonCanonicalLink from '../components/PersonCanonicalLink';
 import { QaDemoCleanupDialog } from '../components/QaDemoCleanupDialog';
 import { toast } from 'sonner';
@@ -28,6 +28,8 @@ export default function PersonasListPage() {
   const [ministryRoles, setMinistryRoles] = useState([]);
   const [persons, setPersons] = useState([]);
   const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [qaSummary, setQaSummary] = useState(null);
@@ -49,7 +51,8 @@ export default function PersonasListPage() {
           age_group: ageGroup || undefined,
           ministry_id: ministryId || undefined,
           ministry_role_id: ministryRoleId || undefined,
-          limit: 50,
+          limit: pageSize,
+          page,
         },
       });
       setPersons(res.data.items || []);
@@ -59,7 +62,7 @@ export default function PersonasListPage() {
     } finally {
       setLoading(false);
     }
-  }, [API, ageGroup, gender, getAuthHeaders, ministryId, ministryRoleId, talentId]);
+  }, [API, ageGroup, gender, getAuthHeaders, ministryId, ministryRoleId, talentId, page, pageSize]);
 
   useEffect(() => {
     Promise.all([
@@ -98,6 +101,18 @@ export default function PersonasListPage() {
     const timer = setTimeout(() => fetchPersons(query.trim()), 300);
     return () => clearTimeout(timer);
   }, [query, fetchPersons]);
+
+  useEffect(() => { setPage(1); }, [query, talentId, gender, ageGroup, ministryId, ministryRoleId, pageSize]);
+
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const pageNumbers = (() => {
+    const span = 2;
+    const start = Math.max(1, page - span);
+    const end = Math.min(totalPages, page + span);
+    const nums = [];
+    for (let n = start; n <= end; n += 1) nums.push(n);
+    return nums;
+  })();
 
   const nombreCompleto = (p) => `${p.nombre || ''} ${p.apellido || ''}`.trim();
 
@@ -231,7 +246,6 @@ export default function PersonasListPage() {
                     <Button variant="outline" size="sm" onClick={() => navigate(`/personas/${p.person_id}`)} className="mt-4 w-full" data-testid={`person-open-mobile-${p.person_id}`}>Ver perfil</Button>
                   </article>
                 ))}
-                <p className="text-xs text-gray-400">Mostrando {persons.length} de {total} persona(s).</p>
               </div>
               <div className="hidden overflow-x-auto md:block" data-testid="persons-table">
                 <Table>
@@ -280,9 +294,44 @@ export default function PersonasListPage() {
                     ))}
                   </TableBody>
                 </Table>
-                <p className="text-xs text-gray-400 mt-3">
-                  Mostrando {persons.length} de {total} persona(s).
-                </p>
+              </div>
+              <div className="mt-4 flex flex-col gap-3 border-t border-gray-100 pt-4 sm:flex-row sm:items-center sm:justify-between" data-testid="persons-pagination">
+                <div className="flex items-center gap-2 text-xs text-gray-500">
+                  <span data-testid="persons-pagination-summary">Mostrando {persons.length} de {total} persona(s) · página {page} de {totalPages}</span>
+                  <select
+                    value={pageSize}
+                    onChange={(e) => setPageSize(Number(e.target.value))}
+                    className="h-8 rounded-md border bg-white px-2 text-xs"
+                    data-testid="persons-page-size-select"
+                  >
+                    <option value={10}>10 por página</option>
+                    <option value={20}>20 por página</option>
+                    <option value={50}>50 por página</option>
+                    <option value={100}>100 por página</option>
+                  </select>
+                </div>
+                <div className="flex items-center justify-center gap-1">
+                  <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))} data-testid="persons-page-prev">
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  {pageNumbers[0] > 1 && <span className="px-1 text-xs text-gray-400">…</span>}
+                  {pageNumbers.map((n) => (
+                    <Button
+                      key={n}
+                      variant={n === page ? 'default' : 'outline'}
+                      size="sm"
+                      className={n === page ? 'bg-[#C8A951] text-white hover:bg-[#B8964A]' : ''}
+                      onClick={() => setPage(n)}
+                      data-testid={`persons-page-${n}`}
+                    >
+                      {n}
+                    </Button>
+                  ))}
+                  {pageNumbers[pageNumbers.length - 1] < totalPages && <span className="px-1 text-xs text-gray-400">…</span>}
+                  <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))} data-testid="persons-page-next">
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
               </>
             )}

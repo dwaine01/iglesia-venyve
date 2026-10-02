@@ -28,7 +28,7 @@ const delegatedCapabilities = [
   ['geo.manage_locations', 'Corregir ubicaciones'],
   ['formation.read', 'Consultar Formación'],
   ['formation.programs.manage', 'Administrar programas y módulos'],
-  ['formation.cohorts.manage', 'Administrar cohortes y clases'],
+  ['formation.cohorts.manage', 'Administrar promociones de Formación'],
   ['formation.enroll', 'Inscribir estudiantes'],
   ['formation.attendance.write', 'Tomar asistencia'],
   ['formation.grades.read', 'Consultar notas'],
