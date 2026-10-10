@@ -281,3 +281,11 @@
 .campaign-announcement-pop {
   animation: campaign-announcement-pop 0.45s cubic-bezier(.2,.8,.2,1);
 }
+
+@keyframes campaign-ticker-scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.campaign-ticker-track {
+  animation: campaign-ticker-scroll 28s linear infinite;
+}

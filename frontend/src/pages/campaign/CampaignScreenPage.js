@@ -85,6 +85,8 @@ export default function CampaignScreenPage() {
     else document.exitFullscreen?.();
   };
 
+  const totalPieces = summary?.total_pieces || 120;
+
   if (authLoading) return null;
 
   if (!resolvedToken || tokenRevoked) {
@@ -103,47 +105,46 @@ export default function CampaignScreenPage() {
   return (
     <div className="relative min-h-screen overflow-hidden bg-[#07080c] text-white" data-testid="campaign-screen-page">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(181,149,63,0.18),transparent_60%)]" />
-      <div className="relative z-10 mx-auto flex min-h-screen max-w-[1800px] flex-col justify-center gap-5 px-6 py-6">
+      <div className="relative z-10 mx-auto flex h-screen max-w-[1800px] flex-col gap-3 overflow-hidden px-6 py-4">
         <div className="relative overflow-hidden rounded-2xl border border-white/10" data-testid="campaign-header-banner">
           <img src="/campaign/header_bg.jpg" alt="" className="absolute inset-0 h-full w-full object-cover" />
           <div className="absolute inset-0 bg-gradient-to-r from-black/85 via-black/60 to-black/85" />
-          <div className="relative z-10 flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="relative z-10 flex flex-col gap-2 px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="text-center sm:text-left">
               <div className="flex flex-wrap items-baseline justify-center gap-2 sm:justify-start" data-testid="campaign-screen-headline">
-                <span className="text-3xl text-[#F4C430] sm:text-5xl" style={{ fontFamily: "'Permanent Marker', cursive", transform: 'rotate(-3deg)', display: 'inline-block' }}>Juntos</span>
-                <span className="text-xl text-white sm:text-3xl lg:text-4xl" style={{ fontFamily: "'Anton', sans-serif" }}>HACEMOS</span>
-                <span className="text-xl text-[#F4C430] sm:text-3xl lg:text-4xl" style={{ fontFamily: "'Anton', sans-serif" }}>ESTO REALIDAD</span>
+                <span className="text-2xl text-[#F4C430] sm:text-4xl" style={{ fontFamily: "'Permanent Marker', cursive", transform: 'rotate(-3deg)', display: 'inline-block' }}>Juntos</span>
+                <span className="text-lg text-white sm:text-2xl lg:text-3xl" style={{ fontFamily: "'Anton', sans-serif" }}>HACEMOS</span>
+                <span className="text-lg text-[#F4C430] sm:text-2xl lg:text-3xl" style={{ fontFamily: "'Anton', sans-serif" }}>ESTO REALIDAD</span>
               </div>
-              <p className="mt-1 text-xs font-semibold uppercase tracking-[0.2em] text-slate-200 sm:text-sm" data-testid="campaign-screen-subtitle">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-200 sm:text-sm" data-testid="campaign-screen-subtitle">
                 Ayúdanos a completar el bus
               </p>
             </div>
 
             <div className="flex items-center justify-center sm:justify-end">
-              <div className="rounded-xl bg-[#F4C430] px-4 py-2 text-center text-[#1a1200] shadow-lg" style={{ transform: 'rotate(3deg)' }} data-testid="campaign-meta-badge">
-                <p className="text-[10px] font-bold uppercase tracking-wide">Meta</p>
-                <p className="text-xl font-black leading-none sm:text-2xl">{formatUsdCents(summary?.goal_cents || 0)}</p>
-                <p className="mt-0.5 text-[8px] font-semibold uppercase leading-tight">para la terminación del bus</p>
+              <div className="rounded-xl bg-[#F4C430] px-3 py-1.5 text-center text-[#1a1200] shadow-lg" style={{ transform: 'rotate(3deg)' }} data-testid="campaign-meta-badge">
+                <p className="text-[9px] font-bold uppercase tracking-wide">Meta</p>
+                <p className="text-lg font-black leading-none sm:text-xl">{formatUsdCents(summary?.goal_cents || 0)}</p>
+                <p className="mt-0.5 text-[7px] font-semibold uppercase leading-tight">para la terminación del bus</p>
               </div>
             </div>
           </div>
 
-          <div className="relative z-10 hidden items-center justify-center gap-6 border-t border-white/10 px-5 py-3 lg:flex" data-testid="campaign-header-callouts">
+          <div className="relative z-10 hidden items-center justify-center gap-6 border-t border-white/10 px-5 py-1.5 lg:flex" data-testid="campaign-header-callouts">
             <HeaderCallout icon={Heart} text="Tu donación completa una pieza" />
             <HeaderCallout icon={Users} text="Juntos avanzamos más rápido" />
             <HeaderCallout icon={UtensilsCrossed} text="Este bus será una bendición para nuestra comunidad" />
           </div>
         </div>
 
-        <div className="grid flex-1 grid-cols-1 items-center gap-4 lg:grid-cols-[1fr_260px]">
-          <BusPuzzleReveal pieces={summary?.pieces || []} totalPieces={summary?.total_pieces || 120} />
-          <div className="hidden h-full max-h-[380px] lg:block">
-            <CampaignDonorFeed feed={summary?.donor_feed || []} />
+        <div className="flex min-h-0 flex-1 items-center justify-center">
+          <div className="h-full w-full">
+            <BusPuzzleReveal pieces={summary?.pieces || []} totalPieces={totalPieces} />
           </div>
         </div>
 
-        <div className="mx-auto w-full max-w-4xl space-y-2" data-testid="campaign-screen-stats">
-          <div className="h-4 w-full overflow-hidden rounded-full bg-white/10">
+        <div className="mx-auto w-full max-w-5xl space-y-1.5" data-testid="campaign-screen-stats">
+          <div className="h-3.5 w-full overflow-hidden rounded-full bg-white/10">
             <div
               className="h-full rounded-full bg-gradient-to-r from-[#B5953F] to-[#F4C430] transition-all duration-1000"
               style={{ width: `${Math.round(percent * 100)}%` }}
@@ -156,13 +157,15 @@ export default function CampaignScreenPage() {
             <Stat label="Restante" value={summary?.remaining_cents} />
             <Stat label="Meta" value={summary?.goal_cents} highlight />
           </div>
-          <p className="text-center text-2xl font-black text-[#F4C430] sm:text-3xl" data-testid="campaign-percent-label">{Math.round(percent * 100)}%</p>
+          <p className="text-center text-xl font-black text-[#F4C430] sm:text-2xl" data-testid="campaign-percent-label">{Math.round(percent * 100)}%</p>
         </div>
 
+        <CampaignDonorFeed feed={summary?.donor_feed || []} />
+
         {atGoal && (
-          <div className="mx-auto animate-pulse rounded-2xl border border-[#F4C430]/40 bg-[#F4C430]/10 px-6 py-3" data-testid="campaign-goal-reached-banner">
-            <p className="flex items-center gap-2 text-lg font-bold text-[#F4C430] sm:text-2xl">
-              <PartyPopper className="h-6 w-6" />¡LA VISIÓN SIGUE AVANZANDO! ¡GRACIAS POR HACERLA REALIDAD!
+          <div className="mx-auto animate-pulse rounded-2xl border border-[#F4C430]/40 bg-[#F4C430]/10 px-6 py-2" data-testid="campaign-goal-reached-banner">
+            <p className="flex items-center gap-2 text-base font-bold text-[#F4C430] sm:text-xl">
+              <PartyPopper className="h-5 w-5" />¡LA VISIÓN SIGUE AVANZANDO! ¡GRACIAS POR HACERLA REALIDAD!
             </p>
           </div>
         )}
