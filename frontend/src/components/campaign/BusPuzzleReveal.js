@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { buildJigsawPieces, gridFor, JIGSAW_CELL } from '../../lib/jigsawPieces';
+import { buildJigsawPieces, gridFor, seededShuffle, JIGSAW_CELL } from '../../lib/jigsawPieces';
 
 const IMAGE_ASPECT = 2164 / 688;
 
@@ -14,22 +14,32 @@ export const BusPuzzleReveal = ({ pieces = [], totalPieces = 120 }) => {
   const viewW = cols * JIGSAW_CELL;
   const viewH = rows * JIGSAW_CELL;
 
+  // Orden de revelado disperso (no lineal): la pieza #k que se llena cronológicamente por
+  // donaciones cae en una posición aleatoria (pero fija/determinística) de la cuadrícula,
+  // para que las donaciones aparezcan repartidas por el techo, el centro, el frente, etc.
+  const fillOrder = useMemo(() => seededShuffle(totalPieces, 2026), [totalPieces]);
+  const gridState = useMemo(() => {
+    const arr = new Array(totalPieces).fill(null);
+    fillOrder.forEach((gridId, k) => { arr[gridId] = pieces[k] || null; });
+    return arr;
+  }, [fillOrder, pieces, totalPieces]);
+
   const prevFullRef = useRef(new Set());
   const [popping, setPopping] = useState(new Set());
 
   useEffect(() => {
     const newlyFull = new Set();
-    pieces.forEach((p, idx) => {
-      if (p?.status === 'full' && !prevFullRef.current.has(idx)) newlyFull.add(idx);
+    gridState.forEach((p, gridId) => {
+      if (p?.status === 'full' && !prevFullRef.current.has(gridId)) newlyFull.add(gridId);
     });
     if (newlyFull.size > 0) {
       setPopping(newlyFull);
       const timer = setTimeout(() => setPopping(new Set()), 1400);
-      prevFullRef.current = new Set(pieces.map((p, idx) => (p?.status === 'full' ? idx : null)).filter((v) => v !== null));
+      prevFullRef.current = new Set(gridState.map((p, gridId) => (p?.status === 'full' ? gridId : null)).filter((v) => v !== null));
       return () => clearTimeout(timer);
     }
-    prevFullRef.current = new Set(pieces.map((p, idx) => (p?.status === 'full' ? idx : null)).filter((v) => v !== null));
-  }, [pieces]);
+    prevFullRef.current = new Set(gridState.map((p, gridId) => (p?.status === 'full' ? gridId : null)).filter((v) => v !== null));
+  }, [gridState]);
 
   const firstName = (label) => (label && label !== 'Donante anónimo' ? label.trim().split(/\s+/)[0] : null);
 
@@ -49,7 +59,7 @@ export const BusPuzzleReveal = ({ pieces = [], totalPieces = 120 }) => {
           <image href="/campaign/bus_color_transparent.png" width={viewW} height={viewH} preserveAspectRatio="none" />
 
           {jigsaw.map((piece) => {
-            const state = pieces[piece.id] || { status: 'empty', fill_ratio: 0, donor_label: null };
+            const state = gridState[piece.id] || { status: 'empty', fill_ratio: 0, donor_label: null };
             const opacity = state.status === 'full' ? 0 : state.status === 'partial' ? Math.max(0, 1 - state.fill_ratio) : 1;
             return (
               <g
@@ -69,7 +79,7 @@ export const BusPuzzleReveal = ({ pieces = [], totalPieces = 120 }) => {
           ))}
 
           {jigsaw.map((piece) => {
-            const state = pieces[piece.id];
+            const state = gridState[piece.id];
             const name = state?.status === 'full' ? firstName(state.donor_label) : null;
             if (!name) return null;
             return (

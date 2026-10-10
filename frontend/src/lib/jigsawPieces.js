@@ -68,4 +68,14 @@ export function gridFor(total, aspect) {
   return best;
 }
 
+export function seededShuffle(n, seed) {
+  const rand = mulberry32(seed);
+  const arr = Array.from({ length: n }, (_, i) => i);
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
 export const JIGSAW_CELL = CELL;
