@@ -111,13 +111,14 @@ export default function CampaignScreenPage() {
           <div className="absolute inset-0 bg-gradient-to-r from-black/85 via-black/55 to-black/85" />
           <div className="relative z-10 flex items-center justify-between gap-3 px-5 py-3">
             <div className="text-center sm:text-left">
-              <h1 className="flex flex-wrap items-baseline justify-center gap-2 leading-none sm:justify-start" data-testid="campaign-screen-headline">
-                <span className="text-xl text-[#F4C430] sm:text-2xl lg:text-3xl" style={{ fontFamily: "'Permanent Marker', cursive", transform: 'rotate(-3deg)', display: 'inline-block' }}>Juntos</span>
-                <span className="text-base text-white sm:text-xl lg:text-2xl" style={{ fontFamily: "'Anton', sans-serif" }}>HACEMOS</span>
-                <span className="text-base text-[#F4C430] sm:text-xl lg:text-2xl" style={{ fontFamily: "'Anton', sans-serif" }}>ESTO REALIDAD</span>
+              <h1 className="leading-tight" style={{ fontFamily: "'Anton', sans-serif" }} data-testid="campaign-screen-headline">
+                <span className="block text-base uppercase tracking-wide sm:text-2xl lg:text-3xl">
+                  <span className="text-white">¡Este autobús lleva más que comida, </span>
+                  <span className="text-[#F4C430]">lleva una visión!</span>
+                </span>
               </h1>
               <p className="text-[9px] font-semibold uppercase tracking-[0.2em] text-slate-200 sm:text-xs" data-testid="campaign-screen-subtitle">
-                Ayúdanos a completar el bus
+                Juntos hacemos esta visión realidad
               </p>
             </div>
             <div className="flex-shrink-0 rounded-lg bg-[#F4C430] px-3 py-1 text-center text-[#1a1200] shadow-lg" style={{ transform: 'rotate(2deg)' }} data-testid="campaign-meta-badge">
