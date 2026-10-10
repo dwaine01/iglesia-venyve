@@ -111,3 +111,9 @@ export const canViewLibraryModule = (user) => canDeliverLibraryBooks(user);
 export const canDecideLibraryPO = (user) => hasCapability(user, 'finance.manage');
 export const canViewLibraryPurchaseOrders = (user) => canManageLibraryInventory(user) || canDecideLibraryPO(user);
 export const canViewLibraryReports = (user) => canManageLibraryInventory(user) || hasCapability(user, 'library.reports.read') || canDeliverLibraryBooks(user);
+
+export const canAccessCampaignOperator = (user) => (
+  isPastoralAuthority(user)
+  || ['coordinador_general', 'general_coordinator'].includes(String(user?.access_level || user?.rol || user?.role || '').trim().toLowerCase())
+  || hasCapability(user, 'campaign.venycome.manage')
+);

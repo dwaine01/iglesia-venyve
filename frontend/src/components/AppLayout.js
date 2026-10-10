@@ -7,7 +7,7 @@ import {
   LayoutDashboard, BookOpen, Map, Calendar, Users, BarChart3, LogOut, Menu, ChevronRight,
   Crown, Star, Trophy, Presentation, NotebookPen, KeyRound, IdCard, Church, Search, DatabaseZap,
   Activity, Award, BookHeart, Compass, GraduationCap, HeartHandshake, Network, RadioTower, DoorOpen, Gavel, Landmark, MapPinned,
-  PanelLeftClose, PanelLeftOpen, ShieldCheck, Droplets, Baby
+  PanelLeftClose, PanelLeftOpen, ShieldCheck, Droplets, Baby, Bus
 } from 'lucide-react';
 
 import { LOGO_IGLESIA } from '../data/presentationData';
@@ -16,7 +16,7 @@ import { ContextGuideButton } from './guides/ContextGuideButton';
 import { FloatingLibraryScanButton } from './library/FloatingLibraryScanButton';
 import { resolveRouteGuide } from './guides/guideRouteMap';
 import { BRAND } from '../config/brand';
-import { canManageBaptismEvents, canManageDedicationEvents, canViewCare, canViewFinanceModule, canViewFormation, canViewFrontGroups, canViewGeo, canViewLeadership, canViewLibraryModule, canViewOperations, hasAnyCapability, isPastoralAuthority } from '../lib/accessControl';
+import { canManageBaptismEvents, canManageDedicationEvents, canViewCare, canViewFinanceModule, canViewFormation, canViewFrontGroups, canViewGeo, canViewLeadership, canViewLibraryModule, canViewOperations, canAccessCampaignOperator, hasAnyCapability, isPastoralAuthority } from '../lib/accessControl';
 import { useBoardAccess } from '../hooks/useBoardAccess';
 const LOGO_URL = LOGO_IGLESIA;
 
@@ -34,6 +34,7 @@ const getNavItems = (user, boardAllowed = false) => {
       { to: '/presentaciones', icon: Baby, label: 'Presentación de Niños', testId: 'nav-dedication' },
       { to: '/formacion', icon: GraduationCap, label: 'Formación', testId: 'nav-formation' },
       { to: '/libreria', icon: BookOpen, label: 'Librería 360', testId: 'nav-library' },
+      { to: '/campanas/ven-y-come/control', icon: Bus, label: 'Campaña Ven y Come', testId: 'nav-campaign-venycome' },
       { to: '/grupos-frontales', icon: Network, label: 'Grupos Frontales', testId: 'nav-front-groups' },
       { to: '/liderazgo', icon: Award, label: 'Liderazgo', testId: 'nav-leadership' },
       { to: '/mapas', icon: MapPinned, label: 'Mapa 360', testId: 'nav-geo-maps' },
@@ -81,6 +82,7 @@ const getNavItems = (user, boardAllowed = false) => {
     { to: '/presentaciones', icon: Baby, label: 'Presentación de Niños', testId: 'nav-dedication' },
     { to: '/formacion', icon: GraduationCap, label: 'Formación', testId: 'nav-formation' },
     { to: '/libreria', icon: BookOpen, label: 'Librería 360', testId: 'nav-library' },
+    { to: '/campanas/ven-y-come/control', icon: Bus, label: 'Campaña Ven y Come', testId: 'nav-campaign-venycome' },
     { to: '/grupos-frontales', icon: Network, label: 'Grupos Frontales', testId: 'nav-front-groups' },
     { to: '/liderazgo', icon: Award, label: 'Liderazgo', testId: 'nav-leadership' },
     { to: '/mapas', icon: MapPinned, label: 'Mapa 360', testId: 'nav-geo-maps' },
@@ -126,6 +128,8 @@ const getNavItems = (user, boardAllowed = false) => {
     item.to !== '/bautismos' || canManageBaptismEvents(user)
   ) && (
     item.to !== '/presentaciones' || canManageDedicationEvents(user)
+  ) && (
+    item.to !== '/campanas/ven-y-come/control' || canAccessCampaignOperator(user)
   ));
 };
 

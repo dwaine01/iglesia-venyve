@@ -40,6 +40,7 @@ const delegatedCapabilities = [
   ['baptism.read', 'Consultar Bautismo'],
   ['baptism.write', 'Registrar Bautismo'],
   ['baptism.certificates.issue', 'Emitir certificado de Bautismo'],
+  ['campaign.venycome.manage', 'Operador de Campaña Ven y Come'],
 ];
 
 const toggle = (items, value, checked) => checked
