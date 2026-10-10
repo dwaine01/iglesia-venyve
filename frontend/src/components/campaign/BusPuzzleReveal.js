@@ -40,8 +40,8 @@ export const BusPuzzleReveal = ({ pieces = [], totalPieces = 120 }) => {
           {jigsaw.map((piece) => (
             <clipPath id={`vyc-piece-${piece.id}`} key={piece.id}><path d={piece.d} /></clipPath>
           ))}
-          <mask id="vyc-bus-silhouette-mask" style={{ maskType: 'alpha' }}>
-            <image href="/campaign/bus_silhouette.png" width={viewW} height={viewH} preserveAspectRatio="none" />
+          <mask id="vyc-bus-silhouette-mask">
+            <image href="/campaign/bus_mask_white.png" width={viewW} height={viewH} preserveAspectRatio="none" />
           </mask>
         </defs>
 

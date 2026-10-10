@@ -109,13 +109,10 @@ export default function CampaignScreenPage() {
         <div className="relative overflow-hidden rounded-xl border border-white/10" data-testid="campaign-header-banner">
           <img src="/campaign/header_bg.jpg" alt="" className="absolute inset-0 h-full w-full object-cover" />
           <div className="absolute inset-0 bg-gradient-to-r from-black/85 via-black/55 to-black/85" />
-          <div className="relative z-10 flex items-center justify-between gap-3 px-5 py-2.5">
-            <h1
-              className="text-sm font-black uppercase leading-tight text-[#F4C430] sm:text-lg lg:text-2xl"
-              style={{ fontFamily: "'Anton', sans-serif" }}
-              data-testid="campaign-screen-headline"
-            >
-              ¡Este autobús lleva más que comida, lleva una visión!
+          <div className="relative z-10 flex items-center justify-between gap-3 px-5 py-3">
+            <h1 className="text-center leading-tight sm:text-left" style={{ fontFamily: "'Anton', sans-serif" }} data-testid="campaign-screen-headline">
+              <span className="block text-sm uppercase tracking-wide text-white sm:text-lg lg:text-xl">Este autobús lleva más que comida</span>
+              <span className="block text-lg uppercase tracking-wide text-[#F4C430] sm:text-2xl lg:text-3xl">Lleva una visión</span>
             </h1>
             <div className="flex-shrink-0 rounded-lg bg-[#F4C430] px-3 py-1 text-center text-[#1a1200] shadow-lg" data-testid="campaign-meta-badge">
               <p className="text-[8px] font-bold uppercase leading-none">Meta</p>
