@@ -263,3 +263,21 @@
     linear-gradient(90deg, rgba(15, 23, 42, 0.025) 1px, transparent 1px);
   background-size: 28px 28px;
 }
+
+/* ===== Campaña Ven y Come ===== */
+@keyframes campaign-piece-pop {
+  0% { filter: drop-shadow(0 0 0 rgba(244, 196, 48, 0)); }
+  30% { filter: drop-shadow(0 0 14px rgba(244, 196, 48, 0.95)); }
+  100% { filter: drop-shadow(0 0 0 rgba(244, 196, 48, 0)); }
+}
+.campaign-piece-pop {
+  animation: campaign-piece-pop 1.4s ease-out;
+}
+
+@keyframes campaign-announcement-pop {
+  0% { opacity: 0; transform: translateY(16px) scale(0.96); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+.campaign-announcement-pop {
+  animation: campaign-announcement-pop 0.45s cubic-bezier(.2,.8,.2,1);
+}

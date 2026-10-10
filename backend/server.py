@@ -536,6 +536,7 @@ from library_reservations import router as library_reservations_router, ensure_i
 from library_scan import router as library_scan_router
 from library_reports import router as library_reports_router
 from library_notifications import router as library_notifications_router, ensure_indexes as library_notifications_ensure_indexes
+from campaign_venycome import router as campaign_venycome_router, ensure_indexes as campaign_venycome_ensure_indexes
 
 app.include_router(cellular_router)
 app.include_router(geo_router)
@@ -553,6 +554,7 @@ app.include_router(library_reservations_router)
 app.include_router(library_scan_router)
 app.include_router(library_reports_router)
 app.include_router(library_notifications_router)
+app.include_router(campaign_venycome_router)
 
 
 # --- Default Checklists ---
@@ -679,6 +681,7 @@ async def startup():
     await library_po_ensure_indexes()
     await library_reservations_ensure_indexes()
     await library_notifications_ensure_indexes()
+    await campaign_venycome_ensure_indexes()
     print("Core Person (P-001) indexes created")
 
 
