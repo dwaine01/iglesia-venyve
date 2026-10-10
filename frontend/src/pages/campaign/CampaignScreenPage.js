@@ -17,6 +17,7 @@ export default function CampaignScreenPage() {
 
   const [summary, setSummary] = useState(null);
   const [connected, setConnected] = useState(false);
+  const [tokenRevoked, setTokenRevoked] = useState(false);
   const [announcement, setAnnouncement] = useState(null);
   const wsRef = useRef(null);
   const reconnectRef = useRef(null);
@@ -27,8 +28,10 @@ export default function CampaignScreenPage() {
     try {
       const { data } = await axios.get(`${API}/api/campaigns/venycome/public/summary`, { params: { token: resolvedToken } });
       setSummary(data);
+      setTokenRevoked(false);
     } catch (err) {
-      // red caída: conservar el último estado conocido en pantalla
+      if (err?.response?.status === 403) setTokenRevoked(true);
+      // otros errores de red: conservar el último estado conocido en pantalla
     }
   }, [resolvedToken]);
 
@@ -55,8 +58,9 @@ export default function CampaignScreenPage() {
           if (data.type === 'announcement') showAnnouncement(data);
         } catch (err) { /* mensaje inválido, ignorar */ }
       };
-      ws.onclose = () => {
+      ws.onclose = (event) => {
         setConnected(false);
+        if (event.code === 4403) { setTokenRevoked(true); return; }
         if (!closedByUs) reconnectRef.current = setTimeout(connect, 2500);
       };
       ws.onerror = () => ws.close();
@@ -82,10 +86,12 @@ export default function CampaignScreenPage() {
 
   if (authLoading) return null;
 
-  if (!resolvedToken) {
+  if (!resolvedToken || tokenRevoked) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-black px-6 text-center text-white" data-testid="campaign-screen-unauthorized">
-        <p className="text-lg text-slate-300">Este enlace requiere un token de presentación válido o una sesión iniciada.</p>
+        <p className="text-lg text-slate-300">
+          {tokenRevoked ? 'Este enlace de presentación fue revocado. Solicite uno nuevo al operador.' : 'Este enlace requiere un token de presentación válido o una sesión iniciada.'}
+        </p>
       </div>
     );
   }
