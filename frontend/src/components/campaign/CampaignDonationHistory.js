@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 import { toast } from 'sonner';
-import { Eye, Pencil, Ban, CheckCircle2 } from 'lucide-react';
+import { Eye, Pencil, Ban, CheckCircle2, Undo2 } from 'lucide-react';
 
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
@@ -20,6 +20,7 @@ import { formatUsdCents } from '../../lib/campaignFormat';
 export const CampaignDonationHistory = ({ base, getAuthHeaders, donations, onChanged }) => {
   const [busyId, setBusyId] = useState(null);
   const [editing, setEditing] = useState(null);
+  const lastActive = donations.find((item) => item.status !== 'voided') || null;
 
   const run = async (id, fn) => {
     setBusyId(id);
@@ -51,7 +52,30 @@ export const CampaignDonationHistory = ({ base, getAuthHeaders, donations, onCha
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-5" data-testid="campaign-donation-history">
-      <h3 className="font-serif text-lg text-[#132443]">Historial de donativos</h3>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="font-serif text-lg text-[#132443]">Historial de donativos</h3>
+        {lastActive && (
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button size="sm" variant="outline" className="text-red-600" data-testid="campaign-undo-last-button">
+                <Undo2 className="h-4 w-4" />Deshacer última operación
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent className="bg-white">
+              <AlertDialogHeader>
+                <AlertDialogTitle>¿Deshacer la última donación registrada?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Se anulará: {lastActive.anonymous ? 'Anónimo' : (lastActive.donor_name || '—')} · {formatUsdCents(lastActive.amount_cents)}. Puede revertirse editando el historial si fue un error.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel data-testid="campaign-undo-last-cancel">Cancelar</AlertDialogCancel>
+                <AlertDialogAction onClick={() => voidDonation(lastActive.donation_id)} data-testid="campaign-undo-last-confirm">Deshacer</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        )}
+      </div>
       <div className="mt-3 max-h-[480px] overflow-y-auto">
         <Table>
           <TableHeader><TableRow>

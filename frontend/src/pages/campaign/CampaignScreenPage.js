@@ -5,6 +5,7 @@ import { PartyPopper, WifiOff, Maximize } from 'lucide-react';
 
 import { useAuth } from '../../context/AuthContext';
 import { BusPuzzleReveal } from '../../components/campaign/BusPuzzleReveal';
+import { CampaignDonorFeed } from '../../components/campaign/CampaignDonorFeed';
 import { formatUsdCents } from '../../lib/campaignFormat';
 
 const API = process.env.REACT_APP_BACKEND_URL;
@@ -102,39 +103,44 @@ export default function CampaignScreenPage() {
   return (
     <div className="relative min-h-screen overflow-hidden bg-[#07080c] text-white" data-testid="campaign-screen-page">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(181,149,63,0.18),transparent_60%)]" />
-      <div className="relative z-10 mx-auto flex min-h-screen max-w-[1600px] flex-col items-center justify-center gap-8 px-8 py-10 text-center">
-        <div>
-          <h1 className="font-serif text-3xl font-black uppercase leading-tight text-[#F4C430] sm:text-5xl lg:text-6xl" data-testid="campaign-screen-headline">
-            ¡Este autobús lleva más que comida,<br />lleva una visión!
+      <div className="relative z-10 mx-auto flex min-h-screen max-w-[1800px] flex-col justify-center gap-5 px-6 py-6" style={{ aspectRatio: '2 / 1' }}>
+        <div className="text-center">
+          <h1 className="font-serif text-2xl font-black uppercase leading-tight text-[#F4C430] sm:text-4xl lg:text-5xl" data-testid="campaign-screen-headline">
+            ¡Este autobús lleva más que comida, lleva una visión!
           </h1>
-          <p className="mt-3 text-base text-slate-300 sm:text-xl" data-testid="campaign-screen-subtitle">Cada donación completa una pieza de este sueño</p>
+          <p className="mt-1 text-sm font-semibold uppercase tracking-wide text-slate-200 sm:text-lg" data-testid="campaign-screen-subtitle">
+            Juntos hacemos esta visión realidad
+          </p>
         </div>
 
-        <div className="w-full max-w-5xl">
-          <BusPuzzleReveal percent={percent} />
+        <div className="grid flex-1 grid-cols-1 items-center gap-4 lg:grid-cols-[1fr_260px]">
+          <BusPuzzleReveal pieces={summary?.pieces || []} totalPieces={summary?.total_pieces || 120} />
+          <div className="hidden h-full max-h-[380px] lg:block">
+            <CampaignDonorFeed feed={summary?.donor_feed || []} />
+          </div>
         </div>
 
-        <div className="w-full max-w-3xl space-y-3" data-testid="campaign-screen-stats">
-          <div className="h-5 w-full overflow-hidden rounded-full bg-white/10">
+        <div className="mx-auto w-full max-w-4xl space-y-2" data-testid="campaign-screen-stats">
+          <div className="h-4 w-full overflow-hidden rounded-full bg-white/10">
             <div
               className="h-full rounded-full bg-gradient-to-r from-[#B5953F] to-[#F4C430] transition-all duration-1000"
               style={{ width: `${Math.round(percent * 100)}%` }}
               data-testid="campaign-progress-bar"
             />
           </div>
-          <div className="flex flex-wrap justify-between gap-4 text-sm sm:text-base">
+          <div className="flex flex-wrap justify-between gap-3 text-sm sm:text-base">
             <Stat label="Comprometido" value={summary?.committed_cents} />
             <Stat label="Recibido" value={summary?.received_cents} />
-            <Stat label="Pendiente" value={summary?.pending_cents} />
+            <Stat label="Restante" value={summary?.remaining_cents} />
             <Stat label="Meta" value={summary?.goal_cents} highlight />
           </div>
-          <p className="text-3xl font-black text-[#F4C430]" data-testid="campaign-percent-label">{Math.round(percent * 100)}%</p>
+          <p className="text-center text-2xl font-black text-[#F4C430] sm:text-3xl" data-testid="campaign-percent-label">{Math.round(percent * 100)}%</p>
         </div>
 
         {atGoal && (
-          <div className="animate-pulse rounded-2xl border border-[#F4C430]/40 bg-[#F4C430]/10 px-8 py-4" data-testid="campaign-goal-reached-banner">
-            <p className="flex items-center gap-2 text-xl font-bold text-[#F4C430] sm:text-2xl">
-              <PartyPopper className="h-7 w-7" />¡LA VISIÓN SIGUE AVANZANDO! ¡GRACIAS POR HACERLA REALIDAD!
+          <div className="mx-auto animate-pulse rounded-2xl border border-[#F4C430]/40 bg-[#F4C430]/10 px-6 py-3" data-testid="campaign-goal-reached-banner">
+            <p className="flex items-center gap-2 text-lg font-bold text-[#F4C430] sm:text-2xl">
+              <PartyPopper className="h-6 w-6" />¡LA VISIÓN SIGUE AVANZANDO! ¡GRACIAS POR HACERLA REALIDAD!
             </p>
           </div>
         )}

@@ -116,13 +116,52 @@ async def get_settings() -> dict:
     return settings
 
 
+PIECE_VALUE_CENTS = 10_000  # $100 por pieza
+
+
+def compute_pieces_and_feed(donations: list, counting_rule: str, total_pieces: int) -> tuple:
+    """Atribuye piezas del rompecabezas a quien la completa (cruza el umbral de $100)
+    y construye el feed completo de donantes, para que ningún nombre/monto se pierda."""
+    pieces = [{"status": "empty", "donor_label": None, "fill_ratio": 0.0} for _ in range(total_pieces)]
+    feed = []
+    cumulative = 0
+    ceiling_cents = total_pieces * PIECE_VALUE_CENTS
+    for item in donations:
+        label = donor_label(item)
+        feed.append({
+            "donor_label": label, "amount_cents": item["amount_cents"],
+            "donation_type": item["donation_type"], "created_at": item["created_at"].isoformat(),
+        })
+        if counting_rule == "received_only" and item["donation_type"] != "received":
+            continue
+        remaining = item["amount_cents"]
+        while remaining > 0 and cumulative < ceiling_cents:
+            piece_idx = cumulative // PIECE_VALUE_CENTS
+            filled_in_piece = cumulative % PIECE_VALUE_CENTS
+            space_left = PIECE_VALUE_CENTS - filled_in_piece
+            take = min(remaining, space_left)
+            cumulative += take
+            remaining -= take
+            new_filled = cumulative % PIECE_VALUE_CENTS
+            if new_filled == 0:
+                pieces[piece_idx] = {"status": "full", "donor_label": label, "fill_ratio": 1.0}
+            else:
+                pieces[piece_idx] = {"status": "partial", "donor_label": label, "fill_ratio": round(new_filled / PIECE_VALUE_CENTS, 4)}
+    feed.reverse()
+    return pieces, feed[:40]
+
+
 async def compute_summary(mode: str) -> dict:
     settings = await get_settings()
     is_rehearsal = mode == "rehearsal"
-    cursor = db.campaign_donations.find({"status": "active", "is_rehearsal": is_rehearsal}, {"_id": 0, "amount_cents": 1, "donation_type": 1})
+    cursor = db.campaign_donations.find(
+        {"status": "active", "is_rehearsal": is_rehearsal},
+        {"_id": 0, "amount_cents": 1, "donation_type": 1, "donor_name": 1, "anonymous": 1, "consent_show_name": 1, "created_at": 1},
+    ).sort("created_at", 1)
+    donations = await cursor.to_list(5000)
     received_cents = 0
     pending_cents = 0
-    async for item in cursor:
+    for item in donations:
         if item["donation_type"] == "received":
             received_cents += item["amount_cents"]
         else:
@@ -131,10 +170,14 @@ async def compute_summary(mode: str) -> dict:
     goal_cents = settings["goal_cents"]
     counted_cents = committed_cents if settings["counting_rule"] == "committed" else received_cents
     percent = min(1.0, counted_cents / goal_cents) if goal_cents else 0.0
+    total_pieces = max(1, round(goal_cents / PIECE_VALUE_CENTS))
+    pieces, feed = compute_pieces_and_feed(donations, settings["counting_rule"], total_pieces)
     return {
         "mode": mode, "goal_cents": goal_cents, "counting_rule": settings["counting_rule"],
         "received_cents": received_cents, "pending_cents": pending_cents, "committed_cents": committed_cents,
         "counted_cents": counted_cents, "percent": round(percent, 6),
+        "remaining_cents": max(0, goal_cents - committed_cents),
+        "total_pieces": total_pieces, "pieces": pieces, "donor_feed": feed,
     }
 
 

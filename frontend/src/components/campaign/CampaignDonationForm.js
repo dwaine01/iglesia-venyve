@@ -134,7 +134,7 @@ export const CampaignDonationForm = ({ base, getAuthHeaders, onCreated }) => {
       </div>
 
       <Button type="submit" disabled={submitting || !amountCents} className="w-full bg-[#132443] hover:bg-[#1c3461]" data-testid="campaign-submit-donation-button">
-        <Tv className="h-4 w-4" />{submitting ? 'Mostrando…' : 'Mostrar en pantalla'}
+        <Tv className="h-4 w-4" />{submitting ? 'Registrando…' : 'Registrar y revelar piezas'}
       </Button>
       <p className="text-xs text-slate-400">Atajos: teclas 1–6 montos rápidos · Esc limpia el formulario</p>
     </form>

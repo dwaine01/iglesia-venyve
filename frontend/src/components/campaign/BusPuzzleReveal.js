@@ -1,94 +1,91 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { buildJigsawPieces, gridFor, JIGSAW_CELL } from '../../lib/jigsawPieces';
 
-const COLS = 20;
-const ROWS = 6;
-const TOTAL = COLS * ROWS; // 120 piezas de $100 equivalentes
+const IMAGE_ASPECT = 2164 / 688;
 
-function mulberry32(seed) {
-  let a = seed;
-  return function () {
-    a |= 0; a = (a + 0x6D2B79F5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
+// Rompecabezas REAL (piezas con pestañas que encajan) sobre el autobús: cada pieza
+// completada (umbral de $100) muestra el color real + el nombre del donante que la
+// completó; las piezas parciales se van aclarando proporcionalmente.
+export const BusPuzzleReveal = ({ pieces = [], totalPieces = 120 }) => {
+  const { cols, rows } = useMemo(() => gridFor(totalPieces, IMAGE_ASPECT), [totalPieces]);
+  const jigsaw = useMemo(() => buildJigsawPieces(cols, rows, 7), [cols, rows]);
+  const viewW = cols * JIGSAW_CELL;
+  const viewH = rows * JIGSAW_CELL;
 
-function seededShuffle(n, seed) {
-  const arr = Array.from({ length: n }, (_, i) => i);
-  const rand = mulberry32(seed);
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(rand() * (i + 1));
-    [arr[i], arr[j]] = [arr[j], arr[i]];
-  }
-  return arr;
-}
-
-// Revela progresivamente el autobús a color debajo de una silueta oscura,
-// en 120 piezas equivalentes de $100, con soporte de montos fraccionarios.
-export const BusPuzzleReveal = ({ percent = 0 }) => {
-  const order = useMemo(() => seededShuffle(TOTAL, 2026), []);
-  const rankByIndex = useMemo(() => {
-    const map = new Array(TOTAL);
-    order.forEach((idx, rank) => { map[idx] = rank; });
-    return map;
-  }, [order]);
-
-  const piecesFloat = Math.max(0, Math.min(TOTAL, (percent || 0) * TOTAL));
-  const fullCount = Math.floor(piecesFloat);
-  const partial = piecesFloat - fullCount;
-
-  const prevCountRef = useRef(0);
+  const prevFullRef = useRef(new Set());
   const [popping, setPopping] = useState(new Set());
 
   useEffect(() => {
-    const prev = prevCountRef.current;
-    if (fullCount > prev) {
-      const newly = order.slice(prev, fullCount);
-      setPopping(new Set(newly));
+    const newlyFull = new Set();
+    pieces.forEach((p, idx) => {
+      if (p?.status === 'full' && !prevFullRef.current.has(idx)) newlyFull.add(idx);
+    });
+    if (newlyFull.size > 0) {
+      setPopping(newlyFull);
       const timer = setTimeout(() => setPopping(new Set()), 1400);
-      prevCountRef.current = fullCount;
+      prevFullRef.current = new Set(pieces.map((p, idx) => (p?.status === 'full' ? idx : null)).filter((v) => v !== null));
       return () => clearTimeout(timer);
     }
-    prevCountRef.current = fullCount;
-  }, [fullCount, order]);
+    prevFullRef.current = new Set(pieces.map((p, idx) => (p?.status === 'full' ? idx : null)).filter((v) => v !== null));
+  }, [pieces]);
+
+  const firstName = (label) => (label && label !== 'Donante anónimo' ? label.trim().split(/\s+/)[0] : null);
 
   return (
-    <div className="relative w-full" style={{ aspectRatio: '2164 / 688' }} data-testid="bus-puzzle-reveal">
-      <img
-        src="/campaign/bus_color_transparent.png"
-        alt="Autobús Ven y Come"
-        className="absolute inset-0 h-full w-full object-contain"
-        draggable={false}
-      />
-      <div
-        className="absolute inset-0 grid"
-        style={{ gridTemplateColumns: `repeat(${COLS}, 1fr)`, gridTemplateRows: `repeat(${ROWS}, 1fr)` }}
-        data-testid="bus-puzzle-grid"
-      >
-        {Array.from({ length: TOTAL }, (_, idx) => {
-          const rank = rankByIndex[idx];
-          let opacity = 1;
-          if (rank < fullCount) opacity = 0;
-          else if (rank === fullCount) opacity = 1 - partial;
-          const row = Math.floor(idx / COLS);
-          const col = idx % COLS;
+    <div className="relative w-full" data-testid="bus-puzzle-reveal">
+      <svg viewBox={`0 0 ${viewW} ${viewH}`} className="h-full w-full" preserveAspectRatio="xMidYMid meet">
+        <defs>
+          {jigsaw.map((piece) => (
+            <clipPath id={`vyc-piece-${piece.id}`} key={piece.id}><path d={piece.d} /></clipPath>
+          ))}
+        </defs>
+
+        <image href="/campaign/bus_color_transparent.png" width={viewW} height={viewH} preserveAspectRatio="none" />
+
+        {jigsaw.map((piece) => {
+          const state = pieces[piece.id] || { status: 'empty', fill_ratio: 0, donor_label: null };
+          const opacity = state.status === 'full' ? 0 : state.status === 'partial' ? Math.max(0, 1 - state.fill_ratio) : 1;
           return (
-            <div
-              key={idx}
-              data-testid={`puzzle-piece-${idx}`}
-              className={popping.has(idx) ? 'campaign-piece-pop' : ''}
-              style={{
-                backgroundImage: 'url(/campaign/bus_silhouette.png)',
-                backgroundSize: `${COLS * 100}% ${ROWS * 100}%`,
-                backgroundPosition: `${(col / (COLS - 1)) * 100}% ${(row / (ROWS - 1)) * 100}%`,
-                opacity,
-                transition: 'opacity 1.3s ease',
-              }}
-            />
+            <g
+              key={piece.id}
+              clipPath={`url(#vyc-piece-${piece.id})`}
+              data-testid={`jigsaw-piece-${piece.id}`}
+              className={popping.has(piece.id) ? 'campaign-piece-pop' : ''}
+              style={{ opacity, transition: 'opacity 1.1s ease' }}
+            >
+              <image href="/campaign/bus_color_dim.png" width={viewW} height={viewH} preserveAspectRatio="none" />
+            </g>
           );
         })}
-      </div>
+
+        {jigsaw.map((piece) => (
+          <path key={`outline-${piece.id}`} d={piece.d} fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="1.3" />
+        ))}
+
+        {jigsaw.map((piece) => {
+          const state = pieces[piece.id];
+          const name = state?.status === 'full' ? firstName(state.donor_label) : null;
+          if (!name) return null;
+          return (
+            <text
+              key={`label-${piece.id}`}
+              x={piece.cx}
+              y={piece.cy}
+              textAnchor="middle"
+              dominantBaseline="middle"
+              fontSize="11"
+              fontWeight="700"
+              fill="#ffffff"
+              stroke="#07080c"
+              strokeWidth="2"
+              paintOrder="stroke"
+              data-testid={`jigsaw-piece-label-${piece.id}`}
+            >
+              {name}
+            </text>
+          );
+        })}
+      </svg>
     </div>
   );
 };
