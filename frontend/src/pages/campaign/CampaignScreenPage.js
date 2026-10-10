@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import { useSearchParams } from 'react-router-dom';
-import { PartyPopper, WifiOff, Maximize, Heart, Users, UtensilsCrossed } from 'lucide-react';
+import { PartyPopper, WifiOff, Maximize } from 'lucide-react';
 
 import { useAuth } from '../../context/AuthContext';
 import { BusPuzzleReveal } from '../../components/campaign/BusPuzzleReveal';
@@ -106,34 +106,21 @@ export default function CampaignScreenPage() {
     <div className="relative min-h-screen overflow-hidden bg-[#07080c] text-white" data-testid="campaign-screen-page">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(181,149,63,0.18),transparent_60%)]" />
       <div className="relative z-10 mx-auto flex h-screen max-w-[1800px] flex-col gap-3 overflow-hidden px-6 py-4">
-        <div className="relative overflow-hidden rounded-2xl border border-white/10" data-testid="campaign-header-banner">
+        <div className="relative overflow-hidden rounded-xl border border-white/10" data-testid="campaign-header-banner">
           <img src="/campaign/header_bg.jpg" alt="" className="absolute inset-0 h-full w-full object-cover" />
-          <div className="absolute inset-0 bg-gradient-to-r from-black/85 via-black/60 to-black/85" />
-          <div className="relative z-10 flex flex-col gap-2 px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="text-center sm:text-left">
-              <div className="flex flex-wrap items-baseline justify-center gap-2 sm:justify-start" data-testid="campaign-screen-headline">
-                <span className="text-2xl text-[#F4C430] sm:text-4xl" style={{ fontFamily: "'Permanent Marker', cursive", transform: 'rotate(-3deg)', display: 'inline-block' }}>Juntos</span>
-                <span className="text-lg text-white sm:text-2xl lg:text-3xl" style={{ fontFamily: "'Anton', sans-serif" }}>HACEMOS</span>
-                <span className="text-lg text-[#F4C430] sm:text-2xl lg:text-3xl" style={{ fontFamily: "'Anton', sans-serif" }}>ESTO REALIDAD</span>
-              </div>
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-200 sm:text-sm" data-testid="campaign-screen-subtitle">
-                Ayúdanos a completar el bus
-              </p>
+          <div className="absolute inset-0 bg-gradient-to-r from-black/85 via-black/55 to-black/85" />
+          <div className="relative z-10 flex items-center justify-between gap-3 px-5 py-2.5">
+            <h1
+              className="text-sm font-black uppercase leading-tight text-[#F4C430] sm:text-lg lg:text-2xl"
+              style={{ fontFamily: "'Anton', sans-serif" }}
+              data-testid="campaign-screen-headline"
+            >
+              ¡Este autobús lleva más que comida, lleva una visión!
+            </h1>
+            <div className="flex-shrink-0 rounded-lg bg-[#F4C430] px-3 py-1 text-center text-[#1a1200] shadow-lg" data-testid="campaign-meta-badge">
+              <p className="text-[8px] font-bold uppercase leading-none">Meta</p>
+              <p className="text-base font-black leading-none sm:text-lg">{formatUsdCents(summary?.goal_cents || 0)}</p>
             </div>
-
-            <div className="flex items-center justify-center sm:justify-end">
-              <div className="rounded-xl bg-[#F4C430] px-3 py-1.5 text-center text-[#1a1200] shadow-lg" style={{ transform: 'rotate(3deg)' }} data-testid="campaign-meta-badge">
-                <p className="text-[9px] font-bold uppercase tracking-wide">Meta</p>
-                <p className="text-lg font-black leading-none sm:text-xl">{formatUsdCents(summary?.goal_cents || 0)}</p>
-                <p className="mt-0.5 text-[7px] font-semibold uppercase leading-tight">para la terminación del bus</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="relative z-10 hidden items-center justify-center gap-6 border-t border-white/10 px-5 py-1.5 lg:flex" data-testid="campaign-header-callouts">
-            <HeaderCallout icon={Heart} text="Tu donación completa una pieza" />
-            <HeaderCallout icon={Users} text="Juntos avanzamos más rápido" />
-            <HeaderCallout icon={UtensilsCrossed} text="Este bus será una bendición para nuestra comunidad" />
           </div>
         </div>
 
@@ -143,21 +130,23 @@ export default function CampaignScreenPage() {
           </div>
         </div>
 
-        <div className="mx-auto w-full max-w-5xl space-y-1.5" data-testid="campaign-screen-stats">
-          <div className="h-3.5 w-full overflow-hidden rounded-full bg-white/10">
+        <div className="mx-auto w-full max-w-5xl" data-testid="campaign-screen-stats">
+          <div className="h-2.5 w-full overflow-hidden rounded-full bg-white/10">
             <div
               className="h-full rounded-full bg-gradient-to-r from-[#B5953F] to-[#F4C430] transition-all duration-1000"
               style={{ width: `${Math.round(percent * 100)}%` }}
               data-testid="campaign-progress-bar"
             />
           </div>
-          <div className="flex flex-wrap justify-between gap-3 text-sm sm:text-base">
+          <div className="mt-1.5 flex items-center justify-between gap-2 text-center">
             <Stat label="Comprometido" value={summary?.committed_cents} />
             <Stat label="Recibido" value={summary?.received_cents} />
             <Stat label="Restante" value={summary?.remaining_cents} />
-            <Stat label="Meta" value={summary?.goal_cents} highlight />
+            <div data-testid="campaign-stat-porcentaje">
+              <p className="text-[10px] uppercase tracking-wide text-slate-400">Porcentaje</p>
+              <p className="text-base font-bold text-[#F4C430] sm:text-xl">{Math.round(percent * 100)}%</p>
+            </div>
           </div>
-          <p className="text-center text-xl font-black text-[#F4C430] sm:text-2xl" data-testid="campaign-percent-label">{Math.round(percent * 100)}%</p>
         </div>
 
         <CampaignDonorFeed feed={summary?.donor_feed || []} />
@@ -198,22 +187,11 @@ export default function CampaignScreenPage() {
   );
 }
 
-function Stat({ label, value, highlight }) {
+function Stat({ label, value }) {
   return (
     <div data-testid={`campaign-stat-${label.toLowerCase()}`}>
-      <p className="text-xs uppercase tracking-wide text-slate-400">{label}</p>
-      <p className={`text-lg font-bold sm:text-2xl ${highlight ? 'text-[#F4C430]' : 'text-white'}`}>{formatUsdCents(value || 0)}</p>
-    </div>
-  );
-}
-
-function HeaderCallout({ icon: Icon, text }) {
-  return (
-    <div className="flex max-w-[220px] items-center gap-2" data-testid="campaign-header-callout">
-      <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border-2 border-[#F4C430] text-[#F4C430]">
-        <Icon className="h-4 w-4" />
-      </span>
-      <p className="text-left text-[11px] font-bold uppercase leading-tight text-white">{text}</p>
+      <p className="text-[10px] uppercase tracking-wide text-slate-400">{label}</p>
+      <p className="text-base font-bold text-white sm:text-xl">{formatUsdCents(value || 0)}</p>
     </div>
   );
 }
