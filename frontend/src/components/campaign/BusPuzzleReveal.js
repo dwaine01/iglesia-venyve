@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { buildJigsawPieces, gridFor, seededShuffle, JIGSAW_CELL } from '../../lib/jigsawPieces';
-import { formatUsdCents } from '../../lib/campaignFormat';
+import { formatUsdCents, normalizeSearchText } from '../../lib/campaignFormat';
 
 const IMAGE_ASPECT = 2164 / 688;
 const PIECE_VALUE_CENTS = 10000;
@@ -131,7 +131,7 @@ export const BusPuzzleReveal = ({ pieces = [], totalPieces = 120, donorTotals = 
   }, [gridState]);
 
   const firstName = (label) => (label && label !== 'Donante anónimo' ? label.trim().split(/\s+/)[0] : null);
-  const searchNorm = (searchQuery || '').trim().toLowerCase();
+  const searchNorm = normalizeSearchText(searchQuery);
   const [hover, setHover] = useState(null);
 
   const showTooltip = (e, label, name) => {
@@ -181,7 +181,7 @@ export const BusPuzzleReveal = ({ pieces = [], totalPieces = 120, donorTotals = 
             const state = gridState[piece.id];
             const name = state?.status === 'full' ? firstName(state.donor_label) : null;
             if (!name) return null;
-            const isMatch = Boolean(searchNorm) && name.toLowerCase().includes(searchNorm);
+            const isMatch = Boolean(searchNorm) && normalizeSearchText(name).includes(searchNorm);
             return (
               <g key={`label-group-${piece.id}`}>
                 {isMatch && (

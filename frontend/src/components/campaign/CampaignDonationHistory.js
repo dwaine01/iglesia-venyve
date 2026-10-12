@@ -15,7 +15,7 @@ import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Checkbox } from '../ui/checkbox';
-import { formatUsdCents } from '../../lib/campaignFormat';
+import { formatUsdCents, normalizeSearchText } from '../../lib/campaignFormat';
 
 export const CampaignDonationHistory = ({ base, getAuthHeaders, donations, onChanged }) => {
   const [busyId, setBusyId] = useState(null);
@@ -24,9 +24,9 @@ export const CampaignDonationHistory = ({ base, getAuthHeaders, donations, onCha
   const [verifyMethod, setVerifyMethod] = useState('zelle');
   const [search, setSearch] = useState('');
   const lastActive = donations.find((item) => item.status !== 'voided') || null;
-  const normalizedSearch = search.trim().toLowerCase();
+  const normalizedSearch = normalizeSearchText(search);
   const visibleDonations = normalizedSearch
-    ? donations.filter((item) => (item.anonymous ? 'anónimo' : (item.donor_name || '')).toLowerCase().includes(normalizedSearch))
+    ? donations.filter((item) => normalizeSearchText(item.anonymous ? 'anónimo' : (item.donor_name || '')).includes(normalizedSearch))
     : donations;
 
   const run = async (id, fn) => {
