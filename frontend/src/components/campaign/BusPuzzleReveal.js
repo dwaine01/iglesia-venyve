@@ -2,27 +2,114 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { buildJigsawPieces, gridFor, seededShuffle, JIGSAW_CELL } from '../../lib/jigsawPieces';
 
 const IMAGE_ASPECT = 2164 / 688;
+// Silueta real del autobús (mismo alfa que las imágenes de color) usada para saber qué
+// celdas de la cuadrícula caen realmente dentro del vehículo y cuáles quedan en zonas
+// muertas (cielo, piso, huecos entre ruedas) donde nunca debe asignarse una donación.
+const SILHOUETTE_SRC = '/campaign/bus_silhouette.png';
+const VALID_OPACITY_THRESHOLD = 0.55;
+
+function sampleCellOpacity(alpha, imgW, imgH, cols, rows, r, c) {
+  const cellW = imgW / cols;
+  const cellH = imgH / rows;
+  const samples = 5;
+  let opaque = 0;
+  for (let sy = 0; sy < samples; sy++) {
+    for (let sx = 0; sx < samples; sx++) {
+      const px = Math.min(imgW - 1, Math.floor(c * cellW + ((sx + 0.5) / samples) * cellW));
+      const py = Math.min(imgH - 1, Math.floor(r * cellH + ((sy + 0.5) / samples) * cellH));
+      if (alpha[py * imgW + px] > 128) opaque += 1;
+    }
+  }
+  return opaque / (samples * samples);
+}
+
+// Busca una resolución de cuadrícula con suficientes celdas "válidas" (dentro de la
+// silueta) para que cada donación (totalPieces) caiga siempre en una celda visible.
+function computeValidGrid(totalPieces, aspect, alpha, imgW, imgH) {
+  let factor = 1.25;
+  let last = null;
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const target = Math.ceil(totalPieces * factor);
+    const { cols, rows } = gridFor(target, aspect);
+    const validIds = [];
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        if (sampleCellOpacity(alpha, imgW, imgH, cols, rows, r, c) >= VALID_OPACITY_THRESHOLD) {
+          validIds.push(r * cols + c);
+        }
+      }
+    }
+    last = { cols, rows, validIds };
+    if (validIds.length >= totalPieces) return last;
+    factor += 0.25;
+  }
+  return last;
+}
+
+function useValidGrid(totalPieces) {
+  const [gridInfo, setGridInfo] = useState(null);
+  const alphaCacheRef = useRef(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      if (!alphaCacheRef.current) {
+        const img = new window.Image();
+        img.src = SILHOUETTE_SRC;
+        await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; });
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const alpha = new Uint8ClampedArray(canvas.width * canvas.height);
+        for (let i = 0; i < alpha.length; i++) alpha[i] = data[i * 4 + 3];
+        alphaCacheRef.current = { alpha, w: canvas.width, h: canvas.height };
+      }
+      if (cancelled) return;
+      const { alpha, w, h } = alphaCacheRef.current;
+      setGridInfo(computeValidGrid(totalPieces, IMAGE_ASPECT, alpha, w, h));
+    };
+    load().catch(() => {});
+    return () => { cancelled = true; };
+  }, [totalPieces]);
+
+  return gridInfo;
+}
 
 // Rompecabezas REAL (piezas con pestañas que encajan) sobre el autobús: cada pieza
 // completada (umbral de $100) muestra el color real + el nombre del donante que la
 // completó; las piezas parciales se van aclarando proporcionalmente. Todo el mosaico
 // se recorta con la silueta real del autobús (máscara SVG) para que las piezas del
-// borde sigan el contorno del vehículo en vez de un rectángulo.
+// borde sigan el contorno del vehículo en vez de un rectángulo. Las donaciones solo se
+// asignan a celdas dentro de la silueta real (ver computeValidGrid) para que ningún
+// nombre de donante quede "flotando" fuera del autobús.
 export const BusPuzzleReveal = ({ pieces = [], totalPieces = 120 }) => {
-  const { cols, rows } = useMemo(() => gridFor(totalPieces, IMAGE_ASPECT), [totalPieces]);
+  const gridInfo = useValidGrid(totalPieces);
+  const fallback = useMemo(() => gridFor(totalPieces, IMAGE_ASPECT), [totalPieces]);
+  const cols = gridInfo?.cols || fallback.cols;
+  const rows = gridInfo?.rows || fallback.rows;
   const jigsaw = useMemo(() => buildJigsawPieces(cols, rows, 7), [cols, rows]);
   const viewW = cols * JIGSAW_CELL;
   const viewH = rows * JIGSAW_CELL;
 
-  // Orden de revelado disperso (no lineal): la pieza #k que se llena cronológicamente por
-  // donaciones cae en una posición aleatoria (pero fija/determinística) de la cuadrícula,
-  // para que las donaciones aparezcan repartidas por el techo, el centro, el frente, etc.
-  const fillOrder = useMemo(() => seededShuffle(totalPieces, 2026), [totalPieces]);
+  // Orden de revelado disperso (no lineal): la donación #k se asigna a una celda
+  // aleatoria (pero fija/determinística) de entre las celdas VÁLIDAS (dentro de la
+  // silueta), para que las donaciones aparezcan repartidas por el techo, el centro,
+  // el frente, etc., sin nunca caer en una zona muerta fuera del autobús.
+  const destinations = useMemo(() => {
+    if (!gridInfo || gridInfo.validIds.length === 0) return [];
+    const order = seededShuffle(gridInfo.validIds.length, 2026);
+    const shuffledValid = order.map((i) => gridInfo.validIds[i]);
+    return Array.from({ length: totalPieces }, (_, k) => shuffledValid[k % shuffledValid.length]);
+  }, [gridInfo, totalPieces]);
+
   const gridState = useMemo(() => {
-    const arr = new Array(totalPieces).fill(null);
-    fillOrder.forEach((gridId, k) => { arr[gridId] = pieces[k] || null; });
+    const arr = new Array(cols * rows).fill(null);
+    destinations.forEach((gridId, k) => { arr[gridId] = pieces[k] || null; });
     return arr;
-  }, [fillOrder, pieces, totalPieces]);
+  }, [destinations, pieces, cols, rows]);
 
   const prevFullRef = useRef(new Set());
   const [popping, setPopping] = useState(new Set());

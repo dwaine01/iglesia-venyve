@@ -57,15 +57,13 @@ export function buildJigsawPieces(cols, rows, seed = 7) {
   return pieces;
 }
 
+// Cuadrícula aproximada (no requiere divisores exactos): usada como resolución visual
+// del mosaico, que puede tener más celdas que donaciones para dejar margen a las zonas
+// muertas (fuera de la silueta del autobús).
 export function gridFor(total, aspect) {
-  let best = { cols: total, rows: 1, score: Infinity };
-  for (let rows = 1; rows <= total; rows++) {
-    if (total % rows !== 0) continue;
-    const cols = total / rows;
-    const score = Math.abs(cols / rows - aspect);
-    if (score < best.score) best = { cols, rows, score };
-  }
-  return best;
+  const cols = Math.max(1, Math.round(Math.sqrt(total * aspect)));
+  const rows = Math.max(1, Math.round(total / cols));
+  return { cols, rows };
 }
 
 export function seededShuffle(n, seed) {
