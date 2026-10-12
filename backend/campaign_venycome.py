@@ -7,6 +7,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field, field_validator
+from bson import ObjectId
 
 from access_control import CAMPAIGN_VENYCOME_MANAGE, has_capability, is_general_coordinator, is_global_pastoral_authority
 from core_person import _normalize as normalize_person_name, next_person_number
@@ -78,6 +79,7 @@ manager = ConnectionManager()
 
 class DonationInput(BaseModel):
     donor_name: Optional[str] = Field(default=None, max_length=120)
+    person_id: Optional[str] = None
     amount_cents: int = Field(gt=0, le=MAX_AMOUNT_CENTS)
     donation_type: DONATION_TYPES = "received"
     anonymous: bool = False
@@ -95,6 +97,7 @@ class DonationInput(BaseModel):
 
 class DonationUpdateInput(BaseModel):
     donor_name: Optional[str] = Field(default=None, max_length=120)
+    person_id: Optional[str] = None
     amount_cents: int = Field(gt=0, le=MAX_AMOUNT_CENTS)
     donation_type: DONATION_TYPES
     anonymous: bool = False
@@ -225,6 +228,17 @@ async def find_or_create_person(donor_name: Optional[str], user_id: str) -> tupl
     return str(result.inserted_id), True
 
 
+async def resolve_donation_person(donation: dict, user_id: str) -> tuple:
+    """Si el operador vinculó explícitamente una Persona 360 al registrar el donativo,
+    se respeta esa elección (la forma más confiable); si no, se recurre al match por nombre."""
+    explicit_person_id = donation.get("person_id")
+    if explicit_person_id:
+        exists = await db.persons.find_one({"_id": ObjectId(explicit_person_id)}, {"_id": 1}) if ObjectId.is_valid(explicit_person_id) else None
+        if exists:
+            return explicit_person_id, False
+    return await find_or_create_person(donation.get("donor_name"), user_id)
+
+
 async def create_finance_deposit_for_donation(donation: dict, payment_method: str, current_user: dict) -> dict:
     """Registra el donativo verificado como una contribución de Finanzas al fondo Pro-Templo
     (misma lógica contable de /api/finance/contributions: débito fondos no depositados,
@@ -238,7 +252,7 @@ async def create_finance_deposit_for_donation(donation: dict, payment_method: st
     undeposited = await db.finance_accounts.find_one({"code": "1010"}, {"_id": 0})
     if not undeposited:
         raise HTTPException(status_code=409, detail="Configure la cuenta de fondos no depositados en Finanzas")
-    person_id, created_new_person = await find_or_create_person(donation.get("donor_name"), current_user["user_id"])
+    person_id, created_new_person = await resolve_donation_person(donation, current_user["user_id"])
     amount_cents = donation["amount_cents"]
     label = donor_label(donation)
     description = f"Campaña Ven y Come · {label}"
@@ -310,6 +324,7 @@ async def create_donation(payload: DonationInput, current_user: dict = Depends(o
     now = now_utc()
     doc = {
         "_id": donation_id, "donation_id": donation_id, "donor_name": payload.donor_name,
+        "person_id": payload.person_id if not payload.anonymous else None,
         "amount_cents": payload.amount_cents, "donation_type": payload.donation_type,
         "anonymous": payload.anonymous, "consent_show_name": payload.consent_show_name,
         "is_rehearsal": settings["mode"] == "rehearsal", "status": "active",
