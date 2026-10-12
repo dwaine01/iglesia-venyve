@@ -29,6 +29,10 @@ class FundCreate(BaseModel):
     purpose: str = Field(min_length=2, max_length=500)
 
 
+class FundBankAccountLink(BaseModel):
+    bank_account_id: Optional[str] = None
+
+
 class AccountCreate(BaseModel):
     code: str = Field(min_length=2, max_length=20)
     name: str = Field(min_length=2, max_length=120)
@@ -277,10 +281,24 @@ async def catalog(current_user: dict = Depends(reader)):
 
 @router.post("/funds", response_model=dict, status_code=201)
 async def create_fund(payload: FundCreate, current_user: dict = Depends(manager)):
-    fund_id = str(uuid4()); doc = {"_id": fund_id, "fund_id": fund_id, **payload.model_dump(), "code": payload.code.upper(), "active": True, "created_by_user_id": current_user["user_id"], "created_at": now_utc()}
+    fund_id = str(uuid4()); doc = {"_id": fund_id, "fund_id": fund_id, **payload.model_dump(), "code": payload.code.upper(), "default_bank_account_id": None, "active": True, "created_by_user_id": current_user["user_id"], "created_at": now_utc()}
     try: await db.finance_funds.insert_one(doc)
     except DuplicateKeyError: raise HTTPException(status_code=409, detail="El código de fondo ya existe")
     await audit(current_user["user_id"], "fund_created", "fund", fund_id, payload.model_dump()); return serialize(doc)
+
+
+@router.put("/funds/{fund_id}/bank-account", response_model=dict)
+async def link_fund_bank_account(fund_id: str, payload: FundBankAccountLink, current_user: dict = Depends(manager)):
+    fund = await db.finance_funds.find_one({"fund_id": fund_id}, {"_id": 0})
+    if not fund:
+        raise HTTPException(status_code=404, detail="Fondo no encontrado")
+    if payload.bank_account_id:
+        account = await db.finance_accounts.find_one({"account_id": payload.bank_account_id, "account_type": "asset", "active": True})
+        if not account:
+            raise HTTPException(status_code=422, detail="Cuenta bancaria no válida")
+    await db.finance_funds.update_one({"fund_id": fund_id}, {"$set": {"default_bank_account_id": payload.bank_account_id, "updated_at": now_utc()}})
+    await audit(current_user["user_id"], "fund_bank_account_linked", "fund", fund_id, {"bank_account_id": payload.bank_account_id})
+    return serialize(await db.finance_funds.find_one({"fund_id": fund_id}, {"_id": 0}))
 
 
 @router.post("/accounts", response_model=dict, status_code=201)
@@ -714,6 +732,13 @@ async def deposit_create(payload: DepositCreate, current_user: dict = Depends(ma
     totals = {}
     for contribution in contributions:
         for allocation in contribution["allocations"]: totals[allocation["fund_id"]] = totals.get(allocation["fund_id"], 0) + allocation["amount_cents"]
+    funds = await db.finance_funds.find({"fund_id": {"$in": list(totals.keys())}}, {"_id": 0}).to_list(100)
+    for fund in funds:
+        designated = fund.get("default_bank_account_id")
+        if designated and designated != payload.bank_account_id:
+            designated_account = await db.finance_accounts.find_one({"account_id": designated}, {"_id": 0, "name": 1, "code": 1})
+            label = f"{designated_account['code']} · {designated_account['name']}" if designated_account else "su cuenta designada"
+            raise HTTPException(status_code=409, detail=f"El fondo '{fund['name']}' debe depositarse en {label}. Separe el depósito por fondo.")
     deposit_id = str(uuid4()); lines = []
     for fund_id, amount in totals.items(): lines.extend([{"account_id": bank["account_id"], "fund_id": fund_id, "debit_cents": amount, "credit_cents": 0, "description": "Depósito bancario"}, {"account_id": undeposited["account_id"], "fund_id": fund_id, "debit_cents": 0, "credit_cents": amount, "description": "Salida de fondos no depositados"}])
     journal = await create_journal(current_user["user_id"], payload.deposit_date.isoformat(), "Depósito de contribuciones", "deposit", deposit_id, lines, "submitted")
