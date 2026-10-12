@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import { useSearchParams } from 'react-router-dom';
-import { PartyPopper, WifiOff, Maximize } from 'lucide-react';
+import { PartyPopper, WifiOff, Maximize, Search } from 'lucide-react';
 
 import { useAuth } from '../../context/AuthContext';
 import { BusPuzzleReveal } from '../../components/campaign/BusPuzzleReveal';
@@ -20,6 +20,7 @@ export default function CampaignScreenPage() {
   const [connected, setConnected] = useState(false);
   const [tokenRevoked, setTokenRevoked] = useState(false);
   const [announcement, setAnnouncement] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
   const wsRef = useRef(null);
   const reconnectRef = useRef(null);
   const announceTimerRef = useRef(null);
@@ -130,7 +131,7 @@ export default function CampaignScreenPage() {
 
         <div className="flex min-h-0 flex-1 items-center justify-center">
           <div className="h-full w-full">
-            <BusPuzzleReveal pieces={summary?.pieces || []} totalPieces={totalPieces} />
+            <BusPuzzleReveal pieces={summary?.pieces || []} totalPieces={totalPieces} donorTotals={summary?.donor_totals || {}} searchQuery={searchQuery} />
           </div>
         </div>
 
@@ -178,6 +179,18 @@ export default function CampaignScreenPage() {
           <WifiOff className="h-3.5 w-3.5" />Reconectando…
         </div>
       )}
+
+      <div className="fixed left-4 top-4 z-20 flex items-center gap-2 rounded-full bg-black/60 px-3 py-1.5 text-white/70">
+        <Search className="h-3.5 w-3.5" />
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Buscar donante…"
+          className="w-36 bg-transparent text-xs text-white placeholder:text-white/40 focus:outline-none"
+          data-testid="campaign-screen-search-input"
+        />
+      </div>
 
       <button
         type="button"

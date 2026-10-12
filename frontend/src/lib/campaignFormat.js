@@ -5,3 +5,5 @@ export const dollarsToCents = (value) => {
   if (!Number.isFinite(parsed) || parsed <= 0) return 0;
   return Math.round(parsed * 100);
 };
+
+export const normalizeSearchText = (text) => (text || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();

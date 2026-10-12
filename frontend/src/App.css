@@ -289,3 +289,11 @@
 .campaign-ticker-track {
   animation: campaign-ticker-scroll 28s linear infinite;
 }
+
+@keyframes campaign-piece-search-highlight {
+  0%, 100% { filter: drop-shadow(0 0 2px rgba(244, 196, 48, 0.5)); opacity: 0.55; }
+  50% { filter: drop-shadow(0 0 18px rgba(244, 196, 48, 1)); opacity: 1; }
+}
+.campaign-piece-search-highlight {
+  animation: campaign-piece-search-highlight 1.1s ease-in-out infinite;
+}
