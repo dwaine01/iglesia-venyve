@@ -1,4 +1,5 @@
 """Campaña Ven y Come — panel de control del operador + pantalla pública en vivo."""
+import re
 import secrets
 from datetime import datetime, timezone
 from typing import Literal, Optional
@@ -8,6 +9,8 @@ from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisco
 from pydantic import BaseModel, Field, field_validator
 
 from access_control import CAMPAIGN_VENYCOME_MANAGE, has_capability, is_general_coordinator, is_global_pastoral_authority
+from core_person import _normalize as normalize_person_name, next_person_number
+from finance_engine import create_journal
 from server import db, get_authenticated_user, get_current_user
 
 router = APIRouter(prefix="/api/campaigns/venycome", tags=["campaign-venycome"])
@@ -98,6 +101,10 @@ class DonationUpdateInput(BaseModel):
     consent_show_name: bool = False
 
 
+class VerifyDonationInput(BaseModel):
+    payment_method: Literal["zelle", "cash"]
+
+
 class SettingsInput(BaseModel):
     goal_cents: int = Field(gt=0, le=1_000_000_000)
     counting_rule: Literal["committed", "received_only"] = "committed"
@@ -124,6 +131,7 @@ def compute_pieces_and_feed(donations: list, counting_rule: str, total_pieces: i
     y construye el feed completo de donantes, para que ningún nombre/monto se pierda."""
     pieces = [{"status": "empty", "donor_label": None, "fill_ratio": 0.0} for _ in range(total_pieces)]
     feed = []
+    donor_totals: dict = {}
     cumulative = 0
     ceiling_cents = total_pieces * PIECE_VALUE_CENTS
     for item in donations:
@@ -132,6 +140,7 @@ def compute_pieces_and_feed(donations: list, counting_rule: str, total_pieces: i
             "donor_label": label, "amount_cents": item["amount_cents"],
             "donation_type": item["donation_type"], "created_at": item["created_at"].isoformat(),
         })
+        donor_totals[label] = donor_totals.get(label, 0) + item["amount_cents"]
         if counting_rule == "received_only" and item["donation_type"] != "received":
             continue
         remaining = item["amount_cents"]
@@ -148,7 +157,7 @@ def compute_pieces_and_feed(donations: list, counting_rule: str, total_pieces: i
             else:
                 pieces[piece_idx] = {"status": "partial", "donor_label": label, "fill_ratio": round(new_filled / PIECE_VALUE_CENTS, 4)}
     feed.reverse()
-    return pieces, feed[:40]
+    return pieces, feed[:40], donor_totals
 
 
 async def compute_summary(mode: str) -> dict:
@@ -171,13 +180,13 @@ async def compute_summary(mode: str) -> dict:
     counted_cents = committed_cents if settings["counting_rule"] == "committed" else received_cents
     percent = min(1.0, counted_cents / goal_cents) if goal_cents else 0.0
     total_pieces = max(1, round(goal_cents / PIECE_VALUE_CENTS))
-    pieces, feed = compute_pieces_and_feed(donations, settings["counting_rule"], total_pieces)
+    pieces, feed, donor_totals = compute_pieces_and_feed(donations, settings["counting_rule"], total_pieces)
     return {
         "mode": mode, "goal_cents": goal_cents, "counting_rule": settings["counting_rule"],
         "received_cents": received_cents, "pending_cents": pending_cents, "committed_cents": committed_cents,
         "counted_cents": counted_cents, "percent": round(percent, 6),
         "remaining_cents": max(0, goal_cents - committed_cents),
-        "total_pieces": total_pieces, "pieces": pieces, "donor_feed": feed,
+        "total_pieces": total_pieces, "pieces": pieces, "donor_feed": feed, "donor_totals": donor_totals,
     }
 
 
@@ -185,6 +194,78 @@ def donor_label(donation: dict) -> str:
     if donation.get("anonymous") or not donation.get("consent_show_name"):
         return "Donante anónimo"
     return donation.get("donor_name") or "Donante anónimo"
+
+
+async def find_or_create_person(donor_name: Optional[str], user_id: str) -> tuple:
+    """Busca una Persona 360 por nombre para vincular el depósito de Finanzas.
+    Si encuentra exactamente una coincidencia la reutiliza; si no encuentra ninguna,
+    crea un registro mínimo; si hay varias coincidencias ambiguas, no adivina (anónimo)."""
+    if not donor_name or not donor_name.strip():
+        return None, False
+    norm = normalize_person_name(donor_name)
+    if not norm:
+        return None, False
+    pattern = r"(^|\s)" + re.escape(norm) + r"(\s|$)"
+    candidates = await db.persons.find({"search_key": {"$regex": pattern}}, {"_id": 1}).to_list(5)
+    if len(candidates) == 1:
+        return str(candidates[0]["_id"]), False
+    if len(candidates) > 1:
+        return None, False
+    tokens = donor_name.strip().split()
+    nombre = tokens[0]
+    apellido = " ".join(tokens[1:]) if len(tokens) > 1 else ""
+    now = now_utc()
+    doc = {
+        "nombre": nombre, "apellido": apellido, "fecha_nacimiento": None, "age_category": None,
+        "person_number": await next_person_number(), "search_key": norm, "idempotency_key": str(uuid4()),
+        "version": 1, "created_by": user_id, "created_at": now, "updated_at": now,
+        "source": "campaign_venycome",
+    }
+    result = await db.persons.insert_one(doc)
+    return str(result.inserted_id), True
+
+
+async def create_finance_deposit_for_donation(donation: dict, payment_method: str, current_user: dict) -> dict:
+    """Registra el donativo verificado como una contribución de Finanzas al fondo Pro-Templo
+    (misma lógica contable de /api/finance/contributions: débito fondos no depositados,
+    crédito ingresos Pro-Templo)."""
+    fund = await db.finance_funds.find_one({"code": "BUILDING"}, {"_id": 0})
+    if not fund:
+        raise HTTPException(status_code=409, detail="Fondo Pro-Templo no configurado en Finanzas")
+    contribution_type = await db.finance_contribution_types.find_one({"type_key": "building"}, {"_id": 0})
+    if not contribution_type:
+        raise HTTPException(status_code=409, detail="Concepto Pro-Templo no configurado en Finanzas")
+    undeposited = await db.finance_accounts.find_one({"code": "1010"}, {"_id": 0})
+    if not undeposited:
+        raise HTTPException(status_code=409, detail="Configure la cuenta de fondos no depositados en Finanzas")
+    person_id, created_new_person = await find_or_create_person(donation.get("donor_name"), current_user["user_id"])
+    amount_cents = donation["amount_cents"]
+    label = donor_label(donation)
+    description = f"Campaña Ven y Come · {label}"
+    lines = [
+        {"account_id": undeposited["account_id"], "fund_id": fund["fund_id"], "debit_cents": amount_cents, "credit_cents": 0, "description": description},
+        {"account_id": contribution_type["revenue_account_id"], "fund_id": fund["fund_id"], "debit_cents": 0, "credit_cents": amount_cents, "description": description},
+    ]
+    created_at = donation.get("created_at")
+    received_date = (created_at.date() if isinstance(created_at, datetime) else now_utc().date()).isoformat()
+    journal = await create_journal(current_user["user_id"], received_date, description, "contribution", donation["donation_id"], lines, "submitted")
+    contribution_id = str(uuid4())
+    now = now_utc()
+    contribution_doc = {
+        "_id": contribution_id, "contribution_id": contribution_id,
+        "person_id": person_id, "household_id": None, "anonymous": person_id is None,
+        "contribution_type": "building", "amount_cents": amount_cents,
+        "received_date": received_date, "accounting_date": received_date,
+        "payment_method": payment_method, "reference": f"Ven y Come #{donation['donation_id'][:8]}",
+        "allocations": [{"fund_id": fund["fund_id"], "amount_cents": amount_cents, "contribution_type": "building"}],
+        "source": "manual", "campaign_id": None, "description": description,
+        "notes": "Registrado automáticamente al verificar un donativo de la campaña Ven y Come.",
+        "batch_id": None, "journal_entry_id": journal["entry_id"], "deposit_id": None,
+        "status": "recorded", "created_by_user_id": current_user["user_id"],
+        "updated_by_user_id": current_user["user_id"], "created_at": now, "updated_at": now,
+    }
+    await db.finance_contributions.insert_one(contribution_doc)
+    return {"contribution_id": contribution_id, "person_id": person_id, "created_new_person": created_new_person}
 
 
 async def donation_doc(donation_id: str) -> dict:
@@ -256,6 +337,8 @@ async def update_donation(donation_id: str, payload: DonationUpdateInput, curren
     before = await donation_doc(donation_id)
     if before["status"] == "voided":
         raise HTTPException(status_code=409, detail="No se puede editar un donativo anulado")
+    if before.get("verified"):
+        raise HTTPException(status_code=409, detail="No se puede editar un donativo ya verificado/sellado")
     updates = payload.model_dump()
     updates["updated_at"] = now_utc()
     updates["updated_by_user_id"] = current_user["user_id"]
@@ -268,11 +351,46 @@ async def update_donation(donation_id: str, payload: DonationUpdateInput, curren
     return serialize(after)
 
 
+@router.delete("/donations/{donation_id}", response_model=dict)
+async def delete_donation(donation_id: str, current_user: dict = Depends(operator)):
+    before = await donation_doc(donation_id)
+    if before.get("verified"):
+        raise HTTPException(status_code=409, detail="No se puede borrar un donativo ya verificado/sellado")
+    await db.campaign_donations.delete_one({"donation_id": donation_id})
+    await audit("donation_deleted", donation_id, current_user["user_id"], before, None)
+    settings = await get_settings()
+    summary = await compute_summary(settings["mode"])
+    await manager.broadcast({"type": "summary", **summary})
+    return {"ok": True}
+
+
+@router.post("/donations/{donation_id}/verify", response_model=dict)
+async def verify_donation(donation_id: str, payload: VerifyDonationInput, current_user: dict = Depends(operator)):
+    before = await donation_doc(donation_id)
+    if before["status"] == "voided":
+        raise HTTPException(status_code=409, detail="No se puede verificar un donativo anulado")
+    if before.get("verified"):
+        raise HTTPException(status_code=409, detail="Este donativo ya fue verificado")
+    if before["donation_type"] != "received":
+        raise HTTPException(status_code=409, detail="Solo se pueden verificar donativos marcados como recibidos")
+    deposit = await create_finance_deposit_for_donation(before, payload.payment_method, current_user)
+    await db.campaign_donations.update_one({"donation_id": donation_id}, {"$set": {
+        "verified": True, "verified_at": now_utc(), "verified_by_user_id": current_user["user_id"],
+        "verified_payment_method": payload.payment_method, "finance_contribution_id": deposit["contribution_id"],
+        "finance_person_id": deposit["person_id"], "updated_at": now_utc(),
+    }})
+    after = await donation_doc(donation_id)
+    await audit("donation_verified", donation_id, current_user["user_id"], before, after)
+    return serialize(after)
+
+
 @router.post("/donations/{donation_id}/void", response_model=dict)
 async def void_donation(donation_id: str, current_user: dict = Depends(operator)):
     before = await donation_doc(donation_id)
     if before["status"] == "voided":
         raise HTTPException(status_code=409, detail="Ya estaba anulado")
+    if before.get("verified"):
+        raise HTTPException(status_code=409, detail="No se puede anular un donativo ya verificado/sellado")
     await db.campaign_donations.update_one({"donation_id": donation_id}, {"$set": {"status": "voided", "updated_at": now_utc(), "voided_by_user_id": current_user["user_id"]}})
     after = await donation_doc(donation_id)
     await audit("donation_voided", donation_id, current_user["user_id"], before, after)
@@ -287,6 +405,8 @@ async def mark_received(donation_id: str, current_user: dict = Depends(operator)
     before = await donation_doc(donation_id)
     if before["status"] == "voided":
         raise HTTPException(status_code=409, detail="No se puede modificar un donativo anulado")
+    if before.get("verified"):
+        raise HTTPException(status_code=409, detail="No se puede modificar un donativo ya verificado/sellado")
     if before["donation_type"] == "received":
         raise HTTPException(status_code=409, detail="Ya estaba marcado como recibido")
     await db.campaign_donations.update_one({"donation_id": donation_id}, {"$set": {"donation_type": "received", "updated_at": now_utc()}})

@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { buildJigsawPieces, gridFor, seededShuffle, JIGSAW_CELL } from '../../lib/jigsawPieces';
+import { formatUsdCents } from '../../lib/campaignFormat';
 
 const IMAGE_ASPECT = 2164 / 688;
+const PIECE_VALUE_CENTS = 10000;
 // Silueta real del autobús (mismo alfa que las imágenes de color) usada para saber qué
 // celdas de la cuadrícula caen realmente dentro del vehículo y cuáles quedan en zonas
 // muertas (cielo, piso, huecos entre ruedas) donde nunca debe asignarse una donación.
@@ -85,7 +87,7 @@ function useValidGrid(totalPieces) {
 // borde sigan el contorno del vehículo en vez de un rectángulo. Las donaciones solo se
 // asignan a celdas dentro de la silueta real (ver computeValidGrid) para que ningún
 // nombre de donante quede "flotando" fuera del autobús.
-export const BusPuzzleReveal = ({ pieces = [], totalPieces = 120 }) => {
+export const BusPuzzleReveal = ({ pieces = [], totalPieces = 120, donorTotals = {}, searchQuery = '' }) => {
   const gridInfo = useValidGrid(totalPieces);
   const fallback = useMemo(() => gridFor(totalPieces, IMAGE_ASPECT), [totalPieces]);
   const cols = gridInfo?.cols || fallback.cols;
@@ -129,6 +131,16 @@ export const BusPuzzleReveal = ({ pieces = [], totalPieces = 120 }) => {
   }, [gridState]);
 
   const firstName = (label) => (label && label !== 'Donante anónimo' ? label.trim().split(/\s+/)[0] : null);
+  const searchNorm = (searchQuery || '').trim().toLowerCase();
+  const [hover, setHover] = useState(null);
+
+  const showTooltip = (e, label, name) => {
+    setHover({ x: e.clientX, y: e.clientY, name, label, totalCents: donorTotals[label] || 0 });
+  };
+  const moveTooltip = (e) => {
+    setHover((prev) => (prev ? { ...prev, x: e.clientX, y: e.clientY } : prev));
+  };
+  const hideTooltip = () => setHover(null);
 
   return (
     <div className="relative h-full w-full" data-testid="bus-puzzle-reveal">
@@ -169,27 +181,55 @@ export const BusPuzzleReveal = ({ pieces = [], totalPieces = 120 }) => {
             const state = gridState[piece.id];
             const name = state?.status === 'full' ? firstName(state.donor_label) : null;
             if (!name) return null;
+            const isMatch = Boolean(searchNorm) && name.toLowerCase().includes(searchNorm);
             return (
-              <text
-                key={`label-${piece.id}`}
-                x={piece.cx}
-                y={piece.cy}
-                textAnchor="middle"
-                dominantBaseline="middle"
-                fontSize="11"
-                fontWeight="700"
-                fill="#ffffff"
-                stroke="#07080c"
-                strokeWidth="2"
-                paintOrder="stroke"
-                data-testid={`jigsaw-piece-label-${piece.id}`}
-              >
-                {name}
-              </text>
+              <g key={`label-group-${piece.id}`}>
+                {isMatch && (
+                  <path
+                    d={piece.d}
+                    fill="rgba(244,196,48,0.25)"
+                    stroke="#F4C430"
+                    strokeWidth="3"
+                    className="campaign-piece-search-highlight"
+                    data-testid={`jigsaw-piece-highlight-${piece.id}`}
+                  />
+                )}
+                <text
+                  x={piece.cx}
+                  y={piece.cy}
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  fontSize="11"
+                  fontWeight="700"
+                  fill="#ffffff"
+                  stroke="#07080c"
+                  strokeWidth="2"
+                  paintOrder="stroke"
+                  style={{ cursor: 'pointer' }}
+                  onMouseEnter={(e) => showTooltip(e, state.donor_label, name)}
+                  onMouseMove={moveTooltip}
+                  onMouseLeave={hideTooltip}
+                  data-testid={`jigsaw-piece-label-${piece.id}`}
+                >
+                  {name}
+                </text>
+              </g>
             );
           })}
         </g>
       </svg>
+
+      {hover && (
+        <div
+          className="pointer-events-none fixed z-50 rounded-lg border border-[#F4C430]/50 bg-black/90 px-3 py-2 text-xs text-white shadow-xl"
+          style={{ left: hover.x + 16, top: hover.y + 16 }}
+          data-testid="bus-puzzle-tooltip"
+        >
+          <p className="font-bold text-[#F4C430]">{hover.label}</p>
+          <p>Esta pieza: {formatUsdCents(PIECE_VALUE_CENTS)}</p>
+          <p>Total donado: {formatUsdCents(hover.totalCents)}</p>
+        </div>
+      )}
     </div>
   );
 };
