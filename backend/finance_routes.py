@@ -432,7 +432,7 @@ async def enrich_campaign_names(items: list) -> list:
 
 @router.get("/contributions", response_model=dict)
 async def contributions(current_user: dict = Depends(reader)):
-    items = await db.finance_contributions.find({}, {"_id": 0}).sort("received_date", -1).to_list(3000)
+    items = await db.finance_contributions.find({"status": {"$ne": "corrected"}}, {"_id": 0}).sort("received_date", -1).to_list(3000)
     return {"items": serialize(await enrich_campaign_names(items))}
 
 
@@ -443,7 +443,7 @@ async def person_contributions(person_id: str, scope: Literal["person", "family"
         memberships = await db.household_memberships.find({"person_id": person_id, "active": {"$ne": False}}, {"_id": 0, "household_id": 1}).to_list(100)
         household_ids = [item["household_id"] for item in memberships]
         if household_ids: person_ids = await db.household_memberships.distinct("person_id", {"household_id": {"$in": household_ids}, "active": {"$ne": False}})
-    items = await db.finance_contributions.find({"person_id": {"$in": person_ids}}, {"_id": 0}).sort("received_date", -1).to_list(5000)
+    items = await db.finance_contributions.find({"person_id": {"$in": person_ids}, "status": {"$ne": "corrected"}}, {"_id": 0}).sort("received_date", -1).to_list(5000)
     items = await enrich_campaign_names(items)
     return {"scope": scope, "person_ids": person_ids, "total_cents": sum(item.get("amount_cents", 0) for item in items), "items": serialize(items)}
 
