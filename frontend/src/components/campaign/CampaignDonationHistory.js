@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 import { toast } from 'sonner';
-import { Eye, Pencil, Ban, CheckCircle2, Undo2, Trash2, ShieldCheck, Search } from 'lucide-react';
+import { Eye, Pencil, Ban, CheckCircle2, Undo2, Trash2, ShieldCheck, Search, RotateCcw, AlertTriangle } from 'lucide-react';
 
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
@@ -24,6 +24,8 @@ export const CampaignDonationHistory = ({ base, getAuthHeaders, donations, onCha
   const [verifyMethod, setVerifyMethod] = useState('zelle');
   const [search, setSearch] = useState('');
   const lastActive = donations.find((item) => item.status !== 'voided') || null;
+  const isPendingVerification = (item) => item.donation_type === 'received' && item.status !== 'voided' && !item.verified;
+  const pendingCount = donations.filter(isPendingVerification).length;
   const normalizedSearch = normalizeSearchText(search);
   const visibleDonations = normalizedSearch
     ? donations.filter((item) => normalizeSearchText(item.anonymous ? 'anónimo' : (item.donor_name || '')).includes(normalizedSearch))
@@ -39,6 +41,10 @@ export const CampaignDonationHistory = ({ base, getAuthHeaders, donations, onCha
   const markReceived = (id) => run(id, () => axios.post(`${base}/donations/${id}/mark-received`, {}, getAuthHeaders()));
   const voidDonation = (id) => run(id, () => axios.post(`${base}/donations/${id}/void`, {}, getAuthHeaders()));
   const deleteDonation = (id) => run(id, () => axios.delete(`${base}/donations/${id}`, getAuthHeaders()));
+  const unverifyDonation = (id) => run(id, async () => {
+    await axios.post(`${base}/donations/${id}/unverify`, {}, getAuthHeaders());
+    toast.success('Verificación revertida: el depósito en Finanzas fue anulado/revertido');
+  });
 
   const confirmVerify = async () => {
     if (!verifying) return;
@@ -104,6 +110,14 @@ export const CampaignDonationHistory = ({ base, getAuthHeaders, donations, onCha
           data-testid="campaign-donation-search-input"
         />
       </div>
+      {pendingCount > 0 && (
+        <div className="mt-3 flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800" data-testid="campaign-pending-verification-alert">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          <span>
+            {pendingCount === 1 ? '1 donativo recibido está' : `${pendingCount} donativos recibidos están`} pendiente{pendingCount === 1 ? '' : 's'} de verificar. Recuerda sellarlos para que se reflejen en Finanzas (Pro-Templo).
+          </span>
+        </div>
+      )}
       <div className="mt-3 max-h-[480px] overflow-y-auto">
         <Table>
           <TableHeader><TableRow>
@@ -111,7 +125,11 @@ export const CampaignDonationHistory = ({ base, getAuthHeaders, donations, onCha
           </TableRow></TableHeader>
           <TableBody>
             {visibleDonations.map((item) => (
-              <TableRow key={item.donation_id} data-testid={`campaign-donation-row-${item.donation_id}`}>
+              <TableRow
+                key={item.donation_id}
+                data-testid={`campaign-donation-row-${item.donation_id}`}
+                className={isPendingVerification(item) ? 'border-l-4 border-l-amber-400 bg-amber-50/60' : ''}
+              >
                 <TableCell>{item.anonymous ? 'Anónimo' : (item.donor_name || '—')} {item.person_id && !item.anonymous && <Badge variant="outline" className="ml-1 border-emerald-300 text-emerald-700" data-testid={`campaign-person-linked-badge-${item.donation_id}`}>360</Badge>}</TableCell>
                 <TableCell className="font-semibold">{formatUsdCents(item.amount_cents)}</TableCell>
                 <TableCell><Badge variant="outline">{item.donation_type === 'received' ? 'Recibido' : 'Promesa'}</Badge></TableCell>
@@ -123,6 +141,11 @@ export const CampaignDonationHistory = ({ base, getAuthHeaders, donations, onCha
                     {item.verified && (
                       <Badge className="bg-[#132443] text-white" data-testid={`campaign-verified-badge-${item.donation_id}`}>
                         <ShieldCheck className="mr-1 h-3 w-3 inline" />Verificado · {item.verified_payment_method === 'zelle' ? 'Zelle' : 'Efectivo'}
+                      </Badge>
+                    )}
+                    {isPendingVerification(item) && (
+                      <Badge className="bg-amber-100 text-amber-800" data-testid={`campaign-pending-badge-${item.donation_id}`}>
+                        <AlertTriangle className="mr-1 h-3 w-3 inline" />Sin verificar
                       </Badge>
                     )}
                   </div>
@@ -137,6 +160,25 @@ export const CampaignDonationHistory = ({ base, getAuthHeaders, donations, onCha
                       <Button size="icon" variant="ghost" disabled={busyId === item.donation_id} title="Verificar y depositar en Finanzas (Pro-Templo)" onClick={() => { setVerifying(item); setVerifyMethod('zelle'); }} data-testid={`campaign-verify-${item.donation_id}`}>
                         <ShieldCheck className="h-4 w-4 text-[#B5953F]" />
                       </Button>
+                    )}
+                    {item.verified && (
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button size="icon" variant="ghost" disabled={busyId === item.donation_id} title="Revertir verificación (fue un error)" data-testid={`campaign-unverify-${item.donation_id}`}><RotateCcw className="h-4 w-4 text-amber-600" /></Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent className="bg-white">
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>¿Revertir esta verificación?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Esto anulará/revertirá el depósito que se envió a Finanzas (fondo Pro-Templo) para {item.anonymous ? 'este donante anónimo' : (item.donor_name || 'este donante')} ({formatUsdCents(item.amount_cents)}), y el donativo quedará activo de nuevo para poder editarlo, anularlo o verificarlo correctamente.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel data-testid={`campaign-unverify-cancel-${item.donation_id}`}>Cancelar</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => unverifyDonation(item.donation_id)} data-testid={`campaign-unverify-confirm-${item.donation_id}`}>Revertir verificación</AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
                     )}
                     {item.status !== 'voided' && !item.verified && (
                       <Button size="icon" variant="ghost" title="Editar" onClick={() => setEditing({ ...item })} data-testid={`campaign-edit-${item.donation_id}`}><Pencil className="h-4 w-4" /></Button>
