@@ -9,6 +9,7 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field, model_validator
 from pymongo.errors import DuplicateKeyError
+from bson import ObjectId
 
 from access_control import is_global_pastoral_authority
 from finance_engine import audit, create_journal, ensure_open_period, now_utc, require_finance_manage, require_finance_read, require_private_person_finance, serialize, validate_lines
@@ -412,12 +413,20 @@ async def journal_workflow(entry_id: str, action: Literal["submit", "review", "a
 
 async def enrich_campaign_names(items: list) -> list:
     campaign_ids = {allocation.get("campaign_id") for item in items for allocation in item.get("allocations", []) if allocation.get("campaign_id")}
-    if not campaign_ids:
+    if campaign_ids:
+        campaigns_by_id = {c["campaign_id"]: c["name"] for c in await db.finance_campaigns.find({"campaign_id": {"$in": list(campaign_ids)}}, {"_id": 0, "campaign_id": 1, "name": 1}).to_list(100)}
+        for item in items:
+            item["campaign_name"] = next((campaigns_by_id[a["campaign_id"]] for a in item.get("allocations", []) if a.get("campaign_id") in campaigns_by_id), None)
+    else:
         for item in items: item["campaign_name"] = None
-        return items
-    campaigns_by_id = {c["campaign_id"]: c["name"] for c in await db.finance_campaigns.find({"campaign_id": {"$in": list(campaign_ids)}}, {"_id": 0, "campaign_id": 1, "name": 1}).to_list(100)}
+    person_ids = {item["person_id"] for item in items if item.get("person_id")}
+    valid_object_ids = [ObjectId(pid) for pid in person_ids if ObjectId.is_valid(pid)]
+    persons_by_id = {}
+    if valid_object_ids:
+        async for person in db.persons.find({"_id": {"$in": valid_object_ids}}, {"nombre": 1, "apellido": 1}):
+            persons_by_id[str(person["_id"])] = f"{person.get('nombre', '')} {person.get('apellido', '')}".strip()
     for item in items:
-        item["campaign_name"] = next((campaigns_by_id[a["campaign_id"]] for a in item.get("allocations", []) if a.get("campaign_id") in campaigns_by_id), None)
+        item["person_name"] = persons_by_id.get(item.get("person_id")) if item.get("person_id") else None
     return items
 
 
