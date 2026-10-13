@@ -434,6 +434,42 @@ async def verify_donation(donation_id: str, payload: VerifyDonationInput, curren
     return serialize(after)
 
 
+@router.post("/donations/{donation_id}/unverify", response_model=dict)
+async def unverify_donation(donation_id: str, current_user: dict = Depends(operator)):
+    """Revierte una verificación hecha por error: anula/revierte el depósito contable en
+    Finanzas (sin borrar el rastro contable) y deja el donativo activo de nuevo, para poder
+    editarlo, anularlo o volver a verificarlo correctamente."""
+    before = await donation_doc(donation_id)
+    if not before.get("verified"):
+        raise HTTPException(status_code=409, detail="Este donativo no está verificado")
+    contribution_id = before.get("finance_contribution_id")
+    now = now_utc()
+    if contribution_id:
+        contribution = await db.finance_contributions.find_one({"contribution_id": contribution_id})
+        if contribution and contribution.get("status") != "corrected":
+            journal = await db.finance_journal_entries.find_one({"entry_id": contribution.get("journal_entry_id")})
+            if journal and journal.get("status") == "posted":
+                reversal_lines = [{**line, "debit_cents": line.get("credit_cents", 0), "credit_cents": line.get("debit_cents", 0), "description": f"Reversión: {line.get('description', '')}"} for line in journal.get("lines", [])]
+                await create_journal(current_user["user_id"], now.date().isoformat(), "Reversión por verificación revertida (Ven y Come)", "contribution_reversal", contribution_id, reversal_lines, "submitted")
+            elif journal:
+                await db.finance_journal_entries.update_one({"entry_id": journal["entry_id"]}, {"$set": {
+                    "status": "voided", "void_reason": "Verificación revertida en campaña Ven y Come (error del operador)",
+                    "voided_by_user_id": current_user["user_id"], "voided_at": now, "updated_at": now,
+                }})
+            await db.finance_contributions.update_one({"contribution_id": contribution_id}, {"$set": {
+                "status": "corrected", "correction_reason": "Verificación revertida en campaña Ven y Come (registrada por error)",
+                "corrected_by_user_id": current_user["user_id"], "corrected_at": now,
+                "updated_by_user_id": current_user["user_id"], "updated_at": now,
+            }})
+    await db.campaign_donations.update_one({"donation_id": donation_id}, {"$set": {
+        "verified": False, "verified_at": None, "verified_by_user_id": None, "verified_payment_method": None,
+        "finance_contribution_id": None, "finance_person_id": None, "updated_at": now,
+    }})
+    after = await donation_doc(donation_id)
+    await audit("donation_unverified", donation_id, current_user["user_id"], before, after)
+    return serialize(after)
+
+
 @router.post("/donations/{donation_id}/void", response_model=dict)
 async def void_donation(donation_id: str, current_user: dict = Depends(operator)):
     before = await donation_doc(donation_id)
