@@ -239,10 +239,35 @@ async def resolve_donation_person(donation: dict, user_id: str) -> tuple:
     return await find_or_create_person(donation.get("donor_name"), user_id)
 
 
+VEN_Y_COME_CAMPAIGN_NAME = "Ven y Come · Bus de comida"
+
+
+async def get_or_create_ven_y_come_finance_campaign(fund_id: str, user_id: str) -> dict:
+    """Obtiene (o crea una sola vez) el proyecto de Finanzas 'Ven y Come' para que todas las
+    contribuciones de esta campaña queden etiquetadas con su nombre en Finanzas y en el
+    perfil 360 de cada donante, distinguiéndolas de otros ingresos de Pro-Templo."""
+    campaign = await db.finance_campaigns.find_one({"name": VEN_Y_COME_CAMPAIGN_NAME}, {"_id": 0})
+    if campaign:
+        return campaign
+    settings = await get_settings()
+    campaign_id = str(uuid4())
+    now = now_utc()
+    doc = {
+        "_id": campaign_id, "campaign_id": campaign_id, "name": VEN_Y_COME_CAMPAIGN_NAME,
+        "fund_id": fund_id, "goal_cents": settings.get("goal_cents", 1200000), "budget_cents": 0,
+        "project_type": "campaign", "description": "Recaudación de fondos para la compra del autobús/camión de comida 'Ven y Come'.",
+        "start_date": now.date().isoformat(), "end_date": None, "status": "active",
+        "created_by_user_id": user_id, "created_at": now,
+    }
+    await db.finance_campaigns.insert_one(doc)
+    return doc
+
+
 async def create_finance_deposit_for_donation(donation: dict, payment_method: str, current_user: dict) -> dict:
     """Registra el donativo verificado como una contribución de Finanzas al fondo Pro-Templo
     (misma lógica contable de /api/finance/contributions: débito fondos no depositados,
-    crédito ingresos Pro-Templo)."""
+    crédito ingresos Pro-Templo), etiquetada con el proyecto 'Ven y Come' para diferenciarla
+    de otros ingresos de Pro-Templo."""
     fund = await db.finance_funds.find_one({"code": "BUILDING"}, {"_id": 0})
     if not fund:
         raise HTTPException(status_code=409, detail="Fondo Pro-Templo no configurado en Finanzas")
@@ -252,13 +277,14 @@ async def create_finance_deposit_for_donation(donation: dict, payment_method: st
     undeposited = await db.finance_accounts.find_one({"code": "1010"}, {"_id": 0})
     if not undeposited:
         raise HTTPException(status_code=409, detail="Configure la cuenta de fondos no depositados en Finanzas")
+    finance_campaign = await get_or_create_ven_y_come_finance_campaign(fund["fund_id"], current_user["user_id"])
     person_id, created_new_person = await resolve_donation_person(donation, current_user["user_id"])
     amount_cents = donation["amount_cents"]
     label = donor_label(donation)
-    description = f"Campaña Ven y Come · {label}"
+    description = f"{VEN_Y_COME_CAMPAIGN_NAME} · {label}"
     lines = [
-        {"account_id": undeposited["account_id"], "fund_id": fund["fund_id"], "debit_cents": amount_cents, "credit_cents": 0, "description": description},
-        {"account_id": contribution_type["revenue_account_id"], "fund_id": fund["fund_id"], "debit_cents": 0, "credit_cents": amount_cents, "description": description},
+        {"account_id": undeposited["account_id"], "fund_id": fund["fund_id"], "campaign_id": finance_campaign["campaign_id"], "debit_cents": amount_cents, "credit_cents": 0, "description": description},
+        {"account_id": contribution_type["revenue_account_id"], "fund_id": fund["fund_id"], "campaign_id": finance_campaign["campaign_id"], "debit_cents": 0, "credit_cents": amount_cents, "description": description},
     ]
     created_at = donation.get("created_at")
     received_date = (created_at.date() if isinstance(created_at, datetime) else now_utc().date()).isoformat()
@@ -271,8 +297,8 @@ async def create_finance_deposit_for_donation(donation: dict, payment_method: st
         "contribution_type": "building", "amount_cents": amount_cents,
         "received_date": received_date, "accounting_date": received_date,
         "payment_method": payment_method, "reference": f"Ven y Come #{donation['donation_id'][:8]}",
-        "allocations": [{"fund_id": fund["fund_id"], "amount_cents": amount_cents, "contribution_type": "building"}],
-        "source": "manual", "campaign_id": None, "description": description,
+        "allocations": [{"fund_id": fund["fund_id"], "campaign_id": finance_campaign["campaign_id"], "amount_cents": amount_cents, "contribution_type": "building"}],
+        "source": "manual", "campaign_id": finance_campaign["campaign_id"], "description": description,
         "notes": "Registrado automáticamente al verificar un donativo de la campaña Ven y Come.",
         "batch_id": None, "journal_entry_id": journal["entry_id"], "deposit_id": None,
         "status": "recorded", "created_by_user_id": current_user["user_id"],

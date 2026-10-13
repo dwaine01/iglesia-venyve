@@ -410,9 +410,21 @@ async def journal_workflow(entry_id: str, action: Literal["submit", "review", "a
     return serialize(await db.finance_journal_entries.find_one({"entry_id": entry_id}, {"_id": 0}))
 
 
+async def enrich_campaign_names(items: list) -> list:
+    campaign_ids = {allocation.get("campaign_id") for item in items for allocation in item.get("allocations", []) if allocation.get("campaign_id")}
+    if not campaign_ids:
+        for item in items: item["campaign_name"] = None
+        return items
+    campaigns_by_id = {c["campaign_id"]: c["name"] for c in await db.finance_campaigns.find({"campaign_id": {"$in": list(campaign_ids)}}, {"_id": 0, "campaign_id": 1, "name": 1}).to_list(100)}
+    for item in items:
+        item["campaign_name"] = next((campaigns_by_id[a["campaign_id"]] for a in item.get("allocations", []) if a.get("campaign_id") in campaigns_by_id), None)
+    return items
+
+
 @router.get("/contributions", response_model=dict)
 async def contributions(current_user: dict = Depends(reader)):
-    return {"items": serialize(await db.finance_contributions.find({}, {"_id": 0}).sort("received_date", -1).to_list(3000))}
+    items = await db.finance_contributions.find({}, {"_id": 0}).sort("received_date", -1).to_list(3000)
+    return {"items": serialize(await enrich_campaign_names(items))}
 
 
 @router.get("/persons/{person_id}/contributions", response_model=dict)
@@ -423,6 +435,7 @@ async def person_contributions(person_id: str, scope: Literal["person", "family"
         household_ids = [item["household_id"] for item in memberships]
         if household_ids: person_ids = await db.household_memberships.distinct("person_id", {"household_id": {"$in": household_ids}, "active": {"$ne": False}})
     items = await db.finance_contributions.find({"person_id": {"$in": person_ids}}, {"_id": 0}).sort("received_date", -1).to_list(5000)
+    items = await enrich_campaign_names(items)
     return {"scope": scope, "person_ids": person_ids, "total_cents": sum(item.get("amount_cents", 0) for item in items), "items": serialize(items)}
 
 
