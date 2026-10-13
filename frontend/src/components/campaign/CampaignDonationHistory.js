@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 import { toast } from 'sonner';
-import { Eye, Pencil, Ban, CheckCircle2, Undo2, Trash2, ShieldCheck, Search, RotateCcw, AlertTriangle } from 'lucide-react';
+import { Eye, Pencil, Ban, CheckCircle2, Undo2, Trash2, ShieldCheck, Search, AlertTriangle } from 'lucide-react';
 
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
@@ -143,6 +143,33 @@ export const CampaignDonationHistory = ({ base, getAuthHeaders, donations, onCha
                         <ShieldCheck className="mr-1 h-3 w-3 inline" />Verificado · {item.verified_payment_method === 'zelle' ? 'Zelle' : 'Efectivo'}
                       </Badge>
                     )}
+                    {item.verified && (
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <button
+                            type="button"
+                            disabled={busyId === item.donation_id}
+                            className="text-[10px] text-slate-400 underline decoration-dotted underline-offset-2 hover:text-amber-600 disabled:opacity-50"
+                            title="Revertir verificación (solo si fue un error)"
+                            data-testid={`campaign-unverify-${item.donation_id}`}
+                          >
+                            fue un error, revertir
+                          </button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent className="bg-white">
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>¿Revertir esta verificación?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Esto anulará/revertirá el depósito que se envió a Finanzas (fondo Pro-Templo) para {item.anonymous ? 'este donante anónimo' : (item.donor_name || 'este donante')} ({formatUsdCents(item.amount_cents)}), y el donativo quedará activo de nuevo para poder editarlo, anularlo o verificarlo correctamente.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel data-testid={`campaign-unverify-cancel-${item.donation_id}`}>Cancelar</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => unverifyDonation(item.donation_id)} data-testid={`campaign-unverify-confirm-${item.donation_id}`}>Revertir verificación</AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    )}
                     {isPendingVerification(item) && (
                       <Badge className="bg-amber-100 text-amber-800" data-testid={`campaign-pending-badge-${item.donation_id}`}>
                         <AlertTriangle className="mr-1 h-3 w-3 inline" />Sin verificar
@@ -160,25 +187,6 @@ export const CampaignDonationHistory = ({ base, getAuthHeaders, donations, onCha
                       <Button size="icon" variant="ghost" disabled={busyId === item.donation_id} title="Verificar y depositar en Finanzas (Pro-Templo)" onClick={() => { setVerifying(item); setVerifyMethod('zelle'); }} data-testid={`campaign-verify-${item.donation_id}`}>
                         <ShieldCheck className="h-4 w-4 text-[#B5953F]" />
                       </Button>
-                    )}
-                    {item.verified && (
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button size="icon" variant="ghost" disabled={busyId === item.donation_id} title="Revertir verificación (fue un error)" data-testid={`campaign-unverify-${item.donation_id}`}><RotateCcw className="h-4 w-4 text-amber-600" /></Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent className="bg-white">
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>¿Revertir esta verificación?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              Esto anulará/revertirá el depósito que se envió a Finanzas (fondo Pro-Templo) para {item.anonymous ? 'este donante anónimo' : (item.donor_name || 'este donante')} ({formatUsdCents(item.amount_cents)}), y el donativo quedará activo de nuevo para poder editarlo, anularlo o verificarlo correctamente.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel data-testid={`campaign-unverify-cancel-${item.donation_id}`}>Cancelar</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => unverifyDonation(item.donation_id)} data-testid={`campaign-unverify-confirm-${item.donation_id}`}>Revertir verificación</AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
                     )}
                     {item.status !== 'voided' && !item.verified && (
                       <Button size="icon" variant="ghost" title="Editar" onClick={() => setEditing({ ...item })} data-testid={`campaign-edit-${item.donation_id}`}><Pencil className="h-4 w-4" /></Button>
