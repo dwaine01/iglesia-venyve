@@ -54,6 +54,7 @@ export const CampaignDonationHistory = ({ base, getAuthHeaders, donations, onCha
     try {
       await axios.put(`${base}/donations/${editing.donation_id}`, {
         donor_name: editing.anonymous ? null : (editing.donor_name || null),
+        person_id: editing.anonymous ? null : (editing.person_id || null),
         amount_cents: editing.amount_cents,
         donation_type: editing.donation_type,
         anonymous: editing.anonymous,
@@ -111,7 +112,7 @@ export const CampaignDonationHistory = ({ base, getAuthHeaders, donations, onCha
           <TableBody>
             {visibleDonations.map((item) => (
               <TableRow key={item.donation_id} data-testid={`campaign-donation-row-${item.donation_id}`}>
-                <TableCell>{item.anonymous ? 'Anónimo' : (item.donor_name || '—')}</TableCell>
+                <TableCell>{item.anonymous ? 'Anónimo' : (item.donor_name || '—')} {item.person_id && !item.anonymous && <Badge variant="outline" className="ml-1 border-emerald-300 text-emerald-700" data-testid={`campaign-person-linked-badge-${item.donation_id}`}>360</Badge>}</TableCell>
                 <TableCell className="font-semibold">{formatUsdCents(item.amount_cents)}</TableCell>
                 <TableCell><Badge variant="outline">{item.donation_type === 'received' ? 'Recibido' : 'Promesa'}</Badge></TableCell>
                 <TableCell>

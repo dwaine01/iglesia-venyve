@@ -8,12 +8,14 @@ import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Checkbox } from '../ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
+import { PersonPicker } from '../dedication/PersonPicker';
 import { dollarsToCents, formatUsdCents } from '../../lib/campaignFormat';
 
 const QUICK_AMOUNTS = [2500, 5000, 10000, 25000, 50000, 100000];
 
 export const CampaignDonationForm = ({ base, getAuthHeaders, onCreated }) => {
   const [donorName, setDonorName] = useState('');
+  const [donorPerson, setDonorPerson] = useState(null);
   const [amountCents, setAmountCents] = useState(0);
   const [customAmount, setCustomAmount] = useState('');
   const [donationType, setDonationType] = useState('received');
@@ -23,7 +25,7 @@ export const CampaignDonationForm = ({ base, getAuthHeaders, onCreated }) => {
   const idemKeyRef = useRef(crypto.randomUUID());
 
   const resetForm = () => {
-    setDonorName(''); setAmountCents(0); setCustomAmount('');
+    setDonorName(''); setDonorPerson(null); setAmountCents(0); setCustomAmount('');
     setAnonymous(false); setConsentShowName(false); setDonationType('received');
     idemKeyRef.current = crypto.randomUUID();
   };
@@ -51,6 +53,7 @@ export const CampaignDonationForm = ({ base, getAuthHeaders, onCreated }) => {
     try {
       await axios.post(`${base}/donations`, {
         donor_name: anonymous ? null : (donorName.trim() || null),
+        person_id: anonymous ? null : (donorPerson?.person_id || null),
         amount_cents: amountCents,
         donation_type: donationType,
         anonymous,
@@ -100,15 +103,30 @@ export const CampaignDonationForm = ({ base, getAuthHeaders, onCreated }) => {
       </div>
 
       <div>
+        <Label>Vincular a Persona 360 (opcional)</Label>
+        <p className="mb-1 text-xs text-slate-400">Así la donación queda registrada en el perfil de esa persona, visible para pastora y finanzas.</p>
+        <PersonPicker
+          label=""
+          value={donorPerson}
+          onSelect={(item) => {
+            setDonorPerson(item);
+            if (item) setDonorName(item.nombre_completo);
+          }}
+          testId="campaign-donor-person-picker"
+        />
+      </div>
+
+      <div>
         <Label htmlFor="campaign-donor-name">Nombre del donante (opcional)</Label>
         <Input
           id="campaign-donor-name"
           value={donorName}
           onChange={(e) => setDonorName(e.target.value)}
-          disabled={anonymous}
+          disabled={anonymous || Boolean(donorPerson)}
           placeholder="Ej: Familia Pérez"
           data-testid="campaign-donor-name-input"
         />
+        {donorPerson && <p className="mt-1 text-xs text-emerald-600">Vinculado a Persona 360 · {donorPerson.person_number || donorPerson.person_id}</p>}
       </div>
 
       <div>
@@ -124,7 +142,7 @@ export const CampaignDonationForm = ({ base, getAuthHeaders, onCreated }) => {
 
       <div className="flex flex-wrap gap-4">
         <label className="flex items-center gap-2 text-sm">
-          <Checkbox checked={anonymous} onCheckedChange={(v) => { setAnonymous(Boolean(v)); if (v) setConsentShowName(false); }} data-testid="campaign-anonymous-checkbox" />
+          <Checkbox checked={anonymous} onCheckedChange={(v) => { setAnonymous(Boolean(v)); if (v) { setConsentShowName(false); setDonorPerson(null); } }} data-testid="campaign-anonymous-checkbox" />
           Donante anónimo
         </label>
         <label className="flex items-center gap-2 text-sm">
