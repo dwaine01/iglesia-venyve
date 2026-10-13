@@ -199,6 +199,15 @@ def donor_label(donation: dict) -> str:
     return donation.get("donor_name") or "Donante anónimo"
 
 
+def donor_private_label(donation: dict) -> str:
+    """Nombre real para los registros contables/pastorales (Finanzas, Persona 360).
+    El consentimiento de mostrar nombre solo aplica a la pantalla pública del bus;
+    la pastora y contabilidad siempre deben ver quién donó realmente."""
+    if donation.get("anonymous"):
+        return "Donante anónimo"
+    return donation.get("donor_name") or "Donante anónimo"
+
+
 async def find_or_create_person(donor_name: Optional[str], user_id: str) -> tuple:
     """Busca una Persona 360 por nombre para vincular el depósito de Finanzas.
     Si encuentra exactamente una coincidencia la reutiliza; si no encuentra ninguna,
@@ -280,7 +289,7 @@ async def create_finance_deposit_for_donation(donation: dict, payment_method: st
     finance_campaign = await get_or_create_ven_y_come_finance_campaign(fund["fund_id"], current_user["user_id"])
     person_id, created_new_person = await resolve_donation_person(donation, current_user["user_id"])
     amount_cents = donation["amount_cents"]
-    label = donor_label(donation)
+    label = donor_private_label(donation)
     description = f"{VEN_Y_COME_CAMPAIGN_NAME} · {label}"
     lines = [
         {"account_id": undeposited["account_id"], "fund_id": fund["fund_id"], "campaign_id": finance_campaign["campaign_id"], "debit_cents": amount_cents, "credit_cents": 0, "description": description},
