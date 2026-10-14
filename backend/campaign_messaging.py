@@ -96,7 +96,9 @@ async def draft_message(payload: DraftRequest, current_user: dict = Depends(oper
     if not api_key:
         raise HTTPException(status_code=503, detail="Falta configurar la clave de IA (EMERGENT_LLM_KEY)")
     settings = await get_settings()
-    zelle = settings.get("zelle_info") or "el Zelle de la iglesia (pendiente de configurar en Configuración de campaña)"
+    zelle = settings.get("zelle_info")
+    if payload.kind in ("reminder", "invite") and not zelle:
+        raise HTTPException(status_code=400, detail="Configura el Zelle de la iglesia en Configuración de campaña antes de redactar este mensaje")
     name = payload.name.strip() or "hermano/a"
     prompts = {
         "thank_you": (
