@@ -59,7 +59,7 @@ const getNavItems = (user, boardAllowed = false) => {
   }
   
   if (rol === 'persona') {
-    return [
+    const personaItems = [
       { to: '/procesos/dashboard', icon: Trophy, label: 'Mi Progreso', end: true },
       { to: '/procesos/consolidacion', icon: Activity, label: 'Mi Consolidación' },
       { to: '/procesos/discipulado', icon: BookHeart, label: 'Mi Discipulado' },
@@ -70,6 +70,10 @@ const getNavItems = (user, boardAllowed = false) => {
       { to: '/mapas', icon: MapPinned, label: 'Casas por visitar', testId: 'nav-geo-maps' },
       { to: '/operaciones', icon: Calendar, label: 'Eventos y turnos', testId: 'nav-operations' },
     ];
+    if (canAccessCampaignOperator(user)) {
+      personaItems.push({ to: '/campanas/ven-y-come/control', icon: Bus, label: 'Campaña Ven y Come', testId: 'nav-campaign-venycome' });
+    }
+    return personaItems;
   }
   
   // Default: lider
