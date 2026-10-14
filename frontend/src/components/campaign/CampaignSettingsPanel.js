@@ -15,6 +15,7 @@ import {
 export const CampaignSettingsPanel = ({ base, getAuthHeaders, settings, onChanged }) => {
   const [goalInput, setGoalInput] = useState((settings.goal_cents / 100).toFixed(2));
   const [countingRule, setCountingRule] = useState(settings.counting_rule);
+  const [zelleInfo, setZelleInfo] = useState(settings.zelle_info || '');
   const [pendingMode, setPendingMode] = useState(null);
   const [saving, setSaving] = useState(false);
 
@@ -25,6 +26,7 @@ export const CampaignSettingsPanel = ({ base, getAuthHeaders, settings, onChange
         goal_cents: Math.round(parseFloat(goalInput || 0) * 100),
         counting_rule: countingRule,
         mode: modeOverride || settings.mode,
+        zelle_info: zelleInfo.trim() || null,
       }, getAuthHeaders());
       toast.success('Configuración actualizada');
       await onChanged();
@@ -77,6 +79,16 @@ export const CampaignSettingsPanel = ({ base, getAuthHeaders, settings, onChange
             <SelectItem value="production">Producción</SelectItem>
           </SelectContent>
         </Select>
+      </div>
+
+      <div>
+        <Label>Zelle de la iglesia (para avisar a donantes)</Label>
+        <Input
+          value={zelleInfo}
+          onChange={(e) => setZelleInfo(e.target.value)}
+          placeholder="Ej: zelle@iglesia.org o (809) 555-1234"
+          data-testid="campaign-zelle-info-input"
+        />
       </div>
 
       <Button variant="outline" className="w-full" disabled={saving} onClick={() => save()} data-testid="campaign-save-settings-button">Guardar configuración</Button>

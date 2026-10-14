@@ -12,6 +12,7 @@ from bson import ObjectId
 from access_control import CAMPAIGN_VENYCOME_MANAGE, has_capability, is_general_coordinator, is_global_pastoral_authority
 from core_person import _normalize as normalize_person_name, next_person_number
 from finance_engine import create_journal
+from person_domains import contact_items
 from server import db, get_authenticated_user, get_current_user
 
 router = APIRouter(prefix="/api/campaigns/venycome", tags=["campaign-venycome"])
@@ -108,10 +109,23 @@ class VerifyDonationInput(BaseModel):
     payment_method: Literal["zelle", "cash"]
 
 
+class ContactNoteInput(BaseModel):
+    text: str = Field(..., min_length=1, max_length=500)
+
+    @field_validator("text")
+    @classmethod
+    def strip_text(cls, value):
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("La nota no puede estar vacía")
+        return cleaned[:500]
+
+
 class SettingsInput(BaseModel):
     goal_cents: int = Field(gt=0, le=1_000_000_000)
     counting_rule: Literal["committed", "received_only"] = "committed"
     mode: Literal["production", "rehearsal"] = "rehearsal"
+    zelle_info: Optional[str] = Field(default=None, max_length=200)
 
 
 class PresentationLinkInput(BaseModel):
@@ -121,7 +135,7 @@ class PresentationLinkInput(BaseModel):
 async def get_settings() -> dict:
     settings = await db.campaign_settings.find_one({"_id": "venycome"}, {"_id": 0})
     if not settings:
-        settings = {"goal_cents": 1_200_000, "counting_rule": "committed", "mode": "rehearsal", "updated_at": now_utc(), "updated_by_user_id": None}
+        settings = {"goal_cents": 1_200_000, "counting_rule": "committed", "mode": "rehearsal", "zelle_info": None, "updated_at": now_utc(), "updated_by_user_id": None}
         await db.campaign_settings.update_one({"_id": "venycome"}, {"$set": settings}, upsert=True)
     return settings
 
@@ -363,7 +377,7 @@ async def create_donation(payload: DonationInput, current_user: dict = Depends(o
         "amount_cents": payload.amount_cents, "donation_type": payload.donation_type,
         "anonymous": payload.anonymous, "consent_show_name": payload.consent_show_name,
         "is_rehearsal": settings["mode"] == "rehearsal", "status": "active",
-        "idempotency_key": payload.idempotency_key, "shown_at": now,
+        "idempotency_key": payload.idempotency_key, "shown_at": now, "contact_notes": [],
         "created_by_user_id": current_user["user_id"], "created_at": now, "updated_at": now,
     }
     await db.campaign_donations.insert_one(doc)
@@ -512,6 +526,50 @@ async def show_donation(donation_id: str, current_user: dict = Depends(operator)
     await db.campaign_donations.update_one({"donation_id": donation_id}, {"$set": {"shown_at": now_utc()}})
     await manager.broadcast({"type": "announcement", "donor_label": donor_label(doc), "amount_cents": doc["amount_cents"], "donation_type": doc["donation_type"]})
     return {"ok": True}
+
+
+@router.get("/donations/{donation_id}/contact", response_model=dict)
+async def donation_contact(donation_id: str, current_user: dict = Depends(operator)):
+    """Tarjeta de contacto rápido: para que el operador pueda llamar/mensajear al donante
+    sin tener que entrar al directorio de Personas 360 por separado."""
+    doc = await donation_doc(donation_id)
+    settings = await get_settings()
+    result = {
+        "donor_name": doc.get("donor_name"), "amount_cents": doc["amount_cents"],
+        "phone": None, "email": None, "zelle_info": settings.get("zelle_info"),
+    }
+    person_id = doc.get("person_id")
+    if person_id:
+        contacts = await contact_items(person_id)
+        phone = next((item for item in contacts if item.get("tipo") in {"telefono", "whatsapp"} and item.get("es_principal")), None) \
+            or next((item for item in contacts if item.get("tipo") in {"telefono", "whatsapp"}), None)
+        email = next((item for item in contacts if item.get("tipo") == "email" and item.get("es_principal")), None) \
+            or next((item for item in contacts if item.get("tipo") == "email"), None)
+        if phone:
+            result["phone"] = phone.get("valor")
+        if email:
+            result["email"] = email.get("valor")
+    return result
+
+
+@router.post("/donations/{donation_id}/notes", response_model=dict)
+async def add_contact_note(donation_id: str, payload: ContactNoteInput, current_user: dict = Depends(operator)):
+    """Registra una nota de seguimiento (ej. 'dijo que paga mañana por Zelle') para que
+    quede en archivo y cualquier operador la vea fácilmente."""
+    before = await donation_doc(donation_id)
+    note = {
+        "note_id": str(uuid4()), "text": payload.text,
+        "created_by_user_id": current_user["user_id"],
+        "created_by_name": current_user.get("email") or "Operador",
+        "created_at": now_utc(),
+    }
+    await db.campaign_donations.update_one(
+        {"donation_id": donation_id},
+        {"$push": {"contact_notes": note}, "$set": {"updated_at": now_utc()}},
+    )
+    after = await donation_doc(donation_id)
+    await audit("donation_note_added", donation_id, current_user["user_id"], before, after)
+    return serialize(after)
 
 
 @router.post("/settings/reset-rehearsal", response_model=dict)
