@@ -53,7 +53,7 @@ const RecipientRow = ({ base, getAuthHeaders, person, kind, amountCents, onConta
           </p>
         </div>
         <Button size="sm" variant="outline" disabled={drafting} onClick={generate} data-testid={`campaign-msg-draft-${person.person_id}`}>
-          <Sparkles className="h-3.5 w-3.5" />{drafting ? 'Redactando…' : 'Redactar con IA'}
+          <Sparkles className="h-3.5 w-3.5" />{drafting ? 'Generando…' : 'Generar mensaje'}
         </Button>
       </div>
       {draft && (
@@ -99,7 +99,7 @@ export const CampaignMessagingPanel = ({ base, getAuthHeaders }) => {
     <div className="rounded-xl border border-slate-200 bg-white p-4" data-testid="campaign-messaging-panel">
       <h3 className="flex items-center gap-2 font-semibold text-[#132443]"><MessageCircleHeart className="h-4 w-4" />Mensajes a donantes</h3>
       <p className="mt-1 text-xs text-slate-400">
-        Redactados con IA, listos para enviar por SMS desde tu teléfono. El envío automático se habilitará cuando esté lista la integración con Univerge Blue.
+        Mensajes listos para enviar por SMS desde tu teléfono.
       </p>
       {loading && <p className="mt-4 text-sm text-slate-400">Cargando…</p>}
       {!loading && (

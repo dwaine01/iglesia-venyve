@@ -1,9 +1,13 @@
-"""Iteration 29: AI Messaging feature backend tests for Ven y Come campaign.
+"""Iteration 29 (updated): Donor messaging feature backend tests for Ven y
+Come campaign. Messages are now generated with static Spanish templates in
+campaign_messaging.py (NOT via emergentintegrations/AI) — see DEPLOYMENT.md
+portability note: emergentintegrations is intentionally excluded from
+production (Railway) and must never be imported by this module.
 
 Covers:
 - GET /api/campaigns/venycome/messages/pending
 - GET /api/campaigns/venycome/messages/never-donated
-- POST /api/campaigns/venycome/messages/draft  (real Claude via Emergent LLM key)
+- POST /api/campaigns/venycome/messages/draft  (static templates)
 - POST /api/campaigns/venycome/messages/{person_id}/mark-contacted
 - RBAC regression: persona-level member with only campaign.venycome.manage can
   reach messaging endpoints but gets 403 on /api/core/persons.
@@ -57,6 +61,23 @@ def db_handle():
     client = MongoClient(os.environ["MONGO_URL"])
     yield client[os.environ["DB_NAME"]]
     client.close()
+
+
+@pytest.fixture(scope="module")
+def ensure_zelle_configured(pastor_headers):
+    """reminder/invite drafts require zelle_info to be set; save/restore the
+    previous value so this test doesn't leave permanent QA data behind."""
+    settings_url = f"{BASE_URL}/api/campaigns/venycome/settings"
+    before = requests.get(settings_url, headers=pastor_headers, timeout=15).json()
+    requests.put(settings_url, json={
+        "goal_cents": before["goal_cents"], "counting_rule": before["counting_rule"],
+        "mode": before["mode"], "zelle_info": "qa-test-zelle@example.com",
+    }, headers=pastor_headers, timeout=15)
+    yield
+    requests.put(settings_url, json={
+        "goal_cents": before["goal_cents"], "counting_rule": before["counting_rule"],
+        "mode": before["mode"], "zelle_info": before.get("zelle_info"),
+    }, headers=pastor_headers, timeout=15)
 
 
 @pytest.fixture(scope="module")
@@ -160,35 +181,35 @@ class TestNeverDonated:
         assert not any(i["person_id"] == seeded_people["pending_pid"] for i in items)
 
 
-# ----- POST /draft (hits real Claude) -----
+# ----- POST /draft (static templates, no AI) -----
 class TestDraftGeneration:
     def test_thank_you_draft(self, pastor_headers, seeded_people):
         r = requests.post(f"{MSG_BASE}/draft", json={
             "kind": "thank_you", "person_id": seeded_people["pending_pid"],
             "name": "Maria", "amount_cents": 7500,
-        }, headers=pastor_headers, timeout=60)
+        }, headers=pastor_headers, timeout=15)
         assert r.status_code == 200, r.text
         text = r.json()["text"]
         assert isinstance(text, str) and len(text) > 10
-        assert len(text) <= 480
+        assert len(text) <= 300
         low = text.lower()
         assert "iglesia" in low  # signed
-        # Should reference thanking / amount context
+        assert "75.00" in text
         assert any(w in low for w in ["gracias", "agradec"]), text
 
-    def test_reminder_draft_mentions_zelle(self, pastor_headers, seeded_people):
+    def test_reminder_draft_mentions_zelle(self, pastor_headers, seeded_people, ensure_zelle_configured):
         r = requests.post(f"{MSG_BASE}/draft", json={
             "kind": "reminder", "person_id": seeded_people["pending_pid"],
             "name": "Juan", "amount_cents": 5000,
-        }, headers=pastor_headers, timeout=60)
+        }, headers=pastor_headers, timeout=15)
         assert r.status_code == 200, r.text
         text = r.json()["text"].lower()
         assert "zelle" in text, f"reminder should mention zelle: {text}"
 
-    def test_invite_draft_mentions_zelle(self, pastor_headers, seeded_people):
+    def test_invite_draft_mentions_zelle(self, pastor_headers, seeded_people, ensure_zelle_configured):
         r = requests.post(f"{MSG_BASE}/draft", json={
             "kind": "invite", "person_id": seeded_people["never_pid"], "name": "Ana",
-        }, headers=pastor_headers, timeout=60)
+        }, headers=pastor_headers, timeout=15)
         assert r.status_code == 200, r.text
         text = r.json()["text"].lower()
         assert "zelle" in text, f"invite should mention zelle: {text}"
@@ -198,6 +219,24 @@ class TestDraftGeneration:
             "kind": "bogus", "person_id": seeded_people["pending_pid"], "name": "X",
         }, headers=pastor_headers, timeout=15)
         assert r.status_code in (400, 422)
+
+    def test_reminder_without_zelle_configured_returns_400(self, pastor_headers, seeded_people):
+        settings_url = f"{BASE_URL}/api/campaigns/venycome/settings"
+        before = requests.get(settings_url, headers=pastor_headers, timeout=15).json()
+        requests.put(settings_url, json={
+            "goal_cents": before["goal_cents"], "counting_rule": before["counting_rule"],
+            "mode": before["mode"], "zelle_info": None,
+        }, headers=pastor_headers, timeout=15)
+        try:
+            r = requests.post(f"{MSG_BASE}/draft", json={
+                "kind": "reminder", "person_id": seeded_people["pending_pid"], "name": "Juan", "amount_cents": 5000,
+            }, headers=pastor_headers, timeout=15)
+            assert r.status_code == 400, r.text
+        finally:
+            requests.put(settings_url, json={
+                "goal_cents": before["goal_cents"], "counting_rule": before["counting_rule"],
+                "mode": before["mode"], "zelle_info": before.get("zelle_info"),
+            }, headers=pastor_headers, timeout=15)
 
 
 # ----- POST /{person_id}/mark-contacted -----

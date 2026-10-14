@@ -413,7 +413,7 @@ export const CampaignDonationHistory = ({ base, getAuthHeaders, donations, onCha
                   <div className="flex items-center justify-between">
                     <Label className="flex items-center gap-2"><Sparkles className="h-4 w-4" />Mensaje de agradecimiento</Label>
                     <Button size="sm" variant="outline" disabled={draftingThanks} onClick={generateThanks} data-testid="campaign-contact-thankyou-draft-button">
-                      {draftingThanks ? 'Redactando…' : 'Redactar con IA'}
+                      {draftingThanks ? 'Generando…' : 'Generar mensaje'}
                     </Button>
                   </div>
                   {aiDraft && (

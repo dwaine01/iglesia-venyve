@@ -1,12 +1,16 @@
-"""Mensajería a donantes de Ven y Come: redacción de mensajes (agradecimiento /
-recordatorio / invitación) con IA, listas de "quién falta" (pendientes de pago y
-quienes aún no han donado), y registro de contacto. El envío real y automático
-por SMS vía Univerge Blue Connect requiere credenciales del proveedor
-(UB_CLIENT_ID, UB_CLIENT_SECRET, UB_REFRESH_TOKEN, UB_SCOPE, UB_SMS_SEND_PATH,
-UB_FROM_NUMBER) que aún no están configuradas; mientras tanto, el envío se hace
-manualmente desde el teléfono del operador (enlace sms:) con el texto redactado
-aquí."""
-import os
+"""Mensajería a donantes de Ven y Come: mensajes de texto (agradecimiento /
+recordatorio / invitación) generados con plantillas fijas en el backend,
+listas de "quién falta" (pendientes de pago y quienes aún no han donado), y
+registro de contacto. El envío se hace manualmente desde el teléfono del
+operador (enlace sms:) con el texto generado aquí; el envío automático real
+por SMS (ej. Univerge Blue Connect) requeriría credenciales de un proveedor
+que aún no están configuradas.
+
+Nota de portabilidad: este módulo NO debe importar `emergentintegrations` ni
+depender de `EMERGENT_LLM_KEY` — ese paquete no está instalado en producción
+(Railway) a propósito (ver DEPLOYMENT.md y
+tests/test_portability_auth_cors_public.py). Los mensajes se generan con
+plantillas de texto normales en Python, sin ninguna llamada a IA."""
 from datetime import datetime, timezone
 from typing import Literal, Optional
 
@@ -88,50 +92,26 @@ class DraftRequest(BaseModel):
     amount_cents: Optional[int] = None
 
 
+def build_message(kind: str, name: str, amount_cents: Optional[int], zelle: Optional[str]) -> str:
+    first_name = (name or "hermano/a").strip().split(" ")[0]
+    amount = f"${((amount_cents or 0) / 100):.2f}"
+    if kind == "thank_you":
+        text = f"Hola {first_name}, ¡gracias de corazón por tu donativo de {amount} a la campaña Ven y Come! Tu generosidad bendice a quienes más lo necesitan. — Iglesia"
+    elif kind == "reminder":
+        text = f"Hola {first_name}, te recordamos con cariño tu donativo prometido a Ven y Come, que aún no hemos recibido. Puedes completarlo por Zelle a {zelle}. ¡Gracias! — Iglesia"
+    else:
+        text = f"Hola {first_name}, te invitamos a sumarte a la campaña Ven y Come (bus de comida) con un donativo por Zelle a {zelle}. Cada aporte ayuda mucho. — Iglesia"
+    return text[:300]
+
+
 @router.post("/draft", response_model=dict)
 async def draft_message(payload: DraftRequest, current_user: dict = Depends(operator)):
-    from emergentintegrations.llm.chat import LlmChat, UserMessage, TextDelta, StreamDone
-
-    api_key = os.environ.get("EMERGENT_LLM_KEY")
-    if not api_key:
-        raise HTTPException(status_code=503, detail="Falta configurar la clave de IA (EMERGENT_LLM_KEY)")
     settings = await get_settings()
     zelle = settings.get("zelle_info")
     if payload.kind in ("reminder", "invite") and not zelle:
-        raise HTTPException(status_code=400, detail="Configura el Zelle de la iglesia en Configuración de campaña antes de redactar este mensaje")
-    name = payload.name.strip() or "hermano/a"
-    prompts = {
-        "thank_you": (
-            f"Escribe un mensaje de texto (SMS) corto, cálido y cortés en español para {name}, "
-            f"agradeciéndole su donativo de ${((payload.amount_cents or 0) / 100):.2f} a la campaña "
-            f"'Ven y Come' (bus de comida de la iglesia). Máximo 300 caracteres, sin emojis, firmado 'Iglesia'."
-        ),
-        "reminder": (
-            f"Escribe un mensaje de texto (SMS) corto, amable y respetuoso en español para {name}, "
-            f"recordándole con cortesía que prometió un donativo a la campaña 'Ven y Come' (bus de comida) "
-            f"que aún no se ha recibido. Invítalo a completarlo por Zelle a {zelle}. "
-            f"Máximo 300 caracteres, sin presionar, sin emojis, firmado 'Iglesia'."
-        ),
-        "invite": (
-            f"Escribe un mensaje de texto (SMS) corto, cálido e invitador en español para {name}, "
-            f"invitándolo a sumarse con un donativo a la campaña 'Ven y Come' (bus de comida) de la iglesia, "
-            f"por Zelle a {zelle}. Máximo 300 caracteres, sin presionar, sin emojis, firmado 'Iglesia'."
-        ),
-    }
-    chat = LlmChat(
-        api_key=api_key, session_id=f"campaign-msg-{payload.person_id}-{int(now_utc().timestamp())}",
-        system_message="Eres un asistente que redacta mensajes de texto cortos, cálidos y respetuosos para una iglesia. Responde SOLO con el texto del mensaje, sin comillas ni explicaciones adicionales.",
-    ).with_model("anthropic", "claude-sonnet-5-5")
-    parts = []
-    async for event in chat.stream_message(UserMessage(text=prompts[payload.kind])):
-        if isinstance(event, TextDelta):
-            parts.append(event.content)
-        elif isinstance(event, StreamDone):
-            break
-    draft = "".join(parts).strip().strip('"')
-    if not draft:
-        raise HTTPException(status_code=502, detail="La IA no pudo redactar el mensaje, intenta de nuevo")
-    return {"text": draft[:480]}
+        raise HTTPException(status_code=400, detail="Configura el Zelle de la iglesia en Configuración de campaña antes de generar este mensaje")
+    text = build_message(payload.kind, payload.name, payload.amount_cents, zelle)
+    return {"text": text}
 
 
 class MarkContactedInput(BaseModel):
