@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 import { toast } from 'sonner';
-import { Eye, Pencil, Ban, CheckCircle2, Undo2, Trash2, ShieldCheck, Search, AlertTriangle } from 'lucide-react';
+import { Eye, Pencil, Ban, CheckCircle2, Undo2, Trash2, ShieldCheck, Search, AlertTriangle, Phone, Mail, MessageSquare, StickyNote } from 'lucide-react';
 
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
@@ -15,6 +15,7 @@ import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Checkbox } from '../ui/checkbox';
+import { Textarea } from '../ui/textarea';
 import { formatUsdCents, normalizeSearchText } from '../../lib/campaignFormat';
 
 export const CampaignDonationHistory = ({ base, getAuthHeaders, donations, onChanged }) => {
@@ -23,13 +24,23 @@ export const CampaignDonationHistory = ({ base, getAuthHeaders, donations, onCha
   const [verifying, setVerifying] = useState(null);
   const [verifyMethod, setVerifyMethod] = useState('zelle');
   const [search, setSearch] = useState('');
+  const [paymentFilter, setPaymentFilter] = useState('all');
+  const [contactingId, setContactingId] = useState(null);
+  const [contactInfo, setContactInfo] = useState(null);
+  const [noteText, setNoteText] = useState('');
+  const [savingNote, setSavingNote] = useState(false);
   const lastActive = donations.find((item) => item.status !== 'voided') || null;
   const isPendingVerification = (item) => item.donation_type === 'received' && item.status !== 'voided' && !item.verified;
   const pendingCount = donations.filter(isPendingVerification).length;
   const normalizedSearch = normalizeSearchText(search);
-  const visibleDonations = normalizedSearch
-    ? donations.filter((item) => normalizeSearchText(item.anonymous ? 'anónimo' : (item.donor_name || '')).includes(normalizedSearch))
-    : donations;
+  const contactingItem = donations.find((item) => item.donation_id === contactingId) || null;
+  const visibleDonations = donations
+    .filter((item) => (normalizedSearch ? normalizeSearchText(item.anonymous ? 'anónimo' : (item.donor_name || '')).includes(normalizedSearch) : true))
+    .filter((item) => {
+      if (paymentFilter === 'paid') return Boolean(item.verified);
+      if (paymentFilter === 'unpaid') return !item.verified && item.status !== 'voided';
+      return true;
+    });
 
   const run = async (id, fn) => {
     setBusyId(id);
@@ -45,6 +56,36 @@ export const CampaignDonationHistory = ({ base, getAuthHeaders, donations, onCha
     await axios.post(`${base}/donations/${id}/unverify`, {}, getAuthHeaders());
     toast.success('Verificación revertida: el depósito en Finanzas fue anulado/revertido');
   });
+
+  const openContact = async (item) => {
+    setContactingId(item.donation_id);
+    setContactInfo(null);
+    setNoteText('');
+    try {
+      const { data } = await axios.get(`${base}/donations/${item.donation_id}/contact`, getAuthHeaders());
+      setContactInfo(data);
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || 'No se pudo cargar la información de contacto');
+    }
+  };
+
+  const saveNote = async () => {
+    if (!contactingId || !noteText.trim()) return;
+    setSavingNote(true);
+    try {
+      await axios.post(`${base}/donations/${contactingId}/notes`, { text: noteText.trim() }, getAuthHeaders());
+      setNoteText('');
+      toast.success('Nota guardada');
+      await onChanged();
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || 'No se pudo guardar la nota');
+    } finally {
+      setSavingNote(false);
+    }
+  };
+
+  const smsHref = (phone, body) => `sms:${phone}?body=${encodeURIComponent(body)}`;
+  const contactMessage = (item, info) => `Hola${item?.anonymous ? '' : ` ${item?.donor_name || ''}`}, para completar tu donativo de ${formatUsdCents(item?.amount_cents)} a la campaña Ven y Come puedes enviarlo por Zelle a: ${info?.zelle_info || '(pendiente de configurar)'}. ¡Gracias!`;
 
   const confirmVerify = async () => {
     if (!verifying) return;
@@ -100,15 +141,25 @@ export const CampaignDonationHistory = ({ base, getAuthHeaders, donations, onCha
           </AlertDialog>
         )}
       </div>
-      <div className="relative mt-3">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-        <Input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Buscar donante por nombre…"
-          className="pl-9"
-          data-testid="campaign-donation-search-input"
-        />
+      <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+        <div className="relative flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar donante por nombre…"
+            className="pl-9"
+            data-testid="campaign-donation-search-input"
+          />
+        </div>
+        <Select value={paymentFilter} onValueChange={setPaymentFilter}>
+          <SelectTrigger className="sm:w-48" data-testid="campaign-payment-filter-select"><SelectValue /></SelectTrigger>
+          <SelectContent className="bg-white">
+            <SelectItem value="all">Todos</SelectItem>
+            <SelectItem value="paid">Pagados (verificados)</SelectItem>
+            <SelectItem value="unpaid">Pendientes de pago</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
       {pendingCount > 0 && (
         <div className="mt-3 flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800" data-testid="campaign-pending-verification-alert">
@@ -179,6 +230,16 @@ export const CampaignDonationHistory = ({ base, getAuthHeaders, donations, onCha
                 </TableCell>
                 <TableCell>
                   <div className="flex items-center gap-1">
+                    {item.person_id && !item.anonymous && item.status !== 'voided' && (
+                      <Button size="icon" variant="ghost" className="relative" title="Contacto rápido (llamar, mensajear, notas)" onClick={() => openContact(item)} data-testid={`campaign-contact-${item.donation_id}`}>
+                        <Phone className="h-4 w-4 text-[#132443]" />
+                        {item.contact_notes?.length > 0 && (
+                          <span className="absolute -right-0.5 -top-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[#B5953F] text-[9px] font-bold text-white" data-testid={`campaign-contact-notes-count-${item.donation_id}`}>
+                            {item.contact_notes.length}
+                          </span>
+                        )}
+                      </Button>
+                    )}
                     <Button size="icon" variant="ghost" disabled={busyId === item.donation_id || item.status === 'voided'} title="Mostrar de nuevo" onClick={() => showAgain(item.donation_id)} data-testid={`campaign-show-again-${item.donation_id}`}><Eye className="h-4 w-4" /></Button>
                     {item.donation_type === 'promise' && item.status !== 'voided' && (
                       <Button size="icon" variant="ghost" disabled={busyId === item.donation_id} title="Marcar recibido" onClick={() => markReceived(item.donation_id)} data-testid={`campaign-mark-received-${item.donation_id}`}><CheckCircle2 className="h-4 w-4 text-emerald-600" /></Button>
@@ -229,7 +290,7 @@ export const CampaignDonationHistory = ({ base, getAuthHeaders, donations, onCha
                 </TableCell>
               </TableRow>
             ))}
-            {visibleDonations.length === 0 && <TableRow><TableCell colSpan={5} className="text-center text-sm text-slate-400">{normalizedSearch ? 'Ningún donante coincide con la búsqueda.' : 'Aún no hay donativos registrados.'}</TableCell></TableRow>}
+            {visibleDonations.length === 0 && <TableRow><TableCell colSpan={5} className="text-center text-sm text-slate-400">{normalizedSearch || paymentFilter !== 'all' ? 'Ningún donativo coincide con el filtro.' : 'Aún no hay donativos registrados.'}</TableCell></TableRow>}
           </TableBody>
         </Table>
       </div>
@@ -298,6 +359,61 @@ export const CampaignDonationHistory = ({ base, getAuthHeaders, donations, onCha
               <ShieldCheck className="h-4 w-4" />Verificar y sellar
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(contactingId)} onOpenChange={(open) => !open && setContactingId(null)}>
+        <DialogContent className="bg-white" data-testid="campaign-contact-dialog">
+          <DialogHeader>
+            <DialogTitle>Contacto rápido{contactingItem ? ` · ${contactingItem.donor_name || 'Donante'}` : ''}</DialogTitle>
+            <DialogDescription>
+              {contactingItem && `${formatUsdCents(contactingItem.amount_cents)} · ${contactingItem.donation_type === 'received' ? 'Recibido' : 'Promesa'}${contactingItem.verified ? ' · Verificado' : ''}`}
+            </DialogDescription>
+          </DialogHeader>
+          {!contactInfo && <p className="text-sm text-slate-400" data-testid="campaign-contact-loading">Cargando información de contacto…</p>}
+          {contactInfo && (
+            <div className="space-y-4">
+              <div className="space-y-2 rounded-lg border border-slate-200 p-3">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="flex items-center gap-2 text-slate-600"><Phone className="h-4 w-4" />{contactInfo.phone || 'Sin teléfono registrado'}</span>
+                  {contactInfo.phone && (
+                    <div className="flex gap-1">
+                      <a href={`tel:${contactInfo.phone}`} data-testid="campaign-contact-call-link"><Button size="sm" variant="outline"><Phone className="h-3.5 w-3.5" />Llamar</Button></a>
+                      <a href={smsHref(contactInfo.phone, contactMessage(contactingItem, contactInfo))} data-testid="campaign-contact-sms-link"><Button size="sm" variant="outline"><MessageSquare className="h-3.5 w-3.5" />Mensaje con Zelle</Button></a>
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="flex items-center gap-2 text-slate-600"><Mail className="h-4 w-4" />{contactInfo.email || 'Sin correo registrado'}</span>
+                  {contactInfo.email && <a href={`mailto:${contactInfo.email}`} data-testid="campaign-contact-email-link"><Button size="sm" variant="outline">Correo</Button></a>}
+                </div>
+                <p className="text-xs text-slate-400">Zelle de la iglesia: {contactInfo.zelle_info || 'No configurado aún en Configuración de campaña.'}</p>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2"><StickyNote className="h-4 w-4" />Nota de seguimiento</Label>
+                <Textarea
+                  value={noteText}
+                  onChange={(e) => setNoteText(e.target.value)}
+                  placeholder="Ej: Dijo que manda el dinero mañana por Zelle a las 6pm."
+                  data-testid="campaign-contact-note-input"
+                />
+                <Button size="sm" disabled={savingNote || !noteText.trim()} onClick={saveNote} data-testid="campaign-contact-note-save-button">Guardar nota</Button>
+              </div>
+
+              <div className="max-h-48 space-y-2 overflow-y-auto" data-testid="campaign-contact-notes-list">
+                {(contactingItem?.contact_notes || []).slice().reverse().map((note) => (
+                  <div key={note.note_id} className="rounded-lg bg-slate-50 p-2 text-sm" data-testid={`campaign-contact-note-${note.note_id}`}>
+                    <p className="text-slate-700">{note.text}</p>
+                    <p className="mt-1 text-xs text-slate-400">{note.created_by_name} · {new Date(note.created_at).toLocaleString('es-US', { dateStyle: 'short', timeStyle: 'short' })}</p>
+                  </div>
+                ))}
+                {(!contactingItem?.contact_notes || contactingItem.contact_notes.length === 0) && (
+                  <p className="text-xs text-slate-400">Aún no hay notas para este donativo.</p>
+                )}
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>
