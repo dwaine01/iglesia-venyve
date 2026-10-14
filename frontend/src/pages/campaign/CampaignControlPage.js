@@ -10,6 +10,7 @@ import { CampaignDonationForm } from '../../components/campaign/CampaignDonation
 import { CampaignDonationHistory } from '../../components/campaign/CampaignDonationHistory';
 import { CampaignSettingsPanel } from '../../components/campaign/CampaignSettingsPanel';
 import { CampaignPresentationLinks } from '../../components/campaign/CampaignPresentationLinks';
+import { CampaignMessagingPanel } from '../../components/campaign/CampaignMessagingPanel';
 import { formatUsdCents } from '../../lib/campaignFormat';
 
 export default function CampaignControlPage() {
@@ -77,6 +78,7 @@ export default function CampaignControlPage() {
         <div className="space-y-6">
           <CampaignDonationForm base={base} getAuthHeaders={getAuthHeaders} onCreated={loadAll} />
           <CampaignDonationHistory base={base} getAuthHeaders={getAuthHeaders} donations={donations} onChanged={loadAll} />
+          <CampaignMessagingPanel base={base} getAuthHeaders={getAuthHeaders} />
         </div>
         <div className="space-y-6">
           <CampaignSettingsPanel base={base} getAuthHeaders={getAuthHeaders} settings={settings} onChanged={loadAll} />
