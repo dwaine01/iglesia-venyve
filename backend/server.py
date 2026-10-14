@@ -537,6 +537,7 @@ from library_scan import router as library_scan_router
 from library_reports import router as library_reports_router
 from library_notifications import router as library_notifications_router, ensure_indexes as library_notifications_ensure_indexes
 from campaign_venycome import router as campaign_venycome_router, ensure_indexes as campaign_venycome_ensure_indexes
+from campaign_messaging import router as campaign_messaging_router
 
 app.include_router(cellular_router)
 app.include_router(geo_router)
@@ -555,6 +556,7 @@ app.include_router(library_scan_router)
 app.include_router(library_reports_router)
 app.include_router(library_notifications_router)
 app.include_router(campaign_venycome_router)
+app.include_router(campaign_messaging_router)
 
 
 # --- Default Checklists ---

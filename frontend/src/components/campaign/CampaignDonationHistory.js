@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 import { toast } from 'sonner';
-import { Eye, Pencil, Ban, CheckCircle2, Undo2, Trash2, ShieldCheck, Search, AlertTriangle, Phone, Mail, MessageSquare, StickyNote } from 'lucide-react';
+import { Eye, Pencil, Ban, CheckCircle2, Undo2, Trash2, ShieldCheck, Search, AlertTriangle, Phone, Mail, MessageSquare, StickyNote, Sparkles } from 'lucide-react';
 
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
@@ -29,6 +29,8 @@ export const CampaignDonationHistory = ({ base, getAuthHeaders, donations, onCha
   const [contactInfo, setContactInfo] = useState(null);
   const [noteText, setNoteText] = useState('');
   const [savingNote, setSavingNote] = useState(false);
+  const [aiDraft, setAiDraft] = useState('');
+  const [draftingThanks, setDraftingThanks] = useState(false);
   const lastActive = donations.find((item) => item.status !== 'voided') || null;
   const isPendingVerification = (item) => item.donation_type === 'received' && item.status !== 'voided' && !item.verified;
   const pendingCount = donations.filter(isPendingVerification).length;
@@ -61,11 +63,27 @@ export const CampaignDonationHistory = ({ base, getAuthHeaders, donations, onCha
     setContactingId(item.donation_id);
     setContactInfo(null);
     setNoteText('');
+    setAiDraft('');
     try {
       const { data } = await axios.get(`${base}/donations/${item.donation_id}/contact`, getAuthHeaders());
       setContactInfo(data);
     } catch (err) {
       toast.error(err?.response?.data?.detail || 'No se pudo cargar la información de contacto');
+    }
+  };
+
+  const generateThanks = async () => {
+    if (!contactingItem?.person_id) return;
+    setDraftingThanks(true);
+    try {
+      const { data } = await axios.post(`${base}/messages/draft`, {
+        kind: 'thank_you', person_id: contactingItem.person_id, name: contactingItem.donor_name, amount_cents: contactingItem.amount_cents,
+      }, getAuthHeaders());
+      setAiDraft(data.text);
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || 'No se pudo redactar el mensaje');
+    } finally {
+      setDraftingThanks(false);
     }
   };
 
@@ -389,6 +407,25 @@ export const CampaignDonationHistory = ({ base, getAuthHeaders, donations, onCha
                 </div>
                 <p className="text-xs text-slate-400">Zelle de la iglesia: {contactInfo.zelle_info || 'No configurado aún en Configuración de campaña.'}</p>
               </div>
+
+              {contactInfo.phone && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="flex items-center gap-2"><Sparkles className="h-4 w-4" />Mensaje de agradecimiento</Label>
+                    <Button size="sm" variant="outline" disabled={draftingThanks} onClick={generateThanks} data-testid="campaign-contact-thankyou-draft-button">
+                      {draftingThanks ? 'Generando…' : 'Generar mensaje'}
+                    </Button>
+                  </div>
+                  {aiDraft && (
+                    <div className="space-y-2">
+                      <Textarea value={aiDraft} onChange={(e) => setAiDraft(e.target.value)} rows={3} data-testid="campaign-contact-thankyou-text" />
+                      <a href={smsHref(contactInfo.phone, aiDraft)} data-testid="campaign-contact-thankyou-sms-link">
+                        <Button size="sm" variant="outline"><MessageSquare className="h-3.5 w-3.5" />Enviar agradecimiento por SMS</Button>
+                      </a>
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="space-y-2">
                 <Label className="flex items-center gap-2"><StickyNote className="h-4 w-4" />Nota de seguimiento</Label>
