@@ -287,7 +287,7 @@
   to { transform: translateX(-50%); }
 }
 .campaign-ticker-track {
-  animation: campaign-ticker-scroll 28s linear infinite;
+  animation: campaign-ticker-scroll 60s linear infinite;
 }
 
 @keyframes campaign-piece-search-highlight {
