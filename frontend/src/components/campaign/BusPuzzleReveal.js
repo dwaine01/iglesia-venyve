@@ -168,11 +168,17 @@ export const BusPuzzleReveal = ({ pieces = [], totalPieces = 120, donorTotals = 
                 className={popping.has(piece.id) ? 'campaign-piece-pop' : ''}
                 style={{ opacity, transition: 'opacity 1.1s ease' }}
               >
-                {/* Velo sólido verde (no gris/casi negro) para que la silueta del bus se
-                    distinga claramente del fondo oscuro de la pantalla (#07080c) ANTES de
-                    que lleguen donaciones; al completarse la pieza se revela el color real
-                    del bus (negro/amarillo), que contrasta fuerte contra este verde. */}
+                {/* Verde sólido como base (para que la silueta se distinga del fondo oscuro
+                    de la pantalla) + la imagen en escala de grises del bus mezclada encima
+                    con "screen" para que el tramado real (puertas, ventanas, menú, logo,
+                    pinceladas) siga visible como relieve más claro sobre el verde, en vez de
+                    un bloque de color plano. */}
                 <rect width={viewW} height={viewH} fill="#15803d" />
+                <image
+                  href="/campaign/bus_color_dim.png"
+                  width={viewW} height={viewH} preserveAspectRatio="none"
+                  style={{ mixBlendMode: 'screen' }}
+                />
               </g>
             );
           })}
