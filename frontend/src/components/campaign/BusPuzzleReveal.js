@@ -168,11 +168,11 @@ export const BusPuzzleReveal = ({ pieces = [], totalPieces = 120, donorTotals = 
                 className={popping.has(piece.id) ? 'campaign-piece-pop' : ''}
                 style={{ opacity, transition: 'opacity 1.1s ease' }}
               >
-                {/* Velo sólido parejo (no una versión gris de la misma imagen) para que el
-                    contraste al revelarse sea igual de notorio sobre el negro y el amarillo
-                    del bus; antes se usaba bus_color_dim.png, pero su gris era casi idéntico
-                    al negro del techo del bus y la pieza "llena" casi no se notaba. */}
-                <rect width={viewW} height={viewH} fill="#0d0f14" />
+                {/* Velo sólido verde (no gris/casi negro) para que la silueta del bus se
+                    distinga claramente del fondo oscuro de la pantalla (#07080c) ANTES de
+                    que lleguen donaciones; al completarse la pieza se revela el color real
+                    del bus (negro/amarillo), que contrasta fuerte contra este verde. */}
+                <rect width={viewW} height={viewH} fill="#15803d" />
               </g>
             );
           })}
