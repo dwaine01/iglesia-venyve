@@ -131,6 +131,7 @@ export const BusPuzzleReveal = ({ pieces = [], totalPieces = 120, donorTotals = 
   }, [gridState]);
 
   const firstName = (label) => (label && label !== 'Donante anónimo' ? label.trim().split(/\s+/)[0] : null);
+  const displayName = (name) => (name && name.length > 11 ? `${name.slice(0, 10)}…` : name);
   const searchNorm = normalizeSearchText(searchQuery);
   const [hover, setHover] = useState(null);
 
@@ -201,7 +202,9 @@ export const BusPuzzleReveal = ({ pieces = [], totalPieces = 120, donorTotals = 
             const state = gridState[piece.id];
             const name = state?.status === 'full' ? firstName(state.donor_label) : null;
             if (!name) return null;
+            const label = displayName(name);
             const isMatch = Boolean(searchNorm) && normalizeSearchText(name).includes(searchNorm);
+            const pillWidth = Math.max(label.length * 6.4 + 10, 26);
             return (
               <g key={`label-group-${piece.id}`}>
                 {isMatch && (
@@ -214,6 +217,15 @@ export const BusPuzzleReveal = ({ pieces = [], totalPieces = 120, donorTotals = 
                     data-testid={`jigsaw-piece-highlight-${piece.id}`}
                   />
                 )}
+                <rect
+                  x={piece.cx - pillWidth / 2}
+                  y={piece.cy - 8}
+                  width={pillWidth}
+                  height={16}
+                  rx={8}
+                  fill="rgba(7,8,12,0.72)"
+                  style={{ pointerEvents: 'none' }}
+                />
                 <text
                   x={piece.cx}
                   y={piece.cy}
@@ -222,16 +234,13 @@ export const BusPuzzleReveal = ({ pieces = [], totalPieces = 120, donorTotals = 
                   fontSize="11"
                   fontWeight="700"
                   fill="#ffffff"
-                  stroke="#07080c"
-                  strokeWidth="2"
-                  paintOrder="stroke"
                   style={{ cursor: 'pointer' }}
                   onMouseEnter={(e) => showTooltip(e, state.donor_label, name)}
                   onMouseMove={moveTooltip}
                   onMouseLeave={hideTooltip}
                   data-testid={`jigsaw-piece-label-${piece.id}`}
                 >
-                  {name}
+                  {label}
                 </text>
               </g>
             );
