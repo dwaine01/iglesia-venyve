@@ -168,14 +168,28 @@ export const BusPuzzleReveal = ({ pieces = [], totalPieces = 120, donorTotals = 
                 className={popping.has(piece.id) ? 'campaign-piece-pop' : ''}
                 style={{ opacity, transition: 'opacity 1.1s ease' }}
               >
-                <image href="/campaign/bus_color_dim.png" width={viewW} height={viewH} preserveAspectRatio="none" />
+                {/* Velo sólido parejo (no una versión gris de la misma imagen) para que el
+                    contraste al revelarse sea igual de notorio sobre el negro y el amarillo
+                    del bus; antes se usaba bus_color_dim.png, pero su gris era casi idéntico
+                    al negro del techo del bus y la pieza "llena" casi no se notaba. */}
+                <rect width={viewW} height={viewH} fill="#0d0f14" />
               </g>
             );
           })}
 
-          {jigsaw.map((piece) => (
-            <path key={`outline-${piece.id}`} d={piece.d} fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="1.3" />
-          ))}
+          {jigsaw.map((piece) => {
+            const isFull = gridState[piece.id]?.status === 'full';
+            return (
+              <path
+                key={`outline-${piece.id}`}
+                d={piece.d}
+                fill="none"
+                stroke={isFull ? '#F4C430' : 'rgba(255,255,255,0.4)'}
+                strokeWidth={isFull ? 2.2 : 1.3}
+                style={isFull ? { filter: 'drop-shadow(0 0 4px rgba(244,196,48,0.75))', transition: 'stroke 0.6s ease' } : undefined}
+              />
+            );
+          })}
 
           {jigsaw.map((piece) => {
             const state = gridState[piece.id];
