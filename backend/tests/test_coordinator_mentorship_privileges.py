@@ -209,3 +209,29 @@ async def test_coordinator_general_cannot_access_pastor_only_actions():
     finally:
         await coord_client.aclose()
         await cleanup()
+
+
+@pytest.mark.asyncio
+async def test_coordinator_general_sees_mentors_without_account_in_list():
+    """A pedido del dueño: el coordinador general debe ver en /api/mentorship/mentors
+    a TODOS los que tengan insignia activa, incluso sin cuenta (has_account=False),
+    confirmando también que tiene permiso para llamar a este endpoint."""
+    await cleanup()
+    coord_email, _ = await create_coordinator_general_user("Mentors Visibility Coordinator")
+    mentor_without_account_pid = await create_person("Mentor Sin Acceso Visible Coordinador")
+    coord_client, coord_headers = await auth_client(coord_email)
+    try:
+        badge = await coord_client.put(
+            f"/api/mentorship/badge/{mentor_without_account_pid}", json={"active": True}, headers=coord_headers,
+        )
+        assert badge.status_code == 200, badge.text
+
+        listing = await coord_client.get("/api/mentorship/mentors", headers=coord_headers)
+        assert listing.status_code == 200, listing.text
+        items = {item["person_id"]: item for item in listing.json()["items"]}
+        assert mentor_without_account_pid in items, "regla del dueño: toda insignia activa debe listarse"
+        assert items[mentor_without_account_pid]["has_account"] is False
+        assert items[mentor_without_account_pid]["account_active"] is False
+    finally:
+        await coord_client.aclose()
+        await cleanup()

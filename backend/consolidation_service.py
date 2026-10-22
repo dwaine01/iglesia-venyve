@@ -74,7 +74,7 @@ async def assert_mentor_eligible(db, mentor_person_id: str) -> None:
     await load_person(db, mentor_person_id)
     account = await db.users.find_one({"person_id": mentor_person_id, "is_active": {"$ne": False}}, {"_id": 1, "rol": 1})
     if not account:
-        raise HTTPException(status_code=409, detail="El mentor necesita una cuenta activa en Plataforma 360")
+        raise HTTPException(status_code=409, detail="Falta crear el acceso del mentor: ve a su perfil 360 → pestaña Mentor y usa 'Crear acceso de mentor' (o reactiva su cuenta si estaba desactivada)")
     if account.get("rol") not in ("pastor", "pastora", "lider"):
         badge = await db.mentor_badges.find_one({"person_id": mentor_person_id, "active": True}, {"_id": 1})
         if not badge:

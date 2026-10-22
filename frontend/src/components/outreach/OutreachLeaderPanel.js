@@ -42,8 +42,12 @@ export const OutreachLeaderPanel = ({ campaigns, onCampaignsChanged }) => {
   }, [API, getAuthHeaders]);
 
   const loadMentors = useCallback(async () => {
-    const response = await axios.get(`${API}/api/mentorship/mentors`, getAuthHeaders());
-    setMentors(response.data.items || []);
+    try {
+      const response = await axios.get(`${API}/api/mentorship/mentors`, getAuthHeaders());
+      setMentors(response.data.items || []);
+    } catch (error) {
+      toast.error(error?.response?.data?.detail || 'No se pudo cargar la lista de mentores');
+    }
   }, [API, getAuthHeaders]);
 
   useEffect(() => { loadDashboard(); loadMentors(); }, [loadDashboard, loadMentors]);

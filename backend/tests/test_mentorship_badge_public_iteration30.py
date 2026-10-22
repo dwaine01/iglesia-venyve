@@ -181,8 +181,11 @@ class TestMentorsAndAssign:
         assert state["mentor_p"] in items
         assert items[state["mentor_p"]]["lbs_qualified"] is True
         assert "phone" in items[state["mentor_p"]]
-        # target has badge but no account -> excluded
-        assert state["target"] not in items
+        assert items[state["mentor_p"]]["has_account"] is True
+        # target has badge but no account -> still included, flagged has_account=False (regla del dueño)
+        assert state["target"] in items
+        assert items[state["target"]]["has_account"] is False
+        assert items[state["target"]]["account_active"] is False
 
     def test_mentors_list_search(self, pastor, state):
         h, _ = pastor
