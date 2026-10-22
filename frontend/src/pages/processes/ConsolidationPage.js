@@ -37,7 +37,7 @@ export default function ConsolidationPage() {
         canAssign ? axios.get(`${API}/api/front-group-routing/overview`, getAuthHeaders()) : Promise.resolve({ data: null }),
       ]);
       const mentorOptions = new Map((catalog.data.assignees || []).map((item) => [item.person_id, item]));
-      (mentors.data.items || []).forEach((item) => mentorOptions.set(item.person_id, { person_id: item.person_id, name: item.lbs_qualified ? `${item.name} (LBS)` : item.name, role: 'mentor' }));
+      (mentors.data.items || []).forEach((item) => mentorOptions.set(item.person_id, { person_id: item.person_id, name: item.lbs_qualified ? `${item.name} (LBS)` : item.name, role: 'mentor', lbs_qualified: item.lbs_qualified }));
       setData({ dashboard: dashboard.data, items: (enrollments.data.items || []).filter((item) => item.definition_version >= 2), groups: routing.data?.available_groups?.length ? routing.data.available_groups : groups.data.items || [], assignees: Array.from(mentorOptions.values()), routing: routing.data?.rotation || null });
     } catch (requestError) { setError(requestError?.response?.data?.detail || 'No se pudo cargar Consolidación'); } finally { setLoading(false); }
   }, [API, getAuthHeaders, user]);

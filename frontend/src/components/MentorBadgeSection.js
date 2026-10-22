@@ -13,11 +13,13 @@ import { Textarea } from './ui/textarea';
 const ACTION_LABELS = {
   mentor_badge_activated: 'Insignia de Mentor activada',
   mentor_badge_deactivated: 'Insignia de Mentor desactivada',
+  mentor_badge_updated: 'Nota/fecha de la insignia actualizada',
   mentor_lbs_enabled: 'Habilitado para impartir LBS',
   mentor_lbs_disabled: 'Deshabilitado para impartir LBS',
+  mentor_lbs_updated: 'Nota de capacitación LBS actualizada',
 };
 
-export default function MentorBadgeSection({ personId, API, getAuthHeaders }) {
+export default function MentorBadgeSection({ personId, API, getAuthHeaders, onChanged }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -51,6 +53,7 @@ export default function MentorBadgeSection({ personId, API, getAuthHeaders }) {
       await axios.put(`${API}/api/mentorship/badge/${personId}`, { active, since: since || null, note: note || null }, getAuthHeaders());
       toast.success(active ? 'Insignia de Mentor activada' : 'Insignia de Mentor desactivada');
       await load();
+      if (onChanged) onChanged();
     } catch (requestError) {
       toast.error(requestError?.response?.data?.detail || 'No se pudo actualizar la insignia.');
     } finally {
@@ -64,6 +67,7 @@ export default function MentorBadgeSection({ personId, API, getAuthHeaders }) {
       await axios.put(`${API}/api/mentorship/lbs/${personId}`, { can_teach_lbs: canTeachLbs, note: lbsNote || null }, getAuthHeaders());
       toast.success(canTeachLbs ? 'Capacitado para impartir LBS' : 'Ya no está capacitado para impartir LBS');
       await load();
+      if (onChanged) onChanged();
     } catch (requestError) {
       toast.error(requestError?.response?.data?.detail || 'No se pudo actualizar la capacitación LBS.');
     } finally {

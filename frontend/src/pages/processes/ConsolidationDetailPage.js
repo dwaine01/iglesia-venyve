@@ -30,7 +30,7 @@ export default function ConsolidationDetailPage() {
       axios.get(`${API}/api/mentorship/mentors`, getAuthHeaders()).catch(() => ({ data: { items: [] } })),
     ]).then(([catalog, mentors]) => {
       const mentorOptions = new Map((catalog.data.assignees || []).map((item) => [item.person_id, item]));
-      (mentors.data.items || []).forEach((item) => mentorOptions.set(item.person_id, { person_id: item.person_id, name: item.lbs_qualified ? `${item.name} (LBS)` : item.name, role: 'mentor' }));
+      (mentors.data.items || []).forEach((item) => mentorOptions.set(item.person_id, { person_id: item.person_id, name: item.lbs_qualified ? `${item.name} (LBS)` : item.name, role: 'mentor', lbs_qualified: item.lbs_qualified }));
       setAssignees(Array.from(mentorOptions.values()));
     }).catch(() => setAssignees([]));
   }, [API, getAuthHeaders, loadJourney]);

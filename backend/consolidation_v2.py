@@ -21,6 +21,7 @@ from access_control import (
 )
 from consolidation_service import (
     assert_consolidation_scope,
+    assert_mentor_eligible,
     assign_mentor,
     configure_entry_stages,
     enrollment_detail,
@@ -180,6 +181,8 @@ async def create_intake(payload: ConsolidationIntake, current_user: dict = Depen
     assignment_authority = is_global_pastoral_authority(current_user) or has_capability(current_user, CONSOLIDATION_ASSIGN)
     if payload.entry_mode != "visitor_followup" and not payload.mentor_person_id and not assignment_authority:
         raise HTTPException(status_code=422, detail="Asigne un mentor al iniciar el proceso")
+    if payload.mentor_person_id:
+        await assert_mentor_eligible(db, payload.mentor_person_id)
     existing = await db.process_enrollments.find_one({"process_key": "consolidation", "person_id": payload.person_id}, {"_id": 0}, sort=[("created_at", -1)])
     if existing and existing.get("status") in {"planned", "active"}:
         if assigned_group_id and assignment_authority:

@@ -136,6 +136,8 @@ async def get_mentor_badge(person_id: str, current_user: dict = Depends(require_
 async def set_mentor_badge(person_id: str, payload: MentorBadgeInput, current_user: dict = Depends(require_badge_manager)):
     await load_person(db, person_id)
     now = now_utc()
+    previous = await db.mentor_badges.find_one({"person_id": person_id}, {"_id": 0, "active": 1})
+    state_changed = bool(previous and previous.get("active")) != payload.active
     since_value = payload.since.isoformat() if payload.since else (now.date().isoformat() if payload.active else None)
     fields = {
         "person_id": person_id,
@@ -150,7 +152,11 @@ async def set_mentor_badge(person_id: str, payload: MentorBadgeInput, current_us
         {"$set": fields, "$setOnInsert": {"badge_id": str(uuid4()), "created_at": now}},
         upsert=True,
     )
-    await audit(person_id, current_user, "mentor_badge_activated" if payload.active else "mentor_badge_deactivated", {"since": since_value, "note": payload.note})
+    await audit(
+        person_id, current_user,
+        ("mentor_badge_activated" if payload.active else "mentor_badge_deactivated") if state_changed else "mentor_badge_updated",
+        {"since": since_value, "note": payload.note},
+    )
     badge = await db.mentor_badges.find_one({"person_id": person_id}, {"_id": 0})
     return serialize(badge)
 
@@ -160,6 +166,8 @@ async def set_mentor_lbs(person_id: str, payload: MentorLbsInput, current_user: 
     await load_person(db, person_id)
     now = now_utc()
     query = {"person_id": person_id, "front_group_id": None}
+    previous = await db.mentor_qualifications.find_one(query, {"_id": 0, "can_teach_lbs": 1})
+    state_changed = bool(previous and previous.get("can_teach_lbs")) != payload.can_teach_lbs
     fields = {
         "person_id": person_id,
         "front_group_id": None,
@@ -177,7 +185,11 @@ async def set_mentor_lbs(person_id: str, payload: MentorLbsInput, current_user: 
         {"$set": fields, "$setOnInsert": {"qualification_id": str(uuid4()), "created_at": now}},
         upsert=True,
     )
-    await audit(person_id, current_user, "mentor_lbs_enabled" if payload.can_teach_lbs else "mentor_lbs_disabled", {"note": payload.note})
+    await audit(
+        person_id, current_user,
+        ("mentor_lbs_enabled" if payload.can_teach_lbs else "mentor_lbs_disabled") if state_changed else "mentor_lbs_updated",
+        {"note": payload.note},
+    )
     return serialize(await db.mentor_qualifications.find_one(query, {"_id": 0}))
 
 
