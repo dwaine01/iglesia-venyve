@@ -23,6 +23,7 @@ from access_control import (
     PROCESSES_READ,
     can_access_person,
     has_capability,
+    is_general_coordinator,
     is_global_pastoral_authority,
 )
 from consolidation_service import load_person, mentor_qualification
@@ -119,6 +120,7 @@ async def get_mentor_badge(person_id: str, current_user: dict = Depends(require_
     history = await db.mentor_badge_history.find({"person_id": person_id}, {"_id": 0}).sort("occurred_at", -1).to_list(100)
     for item in history:
         item["actor_name"] = await person_name(item.get("actor_person_id"))
+    account = await db.users.find_one({"person_id": person_id}, {"_id": 0, "email": 1})
     return {
         "person_id": person_id,
         "active": bool(badge and badge.get("active")),
@@ -129,6 +131,9 @@ async def get_mentor_badge(person_id: str, current_user: dict = Depends(require_
         "lbs_note": (lbs or {}).get("notes"),
         "can_manage": can_manage_badges(current_user),
         "history": serialize(history),
+        "has_account": bool(account),
+        "account_email": (account or {}).get("email"),
+        "can_create_account": is_global_pastoral_authority(current_user) or is_general_coordinator(current_user),
     }
 
 
