@@ -7,7 +7,7 @@ import {
   LayoutDashboard, BookOpen, Map, Calendar, Users, BarChart3, LogOut, Menu, ChevronRight,
   Crown, Star, Trophy, Presentation, NotebookPen, KeyRound, IdCard, Church, Search, DatabaseZap,
   Activity, Award, BookHeart, Compass, GraduationCap, HeartHandshake, Network, RadioTower, DoorOpen, Gavel, Landmark, MapPinned,
-  PanelLeftClose, PanelLeftOpen, ShieldCheck, Droplets, Baby, Bus
+  PanelLeftClose, PanelLeftOpen, ShieldCheck, Droplets, Baby, Bus, Footprints
 } from 'lucide-react';
 
 import { LOGO_IGLESIA } from '../data/presentationData';
@@ -16,12 +16,13 @@ import { ContextGuideButton } from './guides/ContextGuideButton';
 import { FloatingLibraryScanButton } from './library/FloatingLibraryScanButton';
 import { resolveRouteGuide } from './guides/guideRouteMap';
 import { BRAND } from '../config/brand';
-import { canManageBaptismEvents, canManageDedicationEvents, canViewCare, canViewFinanceModule, canViewFormation, canViewFrontGroups, canViewGeo, canViewLeadership, canViewLibraryModule, canViewOperations, canAccessCampaignOperator, hasAnyCapability, isPastoralAuthority } from '../lib/accessControl';
+import { canManageBaptismEvents, canManageDedicationEvents, canViewCare, canViewFinanceModule, canViewFormation, canViewFrontGroups, canViewGeo, canViewLeadership, canViewLibraryModule, canViewOperations, canAccessCampaignOperator, canAccessOutreach, hasAnyCapability, isPastoralAuthority } from '../lib/accessControl';
 import { useBoardAccess } from '../hooks/useBoardAccess';
+import { useMentorAccess } from '../hooks/useMentorAccess';
 const LOGO_URL = LOGO_IGLESIA;
 
 // Menu items by role
-const getNavItems = (user, boardAllowed = false) => {
+const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
   const rol = user?.rol;
   if (isPastoralAuthority(user)) {
     const personItems = [
@@ -35,6 +36,7 @@ const getNavItems = (user, boardAllowed = false) => {
       { to: '/formacion', icon: GraduationCap, label: 'Formación', testId: 'nav-formation' },
       { to: '/libreria', icon: BookOpen, label: 'Librería 360', testId: 'nav-library' },
       { to: '/campanas/ven-y-come/control', icon: Bus, label: 'Campaña Ven y Come', testId: 'nav-campaign-venycome' },
+      { to: '/mentoria/visitas', icon: Footprints, label: 'Visitas e Invasiones', testId: 'nav-outreach' },
       { to: '/grupos-frontales', icon: Network, label: 'Grupos Frontales', testId: 'nav-front-groups' },
       { to: '/liderazgo', icon: Award, label: 'Liderazgo', testId: 'nav-leadership' },
       { to: '/mapas', icon: MapPinned, label: 'Mapa 360', testId: 'nav-geo-maps' },
@@ -73,6 +75,9 @@ const getNavItems = (user, boardAllowed = false) => {
     if (canAccessCampaignOperator(user)) {
       personaItems.push({ to: '/campanas/ven-y-come/control', icon: Bus, label: 'Campaña Ven y Come', testId: 'nav-campaign-venycome' });
     }
+    if (canAccessOutreach(user, isActiveMentor)) {
+      personaItems.push({ to: '/mentoria/visitas', icon: Footprints, label: 'Mis Visitas', testId: 'nav-outreach' });
+    }
     return personaItems;
   }
   
@@ -87,6 +92,7 @@ const getNavItems = (user, boardAllowed = false) => {
     { to: '/formacion', icon: GraduationCap, label: 'Formación', testId: 'nav-formation' },
     { to: '/libreria', icon: BookOpen, label: 'Librería 360', testId: 'nav-library' },
     { to: '/campanas/ven-y-come/control', icon: Bus, label: 'Campaña Ven y Come', testId: 'nav-campaign-venycome' },
+    { to: '/mentoria/visitas', icon: Footprints, label: 'Visitas e Invasiones', testId: 'nav-outreach' },
     { to: '/grupos-frontales', icon: Network, label: 'Grupos Frontales', testId: 'nav-front-groups' },
     { to: '/liderazgo', icon: Award, label: 'Liderazgo', testId: 'nav-leadership' },
     { to: '/mapas', icon: MapPinned, label: 'Mapa 360', testId: 'nav-geo-maps' },
@@ -134,6 +140,8 @@ const getNavItems = (user, boardAllowed = false) => {
     item.to !== '/presentaciones' || canManageDedicationEvents(user)
   ) && (
     item.to !== '/campanas/ven-y-come/control' || canAccessCampaignOperator(user)
+  ) && (
+    item.to !== '/mentoria/visitas' || canAccessOutreach(user, isActiveMentor)
   ));
 };
 
@@ -171,6 +179,7 @@ const breadcrumbMap = {
   '/liderazgo': 'Liderazgo',
   '/mapas': 'Mapa 360',
   '/procesos/mentoria': 'Mentoría',
+  '/mentoria/visitas': 'Visitas e Invasiones',
   '/procesos/cap': 'Encuentra tu lugar para servir',
   '/celulas/dashboard': 'Panel del Sistema Celular',
   '/celulas/redes': 'Redes Celulares',
@@ -188,9 +197,9 @@ const breadcrumbMap = {
   '/junta/minutas': 'Libro de Minutas',
 };
 
-function SidebarContent({ onClose, testIdPrefix = '', boardAllowed = false }) {
+function SidebarContent({ onClose, testIdPrefix = '', boardAllowed = false, isActiveMentor = false }) {
   const { user, logout } = useAuth();
-  const navItems = getNavItems(user, boardAllowed);
+  const navItems = getNavItems(user, boardAllowed, isActiveMentor);
 
   const getRolLabel = () => {
     if (isPastoralAuthority(user)) return 'Pastor (Acceso Maestro)';
@@ -288,6 +297,7 @@ function SidebarContent({ onClose, testIdPrefix = '', boardAllowed = false }) {
 export default function AppLayout() {
   const { user } = useAuth();
   const boardAccess = useBoardAccess();
+  const mentorAccess = useMentorAccess();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [mapSidebarOpen, setMapSidebarOpen] = useState(false);
   const location = useLocation();
@@ -324,10 +334,10 @@ export default function AppLayout() {
     <div className="flex h-screen overflow-hidden bg-background">
       {/* Desktop Sidebar */}
       {(!isMapRoute || mapSidebarOpen) && <aside className="hidden lg:flex lg:w-64 lg:flex-col border-r border-border bg-card" data-testid="desktop-sidebar">
-        <SidebarContent boardAllowed={boardAccess.allowed} />
+        <SidebarContent boardAllowed={boardAccess.allowed} isActiveMentor={mentorAccess.isActiveMentor} />
       </aside>}
 
-      {mobileOpen && <div className="fixed inset-0 z-50 lg:hidden" data-testid="mobile-navigation-overlay"><button type="button" className="absolute inset-0 bg-black/45" onClick={() => setMobileOpen(false)} aria-label="Cerrar menú" data-testid="close-mobile-navigation-backdrop" /><aside id="mobile-navigation-sheet" className="relative h-full w-[85vw] max-w-xs bg-white shadow-2xl" data-testid="mobile-navigation-sheet" aria-label="Menú de navegación"><SidebarContent onClose={() => setMobileOpen(false)} testIdPrefix="mobile-" boardAllowed={boardAccess.allowed} /></aside></div>}
+      {mobileOpen && <div className="fixed inset-0 z-50 lg:hidden" data-testid="mobile-navigation-overlay"><button type="button" className="absolute inset-0 bg-black/45" onClick={() => setMobileOpen(false)} aria-label="Cerrar menú" data-testid="close-mobile-navigation-backdrop" /><aside id="mobile-navigation-sheet" className="relative h-full w-[85vw] max-w-xs bg-white shadow-2xl" data-testid="mobile-navigation-sheet" aria-label="Menú de navegación"><SidebarContent onClose={() => setMobileOpen(false)} testIdPrefix="mobile-" boardAllowed={boardAccess.allowed} isActiveMentor={mentorAccess.isActiveMentor} /></aside></div>}
 
       {/* Main Content */}
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden">

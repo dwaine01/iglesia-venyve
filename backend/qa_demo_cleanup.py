@@ -83,6 +83,22 @@ async def qa_cleanup_plan(db) -> dict:
     user_ids = [str(item) for item in user_oids]
     person_oids = [item["_id"] for item in people]
     person_ids = [str(item) for item in person_oids]
+    qa_outreach_visits = await db.outreach_visits.find(
+        {"$or": [{"person_id": {"$in": person_ids}}, {"mentor_person_id": {"$in": person_ids}}, {"created_by_user_id": {"$in": user_ids}}]},
+        {"_id": 1, "visit_id": 1, "converted_person_id": 1},
+    ).to_list(100000)
+    outreach_visit_ids = [item["visit_id"] for item in qa_outreach_visits]
+    converted_person_ids = [item["converted_person_id"] for item in qa_outreach_visits if item.get("converted_person_id")]
+    for converted_id in converted_person_ids:
+        if converted_id not in person_ids:
+            person_ids.append(converted_id)
+            if ObjectId.is_valid(converted_id):
+                person_oids.append(ObjectId(converted_id))
+    outreach_queries = [
+        ("outreach_visits", {"_id": {"$in": [item["_id"] for item in qa_outreach_visits]}}),
+        ("outreach_visit_history", {"visit_id": {"$in": outreach_visit_ids}}),
+        ("outreach_campaigns", {"created_by_user_id": {"$in": user_ids}}),
+    ]
     qa_groups = await db.front_groups.find(
         {"created_by_user_id": {"$in": user_ids}}, {"_id": 1, "front_group_id": 1}
     ).to_list(10000)
@@ -156,7 +172,7 @@ async def qa_cleanup_plan(db) -> dict:
     ]
     collection_ids = {}
     upload_ids = []
-    for collection_name, query in [*care_queries, *front_group_queries, *formation_queries, *_queries(user_oids, user_ids, person_oids, person_ids)]:
+    for collection_name, query in [*care_queries, *front_group_queries, *formation_queries, *outreach_queries, *_queries(user_oids, user_ids, person_oids, person_ids)]:
         docs = await db[collection_name].find(query, {"_id": 1}).to_list(100000)
         ids = [item["_id"] for item in docs]
         if collection_name == "person_photo_uploads":

@@ -539,6 +539,7 @@ from library_notifications import router as library_notifications_router, ensure
 from campaign_venycome import router as campaign_venycome_router, ensure_indexes as campaign_venycome_ensure_indexes
 from campaign_messaging import router as campaign_messaging_router
 from mentorship import router as mentorship_router, ensure_mentorship_indexes
+from mentorship_outreach import router as mentorship_outreach_router, ensure_outreach_indexes
 
 app.include_router(cellular_router)
 app.include_router(geo_router)
@@ -559,6 +560,7 @@ app.include_router(library_notifications_router)
 app.include_router(campaign_venycome_router)
 app.include_router(campaign_messaging_router)
 app.include_router(mentorship_router)
+app.include_router(mentorship_outreach_router)
 
 
 # --- Default Checklists ---
@@ -687,6 +689,7 @@ async def startup():
     await library_notifications_ensure_indexes()
     await campaign_venycome_ensure_indexes()
     await ensure_mentorship_indexes()
+    await ensure_outreach_indexes()
     print("Core Person (P-001) indexes created")
 
 
@@ -2137,14 +2140,17 @@ async def delete_pastor(pastor_id: str, authorization: Optional[str] = Header(No
 
 @app.post("/api/pastor/pastors/{pastor_id}/reset-password")
 async def reset_pastor_password(pastor_id: str, data: dict, authorization: Optional[str] = Header(None)):
-    """Resetear la contraseña de un pastor. Solo otros pastores."""
+    """Resetear la contraseña de un pastor. Solo otros pastores; no autoreseteo."""
     payload = await get_current_user(authorization)
     if not is_global_pastoral_authority(payload):
         raise HTTPException(status_code=403, detail="Solo pastores pueden resetear contraseñas de pastores")
 
+    if pastor_id == payload["user_id"]:
+        raise HTTPException(status_code=400, detail="No puedes restablecer tu propia contraseña por esta vía")
+
     new_password = data.get("password") or ""
-    if len(new_password) < 6:
-        raise HTTPException(status_code=400, detail="La contraseña debe tener al menos 6 caracteres")
+    if len(new_password) < 10:
+        raise HTTPException(status_code=400, detail="La contraseña debe tener al menos 10 caracteres")
 
     target = await db.users.find_one({"_id": ObjectId(pastor_id), "rol": {"$in": ["pastor", "pastora", "admin", "superadmin"]}})
     if not target:

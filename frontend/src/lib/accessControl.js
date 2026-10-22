@@ -117,3 +117,10 @@ export const canAccessCampaignOperator = (user) => (
   || ['coordinador_general', 'general_coordinator'].includes(String(user?.access_level || user?.rol || user?.role || '').trim().toLowerCase())
   || hasCapability(user, 'campaign.venycome.manage')
 );
+
+export const canLeadOutreach = (user) => isPastoralAuthority(user) || hasCapability(user, 'mentorship.outreach.assign');
+export const canAccessOutreach = (user, isActiveMentor = false) => (
+  canLeadOutreach(user)
+  || hasCapability(user, 'mentorship.outreach.report')
+  || Boolean(isActiveMentor)
+);

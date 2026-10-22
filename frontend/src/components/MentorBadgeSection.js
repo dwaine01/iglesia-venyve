@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
-import { Compass, GraduationCap, History, Loader2, Save } from 'lucide-react';
+import { Compass, GraduationCap, History, KeyRound, Loader2, Save, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
+import CreateMentorAccessDialog from './CreateMentorAccessDialog';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Switch } from './ui/switch';
@@ -28,6 +29,7 @@ export default function MentorBadgeSection({ personId, API, getAuthHeaders, onCh
   const [since, setSince] = useState('');
   const [note, setNote] = useState('');
   const [lbsNote, setLbsNote] = useState('');
+  const [accessDialogOpen, setAccessDialogOpen] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -113,6 +115,29 @@ export default function MentorBadgeSection({ personId, API, getAuthHeaders, onCh
           </p>
         )}
 
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-100 bg-slate-50 p-3" data-testid="mentor-access-panel">
+          <div className="flex items-center gap-2 text-sm">
+            {data.has_account ? (
+              <>
+                <ShieldCheck className="h-4 w-4 text-emerald-600" />
+                <span className="text-[#101D36]" data-testid="mentor-access-status-text">
+                  Tiene acceso a su panel {data.account_email ? `(${data.account_email})` : ''}
+                </span>
+              </>
+            ) : (
+              <>
+                <KeyRound className="h-4 w-4 text-slate-500" />
+                <span className="text-slate-600" data-testid="mentor-access-status-text">Aún no tiene usuario</span>
+              </>
+            )}
+          </div>
+          {!data.has_account && data.can_create_account && (
+            <Button size="sm" variant="outline" onClick={() => setAccessDialogOpen(true)} data-testid="mentor-access-create-button">
+              <KeyRound className="h-4 w-4" /> Crear acceso de mentor
+            </Button>
+          )}
+        </div>
+
         {data.can_manage && (
           <div className="mt-6 grid gap-6 md:grid-cols-2">
             <div className="space-y-3 border-t border-slate-100 pt-5 md:border-r md:border-t-0 md:pr-6 md:pt-0">
@@ -168,6 +193,15 @@ export default function MentorBadgeSection({ personId, API, getAuthHeaders, onCh
           </div>
         </div>
       )}
+
+      <CreateMentorAccessDialog
+        open={accessDialogOpen}
+        onOpenChange={setAccessDialogOpen}
+        personId={personId}
+        API={API}
+        getAuthHeaders={getAuthHeaders}
+        onCreated={load}
+      />
     </section>
   );
 }

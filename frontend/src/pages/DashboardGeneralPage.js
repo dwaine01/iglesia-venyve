@@ -36,6 +36,9 @@ export default function DashboardGeneralPage() {
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [createdCreds, setCredentials] = useState(null);
+  const [resetTarget, setResetTarget] = useState(null);
+  const [resetForm, setResetForm] = useState({ password: '', confirmPassword: '' });
+  const [resetting, setResetting] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -103,6 +106,38 @@ export default function DashboardGeneralPage() {
       fetchPastors();
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Error al eliminar');
+    }
+  };
+
+  const closeResetDialog = () => {
+    setResetTarget(null);
+    setResetForm({ password: '', confirmPassword: '' });
+  };
+
+  const handleResetPassword = async () => {
+    if (!resetTarget) return;
+    const { password, confirmPassword } = resetForm;
+    if (password.length < 10) {
+      toast.error('La contraseña debe tener al menos 10 caracteres');
+      return;
+    }
+    if (password !== confirmPassword) {
+      toast.error('Las contraseñas no coinciden');
+      return;
+    }
+    setResetting(true);
+    try {
+      await axios.post(
+        `${API}/api/pastor/pastors/${resetTarget._id}/reset-password`,
+        { password },
+        getAuthHeaders()
+      );
+      toast.success(`Contraseña de ${resetTarget.nombre} actualizada`);
+      closeResetDialog();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error al restablecer la contraseña');
+    } finally {
+      setResetting(false);
     }
   };
 
@@ -444,6 +479,17 @@ export default function DashboardGeneralPage() {
                           <Button
                             variant="ghost"
                             size="sm"
+                            className="text-[#1B2A4A] hover:bg-[#1B2A4A]/5"
+                            onClick={() => setResetTarget(p)}
+                            data-testid={`btn-reset-password-pastor-${p._id}`}
+                          >
+                            <Key className="w-4 h-4" />
+                          </Button>
+                        )}
+                        {!p.is_current && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
                             className="text-red-600 hover:bg-red-50 hover:text-red-700"
                             onClick={() => setDeleteTarget(p)}
                             data-testid={`btn-eliminar-pastor-${p._id}`}
@@ -572,6 +618,63 @@ export default function DashboardGeneralPage() {
           <DialogFooter>
             <Button onClick={() => setCredentials(null)} className="bg-[#1B2A4A] hover:bg-[#2A3D63] text-white">
               Entendido
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal: Restablecer contraseña de pastor */}
+      <Dialog open={!!resetTarget} onOpenChange={(v) => !v && closeResetDialog()}>
+        <DialogContent className="sm:max-w-[440px]" data-testid="dialog-reset-password-pastor">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2" style={{ fontFamily: 'Spectral, serif' }}>
+              <Key className="w-5 h-5 text-[#C8A951]" />
+              Restablecer contraseña de {resetTarget?.nombre}
+            </DialogTitle>
+            <DialogDescription>
+              Esto invalida cualquier sesión activa de este pastor; deberá iniciar sesión de nuevo con la contraseña nueva.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="reset-password-new">Nueva contraseña</Label>
+              <Input
+                id="reset-password-new"
+                type="password"
+                data-testid="input-reset-password-new"
+                value={resetForm.password}
+                onChange={(e) => setResetForm({ ...resetForm, password: e.target.value })}
+                placeholder="Mínimo 10 caracteres"
+                autoComplete="new-password"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="reset-password-confirm">Confirmar nueva contraseña</Label>
+              <Input
+                id="reset-password-confirm"
+                type="password"
+                data-testid="input-reset-password-confirm"
+                value={resetForm.confirmPassword}
+                onChange={(e) => setResetForm({ ...resetForm, confirmPassword: e.target.value })}
+                placeholder="Repite la contraseña"
+                autoComplete="new-password"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Comparte la nueva contraseña con {resetTarget?.nombre} por un canal seguro; no queda registrada aquí.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={closeResetDialog} disabled={resetting}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleResetPassword}
+              disabled={resetting}
+              className="bg-[#1B2A4A] hover:bg-[#2A3D63] text-white"
+              data-testid="btn-confirmar-reset-password-pastor"
+            >
+              {resetting ? 'Actualizando...' : 'Restablecer contraseña'}
             </Button>
           </DialogFooter>
         </DialogContent>

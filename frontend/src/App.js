@@ -74,6 +74,7 @@ import DiscipleshipPage from './pages/processes/DiscipleshipPage';
 import FrontGroupsPage from './pages/FrontGroupsPage';
 import LeadershipPage from './pages/LeadershipPage';
 import MentorshipPage from './pages/processes/MentorshipPage';
+import OutreachPage from './pages/OutreachPage';
 import CapPage from './pages/processes/CapPage';
 import CellularDashboardPage from './pages/cellular/CellularDashboardPage';
 import CellularNetworksPage from './pages/cellular/CellularNetworksPage';
@@ -92,8 +93,9 @@ import BoardMeetingsPage from './pages/board/BoardMeetingsPage';
 import BoardMeetingDetailPage from './pages/board/BoardMeetingDetailPage';
 import BoardMinutesPage from './pages/board/BoardMinutesPage';
 import AppLayout from './components/AppLayout';
-import { canManageDirectMembership, canManageBaptismEvents, canManageDedicationEvents, canViewCare, canViewFinanceModule, canViewFormation, canViewFrontGroups, canViewGeo, canViewLeadership, canViewLibraryModule, canManageLibraryInventory, canViewLibraryPurchaseOrders, canViewLibraryReports, canViewOperations, canAccessCampaignOperator, hasAnyCapability, isPastoralAuthority } from './lib/accessControl';
+import { canManageDirectMembership, canManageBaptismEvents, canManageDedicationEvents, canViewCare, canViewFinanceModule, canViewFormation, canViewFrontGroups, canViewGeo, canViewLeadership, canViewLibraryModule, canManageLibraryInventory, canViewLibraryPurchaseOrders, canViewLibraryReports, canViewOperations, canAccessCampaignOperator, canAccessOutreach, hasAnyCapability, isPastoralAuthority } from './lib/accessControl';
 import { useBoardAccess } from './hooks/useBoardAccess';
+import { useMentorAccess } from './hooks/useMentorAccess';
 import './App.css';
 
 const GeoMapsPage = lazy(() => import('./pages/GeoMapsPage'));
@@ -162,6 +164,14 @@ function BoardAccessRoute({ children }) {
   const access = useBoardAccess();
   if (!user || access.loading) return <div className="flex min-h-screen items-center justify-center" data-testid="board-access-loading">Cargando…</div>;
   if (!access.allowed) return <Navigate to="/" replace />;
+  return children;
+}
+
+function OutreachAccessRoute({ children }) {
+  const { user } = useAuth();
+  const mentorAccess = useMentorAccess();
+  if (!user || mentorAccess.loading) return <div className="flex min-h-screen items-center justify-center" data-testid="outreach-access-loading">Cargando…</div>;
+  if (!canAccessOutreach(user, mentorAccess.isActiveMentor)) return <Navigate to="/" replace />;
   return children;
 }
 
@@ -260,6 +270,7 @@ function App() {
             <Route path="libreria/reportes" element={<CapabilityRoute allowed={canViewLibraryReports}><LibraryReportsPage /></CapabilityRoute>} />
             <Route path="libreria/etiquetas" element={<CapabilityRoute allowed={canManageLibraryInventory}><LibraryLabelsPage /></CapabilityRoute>} />
             <Route path="campanas/ven-y-come/control" element={<CapabilityRoute allowed={canAccessCampaignOperator}><CampaignControlPage /></CapabilityRoute>} />
+            <Route path="mentoria/visitas" element={<OutreachAccessRoute><OutreachPage /></OutreachAccessRoute>} />
             <Route path="operaciones" element={<CapabilityRoute allowed={canViewOperations}><OperationsDashboardPage /></CapabilityRoute>} />
             <Route path="operaciones/eventos" element={<CapabilityRoute allowed={canViewOperations}><OperationsEventsPage /></CapabilityRoute>} />
             <Route path="operaciones/eventos/:eventId" element={<CapabilityRoute allowed={canViewOperations}><OperationEventDetailPage /></CapabilityRoute>} />

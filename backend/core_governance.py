@@ -17,6 +17,7 @@ from access_control import (
     CAMPAIGN_CAPABILITIES,
     CELLULAR_CAPABILITIES,
     CARE_CAPABILITIES,
+    CONSOLIDATION_MENTOR_TRANSFER,
     CORE_ACCESS_MANAGE,
     DOOR_BOARD_CAPABILITIES,
     CORE_GOVERNANCE_MANAGE,
@@ -25,7 +26,10 @@ from access_control import (
     JOURNEY_GOVERNANCE_CAPABILITIES,
     MEMBERSHIP_DOCUMENTS_MANAGE,
     MEMBERSHIP_DIRECT_IMPORT,
+    MENTORSHIP_BADGE_MANAGE,
     MENTORSHIP_CAPABILITIES,
+    MENTORSHIP_OUTREACH_ASSIGN,
+    MENTORSHIP_OUTREACH_REPORT,
     OPERATIONS_CAPABILITIES,
     PROCESS_CAPABILITIES,
     PERSON_DOMAIN_CAPABILITIES,
@@ -122,6 +126,7 @@ class UserAccessCreate(BaseModel):
     access_title: Optional[str] = Field(default=None, max_length=120)
     organization_scope: Optional[dict] = None
     privilege_groups: list[Literal["membership", "board", "finance", "care"]] = []
+    mentor_access: bool = False
 
 
 def require_governance(current_user: dict = Depends(get_current_user)) -> dict:
@@ -151,7 +156,10 @@ def access_defaults(level: str, privilege_groups: Optional[list[str]] = None) ->
     if level == "coordinador_general":
         groups = sorted(set([*groups, "care"]))
         coordinator_formation = [item for item in FORMATION_CAPABILITIES if item not in {"formation.programs.manage", "formation.certificates.issue", "baptism.certificates.issue"}]
-        defaults["capabilities"] = sorted(set([*defaults["capabilities"], *CARE_CAPABILITIES, *coordinator_formation, MEMBERSHIP_DIRECT_IMPORT]))
+        defaults["capabilities"] = sorted(set([
+            *defaults["capabilities"], *CARE_CAPABILITIES, *coordinator_formation, MEMBERSHIP_DIRECT_IMPORT,
+            MENTORSHIP_BADGE_MANAGE, MENTORSHIP_OUTREACH_ASSIGN, CONSOLIDATION_MENTOR_TRANSFER,
+        ]))
     if level in {"coordinador_general", "director"}:
         defaults["capabilities"] = sorted(set([*defaults["capabilities"], CORE_ACCESS_MANAGE]))
     if "membership" not in groups:
@@ -351,6 +359,8 @@ async def create_user_access(payload: UserAccessCreate, current_user: dict = Dep
     await ensure_finance_limit(payload.privilege_groups)
     if payload.access_level in {"director", "secretario", "tesorero", "equipo"} and not payload.organization_scope:
         raise HTTPException(status_code=400, detail="Debe indicar el área de servicio")
+    if payload.mentor_access and payload.access_level != "persona":
+        raise HTTPException(status_code=400, detail="El acceso de mentor solo aplica a cuentas de nivel persona")
     if current_user.get("access_level") == "director" and payload.organization_scope != current_user.get("organization_scope"):
         raise HTTPException(status_code=403, detail="Solo puede crear cuentas dentro de su propia área")
     if not ObjectId.is_valid(payload.person_id):
@@ -364,6 +374,8 @@ async def create_user_access(payload: UserAccessCreate, current_user: dict = Dep
     if await db.users.find_one({"email": email}):
         raise HTTPException(status_code=409, detail="Este correo ya tiene acceso")
     defaults = access_defaults(payload.access_level, payload.privilege_groups)
+    if payload.mentor_access:
+        defaults["capabilities"] = sorted(set([*defaults["capabilities"], MENTORSHIP_OUTREACH_REPORT]))
     now = datetime.now(timezone.utc)
     surname = person.get("apellidos") or person.get("apellido") or ""
     user_doc = {
