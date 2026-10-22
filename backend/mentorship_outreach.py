@@ -79,7 +79,10 @@ class VisitTransferInput(BaseModel):
 
 
 def normalize_phone(value: Optional[str]) -> str:
-    return re.sub(r"\D", "", value or "")
+    """Últimos 10 dígitos (mismo criterio que membership_import.py) para que un
+    prefijo de país opcional (+58, 0, etc.) no impida detectar duplicados."""
+    digits = re.sub(r"\D", "", value or "")
+    return digits[-10:] if len(digits) >= 10 else digits
 
 
 def is_outreach_leader(current_user: dict) -> bool:
@@ -193,8 +196,7 @@ async def find_or_create_person_for_visit(contact_name: Optional[str], contact_p
     if contact_name and contact_name.strip():
         norm = normalize_person_name(contact_name)
         if norm:
-            pattern = r"(^|\s)" + re.escape(norm) + r"(\s|$)"
-            candidates = await db.persons.find({"search_key": {"$regex": pattern}, "is_archived": {"$ne": True}}, {"_id": 1}).to_list(5)
+            candidates = await db.persons.find({"search_key": norm, "is_archived": {"$ne": True}}, {"_id": 1}).to_list(5)
             if len(candidates) == 1:
                 return str(candidates[0]["_id"]), False
     now = now_utc()
@@ -290,6 +292,10 @@ async def create_visit(payload: VisitCreateInput, current_user: dict = Depends(g
         if not payload.person_id:
             raise HTTPException(status_code=422, detail="Seleccione la persona existente")
         await load_person(db, payload.person_id)
+        duplicate = await db.outreach_visits.find_one({"person_id": payload.person_id, "archived": {"$ne": True}}, {"_id": 0, "mentor_person_id": 1})
+        if duplicate:
+            mentor_name = await person_display_name(duplicate.get("mentor_person_id"))
+            raise HTTPException(status_code=409, detail=f"Esta persona ya tiene una visita activa registrada (mentor: {mentor_name or 'desconocido'})")
         person_id = payload.person_id
     else:
         if not payload.contact_name or not payload.contact_name.strip():
@@ -361,6 +367,8 @@ async def update_visit_report(visit_id: str, payload: VisitReportInput, current_
     if not is_outreach_leader(current_user) and visit.get("mentor_person_id") != current_user.get("person_id"):
         raise HTTPException(status_code=403, detail="Solo el mentor responsable o un líder puede actualizar este informe")
     fields = payload.dict(exclude_unset=True)
+    if visit.get("enrollment_id") and fields.get("status") and fields["status"] != "wants_followup":
+        raise HTTPException(status_code=409, detail="Ya inició la Ley de las 7 Semanas; el estado no se puede cambiar")
     if fields.get("visit_date") is not None:
         fields["visit_date"] = fields["visit_date"].isoformat()
     fields["updated_at"] = now_utc()
@@ -478,5 +486,6 @@ async def ensure_outreach_indexes() -> None:
     await db.outreach_visits.create_index("mentor_person_id")
     await db.outreach_visits.create_index("campaign_id")
     await db.outreach_visits.create_index("phone_normalized")
+    await db.outreach_visits.create_index("person_id")
     await db.outreach_visit_history.create_index("history_id", unique=True)
     await db.outreach_visit_history.create_index([("visit_id", 1), ("occurred_at", -1)])

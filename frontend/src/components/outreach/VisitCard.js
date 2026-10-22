@@ -66,7 +66,7 @@ export const VisitCard = ({ visit, canManage, onUpdated, onTransfer }) => {
     }
   };
 
-  const needsTransfer = lbsDecision === 'needs_lbs' && !visit.mentor_lbs_qualified;
+  const needsTransfer = visit.lbs_decision === 'needs_lbs' && !visit.mentor_lbs_qualified;
 
   return (
     <div className="rounded-xl border border-[#E8E5DE] bg-white p-4 shadow-sm" data-testid={`outreach-visit-card-${visit.visit_id}`}>
@@ -99,12 +99,12 @@ export const VisitCard = ({ visit, canManage, onUpdated, onTransfer }) => {
         </div>
       </div>
 
-      <div className="mt-4 flex flex-wrap gap-4">
-        <label className="flex items-center gap-2 text-sm" data-testid={`outreach-visit-mcd-checkbox-${visit.visit_id}`}>
-          <Checkbox checked={receivedMcd} onCheckedChange={(value) => setReceivedMcd(Boolean(value))} className="h-5 w-5" /> Recibió &quot;Mi conexión con Dios&quot;
+      <div className="mt-4 flex flex-wrap gap-3">
+        <label className="flex min-h-11 items-center gap-3 rounded-lg border border-slate-200 px-3 py-2 text-sm" data-testid={`outreach-visit-mcd-checkbox-${visit.visit_id}`}>
+          <Checkbox checked={receivedMcd} onCheckedChange={(value) => setReceivedMcd(Boolean(value))} className="h-6 w-6" /> Recibió &quot;Mi conexión con Dios&quot;
         </label>
-        <label className="flex items-center gap-2 text-sm" data-testid={`outreach-visit-npt-checkbox-${visit.visit_id}`}>
-          <Checkbox checked={receivedNpt} onCheckedChange={(value) => setReceivedNpt(Boolean(value))} className="h-5 w-5" /> Recibió &quot;Nací para triunfar&quot;
+        <label className="flex min-h-11 items-center gap-3 rounded-lg border border-slate-200 px-3 py-2 text-sm" data-testid={`outreach-visit-npt-checkbox-${visit.visit_id}`}>
+          <Checkbox checked={receivedNpt} onCheckedChange={(value) => setReceivedNpt(Boolean(value))} className="h-6 w-6" /> Recibió &quot;Nací para triunfar&quot;
         </label>
       </div>
 
@@ -126,6 +126,9 @@ export const VisitCard = ({ visit, canManage, onUpdated, onTransfer }) => {
           <Button size="sm" variant="outline" onClick={() => onTransfer(visit)} data-testid={`outreach-visit-transfer-button-${visit.visit_id}`}>Transferir a mentor capacitado</Button>
         </div>
       )}
+      {!needsTransfer && lbsDecision === 'needs_lbs' && visit.lbs_decision !== 'needs_lbs' && (
+        <p className="mt-2 text-xs text-amber-700" data-testid={`outreach-visit-unsaved-lbs-hint-${visit.visit_id}`}>Guarde el informe para habilitar, si corresponde, la transferencia a un mentor capacitado en LBS.</p>
+      )}
 
       <div className="mt-4 space-y-1.5">
         <Label>Nota</Label>
@@ -136,10 +139,13 @@ export const VisitCard = ({ visit, canManage, onUpdated, onTransfer }) => {
         <Button size="sm" disabled={busy} onClick={save} className="bg-[#132443]" data-testid={`outreach-visit-save-button-${visit.visit_id}`}>
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Guardar informe
         </Button>
-        {status === 'wants_followup' && !visit.enrollment_id && (
+        {visit.status === 'wants_followup' && !visit.enrollment_id && (
           <Button size="sm" variant="outline" disabled={busy} onClick={startSevenWeeks} data-testid={`outreach-visit-start-seven-weeks-button-${visit.visit_id}`}>
             <Sparkles className="h-4 w-4" /> Iniciar Ley de las 7 Semanas
           </Button>
+        )}
+        {status === 'wants_followup' && visit.status !== 'wants_followup' && !visit.enrollment_id && (
+          <p className="text-xs text-slate-500" data-testid={`outreach-visit-unsaved-status-hint-${visit.visit_id}`}>Guarde el informe para poder iniciar la Ley de las 7 Semanas.</p>
         )}
         {visit.enrollment_id && (
           <Badge variant="outline" data-testid={`outreach-visit-seven-weeks-badge-${visit.visit_id}`}>

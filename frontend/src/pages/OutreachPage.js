@@ -37,6 +37,7 @@ export default function OutreachPage() {
   }, [API, getAuthHeaders]);
 
   const loadMyVisits = useCallback(async () => {
+    if (!user?.person_id) { setMyVisits([]); return; }
     const response = await axios.get(`${API}/api/mentorship/outreach/visits?mentor_person_id=${user.person_id}`, getAuthHeaders());
     setMyVisits(response.data.items || []);
   }, [API, getAuthHeaders, user]);
@@ -53,7 +54,7 @@ export default function OutreachPage() {
       <header className="flex items-center gap-3">
         <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-[#132443]/10 text-[#132443]"><Footprints className="h-5 w-5" /></div>
         <div>
-          <h1 className="font-['Spectral'] text-2xl font-semibold text-[#101D36] sm:text-3xl">Visitas e Invasiones</h1>
+          <h1 className="font-['Spectral'] text-2xl font-semibold text-[#101D36] sm:text-3xl">{isLeader ? 'Visitas e Invasiones' : 'Mis Visitas'}</h1>
           <p className="text-sm text-slate-500">Ley de las 7 Semanas — seguimiento puerta a puerta</p>
         </div>
       </header>
@@ -90,7 +91,7 @@ export default function OutreachPage() {
           ) : (
             <div className="space-y-3">
               {filteredVisits.map((visit) => (
-                <VisitCard key={visit.visit_id} visit={visit} canManage={false} onUpdated={loadMyVisits} onTransfer={setTransferVisit} />
+                <VisitCard key={`${visit.visit_id}-${visit.updated_at}`} visit={visit} canManage={false} onUpdated={loadMyVisits} onTransfer={setTransferVisit} />
               ))}
             </div>
           )}

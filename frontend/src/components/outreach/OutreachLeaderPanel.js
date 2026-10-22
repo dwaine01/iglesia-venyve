@@ -94,7 +94,7 @@ export const OutreachLeaderPanel = ({ campaigns, onCampaignsChanged }) => {
       </div>
 
       {dashboard && (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
           {TOTAL_CARDS.map(([key, label]) => (
             <div key={key} className="rounded-xl border border-[#E8E5DE] bg-white p-4" data-testid={`outreach-total-${key}`}>
               <p className="text-2xl font-semibold text-[#101D36]">{dashboard.totals[key]}</p>
@@ -113,19 +113,19 @@ export const OutreachLeaderPanel = ({ campaigns, onCampaignsChanged }) => {
           <table className="w-full text-sm" data-testid="outreach-mentor-table">
             <thead>
               <tr className="text-left text-xs text-slate-500">
-                <th className="py-2">Mentor</th><th>Asignados</th><th>Visitados</th><th>Mi conexión</th><th>Nací p. triunfar</th><th>LBS pendiente</th><th>7 Semanas</th><th />
+                <th className="py-2">Mentor</th><th>Total</th><th>Pendientes</th><th>Visitados</th><th>Quiere seguimiento</th><th>Mi conexión</th><th>Nací p. triunfar</th><th>LBS pendiente</th><th>7 Semanas</th><th />
               </tr>
             </thead>
             <tbody>
               {(dashboard?.by_mentor || []).map((row) => (
                 <tr key={row.mentor_person_id} className="border-t border-slate-100" data-testid={`outreach-mentor-row-${row.mentor_person_id}`}>
                   <td className="py-2 font-medium">{row.mentor_name}</td>
-                  <td>{row.assigned}</td><td>{row.visited}</td><td>{row.received_mcd}</td><td>{row.received_npt}</td><td>{row.lbs_pending}</td><td>{row.seven_weeks_started}</td>
+                  <td>{row.total}</td><td>{row.assigned}</td><td>{row.visited}</td><td>{row.wants_followup}</td><td>{row.received_mcd}</td><td>{row.received_npt}</td><td>{row.lbs_pending}</td><td>{row.seven_weeks_started}</td>
                   <td><Button size="sm" variant="ghost" onClick={() => loadDrill(row.mentor_person_id)} data-testid={`outreach-mentor-drill-button-${row.mentor_person_id}`}>Ver lista</Button></td>
                 </tr>
               ))}
               {(dashboard?.by_mentor || []).length === 0 && (
-                <tr><td colSpan={8} className="py-4 text-center text-slate-400">Sin mentores con visitas todavía.</td></tr>
+                <tr><td colSpan={10} className="py-4 text-center text-slate-400">Sin mentores con visitas todavía.</td></tr>
               )}
             </tbody>
           </table>
@@ -137,7 +137,7 @@ export const OutreachLeaderPanel = ({ campaigns, onCampaignsChanged }) => {
           <h3 className="font-['Spectral'] text-lg font-semibold text-[#101D36]">
             Visitas de {dashboard?.by_mentor?.find((item) => item.mentor_person_id === drillMentorId)?.mentor_name}
           </h3>
-          {drillVisits.map((visit) => <VisitCard key={visit.visit_id} visit={visit} canManage onUpdated={refreshDrill} onTransfer={setTransferVisit} />)}
+          {drillVisits.map((visit) => <VisitCard key={`${visit.visit_id}-${visit.updated_at}`} visit={visit} canManage onUpdated={refreshDrill} onTransfer={setTransferVisit} />)}
           {drillVisits.length === 0 && <p className="text-sm text-slate-500">Sin visitas registradas.</p>}
         </div>
       )}

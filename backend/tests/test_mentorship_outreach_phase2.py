@@ -206,8 +206,43 @@ async def test_duplicate_phone_is_rejected():
         )
         assert duplicate.status_code == 409
         assert "teléfono" in duplicate.json()["detail"]
+
+        duplicate_country_code = await client.post(
+            "/api/mentorship/outreach/visits",
+            json={"contact_type": "new", "contact_name": "Visitante Tres", "contact_phone": "+58 300-000-0003"},
+            headers=headers,
+        )
+        assert duplicate_country_code.status_code == 409, "un prefijo de pais no debe evadir la deduplicacion"
     finally:
         await client.aclose()
+        await cleanup()
+
+
+@pytest.mark.asyncio
+async def test_duplicate_existing_person_visit_is_rejected():
+    await cleanup()
+    mentor_pid = await create_person("Mentor Existing Dedup")
+    other_pid = await create_person("Other Mentor Existing Dedup")
+    target_pid = await create_person("Visitado 360")
+    await activate_badge(mentor_pid)
+    await activate_badge(other_pid)
+    _, mentor_email = await create_user("Mentor Existing Dedup", "persona", mentor_pid)
+    _, other_email = await create_user("Other Mentor Existing Dedup", "persona", other_pid)
+    client, headers = await auth_client(mentor_email)
+    other_client, other_headers = await auth_client(other_email)
+    try:
+        first = await client.post(
+            "/api/mentorship/outreach/visits", json={"contact_type": "existing", "person_id": target_pid}, headers=headers,
+        )
+        assert first.status_code == 201
+
+        duplicate = await other_client.post(
+            "/api/mentorship/outreach/visits", json={"contact_type": "existing", "person_id": target_pid}, headers=other_headers,
+        )
+        assert duplicate.status_code == 409
+    finally:
+        await client.aclose()
+        await other_client.aclose()
         await cleanup()
 
 
@@ -248,6 +283,40 @@ async def test_start_seven_weeks_creates_enrollment_and_blocks_double_conversion
 
         again = await client.post(f"/api/mentorship/outreach/visits/{visit_id}/start-seven-weeks", headers=headers)
         assert again.status_code == 409, "no debe convertir dos veces la misma visita"
+
+        blocked_status_change = await client.put(
+            f"/api/mentorship/outreach/visits/{visit_id}/report", json={"status": "rejected"}, headers=headers,
+        )
+        assert blocked_status_change.status_code == 409, "no debe poder cambiar el estado luego de iniciar 7 Semanas"
+    finally:
+        await client.aclose()
+        await cleanup()
+
+
+@pytest.mark.asyncio
+async def test_seven_weeks_does_not_fuzzy_merge_into_unrelated_person_with_similar_name():
+    await cleanup()
+    mentor_pid = await create_person("Mentor NoFuzzy")
+    await activate_badge(mentor_pid)
+    unrelated_person_id = ObjectId()
+    await server.db.persons.insert_one({
+        "_id": unrelated_person_id, "person_number": f"VV-QA{uuid.uuid4().hex[:7].upper()}",
+        "nombre": "Juan", "apellido": "Perez Gomez", "search_key": "juan perez gomez",
+        "idempotency_key": f"qa:outreach:{uuid.uuid4()}", "version": 1,
+        "created_at": datetime.now(timezone.utc), "updated_at": datetime.now(timezone.utc),
+    })
+    _, mentor_email = await create_user("Mentor NoFuzzy", "persona", mentor_pid)
+    client, headers = await auth_client(mentor_email)
+    try:
+        created = await client.post(
+            "/api/mentorship/outreach/visits",
+            json={"contact_type": "new", "contact_name": "Juan Perez"}, headers=headers,
+        )
+        visit_id = created.json()["visit_id"]
+        await client.put(f"/api/mentorship/outreach/visits/{visit_id}/report", json={"status": "wants_followup"}, headers=headers)
+        started = await client.post(f"/api/mentorship/outreach/visits/{visit_id}/start-seven-weeks", headers=headers)
+        assert started.status_code == 200, started.text
+        assert started.json()["person_created"] is True, "no debe fusionarse con 'Juan Perez Gomez' por coincidencia parcial"
     finally:
         await client.aclose()
         await cleanup()
