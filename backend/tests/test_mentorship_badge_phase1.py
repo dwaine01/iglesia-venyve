@@ -208,7 +208,7 @@ async def test_governance_accepts_mentorship_badge_manage_capability():
 
 
 @pytest.mark.asyncio
-async def test_mentors_list_filters_active_badge_and_account_and_hides_phone_without_capability():
+async def test_mentors_list_shows_all_active_badges_with_account_flags_and_hides_phone_without_capability():
     await cleanup()
     mentor_with_account_pid = await create_person("Mentor Con Cuenta")
     _, mentor_email = await create_user("Mentor Con Cuenta", "persona", mentor_with_account_pid)
@@ -229,7 +229,11 @@ async def test_mentors_list_filters_active_badge_and_account_and_hides_phone_wit
         assert listing.status_code == 200
         items = {item["person_id"]: item for item in listing.json()["items"]}
         assert mentor_with_account_pid in items, "mentor con insignia y cuenta activa debe aparecer"
-        assert mentor_without_account_pid not in items, "mentor sin cuenta activa no debe aparecer"
+        assert mentor_without_account_pid in items, "mentor con insignia pero SIN cuenta también debe aparecer (regla del dueño)"
+        assert items[mentor_with_account_pid]["has_account"] is True
+        assert items[mentor_with_account_pid]["account_active"] is True
+        assert items[mentor_without_account_pid]["has_account"] is False
+        assert items[mentor_without_account_pid]["account_active"] is False
         assert items[mentor_with_account_pid]["phone"] == "809-555-0100", "pastor tiene person.contacts.read"
 
         limited_person_id = await create_person("Limited Viewer")
@@ -293,3 +297,54 @@ async def test_assign_mentor_rejects_persona_account_without_badge():
     finally:
         await client.aclose()
         await cleanup()
+
+
+@pytest.mark.asyncio
+async def test_mentors_list_shows_deactivated_account_as_inactive_not_hidden():
+    await cleanup()
+    mentor_person_id = await create_person("Mentor Cuenta Desactivada")
+    _, mentor_email = await create_user("Mentor Cuenta Desactivada", "persona", mentor_person_id)
+    await server.db.users.update_one({"email": mentor_email}, {"$set": {"is_active": False}})
+    _, pastor_email = await create_user("Deactivated Mentors Pastor", "pastor")
+    client, headers = await auth_client(pastor_email)
+    try:
+        activate = await client.put(f"/api/mentorship/badge/{mentor_person_id}", json={"active": True}, headers=headers)
+        assert activate.status_code == 200
+
+        listing = await client.get("/api/mentorship/mentors", headers=headers)
+        assert listing.status_code == 200
+        items = {item["person_id"]: item for item in listing.json()["items"]}
+        assert mentor_person_id in items, "mentor con insignia debe aparecer aunque su cuenta esté desactivada"
+        assert items[mentor_person_id]["has_account"] is True
+        assert items[mentor_person_id]["account_active"] is False
+    finally:
+        await client.aclose()
+        await cleanup()
+
+
+@pytest.mark.asyncio
+async def test_assign_mentor_without_account_blocks_with_clear_access_message():
+    """El mensaje 409 debe decir claramente que falta crear el acceso del mentor,
+    no un genérico 'cuenta activa'. assert_mentor_eligible sigue exigiendo cuenta
+    activa (no se relaja), sólo se mejora el texto del error."""
+    await cleanup()
+    candidate_person_id = await create_person("Candidato Sin Acceso Mentor")
+    mentor_person_id = await create_person("Mentor Con Insignia Sin Cuenta")
+    _, pastor_email = await create_user("Assign No Account Pastor", "pastor")
+    client, headers = await auth_client(pastor_email)
+    try:
+        activate = await client.put(f"/api/mentorship/badge/{mentor_person_id}", json={"active": True}, headers=headers)
+        assert activate.status_code == 200
+
+        intake = await client.post(
+            "/api/processes/consolidation/intakes",
+            json={"person_id": candidate_person_id, "entry_mode": "direct_church", "mentor_person_id": mentor_person_id},
+            headers=headers,
+        )
+        assert intake.status_code == 409, intake.text
+        detail = intake.json()["detail"].lower()
+        assert "acceso" in detail and "mentor" in detail, detail
+    finally:
+        await client.aclose()
+        await cleanup()
+

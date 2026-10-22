@@ -18,6 +18,12 @@ export const hasPrivilegeGroup = (user, group) => (
   Array.isArray(user?.privilege_groups) && user.privilege_groups.includes(group)
 );
 
+export const mentorAccessDisabled = (item) => item?.has_account === false || item?.account_active === false;
+
+export const mentorAccessSuffix = (item) => (mentorAccessDisabled(item) ? ' (sin acceso)' : '');
+
+export const mentorAccessHint = 'Crea su acceso en su perfil 360 → pestaña Mentor';
+
 export const canViewFinanceModule = (user) => (
   isPastoralAuthority(user)
   || (

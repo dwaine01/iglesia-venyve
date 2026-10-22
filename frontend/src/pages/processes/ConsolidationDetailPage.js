@@ -3,12 +3,14 @@ import axios from 'axios';
 import { ArrowLeft, BadgeCheck, BookOpen, Droplets, History, UserRoundCheck } from 'lucide-react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 
+import { toast } from 'sonner';
 import { useAuth } from '../../context/AuthContext';
 import { ConsolidationActionPanel } from '../../components/processes/ConsolidationActionPanel';
 import { ConsolidationStageRail } from '../../components/processes/ConsolidationStageRail';
 import { ProcessError, ProcessLoading, ProcessShell } from '../../components/processes/ProcessShell';
 import { Button } from '../../components/ui/button';
 import { processStageLabel } from '../../lib/displayLabels';
+import { mentorAccessSuffix, mentorAccessDisabled } from '../../lib/accessControl';
 
 export default function ConsolidationDetailPage() {
   const { enrollmentId } = useParams();
@@ -27,12 +29,12 @@ export default function ConsolidationDetailPage() {
     loadJourney();
     Promise.all([
       axios.get(`${API}/api/processes/catalog`, getAuthHeaders()),
-      axios.get(`${API}/api/mentorship/mentors`, getAuthHeaders()).catch(() => ({ data: { items: [] } })),
+      axios.get(`${API}/api/mentorship/mentors`, getAuthHeaders()).catch((mentorError) => { toast.error(mentorError?.response?.data?.detail || 'No se pudo cargar la lista de mentores'); return { data: { items: [] } }; }),
     ]).then(([catalog, mentors]) => {
       const mentorOptions = new Map((catalog.data.assignees || []).map((item) => [item.person_id, item]));
-      (mentors.data.items || []).forEach((item) => mentorOptions.set(item.person_id, { person_id: item.person_id, name: item.lbs_qualified ? `${item.name} (LBS)` : item.name, role: 'mentor', lbs_qualified: item.lbs_qualified }));
+      (mentors.data.items || []).forEach((item) => mentorOptions.set(item.person_id, { person_id: item.person_id, name: `${item.lbs_qualified ? `${item.name} (LBS)` : item.name}${mentorAccessSuffix(item)}`, role: 'mentor', lbs_qualified: item.lbs_qualified, has_account: item.has_account, account_active: item.account_active, disabled: mentorAccessDisabled(item) }));
       setAssignees(Array.from(mentorOptions.values()));
-    }).catch(() => setAssignees([]));
+    }).catch((catalogError) => { toast.error(catalogError?.response?.data?.detail || 'No se pudo cargar la lista de mentores'); setAssignees([]); });
   }, [API, getAuthHeaders, loadJourney]);
   const updateCurrentTasks = useCallback((tasks) => {
     setJourney((current) => current ? {

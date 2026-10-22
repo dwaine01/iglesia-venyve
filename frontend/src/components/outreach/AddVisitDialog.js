@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
+import { mentorAccessDisabled, mentorAccessHint, mentorAccessSuffix } from '../../lib/accessControl';
 
 export const AddVisitDialog = ({ open, onOpenChange, campaigns, mentorOptions, forcedMentorId, onCreated }) => {
   const { API, getAuthHeaders } = useAuth();
@@ -122,9 +123,10 @@ export const AddVisitDialog = ({ open, onOpenChange, campaigns, mentorOptions, f
               <Select value={mentorId} onValueChange={setMentorId}>
                 <SelectTrigger data-testid="outreach-mentor-select"><SelectValue placeholder="Seleccione mentor" /></SelectTrigger>
                 <SelectContent className="bg-white">
-                  {mentorOptions.map((mentor) => <SelectItem key={mentor.person_id} value={mentor.person_id}>{mentor.name}</SelectItem>)}
+                  {mentorOptions.map((mentor) => <SelectItem key={mentor.person_id} value={mentor.person_id} disabled={mentorAccessDisabled(mentor)} data-testid={`outreach-mentor-option-${mentor.person_id}`}>{mentor.name}{mentorAccessSuffix(mentor)}</SelectItem>)}
                 </SelectContent>
               </Select>
+              {mentorOptions.some(mentorAccessDisabled) && <p className="text-xs text-slate-500" data-testid="outreach-mentor-access-hint">{mentorAccessHint}</p>}
             </div>
           )}
 

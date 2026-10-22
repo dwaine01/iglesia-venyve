@@ -199,11 +199,11 @@ async def set_mentor_lbs(person_id: str, payload: MentorLbsInput, current_user: 
 
 
 @router.get("/mentors", response_model=dict)
-async def list_active_mentors(search: str = "", limit: int = 50, current_user: dict = Depends(get_current_user)):
+async def list_active_mentors(search: str = "", limit: int = 1000, current_user: dict = Depends(get_current_user)):
     if not is_global_pastoral_authority(current_user) and not has_capability(current_user, PROCESSES_READ) and not can_manage_badges(current_user):
         raise HTTPException(status_code=403, detail="Sin permiso para consultar mentores")
-    limit = max(1, min(limit, 100))
-    badges = await db.mentor_badges.find({"active": True}, {"_id": 0, "person_id": 1}).to_list(1000)
+    limit = max(1, min(limit, 2000))
+    badges = await db.mentor_badges.find({"active": True}, {"_id": 0, "person_id": 1}).to_list(2000)
     person_ids = [item["person_id"] for item in badges if ObjectId.is_valid(item["person_id"])]
     if not person_ids:
         return {"items": [], "total": 0}
@@ -212,12 +212,13 @@ async def list_active_mentors(search: str = "", limit: int = 50, current_user: d
     if clean_search:
         pattern = re.escape(clean_search)
         query["$or"] = [{"nombre": {"$regex": pattern, "$options": "i"}}, {"apellido": {"$regex": pattern, "$options": "i"}}]
+    total = await db.persons.count_documents(query)
     people = await db.persons.find(query, {"_id": 1, "nombre": 1, "apellido": 1}).sort([("nombre", 1), ("apellido", 1)]).limit(limit).to_list(limit)
     found_ids = [str(item["_id"]) for item in people]
     if not found_ids:
-        return {"items": [], "total": 0}
-    accounts = await db.users.find({"person_id": {"$in": found_ids}, "is_active": {"$ne": False}}, {"_id": 0, "person_id": 1}).to_list(limit)
-    account_person_ids = {item["person_id"] for item in accounts}
+        return {"items": [], "total": total}
+    accounts = await db.users.find({"person_id": {"$in": found_ids}}, {"_id": 0, "person_id": 1, "is_active": 1}).to_list(limit)
+    account_status = {item["person_id"]: bool(item.get("is_active", True)) for item in accounts}
     lbs_docs = await db.mentor_qualifications.find(
         {"person_id": {"$in": found_ids}, "active": True, "can_teach_lbs": True, "front_group_id": None},
         {"_id": 0, "person_id": 1},
@@ -243,8 +244,10 @@ async def list_active_mentors(search: str = "", limit: int = 50, current_user: d
         "phone": phones.get(str(person["_id"])),
         "lbs_qualified": str(person["_id"]) in lbs_person_ids,
         "assigned_count": assigned_counts.get(str(person["_id"]), 0),
-    } for person in people if str(person["_id"]) in account_person_ids]
-    return {"items": items, "total": len(items)}
+        "has_account": str(person["_id"]) in account_status,
+        "account_active": account_status.get(str(person["_id"]), False),
+    } for person in people]
+    return {"items": items, "total": total}
 
 
 async def ensure_mentorship_indexes() -> None:
