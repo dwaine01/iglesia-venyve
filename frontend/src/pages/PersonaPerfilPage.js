@@ -8,6 +8,7 @@ import PersonProfileHeader from '../components/PersonProfileHeader';
 import PersonProfileEditor from '../components/PersonProfileEditor';
 import Profile360Summary from '../components/Profile360Summary';
 import CanonicalFamilySection from '../components/CanonicalFamilySection';
+import MentorBadgeSection from '../components/MentorBadgeSection';
 import {
   AttendanceSection,
   HistorySection,
@@ -44,6 +45,7 @@ const SECTION_LABELS = {
   bautismo: 'Bautismo',
   formacion: 'Formación',
   libreria: 'Libros y Materiales',
+  mentor: 'Mentor',
 };
 
 export default function PersonaPerfilPage() {
@@ -125,7 +127,7 @@ export default function PersonaPerfilPage() {
   const canArchive = isPastoralAuthority(user) && user?.person_id !== personId && profile?.identity?.account_role !== 'pastor';
   const allSections = [
     'resumen', 'contacto', 'direcciones', 'household',
-    'familia', 'procesos', ...(available.includes('formacion') ? ['formacion'] : []), 'asistencia', 'historial', ...(available.includes('membresia') ? ['membresia'] : []), ...(available.includes('bautismo') ? ['bautismo'] : []), ...(canViewFinance ? ['finanzas'] : []), ...(canViewLibrary ? ['libreria'] : []),
+    'familia', 'procesos', ...(available.includes('formacion') ? ['formacion'] : []), 'asistencia', 'historial', 'mentor', ...(available.includes('membresia') ? ['membresia'] : []), ...(available.includes('bautismo') ? ['bautismo'] : []), ...(canViewFinance ? ['finanzas'] : []), ...(canViewLibrary ? ['libreria'] : []),
   ];
 
   const archivePerson = async () => {
@@ -206,14 +208,14 @@ export default function PersonaPerfilPage() {
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
           <div className="overflow-hidden rounded-xl border border-[#E8E5DE] bg-[#EEECE6] p-1 shadow-sm">
-            <TabsList className="grid h-auto w-full grid-cols-3 gap-1 bg-transparent p-0 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-12">
+            <TabsList className="flex h-auto w-full flex-wrap gap-1 bg-transparent p-0">
               {allSections.map((section) => (
                 <TabsTrigger
                   key={section}
                   value={section}
                   data-testid={`profile-tab-${section}`}
-                  disabled={!available.includes(section) && section !== 'finanzas' && section !== 'libreria'}
-                  className="min-h-9 rounded-lg px-2 text-xs font-medium text-gray-600 data-[state=active]:bg-white data-[state=active]:text-[#101D36] data-[state=active]:shadow-sm sm:text-sm"
+                  disabled={!available.includes(section) && section !== 'finanzas' && section !== 'libreria' && section !== 'mentor'}
+                  className="min-h-9 shrink-0 whitespace-nowrap rounded-lg px-3 text-xs font-medium text-gray-600 data-[state=active]:bg-white data-[state=active]:text-[#101D36] data-[state=active]:shadow-sm sm:text-sm"
                 >
                   {SECTION_LABELS[section] || displayLabel(section, 'Sección')}
                 </TabsTrigger>
@@ -312,6 +314,11 @@ export default function PersonaPerfilPage() {
               <LibraryPersonSection personId={personId} user={user} />
             </TabsContent>
           )}
+
+          <TabsContent value="mentor" className="mt-0 rounded-xl border border-[#E8E5DE] bg-white p-4 shadow-sm sm:p-6">
+            <MentorBadgeSection personId={personId} API={API} getAuthHeaders={getAuthHeaders} onChanged={refreshProfile} />
+          </TabsContent>
+
 
           {planned.map((section) => (
             <TabsContent key={section} value={section} className="mt-0 rounded-xl border border-[#E8E5DE] bg-white px-6 py-16 text-center shadow-sm">

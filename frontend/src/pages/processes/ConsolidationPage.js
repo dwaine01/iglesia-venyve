@@ -28,14 +28,17 @@ export default function ConsolidationPage() {
     setLoading(true); setError('');
     try {
       const canAssign = isPastoralAuthority(user) || hasCapability(user, 'consolidation.assign');
-      const [dashboard, enrollments, groups, catalog, routing] = await Promise.all([
+      const [dashboard, enrollments, groups, catalog, mentors, routing] = await Promise.all([
         axios.get(`${API}/api/processes/consolidation/dashboard`, getAuthHeaders()),
         axios.get(`${API}/api/processes/enrollments?process_key=consolidation`, getAuthHeaders()),
         axios.get(`${API}/api/front-groups`, getAuthHeaders()),
         axios.get(`${API}/api/processes/catalog`, getAuthHeaders()),
+        axios.get(`${API}/api/mentorship/mentors`, getAuthHeaders()).catch(() => ({ data: { items: [] } })),
         canAssign ? axios.get(`${API}/api/front-group-routing/overview`, getAuthHeaders()) : Promise.resolve({ data: null }),
       ]);
-      setData({ dashboard: dashboard.data, items: (enrollments.data.items || []).filter((item) => item.definition_version >= 2), groups: routing.data?.available_groups?.length ? routing.data.available_groups : groups.data.items || [], assignees: catalog.data.assignees || [], routing: routing.data?.rotation || null });
+      const mentorOptions = new Map((catalog.data.assignees || []).map((item) => [item.person_id, item]));
+      (mentors.data.items || []).forEach((item) => mentorOptions.set(item.person_id, { person_id: item.person_id, name: item.lbs_qualified ? `${item.name} (LBS)` : item.name, role: 'mentor', lbs_qualified: item.lbs_qualified }));
+      setData({ dashboard: dashboard.data, items: (enrollments.data.items || []).filter((item) => item.definition_version >= 2), groups: routing.data?.available_groups?.length ? routing.data.available_groups : groups.data.items || [], assignees: Array.from(mentorOptions.values()), routing: routing.data?.rotation || null });
     } catch (requestError) { setError(requestError?.response?.data?.detail || 'No se pudo cargar Consolidación'); } finally { setLoading(false); }
   }, [API, getAuthHeaders, user]);
   useEffect(() => { load(); }, [load]);

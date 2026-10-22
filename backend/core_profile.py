@@ -14,6 +14,8 @@ from core_person import db, require_person_profile_user, serialize_person
 from access_control import (
     BAPTISM_READ,
     FORMATION_READ,
+    MENTOR_QUALIFICATIONS_MANAGE,
+    MENTORSHIP_BADGE_MANAGE,
     PERSON_ADDRESSES_READ,
     PERSON_ADDRESSES_WRITE,
     PERSON_ARRIVAL_READ,
@@ -39,6 +41,7 @@ from person_domains import address_items, contact_items
 from person_profile_domains import profile_domain_snapshot
 from person_core_expansion import age_info
 from care_service import has_care_entry, profile_care_section
+from consolidation_service import mentor_qualification
 
 router = APIRouter(prefix="/api/core", tags=["core-profile"])
 
@@ -248,6 +251,16 @@ async def get_person_profile(person_id: str, current_user: dict = Depends(requir
             if occupation:
                 header["ocupacion"] = occupation["nombre"]
             header["habilidades"] = snapshot["talentos"].get("habilidades", [])
+
+    if in_scope:
+        mentor_badge = await db.mentor_badges.find_one({"person_id": person_id}, {"_id": 0})
+        lbs_qualification = await mentor_qualification(db, person_id, None)
+        header["mentor_badge"] = {
+            "active": bool(mentor_badge and mentor_badge.get("active")),
+            "since": mentor_badge.get("since") if mentor_badge else None,
+        }
+        header["mentor_lbs_qualified"] = bool(lbs_qualification)
+        header["mentor_badge_can_manage"] = is_global_pastoral_authority(current_user) or has_capability(current_user, MENTORSHIP_BADGE_MANAGE) or has_capability(current_user, MENTOR_QUALIFICATIONS_MANAGE)
 
     domain_sections = []
     available = ["resumen"]

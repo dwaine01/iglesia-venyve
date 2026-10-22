@@ -21,6 +21,7 @@ const delegatedCapabilities = [
   ['front_groups.manage', 'Administrar Grupos Frontales'],
   ['leadership.view', 'Consultar Liderazgo'],
   ['mentor.qualifications.manage', 'Calificar mentores LBS'],
+  ['mentorship.badge.manage', 'Administrar insignia de Mentor'],
   ['leadership.requirements.manage', 'Configurar requisitos'],
   ['leadership.promote', 'Promover liderazgo'],
   ['geo.view_aggregate', 'Mapa 360 agregado'],
