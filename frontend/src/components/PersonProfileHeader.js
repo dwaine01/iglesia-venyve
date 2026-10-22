@@ -3,7 +3,9 @@ import {
   BriefcaseBusiness,
   Cake,
   ChevronDown,
+  Compass,
   Copy,
+  GraduationCap,
   Heart,
   Mail,
   MapPin,
@@ -162,6 +164,16 @@ export default function PersonProfileHeader({ header, photoSrc, onEdit, onArchiv
                   {ageLabel && (
                     <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-3 py-1 font-medium text-gray-700">
                       <UserRound className="h-3.5 w-3.5" /> {ageLabel}
+                    </span>
+                  )}
+                  {header.mentor_badge?.active && (
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-[#132443] px-3 py-1 font-medium text-white" data-testid="person-mentor-badge-pill">
+                      <Compass className="h-3.5 w-3.5" /> Mentor{header.mentor_badge.since ? ` · desde ${header.mentor_badge.since}` : ''}
+                    </span>
+                  )}
+                  {header.mentor_lbs_qualified && (
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-[#F2E8C4] px-3 py-1 font-medium text-[#85671D]" data-testid="person-mentor-lbs-pill">
+                      <GraduationCap className="h-3.5 w-3.5" /> Capacitado para LBS
                     </span>
                   )}
                 </div>

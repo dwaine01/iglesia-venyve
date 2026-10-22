@@ -71,9 +71,13 @@ async def configure_entry_stages(db, enrollment: dict, entry_mode: str, actor_us
 
 async def assign_mentor(db, enrollment: dict, mentor_person_id: str, actor_user_id: str, reason: str, transfer: bool = False) -> dict:
     await load_person(db, mentor_person_id)
-    account = await db.users.find_one({"person_id": mentor_person_id, "is_active": {"$ne": False}, "rol": {"$in": ["pastor", "lider"]}}, {"_id": 1})
+    account = await db.users.find_one({"person_id": mentor_person_id, "is_active": {"$ne": False}}, {"_id": 1, "rol": 1})
     if not account:
-        raise HTTPException(status_code=409, detail="El mentor necesita una cuenta pastoral o de liderazgo activa")
+        raise HTTPException(status_code=409, detail="El mentor necesita una cuenta activa en Plataforma 360")
+    if account.get("rol") not in ("pastor", "pastora", "lider"):
+        badge = await db.mentor_badges.find_one({"person_id": mentor_person_id, "active": True}, {"_id": 1})
+        if not badge:
+            raise HTTPException(status_code=409, detail="El mentor necesita la insignia de Mentor activa en su perfil, o una cuenta pastoral/de liderazgo")
     now = now_utc()
     previous = await db.mentor_assignments.find_one({"enrollment_id": enrollment["enrollment_id"], "active": True}, {"_id": 0})
     if previous and previous.get("mentor_person_id") == mentor_person_id:

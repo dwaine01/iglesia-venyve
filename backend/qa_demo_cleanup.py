@@ -59,6 +59,8 @@ def _queries(user_oids: list[ObjectId], user_ids: list[str], person_oids: list[O
         ("mentor_qualifications", {"person_id": {"$in": person_ids}}),
         ("mentor_assignments", {"$or": [{"person_id": {"$in": person_ids}}, {"mentor_person_id": {"$in": person_ids}}]}),
         ("mentor_evaluations", {"mentor_person_id": {"$in": person_ids}}),
+        ("mentor_badges", {"person_id": {"$in": person_ids}}),
+        ("mentor_badge_history", {"person_id": {"$in": person_ids}}),
         ("leadership_promotions", {"person_id": {"$in": person_ids}}),
         ("person_leadership_status", {"person_id": {"$in": person_ids}}),
         ("process_enrollments", {"person_id": {"$in": person_ids}}),
