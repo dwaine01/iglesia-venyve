@@ -1,18 +1,16 @@
 """Restablecer contraseña de pastor desde Panel General (DashboardGeneralPage.js).
 
-Cubre el endpoint ya existente `POST /api/pastor/pastors/{pastor_id}/reset-password`
-(server.py), ahora expuesto en la UI con un diálogo (nueva contraseña + confirmación,
-mínimo 10 caracteres en el FRONTEND; el backend sigue exigiendo 6, documentado abajo).
+Cubre el endpoint `POST /api/pastor/pastors/{pastor_id}/reset-password` (server.py),
+expuesto en la UI con un diálogo (nueva contraseña + confirmación, mínimo 10
+caracteres, igual en frontend y backend).
 
 - Un pastor puede resetear la contraseña de OTRO pastor: invalida su token_version
   (sesión vieja deja de servir), la contraseña vieja deja de funcionar y la nueva sí.
 - Un usuario que no es pastor (lider/persona) recibe 403.
 - Un `pastor_id` inexistente recibe 404.
-- Documentado (NO es un bug, está pendiente de confirmación del usuario antes de
-  cambiarlo): hoy el backend SÍ permite que un pastor se resetee a sí mismo vía este
-  endpoint (el endpoint hermano de desactivar pastor sí bloquea `pastor_id==self`,
-  este todavía no). Este test fija el comportamiento ACTUAL para que un cambio futuro
-  sea deliberado, no accidental.
+- Endurecido a pedido del usuario (2026-10-22): un pastor NO puede resetearse a sí
+  mismo por esta vía (400), igual que ya bloqueaba desactivar-pastor; y el mínimo de
+  contraseña subió de 6 a 10 caracteres para igualar la validación de la UI.
 """
 import uuid
 from datetime import datetime, timezone
@@ -134,19 +132,21 @@ async def test_non_pastor_cannot_reset_pastor_password():
 
 
 @pytest.mark.asyncio
-async def test_reset_requires_backend_minimum_and_rejects_unknown_target():
+async def test_reset_requires_backend_minimum_of_ten_and_rejects_unknown_target():
     await cleanup()
     actor_person_id = await create_person("Reset Actor Min")
+    other_person_id = await create_person("Reset Other Min")
     _, actor_email = await create_user("Reset Actor Min", "pastor", actor_person_id)
+    _, other_email = await create_user("Reset Other Min", "pastor", other_person_id)
     actor_client, actor_headers, _ = await auth_client(actor_email)
     try:
         pastors = await actor_client.get("/api/pastor/pastors", headers=actor_headers)
-        self_id = next(p["_id"] for p in pastors.json() if p["email"] == actor_email)
+        other_id = next(p["_id"] for p in pastors.json() if p["email"] == other_email)
 
         too_short = await actor_client.post(
-            f"/api/pastor/pastors/{self_id}/reset-password", json={"password": "short"}, headers=actor_headers,
+            f"/api/pastor/pastors/{other_id}/reset-password", json={"password": "short9!"}, headers=actor_headers,
         )
-        assert too_short.status_code == 400, "backend exige minimo 6 caracteres hoy (la UI exige 10, es mas estricta)"
+        assert too_short.status_code == 400, "backend ahora exige minimo 10 caracteres, igual que la UI"
 
         missing = await actor_client.post(
             f"/api/pastor/pastors/{ObjectId()}/reset-password", json={"password": "ValidEnough123!"}, headers=actor_headers,
@@ -158,16 +158,14 @@ async def test_reset_requires_backend_minimum_and_rejects_unknown_target():
 
 
 @pytest.mark.asyncio
-async def test_self_reset_via_api_is_currently_allowed_pending_user_decision():
-    """Comportamiento ACTUAL (no cambiado sin confirmacion del usuario): el backend no
-    bloquea pastor_id==self en este endpoint, a diferencia de desactivar-pastor que si
-    lo hace. La UI oculta la accion sobre la propia fila, pero una llamada directa a la
-    API hoy todavia tiene exito. Si el usuario confirma el endurecimiento, este test se
-    debe actualizar para esperar 400."""
+async def test_self_reset_via_api_is_now_blocked():
+    """Endurecimiento confirmado por el usuario: pastor_id==self ahora se bloquea en
+    este endpoint, igual que ya bloqueaba desactivar-pastor. La UI ya ocultaba la
+    acción sobre la propia fila (is_current); ahora la API también la rechaza."""
     await cleanup()
     actor_person_id = await create_person("Reset Self")
     _, actor_email = await create_user("Reset Self", "pastor", actor_person_id, password="OriginalSelf123!")
-    actor_client, actor_headers, _ = await auth_client(actor_email, password="OriginalSelf123!")
+    actor_client, actor_headers, token = await auth_client(actor_email, password="OriginalSelf123!")
     try:
         pastors = await actor_client.get("/api/pastor/pastors", headers=actor_headers)
         self_entry = next(p for p in pastors.json() if p["email"] == actor_email)
@@ -176,7 +174,10 @@ async def test_self_reset_via_api_is_currently_allowed_pending_user_decision():
         response = await actor_client.post(
             f"/api/pastor/pastors/{self_entry['_id']}/reset-password", json={"password": "NewSelfPassword456!"}, headers=actor_headers,
         )
-        assert response.status_code == 200
+        assert response.status_code == 400
+
+        still_valid = await actor_client.get("/api/auth/me", headers=actor_headers)
+        assert still_valid.status_code == 200, "el intento bloqueado no debe invalidar la sesion actual"
     finally:
         await actor_client.aclose()
         await cleanup()
