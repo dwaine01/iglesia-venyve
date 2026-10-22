@@ -323,6 +323,26 @@ async def test_seven_weeks_does_not_fuzzy_merge_into_unrelated_person_with_simil
 
 
 @pytest.mark.asyncio
+async def test_create_visit_requires_mentor_to_have_active_badge():
+    await cleanup()
+    leader_pid = await create_person("Leader No Badge")
+    no_badge_pid = await create_person("Target Mentor No Badge")
+    _, leader_email = await create_user("Leader No Badge", "lider", leader_pid, capabilities=["mentorship.outreach.assign"])
+    client, headers = await auth_client(leader_email)
+    try:
+        response = await client.post(
+            "/api/mentorship/outreach/visits",
+            json={"contact_type": "new", "contact_name": "Sin Mentor Valido", "mentor_person_id": no_badge_pid},
+            headers=headers,
+        )
+        assert response.status_code == 409
+        assert "insignia" in response.json()["detail"]
+    finally:
+        await client.aclose()
+        await cleanup()
+
+
+@pytest.mark.asyncio
 async def test_persona_without_badge_or_capability_gets_403():
     await cleanup()
     persona_pid = await create_person("Persona Sin Insignia")

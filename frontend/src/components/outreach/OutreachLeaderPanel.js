@@ -12,7 +12,7 @@ import { TransferVisitDialog } from './TransferVisitDialog';
 import { VisitCard } from './VisitCard';
 
 const TOTAL_CARDS = [
-  ['assigned', 'Asignados'],
+  ['assigned', 'Pendientes'],
   ['visited', 'Visitados'],
   ['wants_followup', 'Quiere seguimiento'],
   ['seven_weeks_started', '7 Semanas iniciadas'],

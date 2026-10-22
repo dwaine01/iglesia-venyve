@@ -286,13 +286,18 @@ async def create_visit(payload: VisitCreateInput, current_user: dict = Depends(g
         raise HTTPException(status_code=422, detail="No se pudo determinar el mentor responsable")
     if mentor_person_id != current_user.get("person_id") and not is_outreach_leader(current_user):
         raise HTTPException(status_code=403, detail="Solo un líder puede asignar la visita a otro mentor")
+    if not await is_active_mentor(mentor_person_id):
+        raise HTTPException(status_code=409, detail="El mentor responsable necesita insignia de Mentor activa")
     phone_digits = None
     person_id = None
     if payload.contact_type == "existing":
         if not payload.person_id:
             raise HTTPException(status_code=422, detail="Seleccione la persona existente")
         await load_person(db, payload.person_id)
-        duplicate = await db.outreach_visits.find_one({"person_id": payload.person_id, "archived": {"$ne": True}}, {"_id": 0, "mentor_person_id": 1})
+        duplicate = await db.outreach_visits.find_one(
+            {"$or": [{"person_id": payload.person_id}, {"converted_person_id": payload.person_id}], "archived": {"$ne": True}},
+            {"_id": 0, "mentor_person_id": 1},
+        )
         if duplicate:
             mentor_name = await person_display_name(duplicate.get("mentor_person_id"))
             raise HTTPException(status_code=409, detail=f"Esta persona ya tiene una visita activa registrada (mentor: {mentor_name or 'desconocido'})")

@@ -86,7 +86,7 @@ export const VisitCard = ({ visit, canManage, onUpdated, onTransfer }) => {
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         <div className="space-y-1.5">
           <Label>Estado de la visita</Label>
-          <Select value={status} onValueChange={setStatus}>
+          <Select value={status} onValueChange={setStatus} disabled={Boolean(visit.enrollment_id)}>
             <SelectTrigger data-testid={`outreach-visit-status-select-${visit.visit_id}`}><SelectValue /></SelectTrigger>
             <SelectContent className="bg-white">
               {Object.entries(STATUS_LABELS).map(([key, label]) => <SelectItem key={key} value={key}>{label}</SelectItem>)}
