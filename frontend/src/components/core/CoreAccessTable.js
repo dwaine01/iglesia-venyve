@@ -22,6 +22,8 @@ const delegatedCapabilities = [
   ['leadership.view', 'Consultar Liderazgo'],
   ['mentor.qualifications.manage', 'Calificar mentores LBS'],
   ['mentorship.badge.manage', 'Administrar insignia de Mentor'],
+  ['mentorship.outreach.assign', 'Asignar visitas e invasiones'],
+  ['mentorship.outreach.report', 'Rendir informe de visitas'],
   ['leadership.requirements.manage', 'Configurar requisitos'],
   ['leadership.promote', 'Promover liderazgo'],
   ['geo.view_aggregate', 'Mapa 360 agregado'],
