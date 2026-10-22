@@ -17,6 +17,7 @@ from access_control import (
     CAMPAIGN_CAPABILITIES,
     CELLULAR_CAPABILITIES,
     CARE_CAPABILITIES,
+    CONSOLIDATION_MENTOR_TRANSFER,
     CORE_ACCESS_MANAGE,
     DOOR_BOARD_CAPABILITIES,
     CORE_GOVERNANCE_MANAGE,
@@ -25,7 +26,9 @@ from access_control import (
     JOURNEY_GOVERNANCE_CAPABILITIES,
     MEMBERSHIP_DOCUMENTS_MANAGE,
     MEMBERSHIP_DIRECT_IMPORT,
+    MENTORSHIP_BADGE_MANAGE,
     MENTORSHIP_CAPABILITIES,
+    MENTORSHIP_OUTREACH_ASSIGN,
     OPERATIONS_CAPABILITIES,
     PROCESS_CAPABILITIES,
     PERSON_DOMAIN_CAPABILITIES,
@@ -151,7 +154,10 @@ def access_defaults(level: str, privilege_groups: Optional[list[str]] = None) ->
     if level == "coordinador_general":
         groups = sorted(set([*groups, "care"]))
         coordinator_formation = [item for item in FORMATION_CAPABILITIES if item not in {"formation.programs.manage", "formation.certificates.issue", "baptism.certificates.issue"}]
-        defaults["capabilities"] = sorted(set([*defaults["capabilities"], *CARE_CAPABILITIES, *coordinator_formation, MEMBERSHIP_DIRECT_IMPORT]))
+        defaults["capabilities"] = sorted(set([
+            *defaults["capabilities"], *CARE_CAPABILITIES, *coordinator_formation, MEMBERSHIP_DIRECT_IMPORT,
+            MENTORSHIP_BADGE_MANAGE, MENTORSHIP_OUTREACH_ASSIGN, CONSOLIDATION_MENTOR_TRANSFER,
+        ]))
     if level in {"coordinador_general", "director"}:
         defaults["capabilities"] = sorted(set([*defaults["capabilities"], CORE_ACCESS_MANAGE]))
     if "membership" not in groups:
