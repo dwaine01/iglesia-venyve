@@ -277,7 +277,10 @@ async def test_start_seven_weeks_creates_enrollment_and_blocks_double_conversion
         enrollment_id = body["enrollment_id"]
 
         enrollment = await server.db.process_enrollments.find_one({"enrollment_id": enrollment_id}, {"_id": 0})
-        assert enrollment["entry_mode"] == "visitor_followup"
+        # S1 (oración) y S2 (invasión) ya se vivieron con la campaña -> entry_mode "invasion",
+        # abre listo en MCD (ver aclaración del dueño sobre semanas del catálogo).
+        assert enrollment["entry_mode"] == "invasion"
+        assert enrollment["current_stage_key"] == "mcd"
         assert enrollment["mentor_person_id"] == mentor_pid
         assert enrollment["source"] == "mentorship_outreach"
 
@@ -374,7 +377,7 @@ async def test_only_leader_capability_can_create_campaigns_assign_others_and_vie
     mentor_client, mentor_headers = await auth_client(mentor_email)
     leader_client, leader_headers = await auth_client(leader_email)
     pastor_client, pastor_headers = await auth_client(pastor_email)
-    campaign_payload = {"name": "Invasion Autorizada", "location": "Barrio Las Flores", "start_date": "2026-03-01"}
+    campaign_payload = {"name": "Invasion Autorizada", "location": "Barrio Las Flores", "start_date": "2026-03-01", "end_date": "2026-03-07"}
     try:
         rejected_campaign = await mentor_client.post("/api/mentorship/outreach/campaigns", json=campaign_payload, headers=mentor_headers)
         assert rejected_campaign.status_code == 403

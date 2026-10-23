@@ -7,6 +7,7 @@ import { canLeadOutreach } from '../lib/accessControl';
 import { Button } from '../components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { AddVisitDialog } from '../components/outreach/AddVisitDialog';
+import { MyLibraryHoldingsCard } from '../components/outreach/MyLibraryHoldingsCard';
 import { OutreachLeaderPanel } from '../components/outreach/OutreachLeaderPanel';
 import { TransferVisitDialog } from '../components/outreach/TransferVisitDialog';
 import { VisitCard } from '../components/outreach/VisitCard';
@@ -66,6 +67,7 @@ export default function OutreachPage() {
         </TabsList>
 
         <TabsContent value="mis-visitas" className="mt-4 space-y-4">
+          <MyLibraryHoldingsCard />
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap gap-2">
               {STATUS_FILTERS.map(([key, label]) => (

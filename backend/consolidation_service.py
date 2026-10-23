@@ -15,7 +15,19 @@ ENTRY_START = {
     "direct_church": "mcd",
     "cell": "mcd",
     "visitor_followup": "visitor_followup",
+    # Solo lo asigna el sistema al iniciar la Ley de las 7 Semanas desde una visita
+    # de Invasión (mentorship_outreach.start_seven_weeks): la semana de oración
+    # (S1) y la semana de invasión/contacto (S2) ya se vivieron con la campaña,
+    # así que quedan "completadas" (no "no aplica") y el expediente abre listo
+    # para empezar en MCD. No exponer este modo en los formularios manuales de
+    # Consolidación: solo nace de una Invasión real.
+    "invasion": "mcd",
 }
+
+# Puertas donde las etapas previas al inicio nunca ocurrieron (se marcan
+# "skipped" / no aplica) vs. la puerta de Invasión, donde sí ocurrieron y se
+# marcan "completed".
+ENTRY_MODES_WITH_COMPLETED_PRIOR_STAGES = {"invasion"}
 
 
 async def load_person(db, person_id: str) -> dict:
@@ -55,8 +67,10 @@ async def configure_entry_stages(db, enrollment: dict, entry_mode: str, actor_us
     now = now_utc()
     for stage in definition["stages"]:
         if stage["order"] < start["order"]:
-            status = "skipped"
-            fields = {"status": status, "skipped_at": now, "skip_reason": f"No aplica para puerta {entry_mode}", "updated_at": now}
+            if entry_mode in ENTRY_MODES_WITH_COMPLETED_PRIOR_STAGES:
+                fields = {"status": "completed", "opened_at": now, "completed_at": now, "completion_note": "Cubierta por la semana de Invasión", "updated_at": now}
+            else:
+                fields = {"status": "skipped", "skipped_at": now, "skip_reason": f"No aplica para puerta {entry_mode}", "updated_at": now}
         elif stage["key"] == start_key:
             fields = {"status": "open", "opened_at": now, "due_at": now + timedelta(hours=stage.get("sla_hours", 0)) if stage.get("sla_hours") else None, "updated_at": now}
         else:

@@ -189,11 +189,15 @@ async def recalculate_enrollment(db, enrollment_id: str, actor_user_id: str, all
 async def access_person_ids(db, current_user: dict) -> set[str] | None:
     if current_user.get("rol") == "pastor" or current_user.get("access_scope", {}).get("persons") == "all":
         return None
-    if current_user.get("rol") == "persona":
-        return {current_user.get("person_id")} if current_user.get("person_id") else set()
-    ids = {str(item["_id"]) async for item in db.persons.find({"created_by": current_user.get("user_id")}, {"_id": 1})}
+    ids = set()
+    if current_user.get("rol") != "persona":
+        ids = {str(item["_id"]) async for item in db.persons.find({"created_by": current_user.get("user_id")}, {"_id": 1})}
     if current_user.get("person_id"):
         ids.add(current_user["person_id"])
+        # Incluye a las personas de las que es mentor/responsable, aunque la
+        # cuenta sea rol "persona" (mentor_access): antes esta rama se
+        # cortaba antes de llegar aquí y el mentor veía el conteo del
+        # dashboard pero una lista vacía en /procesos/consolidacion.
         assigned = await db.process_enrollments.distinct("person_id", {"$or": [
             {"responsible_person_id": current_user["person_id"]}, {"mentor_person_id": current_user["person_id"]}
         ]})

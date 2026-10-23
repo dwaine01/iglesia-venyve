@@ -17,8 +17,8 @@ from typing import Literal, Optional
 from uuid import uuid4
 
 from bson import ObjectId
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from pydantic import BaseModel, EmailStr, Field
 
 from access_control import (
     MENTORSHIP_OUTREACH_ASSIGN,
@@ -28,7 +28,11 @@ from access_control import (
     is_global_pastoral_authority,
 )
 from consolidation_service import assert_mentor_eligible, assign_mentor, configure_entry_stages, load_person, mentor_qualification
+from core_governance import UserAccessCreate, create_user_access_core
 from core_person import _normalize as normalize_person_name, next_person_number
+from geo_address import normalize_address_document
+from geo_service import enqueue_geo_job, pending_geo_fields, process_geo_job
+from library_module import CENTRAL_HOLDER, HolderInput, MovementInput, apply_movement
 from process_engine import create_enrollment, now_utc, serialize
 from server import db, get_current_user
 
@@ -37,15 +41,36 @@ router = APIRouter(prefix="/api/mentorship/outreach", tags=["mentorship-outreach
 
 VISIT_STATUSES = ("assigned", "not_found", "visited", "rejected", "wants_followup")
 LBS_DECISIONS = ("none", "accepted", "needs_lbs")
+CALL_SCHEDULES = ("morning", "midday", "night")
+OUTREACH_PROCESS_KEY = "outreach_invasion"
+
+
+class MentorRosterEntry(BaseModel):
+    """Un mentor del roster de la invasión. Si el mentor aún no tiene cuenta,
+    `email`/`temporary_password` son obligatorios para auto-crearla en el mismo
+    paso (reutiliza `create_user_access_core` con `mentor_access=True`)."""
+    person_id: str
+    email: Optional[EmailStr] = None
+    temporary_password: Optional[str] = Field(default=None, min_length=10, max_length=128)
+
+
+class BookAssignmentEntry(BaseModel):
+    mentor_person_id: str
+    book_id: str
+    quantity: int = Field(gt=0, le=1000)
+
+
+class BookAssignmentInput(BaseModel):
+    assignments: list[BookAssignmentEntry] = Field(min_length=1)
 
 
 class CampaignInput(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     location: str = Field(min_length=1, max_length=300)
     start_date: date
-    end_date: Optional[date] = None
+    end_date: date
     zone_notes: Optional[str] = Field(default=None, max_length=1000)
-    assigned_mentor_ids: list[str] = Field(default_factory=list)
+    assigned_mentors: list[MentorRosterEntry] = Field(default_factory=list)
 
 
 class CampaignUpdateInput(BaseModel):
@@ -54,7 +79,7 @@ class CampaignUpdateInput(BaseModel):
     start_date: Optional[date] = None
     end_date: Optional[date] = None
     zone_notes: Optional[str] = Field(default=None, max_length=1000)
-    assigned_mentor_ids: Optional[list[str]] = None
+    assigned_mentors: Optional[list[MentorRosterEntry]] = None
     status: Optional[Literal["active", "closed"]] = None
 
 
@@ -79,6 +104,13 @@ class VisitReportInput(BaseModel):
     spiritual_status: Optional[Literal["cristiano", "no_cristiano"]] = None
     attends_church: Optional[bool] = None
     is_backslidden: Optional[bool] = None
+    address_line1: Optional[str] = Field(default=None, max_length=220)
+    address_line2: Optional[str] = Field(default=None, max_length=220)
+    address_city: Optional[str] = Field(default=None, max_length=120)
+    address_state: Optional[str] = Field(default=None, max_length=120)
+    address_zip: Optional[str] = Field(default=None, max_length=30)
+    agreed_start_date: Optional[date] = None
+    call_schedule: Optional[Literal["morning", "midday", "night"]] = None
     note: Optional[str] = Field(default=None, max_length=1000)
 
 
@@ -110,6 +142,16 @@ async def is_active_mentor(person_id: Optional[str]) -> bool:
         return False
     badge = await db.mentor_badges.find_one({"person_id": person_id, "active": True}, {"_id": 1})
     return bool(badge)
+
+
+async def mentor_user_id_for(mentor_person_id: str) -> str:
+    """ID de la cuenta del mentor (para mover su inventario de Librería 360).
+    Lanza 409 si el mentor aún no tiene cuenta — no debería pasar si se asignó
+    el roster con auto-creación, pero protege llamadas directas/legadas."""
+    user_doc = await db.users.find_one({"person_id": mentor_person_id}, {"_id": 1})
+    if not user_doc:
+        raise HTTPException(status_code=409, detail="El mentor responsable no tiene cuenta; no se puede verificar su inventario de Librería")
+    return str(user_doc["_id"])
 
 
 async def can_use_outreach(current_user: dict) -> bool:
@@ -184,6 +226,8 @@ async def serialize_visits(visits: list[dict], current_user: dict) -> list[dict]
             "visit_date": visit.get("visit_date"),
             "received_mcd": bool(visit.get("received_mcd")),
             "received_npt": bool(visit.get("received_npt")),
+            "mcd_delivered": bool(visit.get("mcd_delivery_movement_id")),
+            "npt_delivered": bool(visit.get("npt_delivery_movement_id")),
             "lbs_decision": visit.get("lbs_decision", "none"),
             "note": visit.get("note"),
             "enrollment_id": visit.get("enrollment_id"),
@@ -198,6 +242,13 @@ async def serialize_visits(visits: list[dict], current_user: dict) -> list[dict]
             item["spiritual_status"] = visit.get("spiritual_status")
             item["attends_church"] = visit.get("attends_church")
             item["is_backslidden"] = visit.get("is_backslidden")
+            item["address_line1"] = visit.get("address_line1")
+            item["address_line2"] = visit.get("address_line2")
+            item["address_city"] = visit.get("address_city")
+            item["address_state"] = visit.get("address_state")
+            item["address_zip"] = visit.get("address_zip")
+            item["agreed_start_date"] = visit.get("agreed_start_date")
+            item["call_schedule"] = visit.get("call_schedule")
         results.append(item)
     return results
 
@@ -240,24 +291,130 @@ async def find_or_create_person_for_visit(contact_name: Optional[str], contact_p
     return new_person_id, True
 
 
+async def resolve_or_create_target_person(visit: dict, current_user: dict) -> tuple:
+    """Resuelve (y reutiliza) la Persona 360 de esta visita. Si el contacto
+    todavía no tiene Perfil 360, usa el MISMO `find_or_create_person_for_visit`
+    que usa `start_seven_weeks` — así una entrega de libro y el inicio de la Ley
+    de las 7 Semanas en la misma visita siempre apuntan a la misma persona."""
+    created_person = False
+    if visit.get("converted_person_id"):
+        person_id = visit["converted_person_id"]
+    elif visit.get("contact_type") == "existing" and visit.get("person_id"):
+        person_id = visit["person_id"]
+    else:
+        person_id, created_person = await find_or_create_person_for_visit(
+            visit.get("contact_name"), visit.get("contact_phone"), current_user["user_id"], visit.get("contact_birth_date"),
+        )
+        await db.outreach_visits.update_one({"visit_id": visit["visit_id"]}, {"$set": {"converted_person_id": person_id, "updated_at": now_utc()}})
+        visit["converted_person_id"] = person_id
+    if visit.get("contact_birth_date"):
+        await db.persons.update_one(
+            {"_id": ObjectId(person_id), "$or": [{"fecha_nacimiento": None}, {"fecha_nacimiento": {"$exists": False}}]},
+            {"$set": {"fecha_nacimiento": visit["contact_birth_date"], "updated_at": now_utc()}},
+        )
+    return person_id, created_person
+
+
+async def deliver_outreach_book(visit: dict, sku: str, target_person_id: str, current_user: dict) -> str:
+    """Descuenta 1 unidad del inventario del mentor responsable y la entrega a
+    `target_person_id` (movimiento DELIVERY, library_module.py), etiquetada con
+    la invasión de la visita para poder reportarla por invasión."""
+    book = await db.library_books.find_one({"sku": sku, "is_active": True}, {"_id": 0, "book_id": 1, "name": 1})
+    if not book:
+        raise HTTPException(status_code=409, detail=f"No se encontró el material {sku} activo en Librería 360; contacte al Encargado de Librería")
+    mentor_user_id = await mentor_user_id_for(visit["mentor_person_id"])
+    try:
+        movement = await apply_movement(
+            MovementInput(
+                book_id=book["book_id"], movement_type="DELIVERY", quantity=1,
+                from_holder=HolderInput(type="user", id=mentor_user_id), to_holder=HolderInput(type="person", id=target_person_id),
+                person_id=target_person_id, process_key=OUTREACH_PROCESS_KEY, campaign_id=visit.get("campaign_id"),
+                notes="Entrega en visita de invasión",
+            ),
+            current_user["user_id"],
+        )
+    except HTTPException as exc:
+        if exc.status_code == 409:
+            raise HTTPException(status_code=409, detail=f"No le quedan unidades de {book['name']} en su inventario para entregar; pida más a su líder")
+        raise
+    return movement["movement_id"]
+
+
+async def sync_visit_address_to_person(visit: dict, person_id: str, current_user: dict, background_tasks: BackgroundTasks) -> None:
+    """Si la casa capturó dirección completa y la persona todavía no tiene
+    ninguna dirección en su Perfil 360, la crea reutilizando geo_address
+    (mismo normalizador y job de geocodificación que `person_domains.py`)."""
+    if not visit.get("address_line1") or await db.person_addresses.count_documents({"person_id": person_id}):
+        return
+    now = now_utc()
+    doc = {
+        "person_id": person_id, "tipo": "casa", "linea1": visit.get("address_line1"), "linea2": visit.get("address_line2"),
+        "sector": visit.get("contact_zone"), "ciudad": visit.get("address_city") or "", "provincia": visit.get("address_state"),
+        "codigo_postal": visit.get("address_zip"), "pais": "Estados Unidos", "notas": "Capturada en una visita de invasión",
+        "es_principal": True, "created_by": current_user["user_id"], "created_at": now, "updated_at": now,
+        **pending_geo_fields(1),
+    }
+    doc.update(normalize_address_document(doc))
+    result = await db.person_addresses.insert_one(doc)
+    job_id = await enqueue_geo_job(db, "person_address", str(result.inserted_id), 1, current_user["user_id"])
+    background_tasks.add_task(process_geo_job, db, job_id)
+
+
 @router.post("/campaigns", response_model=dict, status_code=201)
 async def create_campaign(payload: CampaignInput, current_user: dict = Depends(get_current_user)):
     if not can_manage_outreach_campaigns(current_user):
         raise HTTPException(status_code=403, detail="Solo la pastora/pastor o un coordinador general puede crear invasiones")
-    mentor_ids = [mid for mid in dict.fromkeys(payload.assigned_mentor_ids) if mid]
-    for mentor_id in mentor_ids:
-        if not await is_active_mentor(mentor_id):
-            raise HTTPException(status_code=409, detail="Uno de los mentores asignados no tiene insignia de Mentor activa")
+    roster = list({entry.person_id: entry for entry in payload.assigned_mentors if entry.person_id}.values())
+    accounts_created = await ensure_mentor_roster_accounts(roster, current_user)
     now = now_utc()
     campaign_id = str(uuid4())
     doc = {
         "_id": campaign_id, "campaign_id": campaign_id, "name": payload.name.strip(), "location": payload.location.strip(),
-        "start_date": payload.start_date.isoformat(), "end_date": payload.end_date.isoformat() if payload.end_date else None,
-        "zone_notes": payload.zone_notes, "assigned_mentor_ids": mentor_ids, "status": "active",
+        "start_date": payload.start_date.isoformat(), "end_date": payload.end_date.isoformat(),
+        "zone_notes": payload.zone_notes, "assigned_mentor_ids": [entry.person_id for entry in roster], "status": "active",
         "created_by_user_id": current_user["user_id"], "created_at": now, "updated_at": now,
     }
     await db.outreach_campaigns.insert_one(doc)
-    return serialize(doc)
+    result = serialize(doc)
+    result["accounts_created"] = accounts_created
+    return result
+
+
+async def ensure_mentor_roster_accounts(roster: list, current_user: dict) -> list:
+    """Para cada mentor del roster: exige insignia activa y, si no tiene
+    cuenta, la auto-crea con `create_user_access_core` (mentor_access=True)
+    usando el correo/clave temporal que escribió el coordinador en el
+    formulario — la clave nunca se registra en logs.
+
+    Valida TODO el roster primero (insignia, credenciales, correo libre y sin
+    duplicados dentro del mismo roster) y solo después crea cuentas, para que
+    el error de un mentor no deje cuentas huérfanas de los mentores anteriores."""
+    to_create = []
+    seen_emails = set()
+    for entry in roster:
+        if not await is_active_mentor(entry.person_id):
+            name = await person_display_name(entry.person_id) or "Uno de los mentores seleccionados"
+            raise HTTPException(status_code=409, detail=f"{name} no tiene insignia de Mentor activa")
+        if await db.users.find_one({"person_id": entry.person_id}, {"_id": 1}):
+            continue
+        if not entry.email or not entry.temporary_password:
+            name = await person_display_name(entry.person_id) or "Uno de los mentores seleccionados"
+            raise HTTPException(status_code=422, detail=f"{name} no tiene cuenta todavía; indique un correo y una contraseña temporal (mínimo 10 caracteres) para crearla")
+        email_key = str(entry.email).strip().lower()
+        if email_key in seen_emails:
+            raise HTTPException(status_code=422, detail=f"El correo {entry.email} se repite para más de un mentor del roster")
+        seen_emails.add(email_key)
+        if await db.users.find_one({"email": email_key}, {"_id": 1}):
+            raise HTTPException(status_code=409, detail=f"El correo {entry.email} ya tiene acceso")
+        to_create.append(entry)
+    accounts_created = []
+    for entry in to_create:
+        created = await create_user_access_core(
+            UserAccessCreate(person_id=entry.person_id, email=entry.email, temporary_password=entry.temporary_password, access_level="persona", mentor_access=True),
+            current_user,
+        )
+        accounts_created.append({"person_id": entry.person_id, "email": created["email"]})
+    return accounts_created
 
 
 @router.get("/campaigns", response_model=dict)
@@ -280,19 +437,160 @@ async def update_campaign(campaign_id: str, payload: CampaignUpdateInput, curren
         fields["start_date"] = fields["start_date"].isoformat()
     if fields.get("end_date") is not None:
         fields["end_date"] = fields["end_date"].isoformat()
-    if "assigned_mentor_ids" in fields:
-        mentor_ids = [mid for mid in dict.fromkeys(fields["assigned_mentor_ids"] or []) if mid]
-        for mentor_id in mentor_ids:
-            if not await is_active_mentor(mentor_id):
-                raise HTTPException(status_code=409, detail="Uno de los mentores asignados no tiene insignia de Mentor activa")
-        fields["assigned_mentor_ids"] = mentor_ids
+    accounts_created = []
+    if "assigned_mentors" in fields:
+        roster = list({entry.person_id: entry for entry in (payload.assigned_mentors or []) if entry.person_id}.values())
+        accounts_created = await ensure_mentor_roster_accounts(roster, current_user)
+        fields["assigned_mentor_ids"] = [entry.person_id for entry in roster]
+        del fields["assigned_mentors"]
     if fields.get("name") is not None:
         fields["name"] = fields["name"].strip()
     if fields.get("location") is not None:
         fields["location"] = fields["location"].strip()
     fields["updated_at"] = now_utc()
     await db.outreach_campaigns.update_one({"campaign_id": campaign_id}, {"$set": fields})
-    return serialize(await db.outreach_campaigns.find_one({"campaign_id": campaign_id}, {"_id": 0}))
+    result = serialize(await db.outreach_campaigns.find_one({"campaign_id": campaign_id}, {"_id": 0}))
+    result["accounts_created"] = accounts_created
+    return result
+
+
+@router.post("/campaigns/{campaign_id}/books", response_model=dict, status_code=201)
+async def assign_campaign_books(campaign_id: str, payload: BookAssignmentInput, current_user: dict = Depends(get_current_user)):
+    """Paso de libros de la invasión: por cada mentor del roster, libro y
+    cantidad desde Librería 360 → movimiento ASSIGNMENT (Central → mentor)
+    con process_key/campaign_id de esta invasión. Valida existencia central
+    ANTES de mover nada, para un error claro y evitar asignaciones parciales."""
+    if not can_manage_outreach_campaigns(current_user):
+        raise HTTPException(status_code=403, detail="Solo la pastora/pastor o un coordinador general puede asignar libros de la invasión")
+    campaign = await db.outreach_campaigns.find_one({"campaign_id": campaign_id}, {"_id": 0})
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaña no encontrada")
+    roster = set(campaign.get("assigned_mentor_ids") or [])
+    resolved = []
+    needed_by_book: dict = {}
+    book_names: dict = {}
+    for entry in payload.assignments:
+        if entry.mentor_person_id not in roster:
+            name = await person_display_name(entry.mentor_person_id) or "El mentor seleccionado"
+            raise HTTPException(status_code=409, detail=f"{name} no forma parte del roster de esta invasión")
+        book = await db.library_books.find_one({"book_id": entry.book_id, "is_active": True}, {"_id": 0, "book_id": 1, "name": 1})
+        if not book:
+            raise HTTPException(status_code=404, detail="Uno de los libros seleccionados no existe o está inactivo")
+        mentor_user_id = await mentor_user_id_for(entry.mentor_person_id)
+        needed_by_book[entry.book_id] = needed_by_book.get(entry.book_id, 0) + entry.quantity
+        book_names[entry.book_id] = book["name"]
+        resolved.append((entry, mentor_user_id))
+    for book_id, needed in needed_by_book.items():
+        central = await db.library_holdings.find_one({"book_id": book_id, "holder_type": "warehouse", "holder_id": "central"}, {"_id": 0, "quantity_on_hand": 1})
+        available = (central or {}).get("quantity_on_hand", 0)
+        if available < needed:
+            raise HTTPException(status_code=409, detail=f"No hay existencias suficientes de '{book_names[book_id]}' en el Inventario Central (disponible: {available}, necesario: {needed})")
+    movements = []
+    for entry, mentor_user_id in resolved:
+        movement = await apply_movement(
+            MovementInput(
+                book_id=entry.book_id, movement_type="ASSIGNMENT", quantity=entry.quantity,
+                from_holder=HolderInput(**CENTRAL_HOLDER), to_holder=HolderInput(type="user", id=mentor_user_id),
+                process_key=OUTREACH_PROCESS_KEY, campaign_id=campaign_id, notes=f"Invasión: {campaign['name']}",
+            ),
+            current_user["user_id"],
+        )
+        movements.append(movement)
+    return {"items": serialize(movements)}
+
+
+@router.get("/campaigns/{campaign_id}/books", response_model=dict)
+async def list_campaign_books(campaign_id: str, current_user: dict = Depends(get_current_user)):
+    """Asignado/entregado/me quedan por mentor y libro para esta invasión —
+    usado por el paso de libros (editar) y por el informe de líderes."""
+    if not is_outreach_leader(current_user):
+        raise HTTPException(status_code=403, detail="Sin permiso para consultar los libros de la invasión")
+    campaign = await db.outreach_campaigns.find_one({"campaign_id": campaign_id}, {"_id": 0})
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaña no encontrada")
+    mentor_ids = campaign.get("assigned_mentor_ids") or []
+    movements = await db.library_movements.find({"campaign_id": campaign_id, "movement_type": {"$in": ["ASSIGNMENT", "DELIVERY"]}}, {"_id": 0}).to_list(5000)
+    books = {b["book_id"]: b["name"] for b in await db.library_books.find({}, {"_id": 0, "book_id": 1, "name": 1}).to_list(2000)}
+    users = await db.users.find({"person_id": {"$in": mentor_ids}}, {"_id": 1, "person_id": 1}).to_list(len(mentor_ids)) if mentor_ids else []
+    user_to_person = {str(u["_id"]): u["person_id"] for u in users}
+    valid_oids = [ObjectId(pid) for pid in mentor_ids if ObjectId.is_valid(pid)]
+    people = await db.persons.find({"_id": {"$in": valid_oids}}, {"_id": 1, "nombre": 1, "apellido": 1}).to_list(len(valid_oids)) if valid_oids else []
+    names = {str(p["_id"]): f"{p.get('nombre', '')} {p.get('apellido', '')}".strip() for p in people}
+    buckets: dict = {}
+    for movement in movements:
+        holder = movement.get("to_holder") if movement["movement_type"] == "ASSIGNMENT" else movement.get("from_holder")
+        mentor_person_id = user_to_person.get((holder or {}).get("id")) if (holder or {}).get("type") == "user" else None
+        if not mentor_person_id:
+            continue
+        key = (mentor_person_id, movement["book_id"])
+        bucket = buckets.setdefault(key, {
+            "mentor_person_id": mentor_person_id, "mentor_name": names.get(mentor_person_id, "Mentor"),
+            "book_id": movement["book_id"], "book_name": books.get(movement["book_id"], movement["book_id"]),
+            "assigned": 0, "delivered": 0,
+        })
+        if movement["movement_type"] == "ASSIGNMENT":
+            bucket["assigned"] += movement["quantity"]
+        else:
+            bucket["delivered"] += movement["quantity"]
+    items = list(buckets.values())
+    for item in items:
+        item["remaining"] = item["assigned"] - item["delivered"]
+    return {"items": items}
+
+
+@router.get("/campaigns/{campaign_id}/books/{book_id}/deliveries", response_model=dict)
+async def campaign_book_deliveries(campaign_id: str, book_id: str, mentor_person_id: Optional[str] = None, current_user: dict = Depends(get_current_user)):
+    """Para que un líder 'abra' un libro de la invasión y vea a qué personas se
+    entregó. Si se indica `mentor_person_id`, se limita a las entregas hechas
+    desde el inventario de ESE mentor (evita mezclar destinatarios de otros
+    mentores de la misma invasión y libro)."""
+    if not is_outreach_leader(current_user):
+        raise HTTPException(status_code=403, detail="Sin permiso para consultar las entregas de este libro")
+    query = {"campaign_id": campaign_id, "book_id": book_id, "movement_type": "DELIVERY"}
+    if mentor_person_id:
+        mentor_user = await db.users.find_one({"person_id": mentor_person_id}, {"_id": 1})
+        if not mentor_user:
+            return {"items": []}
+        query["from_holder.type"] = "user"
+        query["from_holder.id"] = str(mentor_user["_id"])
+    movements = await db.library_movements.find(query, {"_id": 0}).sort("occurred_at", -1).to_list(500)
+    person_ids = {m["person_id"] for m in movements if m.get("person_id")}
+    valid_oids = [ObjectId(pid) for pid in person_ids if ObjectId.is_valid(pid)]
+    people = await db.persons.find({"_id": {"$in": valid_oids}}, {"_id": 1, "nombre": 1, "apellido": 1}).to_list(len(valid_oids)) if valid_oids else []
+    names = {str(p["_id"]): f"{p.get('nombre', '')} {p.get('apellido', '')}".strip() for p in people}
+    items = [{
+        "movement_id": m["movement_id"], "person_id": m.get("person_id"), "person_name": names.get(m.get("person_id"), "—"),
+        "quantity": m["quantity"], "occurred_at": serialize(m.get("occurred_at")), "mentor_label": m.get("from_holder_label"),
+    } for m in movements]
+    return {"items": items}
+
+
+@router.get("/campaigns/{campaign_id}/report", response_model=dict)
+async def campaign_report(campaign_id: str, current_user: dict = Depends(get_current_user)):
+    """Vista de líderes por invasión: por cada mentor, contactos registrados,
+    cuántos aceptaron, libros asignados/entregados y si tuvo actividad."""
+    if not is_outreach_leader(current_user):
+        raise HTTPException(status_code=403, detail="Sin permiso para consultar el informe de la invasión")
+    campaign = await db.outreach_campaigns.find_one({"campaign_id": campaign_id}, {"_id": 0})
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaña no encontrada")
+    mentor_ids = campaign.get("assigned_mentor_ids") or []
+    visits = await db.outreach_visits.find({"campaign_id": campaign_id, "archived": {"$ne": True}}, {"_id": 0}).to_list(5000)
+    book_rows = (await list_campaign_books(campaign_id, current_user))["items"]
+    valid_oids = [ObjectId(pid) for pid in mentor_ids if ObjectId.is_valid(pid)]
+    people = await db.persons.find({"_id": {"$in": valid_oids}}, {"_id": 1, "nombre": 1, "apellido": 1}).to_list(len(valid_oids)) if valid_oids else []
+    names = {str(p["_id"]): f"{p.get('nombre', '')} {p.get('apellido', '')}".strip() for p in people}
+    mentors = []
+    for mentor_id in mentor_ids:
+        mentor_visits = [v for v in visits if v.get("mentor_person_id") == mentor_id]
+        mentors.append({
+            "mentor_person_id": mentor_id, "mentor_name": names.get(mentor_id, "Mentor"),
+            "contacts_total": len(mentor_visits),
+            "accepted": sum(1 for v in mentor_visits if v.get("status") == "wants_followup"),
+            "books": [row for row in book_rows if row["mentor_person_id"] == mentor_id],
+            "has_activity": bool(mentor_visits),
+        })
+    return {"campaign": serialize(campaign), "mentors": mentors}
 
 
 @router.get("/person-search", response_model=dict)
@@ -357,8 +655,10 @@ async def create_visit(payload: VisitCreateInput, current_user: dict = Depends(g
         "person_id": person_id, "contact_name": payload.contact_name.strip() if payload.contact_name else None,
         "contact_phone": payload.contact_phone, "contact_zone": payload.contact_zone,
         "phone_normalized": phone_digits, "status": "assigned", "visit_date": None,
-        "received_mcd": False, "received_npt": False, "lbs_decision": "none",
-        "contact_birth_date": None, "spiritual_status": None, "attends_church": None, "is_backslidden": None,
+        "received_mcd": False, "received_npt": False, "mcd_delivery_movement_id": None, "npt_delivery_movement_id": None,
+        "lbs_decision": "none", "contact_birth_date": None, "spiritual_status": None, "attends_church": None, "is_backslidden": None,
+        "address_line1": None, "address_line2": None, "address_city": None, "address_state": None, "address_zip": None,
+        "agreed_start_date": None, "call_schedule": None,
         "note": payload.note, "enrollment_id": None, "converted_person_id": None, "converted_at": None,
         "archived": False, "created_by_user_id": current_user["user_id"], "created_at": now, "updated_at": now,
     }
@@ -409,13 +709,31 @@ async def update_visit_report(visit_id: str, payload: VisitReportInput, current_
     fields = payload.dict(exclude_unset=True)
     if visit.get("enrollment_id") and fields.get("status") and fields["status"] != "wants_followup":
         raise HTTPException(status_code=409, detail="Ya inició la Ley de las 7 Semanas; el estado no se puede cambiar")
+    for sku, field_name, movement_field in (("MCD", "received_mcd", "mcd_delivery_movement_id"), ("NPT", "received_npt", "npt_delivery_movement_id")):
+        if field_name not in fields:
+            continue
+        already_delivered = bool(visit.get(movement_field))
+        if fields[field_name] is True and not already_delivered:
+            target_person_id, _ = await resolve_or_create_target_person(visit, current_user)
+            movement_id = await deliver_outreach_book(visit, sku, target_person_id, current_user)
+            # Se persiste de inmediato (no solo en `fields`): si la entrega del
+            # siguiente libro falla, esta ya quedó marcada y un reintento no
+            # vuelve a descontarla ni a duplicar el movimiento DELIVERY.
+            visit[movement_field] = movement_id
+            fields[movement_field] = movement_id
+            await db.outreach_visits.update_one({"visit_id": visit_id}, {"$set": {movement_field: movement_id}})
+        elif fields[field_name] is False and already_delivered:
+            raise HTTPException(status_code=409, detail="Ya se entregó este material; para corregirlo use la reversión de movimientos en Librería 360")
+        # True + ya entregado antes: idempotente, no se repite el movimiento ni se vuelve a descontar.
     if fields.get("visit_date") is not None:
         fields["visit_date"] = fields["visit_date"].isoformat()
     if fields.get("contact_birth_date") is not None:
         fields["contact_birth_date"] = fields["contact_birth_date"].isoformat()
+    if fields.get("agreed_start_date") is not None:
+        fields["agreed_start_date"] = fields["agreed_start_date"].isoformat()
     fields["updated_at"] = now_utc()
     await db.outreach_visits.update_one({"visit_id": visit_id}, {"$set": fields})
-    await log_visit_history(visit_id, current_user, "report_updated", fields)
+    await log_visit_history(visit_id, current_user, "report_updated", {k: v for k, v in fields.items() if k != "updated_at"})
     updated = await load_visit(visit_id)
     return (await serialize_visits([updated], current_user))[0]
 
@@ -443,7 +761,7 @@ async def transfer_visit(visit_id: str, payload: VisitTransferInput, current_use
 
 
 @router.post("/visits/{visit_id}/start-seven-weeks", response_model=dict)
-async def start_seven_weeks(visit_id: str, current_user: dict = Depends(get_current_user)):
+async def start_seven_weeks(visit_id: str, background_tasks: BackgroundTasks, current_user: dict = Depends(get_current_user)):
     if not await can_use_outreach(current_user):
         raise HTTPException(status_code=403, detail="Sin permiso para iniciar la Ley de las 7 Semanas")
     visit = await load_visit(visit_id)
@@ -455,24 +773,23 @@ async def start_seven_weeks(visit_id: str, current_user: dict = Depends(get_curr
         raise HTTPException(status_code=409, detail="Esta visita ya inició la Ley de las 7 Semanas")
     mentor_person_id = visit["mentor_person_id"]
     await assert_mentor_eligible(db, mentor_person_id)
-    if visit["contact_type"] == "existing":
-        person_id = visit["person_id"]
-        created_person = False
-        if visit.get("contact_birth_date"):
-            await db.persons.update_one(
-                {"_id": ObjectId(person_id), "$or": [{"fecha_nacimiento": None}, {"fecha_nacimiento": {"$exists": False}}]},
-                {"$set": {"fecha_nacimiento": visit["contact_birth_date"], "updated_at": now_utc()}},
-            )
-    else:
-        person_id, created_person = await find_or_create_person_for_visit(visit.get("contact_name"), visit.get("contact_phone"), current_user["user_id"], visit.get("contact_birth_date"))
+    person_id, created_person = await resolve_or_create_target_person(visit, current_user)
+    await sync_visit_address_to_person(visit, person_id, current_user, background_tasks)
     enrollment, created_enrollment = await create_enrollment(
         db, "consolidation", person_id, mentor_person_id, current_user["user_id"],
         status="active", next_action="Dar seguimiento al visitante", source="mentorship_outreach", source_id=visit_id,
     )
     if created_enrollment:
-        await configure_entry_stages(db, enrollment, "visitor_followup", current_user["user_id"])
+        # Puerta "invasion": S1 (oración) y S2 (invasión/contacto) ya se vivieron
+        # con la campaña, así que el expediente abre completo y listo para MCD.
+        await configure_entry_stages(db, enrollment, "invasion", current_user["user_id"])
         enrollment = await db.process_enrollments.find_one({"enrollment_id": enrollment["enrollment_id"]}, {"_id": 0})
         await assign_mentor(db, enrollment, mentor_person_id, current_user["user_id"], "Inicia la Ley de las 7 Semanas desde una invasión")
+    if visit.get("agreed_start_date") or visit.get("call_schedule"):
+        await db.process_enrollments.update_one(
+            {"enrollment_id": enrollment["enrollment_id"]},
+            {"$set": {"outreach_agreed_start_date": visit.get("agreed_start_date"), "outreach_call_schedule": visit.get("call_schedule")}},
+        )
     now = now_utc()
     await db.outreach_visits.update_one({"visit_id": visit_id}, {"$set": {
         "enrollment_id": enrollment["enrollment_id"], "converted_person_id": person_id, "converted_at": now, "updated_at": now,

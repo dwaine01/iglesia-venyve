@@ -9,6 +9,8 @@ import { canCreateOutreachCampaign } from '../../lib/accessControl';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { AddVisitDialog } from './AddVisitDialog';
+import { CampaignBooksDialog } from './CampaignBooksDialog';
+import { CampaignReportDialog } from './CampaignReportDialog';
 import { CreateCampaignDialog } from './CreateCampaignDialog';
 import { TransferVisitDialog } from './TransferVisitDialog';
 import { VisitCard } from './VisitCard';
@@ -30,6 +32,8 @@ export const OutreachLeaderPanel = ({ campaigns, onCampaignsChanged }) => {
   const [drillVisits, setDrillVisits] = useState([]);
   const [addOpen, setAddOpen] = useState(false);
   const [transferVisit, setTransferVisit] = useState(null);
+  const [booksCampaign, setBooksCampaign] = useState(null);
+  const [reportCampaign, setReportCampaign] = useState(null);
 
   const loadDashboard = useCallback(async () => {
     setLoading(true);
@@ -74,12 +78,18 @@ export const OutreachLeaderPanel = ({ campaigns, onCampaignsChanged }) => {
           )}
         </div>
         {campaigns?.length > 0 ? (
-          <div className="mt-3 flex flex-wrap gap-2">
+          <div className="mt-3 space-y-2" data-testid="outreach-campaign-list">
             {campaigns.map((campaign) => (
-              <Badge key={campaign.campaign_id} variant="outline" data-testid={`outreach-campaign-badge-${campaign.campaign_id}`}>
-                {campaign.name} · {campaign.location} · {campaign.start_date} · {campaign.status === 'active' ? 'Activa' : 'Cerrada'}
-                {campaign.assigned_mentor_ids?.length > 0 && ` · ${campaign.assigned_mentor_ids.length} mentor(es)`}
-              </Badge>
+              <div key={campaign.campaign_id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[#E8E5DE] p-2" data-testid={`outreach-campaign-card-${campaign.campaign_id}`}>
+                <Badge variant="outline" data-testid={`outreach-campaign-badge-${campaign.campaign_id}`}>
+                  {campaign.name} · {campaign.location} · {campaign.start_date} a {campaign.end_date} · {campaign.status === 'active' ? 'Activa' : 'Cerrada'}
+                  {campaign.assigned_mentor_ids?.length > 0 && ` · ${campaign.assigned_mentor_ids.length} mentor(es)`}
+                </Badge>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="outline" onClick={() => setBooksCampaign(campaign)} data-testid={`outreach-campaign-books-button-${campaign.campaign_id}`}>Libros</Button>
+                  <Button size="sm" variant="outline" onClick={() => setReportCampaign(campaign)} data-testid={`outreach-campaign-report-button-${campaign.campaign_id}`}>Informe</Button>
+                </div>
+              </div>
             ))}
           </div>
         ) : (
@@ -145,6 +155,8 @@ export const OutreachLeaderPanel = ({ campaigns, onCampaignsChanged }) => {
         onCreated={() => { loadDashboard(); if (drillMentorId) loadDrill(drillMentorId); }}
       />
       <TransferVisitDialog visit={transferVisit} onClose={() => setTransferVisit(null)} onTransferred={refreshDrill} />
+      <CampaignBooksDialog open={Boolean(booksCampaign)} onOpenChange={(value) => !value && setBooksCampaign(null)} campaign={booksCampaign} mentorOptions={mentors} />
+      <CampaignReportDialog open={Boolean(reportCampaign)} onOpenChange={(value) => !value && setReportCampaign(null)} campaign={reportCampaign} />
     </div>
   );
 };

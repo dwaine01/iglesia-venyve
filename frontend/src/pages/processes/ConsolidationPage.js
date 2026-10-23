@@ -32,7 +32,7 @@ export default function ConsolidationPage() {
       const [dashboard, enrollments, groups, catalog, mentors, routing] = await Promise.all([
         axios.get(`${API}/api/processes/consolidation/dashboard`, getAuthHeaders()),
         axios.get(`${API}/api/processes/enrollments?process_key=consolidation`, getAuthHeaders()),
-        axios.get(`${API}/api/front-groups`, getAuthHeaders()),
+        axios.get(`${API}/api/front-groups`, getAuthHeaders()).catch(() => ({ data: { items: [] } })),
         axios.get(`${API}/api/processes/catalog`, getAuthHeaders()),
         axios.get(`${API}/api/mentorship/mentors`, getAuthHeaders()).catch((mentorError) => { toast.error(mentorError?.response?.data?.detail || 'No se pudo cargar la lista de mentores'); return { data: { items: [] } }; }),
         canAssign ? axios.get(`${API}/api/front-group-routing/overview`, getAuthHeaders()) : Promise.resolve({ data: null }),

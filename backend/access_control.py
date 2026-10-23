@@ -358,5 +358,5 @@ async def ensure_access_defaults(db) -> None:
     )
     await db.users.update_many(
         {"capabilities": MENTORSHIP_OUTREACH_REPORT},
-        {"$addToSet": {"capabilities": {"$each": [*PERSON_SELF_CAPABILITIES, PROCESSES_PARTICIPATE]}}},
+        {"$addToSet": {"capabilities": {"$each": [*PERSON_SELF_CAPABILITIES, PROCESSES_PARTICIPATE, LIBRARY_DELIVER]}}},
     )
