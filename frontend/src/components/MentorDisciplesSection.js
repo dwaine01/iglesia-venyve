@@ -125,7 +125,7 @@ export default function MentorDisciplesSection({ personId, isOwnProfile, API, ge
 
   useEffect(() => { load(); }, [load]);
 
-  if (loading) return <Loader2 className="h-5 w-5 animate-spin text-slate-400" data-testid="mentor-disciples-loading" />;
+  if (loading && !data) return <Loader2 className="h-5 w-5 animate-spin text-slate-400" data-testid="mentor-disciples-loading" />;
   if (error) return <p className="text-sm text-red-600" data-testid="mentor-disciples-error">{error}</p>;
 
   return (

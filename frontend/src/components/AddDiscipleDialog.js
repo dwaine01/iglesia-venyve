@@ -35,6 +35,9 @@ export default function AddDiscipleDialog({ open, onOpenChange, mentorPersonId, 
     try {
       const response = await axios.get(`${API}/api/mentorship/outreach/person-search?q=${encodeURIComponent(value.trim())}`, getAuthHeaders());
       setResults(response.data.items || []);
+    } catch (error) {
+      setResults([]);
+      toast.error(errorDetailText(error, 'No se pudo buscar la persona'));
     } finally {
       setSearching(false);
     }

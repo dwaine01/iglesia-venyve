@@ -7,6 +7,7 @@ import { Button } from './ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
+import { errorDetailText } from '../lib/errorText';
 
 export default function CreateMentorAccessDialog({ open, onOpenChange, personId, API, getAuthHeaders, onCreated }) {
   const [email, setEmail] = useState('');
@@ -49,7 +50,7 @@ export default function CreateMentorAccessDialog({ open, onOpenChange, personId,
       close(false);
       if (onCreated) onCreated();
     } catch (error) {
-      toast.error(error?.response?.data?.detail || 'No se pudo crear el acceso de mentor');
+      toast.error(errorDetailText(error, 'No se pudo crear el acceso de mentor'));
     } finally {
       setSaving(false);
     }
