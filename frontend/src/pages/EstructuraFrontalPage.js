@@ -65,14 +65,14 @@ export default function EstructuraFrontalPage() {
 
   return (
     <div className="min-h-screen bg-[#F8F6F0] pb-10" data-testid="estructura-frontal-page">
-      <header className="bg-[#101D36] px-4 py-5 text-white sm:px-6">
-        <div className="mx-auto max-w-3xl">
+      <header className="bg-[#101D36] px-4 py-5 text-white sm:px-6 lg:px-8">
+        <div className="mx-auto w-full max-w-[1600px]">
           <p className="flex items-center gap-1.5 text-xs font-semibold uppercase text-[#D4B871]"><Network className="h-3.5 w-3.5" />Estructura por niveles</p>
           <h1 className="mt-1 font-['Spectral'] text-2xl font-bold" data-testid="estructura-titulo">{group?.name || 'Explorar mi rama'}</h1>
           {group && <p className="mt-1 text-sm text-white/70">Líder: {group.leader?.name || 'Por definir'} · Colíder: {group.co_leader?.name || 'Por definir'}</p>}
         </div>
       </header>
-      <div className="mx-auto max-w-3xl space-y-4 px-4 py-4 sm:px-6">
+      <div className="mx-auto w-full max-w-[1600px] space-y-4 px-4 py-4 sm:px-6 lg:px-8">
         {error && <div className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700"><TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />{error}</div>}
         {!error && !node && !start && <div className="flex justify-center py-16"><Loader2 className="h-7 w-7 animate-spin text-[#9A7A2F]" /></div>}
 
@@ -100,7 +100,7 @@ export default function EstructuraFrontalPage() {
 
           <section className="space-y-2" data-testid="estructura-hijos">
             <h2 className="flex items-center gap-2 font-semibold text-[#101D36]"><GitBranch className="h-4 w-4 text-[#9A7A2F]" />Grupos de sus líderes ({node.children.length})</h2>
-            {node.children.length ? node.children.map((child) => <GroupCardButton key={child.front_group_id} group={child} onOpen={open} />) : <p className="text-sm text-slate-400">Ningún líder de este grupo ha formado su grupo todavía.</p>}
+            {node.children.length ? <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">{node.children.map((child) => <GroupCardButton key={child.front_group_id} group={child} onOpen={open} />)}</div> : <p className="text-sm text-slate-400">Ningún líder de este grupo ha formado su grupo todavía.</p>}
           </section>
 
           <section className="rounded-xl border border-[#E8E5DE] bg-white shadow-sm" data-testid="estructura-mas-estadisticas">

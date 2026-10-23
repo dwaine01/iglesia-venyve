@@ -34,6 +34,13 @@ DEFAULT_THRESHOLDS = {
     # ETAPA 5C-3: semáforo de participación de Grupos Frontales en invasiones.
     "participation_ratio_green": {"value": 0.60, "label": "% de integrantes con actividad en el período para marcar el grupo en verde", "status": "propuesta"},
     "participation_ratio_yellow": {"value": 0.30, "label": "% de integrantes con actividad en el período para marcar el grupo en amarillo (debajo: rojo)", "status": "propuesta"},
+    # Metas de "Mi Grupo Frontal" (valor inicial = propuesta hasta que la pastora o el coordinador general las confirmen).
+    "goal_attendance_ratio": {"value": 0.80, "label": "Meta de asistencia: % de integrantes con al menos una asistencia registrada en el período", "status": "propuesta"},
+    "goal_activity_ratio": {"value": 0.50, "label": "Meta de participación en actividades: % de integrantes que sirvieron en un turno o realizaron una actividad de consolidación", "status": "propuesta"},
+    "goal_outreach_ratio": {"value": 0.60, "label": "Meta de impacto en invasiones: % de integrantes con hogares, intentos de visita o personas alcanzadas", "status": "propuesta"},
+    "goal_persons_reached_per_member_week": {"value": 1.0, "label": "Meta de personas alcanzadas por integrante por semana (en 'Por invasión': por invasión)", "status": "propuesta"},
+    "goal_progress_green": {"value": 0.80, "label": "Avance hacia las metas desde el cual el equipo es A (verde)", "status": "propuesta"},
+    "goal_progress_yellow": {"value": 0.50, "label": "Avance hacia las metas desde el cual el equipo es B (ámbar); debajo, C (rojo)", "status": "propuesta"},
 }
 
 
@@ -429,7 +436,8 @@ class ThresholdUpdate(BaseModel):
     label: Optional[str] = None
 
 
-RATIO_KEYS = {"overdue_activity_ratio_red", "overdue_activity_ratio_yellow", "participation_ratio_green", "participation_ratio_yellow"}
+RATIO_KEYS = {"overdue_activity_ratio_red", "overdue_activity_ratio_yellow", "participation_ratio_green", "participation_ratio_yellow",
+              "goal_attendance_ratio", "goal_activity_ratio", "goal_outreach_ratio", "goal_progress_green", "goal_progress_yellow"}
 DAY_KEYS = {"mentor_inactivity_days", "accepted_not_started_days", "stage_stall_days"}
 
 
@@ -450,6 +458,10 @@ async def update_threshold(key: str, payload: ThresholdUpdate, current_user: dic
         raise HTTPException(status_code=422, detail="El umbral verde de participación no puede ser menor que el amarillo")
     if key == "participation_ratio_yellow" and payload.value > current["participation_ratio_green"]["value"]:
         raise HTTPException(status_code=422, detail="El umbral amarillo de participación no puede ser mayor que el verde")
+    if key == "goal_progress_green" and payload.value < current["goal_progress_yellow"]["value"]:
+        raise HTTPException(status_code=422, detail="El avance para A no puede ser menor que el de B")
+    if key == "goal_progress_yellow" and payload.value > current["goal_progress_green"]["value"]:
+        raise HTTPException(status_code=422, detail="El avance para B no puede ser mayor que el de A")
     entry = {**current.get(key, DEFAULT_THRESHOLDS[key]), "value": payload.value, "status": "confirmado"}
     if payload.label:
         entry["label"] = payload.label

@@ -8,12 +8,13 @@ import { apiErrorMessage } from '../../lib/apiErrors';
 import { PeriodSelector, periodParams } from './PeriodSelector';
 
 // Paleta validada (scripts/validate_palette.js): categórica en orden fijo y
-// estados reservados para el semáforo (siempre con ícono + texto).
+// estados reservados para el semáforo: verde, ámbar y rojo apagados
+// (contraste ≥ 3:1), siempre con ícono + texto.
 export const SERIES = { blue: '#2a78d6', orange: '#eb6834', aqua: '#1baf7a', yellow: '#eda100' };
 export const STATUS = {
-  green: { color: '#0ca30c', label: 'Avanza', icon: CheckCircle2 },
-  yellow: { color: '#fab219', label: 'Atención', icon: AlertTriangle },
-  red: { color: '#d03b3b', label: 'Necesita seguimiento', icon: OctagonAlert },
+  green: { color: '#3d8b5a', label: 'Avanza', icon: CheckCircle2 },
+  yellow: { color: '#b8862b', label: 'Atención', icon: AlertTriangle },
+  red: { color: '#b4493d', label: 'Necesita seguimiento', icon: OctagonAlert },
 };
 const RESULTS = [
   { key: 'contacted', label: 'Contactados', color: SERIES.blue },
