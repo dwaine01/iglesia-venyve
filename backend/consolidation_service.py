@@ -145,6 +145,8 @@ async def assign_mentor(db, enrollment: dict, mentor_person_id: str, actor_user_
         {"enrollment_id": enrollment["enrollment_id"]},
         {"$set": {"mentor_person_id": mentor_person_id, "responsible_person_id": mentor_person_id, "mentor_lbs_qualified": False, "mentor_transfer_required": False, "updated_at": now}},
     )
+    from consolidation_activities import sync_activities_mentor
+    await sync_activities_mentor(enrollment["enrollment_id"], mentor_person_id)
     await record_event(db, enrollment, actor_user_id, "mentor_transferred" if transfer else "mentor_assigned", "Mentor transferido" if transfer else "Mentor asignado", reason)
     return serialize(document)
 

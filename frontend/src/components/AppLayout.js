@@ -29,7 +29,7 @@ const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
       { to: '/dashboard-general', icon: Crown, label: 'Panel General', end: true },
       { to: '/nucleo', icon: DatabaseZap, label: 'Gobierno del Núcleo', testId: 'nav-core-governance' },
       { to: '/procesos/dashboard', icon: Activity, label: 'Panel de Procesos', testId: 'nav-process-dashboard' },
-      { to: '/procesos/consolidacion', icon: Activity, label: 'Consolidación', testId: 'nav-consolidation' },
+      { to: '/procesos/consolidacion', icon: Activity, label: 'Consolidación', testId: 'nav-consolidation', end: true },
       { to: '/procesos/discipulado', icon: BookHeart, label: 'Educación / Discipulado', testId: 'nav-discipleship' },
       { to: '/bautismos', icon: Droplets, label: 'Bautismos', testId: 'nav-baptism' },
       { to: '/presentaciones', icon: Baby, label: 'Presentación de Niños', testId: 'nav-dedication' },
@@ -66,7 +66,7 @@ const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
   if (rol === 'persona') {
     const personaItems = [
       { to: '/procesos/dashboard', icon: Trophy, label: 'Mi Progreso', end: true },
-      { to: '/procesos/consolidacion', icon: Activity, label: 'Mi Consolidación' },
+      { to: '/procesos/consolidacion', icon: Activity, label: 'Mi Consolidación', end: true },
       { to: '/procesos/discipulado', icon: BookHeart, label: 'Mi Discipulado' },
       { to: '/formacion', icon: GraduationCap, label: 'Mi Formación', testId: 'nav-formation' },
       { to: '/procesos/mentoria', icon: HeartHandshake, label: 'Mi Mentoría' },
@@ -91,7 +91,7 @@ const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
   const items = [
     { to: '/', icon: LayoutDashboard, label: 'Panel principal', end: true },
     { to: '/procesos/dashboard', icon: Activity, label: 'Panel de Procesos', testId: 'nav-process-dashboard' },
-    { to: '/procesos/consolidacion', icon: Activity, label: 'Consolidación', testId: 'nav-consolidation' },
+    { to: '/procesos/consolidacion', icon: Activity, label: 'Consolidación', testId: 'nav-consolidation', end: true },
     { to: '/procesos/discipulado', icon: BookHeart, label: 'Educación / Discipulado', testId: 'nav-discipleship' },
     { to: '/bautismos', icon: Droplets, label: 'Bautismos', testId: 'nav-baptism' },
     { to: '/presentaciones', icon: Baby, label: 'Presentación de Niños', testId: 'nav-dedication' },

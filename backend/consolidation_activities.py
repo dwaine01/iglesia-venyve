@@ -137,7 +137,7 @@ async def ensure_consolidation_calendar(enrollment: dict, actor_user_id: str) ->
             "stage_key": stage_key, "stage_week_label": STAGE_WEEK_LABEL[stage_key], "day_number": template["day_number"],
             "moment_key": template["moment_key"], "moment_label": template["moment_label"],
             "title": template["title"], "content": template.get("content"), "order": template["order"],
-            "scheduled_date": scheduled_date.isoformat(), "status": "pending", "result_at": None,
+            "scheduled_date": scheduled_date.isoformat(), "status": "pending", "last_result": None, "result_at": None,
             "note": None, "next_step": None, "rescheduled_date": None, "book_delivery_movement_id": None,
             "created_at": now, "updated_at": now,
         })
@@ -148,12 +148,28 @@ async def ensure_consolidation_calendar(enrollment: dict, actor_user_id: str) ->
     return True
 
 
+async def sync_activities_mentor(enrollment_id: str, mentor_person_id: str | None) -> None:
+    """Al transferir el mentor responsable (o cambiar de grupo frontal), las
+    actividades PENDIENTES deben pasar a su panel; las 'realizada' quedan
+    atribuidas a quien realmente las hizo (no se reescribe el historial)."""
+    await db.consolidation_activities.update_many(
+        {"enrollment_id": enrollment_id, "status": "pending"},
+        {"$set": {"mentor_person_id": mentor_person_id, "updated_at": now_utc()}},
+    )
+
+
 async def build_mentor_activity_buckets(mentor_person_id: str, upcoming_days: int = 7) -> dict:
     """'Hoy', 'Atrasado' y 'Próximo' de UN mentor — usado tanto por su propio
-    panel como por la vista de supervisión (pastora/coordinador) de ese mentor."""
+    panel como por la vista de supervisión (pastora/coordinador) de ese mentor.
+    Incluye actividades 'pendientes' aunque su último intento haya sido 'sin
+    respuesta' o 'reprogramada' (son intentos, no cierran la actividad); excluye
+    expedientes pausados/desistidos o ya completados."""
     today = now_utc().date()
     upcoming_limit = (today + timedelta(days=upcoming_days)).isoformat()
-    base = {"mentor_person_id": mentor_person_id, "status": "pending"}
+    paused_or_done = await db.process_enrollments.distinct(
+        "enrollment_id", {"process_key": "consolidation", "mentor_person_id": mentor_person_id, "$or": [{"decision_status": "paused"}, {"status": "completed"}]},
+    )
+    base = {"mentor_person_id": mentor_person_id, "status": "pending", "enrollment_id": {"$nin": paused_or_done}}
     today_items = await db.consolidation_activities.find({**base, "scheduled_date": today.isoformat()}, {"_id": 0}).sort("order", 1).to_list(300)
     overdue_items = await db.consolidation_activities.find({**base, "scheduled_date": {"$lt": today.isoformat()}}, {"_id": 0}).sort("scheduled_date", 1).to_list(300)
     upcoming_items = await db.consolidation_activities.find({**base, "scheduled_date": {"$gt": today.isoformat(), "$lte": upcoming_limit}}, {"_id": 0}).sort("scheduled_date", 1).to_list(300)
@@ -247,12 +263,22 @@ async def update_activity_result(activity_id: str, payload: ActivityResultUpdate
     if payload.status == "rescheduled" and not payload.rescheduled_date:
         raise HTTPException(status_code=422, detail="Indique la nueva fecha para reprogramar")
     now = now_utc()
-    update = {"status": payload.status, "result_at": now, "note": payload.note, "next_step": payload.next_step, "updated_at": now}
+    # 'sin respuesta' y 'reprogramada' son INTENTOS, no cierran la actividad: sigue
+    # 'pending' (aparece en Hoy/Atrasado/Próximo y se puede volver a registrar más
+    # tarde); solo 'done' es terminal y cuenta para el avance de la etapa.
+    update = {
+        "status": "done" if payload.status == "done" else "pending", "last_result": payload.status,
+        "result_at": now, "note": payload.note, "next_step": payload.next_step, "updated_at": now,
+    }
     if payload.status == "rescheduled":
         update["rescheduled_date"] = payload.rescheduled_date.isoformat()
         update["scheduled_date"] = payload.rescheduled_date.isoformat()
     if payload.deliver_book and payload.status == "done" and activity["stage_key"] in BOOK_SKU_BY_STAGE and not activity.get("book_delivery_movement_id"):
         sku = BOOK_SKU_BY_STAGE[activity["stage_key"]]
+        book = await db.library_books.find_one({"sku": sku}, {"_id": 0, "book_id": 1, "name": 1})
+        already_delivered = book and await db.library_movements.find_one({"book_id": book["book_id"], "movement_type": "DELIVERY", "person_id": enrollment["person_id"]}, {"_id": 1})
+        if already_delivered:
+            raise HTTPException(status_code=409, detail=f"Ya se le entregó {book['name']} a esta persona antes; no se puede entregar de nuevo")
         movement_id = await deliver_from_mentor_to_person(
             sku, enrollment["mentor_person_id"], enrollment["person_id"], current_user["user_id"],
             campaign_id=enrollment.get("campaign_id"), process_key="consolidation", notes=f"Entrega durante actividad: {activity['title']}",

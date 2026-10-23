@@ -172,7 +172,8 @@ async def test_no_answer_does_not_count_as_done_nor_advance_decision_status():
             json={"status": "no_answer", "note": "No contestó"}, headers=mentor_headers,
         )
         assert no_answer.status_code == 200, no_answer.text
-        assert no_answer.json()["status"] == "no_answer"
+        assert no_answer.json()["status"] == "pending", "'sin respuesta' es un intento, no cierra la actividad: sigue pendiente para poder reintentar"
+        assert no_answer.json()["last_result"] == "no_answer"
 
         enrollment_after = await server.db.process_enrollments.find_one({"enrollment_id": enrollment_id}, {"_id": 0})
         assert enrollment_after["decision_status"] == "start_scheduled", "'sin respuesta' no debe avanzar el estado de decisión"
@@ -338,7 +339,9 @@ async def test_decision_status_pause_requires_reason_and_can_resume():
 
         resumed = await mentor_client.put(f"/api/processes/consolidation/{enrollment_id}/decision-status", json={"new_status": "accepted"}, headers=mentor_headers)
         assert resumed.status_code == 200
-        assert resumed.json()["decision_status"] == "accepted"
+        # Reanudar no debe retroceder el progreso: como el calendario ya inició hoy,
+        # el sistema recalcula a 'in_progress' en vez de devolverlo a 'accepted'.
+        assert resumed.json()["decision_status"] == "in_progress"
         assert resumed.json()["decision_paused_reason"] is None
 
         membership = await server.db.person_memberships.find_one({"person_id": started["converted_person_id"]})
@@ -385,4 +388,90 @@ async def test_my_panel_and_supervision_by_mentor_show_overdue_and_are_isolated(
         await mentor_client.aclose()
         await other_client.aclose()
         await pastor_client.aclose()
+        await cleanup()
+
+
+@pytest.mark.asyncio
+async def test_mentor_transfer_moves_pending_activities_to_new_mentor_panel():
+    await cleanup()
+    old_mentor_pid = await create_person("Mentor Original Transfer")
+    await activate_badge(old_mentor_pid)
+    _, old_email = await create_user("Mentor Original Transfer", "persona", old_mentor_pid, capabilities=["mentorship.outreach.report", "library.deliver"])
+    new_mentor_pid = await create_person("Mentor Nuevo Transfer")
+    await activate_badge(new_mentor_pid)
+    _, new_email = await create_user("Mentor Nuevo Transfer", "persona", new_mentor_pid, capabilities=["mentorship.outreach.report", "library.deliver"])
+
+    old_client, old_headers = await auth_client(old_email)
+    new_client, new_headers = await auth_client(new_email)
+    try:
+        today = datetime.now(timezone.utc).date().isoformat()
+        started = await start_invasion_consolidation(old_mentor_pid, old_client, old_headers, today)
+        enrollment_id = started["enrollment_id"]
+        activities = (await old_client.get(f"/api/processes/consolidation/{enrollment_id}/activities", headers=old_headers)).json()["items"]
+        first_mcd = next(i for i in activities if i["stage_key"] == "mcd" and i["day_number"] == 1 and i["moment_key"] == "morning")
+        await old_client.put(
+            f"/api/processes/consolidation/activities/{first_mcd['activity_id']}/result",
+            json={"status": "done", "note": "Primer día con el mentor original"}, headers=old_headers,
+        )
+
+        from consolidation_service import assign_mentor
+        enrollment = await server.db.process_enrollments.find_one({"enrollment_id": enrollment_id}, {"_id": 0})
+        await assign_mentor(server.db, enrollment, new_mentor_pid, "system:test", "Transferencia de prueba", transfer=True)
+
+        old_panel = await old_client.get("/api/processes/consolidation/my-panel", headers=old_headers)
+        new_panel = await new_client.get("/api/processes/consolidation/my-panel", headers=new_headers)
+        assert not any(m["enrollment_id"] == enrollment_id for m in old_panel.json()["mentees"]), "el mentor anterior ya no debe ver este expediente en su panel"
+        assert any(m["enrollment_id"] == enrollment_id for m in new_panel.json()["mentees"]), "el nuevo mentor debe ver el expediente transferido"
+
+        pending_for_new = await server.db.consolidation_activities.count_documents({"enrollment_id": enrollment_id, "status": "pending", "mentor_person_id": new_mentor_pid})
+        done_still_old = await server.db.consolidation_activities.count_documents({"enrollment_id": enrollment_id, "status": "done", "mentor_person_id": old_mentor_pid})
+        assert pending_for_new == 53, "las actividades pendientes pasan al nuevo mentor responsable"
+        assert done_still_old == 1, "la actividad ya realizada conserva la atribución de quien la hizo"
+    finally:
+        await old_client.aclose()
+        await new_client.aclose()
+        await cleanup()
+
+
+@pytest.mark.asyncio
+async def test_same_book_cannot_be_delivered_twice_to_same_person_across_activities():
+    await cleanup()
+    mentor_pid = await create_person("Mentor Entrega Duplicada")
+    await activate_badge(mentor_pid)
+    _, mentor_email = await create_user("Mentor Entrega Duplicada", "persona", mentor_pid, capabilities=["mentorship.outreach.report", "library.deliver"])
+    book_id = await set_central_stock("MCD", 10)
+
+    mentor_client, mentor_headers = await auth_client(mentor_email)
+    try:
+        from library_module import HolderInput, MovementInput, apply_movement, CENTRAL_HOLDER
+        mentor_user = await server.db.users.find_one({"person_id": mentor_pid}, {"_id": 1})
+        await apply_movement(
+            MovementInput(book_id=book_id, movement_type="ASSIGNMENT", quantity=2, from_holder=HolderInput(**CENTRAL_HOLDER), to_holder=HolderInput(type="user", id=str(mentor_user["_id"]))),
+            "system:test",
+        )
+
+        today = datetime.now(timezone.utc).date().isoformat()
+        started = await start_invasion_consolidation(mentor_pid, mentor_client, mentor_headers, today)
+        enrollment_id = started["enrollment_id"]
+        activities = (await mentor_client.get(f"/api/processes/consolidation/{enrollment_id}/activities", headers=mentor_headers)).json()["items"]
+        day1 = next(i for i in activities if i["stage_key"] == "mcd" and i["day_number"] == 1 and i["moment_key"] == "morning")
+        day2 = next(i for i in activities if i["stage_key"] == "mcd" and i["day_number"] == 2 and i["moment_key"] == "morning")
+
+        first_delivery = await mentor_client.put(
+            f"/api/processes/consolidation/activities/{day1['activity_id']}/result",
+            json={"status": "done", "deliver_book": True}, headers=mentor_headers,
+        )
+        assert first_delivery.status_code == 200, first_delivery.text
+        assert first_delivery.json()["book_delivery_movement_id"]
+
+        second_delivery = await mentor_client.put(
+            f"/api/processes/consolidation/activities/{day2['activity_id']}/result",
+            json={"status": "done", "deliver_book": True}, headers=mentor_headers,
+        )
+        assert second_delivery.status_code == 409, second_delivery.text
+
+        delivery_movements = await server.db.library_movements.count_documents({"book_id": book_id, "movement_type": "DELIVERY", "person_id": started["converted_person_id"]})
+        assert delivery_movements == 1, "no se debe entregar el mismo libro dos veces a la misma persona desde actividades distintas"
+    finally:
+        await mentor_client.aclose()
         await cleanup()

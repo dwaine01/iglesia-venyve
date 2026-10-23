@@ -1,5 +1,5 @@
 """API oficial de Consolidación v2: cuatro entradas, Fiesta, Retiro y Discipulado."""
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Literal, Optional
 from uuid import uuid4
 import re
@@ -352,14 +352,25 @@ async def update_decision_status(enrollment_id: str, payload: DecisionStatusUpda
     generar el calendario o completar actividades/etapas; aquí solo se pueden
     fijar a mano los primeros cuatro + la pausa. Aceptar NO otorga membresía."""
     enrollment = await load_scoped(enrollment_id, current_user)
-    if payload.new_status == "paused" and not payload.reason:
+    reason = (payload.reason or "").strip()
+    if payload.new_status == "paused" and not reason:
         raise HTTPException(status_code=422, detail="Indique el motivo de la pausa o el desistimiento")
     now = now_utc()
-    update = {"decision_status": payload.new_status, "updated_at": now}
-    update["decision_paused_reason"] = payload.reason if payload.new_status == "paused" else None
-    update["decision_paused_at"] = now if payload.new_status == "paused" else None
+    new_status = payload.new_status
+    if enrollment.get("decision_status") == "paused" and new_status == "accepted":
+        # Reanudar: no siempre vuelve a 'Aceptó consolidación'; se recalcula
+        # según el avance real del calendario para no retroceder el progreso.
+        done_count = await db.consolidation_activities.count_documents({"enrollment_id": enrollment_id, "status": "done"})
+        start_raw = enrollment.get("outreach_agreed_start_date")
+        if done_count > 0:
+            new_status = "in_progress"
+        elif start_raw:
+            new_status = "start_scheduled" if date.fromisoformat(start_raw) > now.date() else "in_progress"
+    update = {"decision_status": new_status, "updated_at": now}
+    update["decision_paused_reason"] = reason if new_status == "paused" else None
+    update["decision_paused_at"] = now if new_status == "paused" else None
     await db.process_enrollments.update_one({"enrollment_id": enrollment_id}, {"$set": update})
-    await record_event(db, enrollment, current_user["user_id"], "decision_status_updated", f"Estado de decisión: {payload.new_status}", payload.reason or "")
+    await record_event(db, enrollment, current_user["user_id"], "decision_status_updated", f"Estado de decisión: {new_status}", reason)
     return await enrollment_detail(db, await load_consolidation(db, enrollment_id))
 
 

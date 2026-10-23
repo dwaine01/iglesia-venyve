@@ -99,7 +99,7 @@ export const ConsolidationActivityCalendar = ({ enrollmentId, currentStageKey, c
               <AccordionContent>
                 <div className="space-y-1.5">
                   {stageItems.map((activity) => {
-                    const badge = STATUS_BADGE[activity.status];
+                    const badge = STATUS_BADGE[activity.status === 'done' ? 'done' : (activity.last_result || 'pending')] || STATUS_BADGE.pending;
                     return (
                       <div key={activity.activity_id} className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 py-2 text-sm" data-testid={`activity-row-${activity.activity_id}`}>
                         <div className="min-w-0 flex-1">
