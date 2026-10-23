@@ -231,3 +231,68 @@ async def test_structure_levels_permissions_and_distinct_totals():
         assert (await nina.get(f"/api/front-group-structure/groups/{grandchild_id}")).status_code == 403
     finally:
         await fx.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_group_stats_semaphore_ranking_and_no_double_count():
+    """5C-3: métricas desde los mismos registros de invasión, semáforo
+    configurable, comparación entre grupos y ranking de integrantes."""
+    await server.db.front_groups.update_many({"pastoral_main": True}, {"$unset": {"pastoral_main": ""}})
+    fx = Fixture()
+    campaign_id = f"camp-5c3-{uuid.uuid4().hex}"
+    try:
+        pastora = await fx.account(await fx.person("PastoraS"), "pastora")
+        luis_id, marta_id, pedro_id, rosa_id, juan_id = [await fx.person(name) for name in ("LuisS", "MartaS", "PedroS", "RosaS", "JuanS")]
+        luis = await fx.account(luis_id, "lider", capabilities=[], permissions_mode="manual")
+        rosa = await fx.account(rosa_id, "persona")
+        main_id = (await pastora.put("/api/pastoral-front-group", json={"name": "Grupo PastoraS"})).json()["group"]["front_group_id"]
+        await pastora.put(f"/api/front-groups/{main_id}/roster", json={"entries": [{"person_ids": [luis_id, marta_id]}, {"person_ids": [pedro_id]}]})
+        child_id = (await pastora.post(f"/api/front-groups/{main_id}/leader-privilege", json={"person_id": luis_id, "co_leader_person_id": marta_id})).json()["front_group_id"]
+        await luis.put(f"/api/front-groups/{child_id}/conform", json={"name": "Grupo LuisS"})
+        await luis.put(f"/api/front-groups/{child_id}/roster", json={"entries": [{"person_ids": [rosa_id, juan_id]}, {"person_ids": [pedro_id]}]})
+
+        now = datetime.now(timezone.utc)
+        await server.db.outreach_campaigns.insert_one({"_id": campaign_id, "campaign_id": campaign_id, "name": "Invasión 5C3", "start_date": now.date().isoformat(), "end_date": now.date().isoformat(), "created_at": now})
+        events = [(luis_id, "contacted"), (luis_id, "no_answer"), (rosa_id, "no_answer"), (rosa_id, "no_answer"), (rosa_id, "not_home")]
+        await server.db.outreach_visit_events.insert_many([{"_id": f"{campaign_id}-e{index}", "visit_event_id": f"{campaign_id}-e{index}", "household_id": f"{campaign_id}-h", "campaign_id": campaign_id, "mentor_person_id": mentor, "result": result, "occurred_at": now, "created_at": now} for index, (mentor, result) in enumerate(events)])
+        await server.db.outreach_visits.insert_one({"_id": f"{campaign_id}-v", "visit_id": f"{campaign_id}-v", "campaign_id": campaign_id, "mentor_person_id": luis_id, "status": "wants_followup", "archived": False, "created_at": now})
+        await server.db.outreach_households.insert_one({"_id": f"{campaign_id}-h", "household_id": f"{campaign_id}-h", "campaign_id": campaign_id, "mentor_person_id": rosa_id, "archived": False, "created_at": now})
+
+        stats = await pastora.get(f"/api/front-group-structure/groups/{main_id}/stats", params={"period": "invasion", "campaign_id": campaign_id})
+        assert stats.status_code == 200, stats.text
+        body = stats.json()
+        branch = body["branch"]
+        # 6 personas distintas (Pedro está en dos grupos; Luis/Marta son integrantes y líderes).
+        assert branch["people"] == 6 and branch["leaders"] == 3
+        assert branch["attempts"] == 5 and branch["attempts_by_result"]["no_answer"] == 3
+        assert branch["persons_reached"] == 1 and branch["followups"] == 1 and branch["households"] == 1
+        assert branch["participants"] == 2 and branch["semaphore_reasons"]["participation"] == "yellow"
+        child = body["children"][0]
+        assert child["front_group_id"] == child_id and child["people"] == 5 and child["attempts"] == 5
+        # Ranking dentro del grupo de la pastora: Luis avanza más; quienes no tienen actividad necesitan apoyo.
+        group_rank = {row["person_id"]: row for row in body["ranking_group"]}
+        assert body["ranking_group"][0]["person_id"] == luis_id and group_rank[luis_id]["highlight"] == "top"
+        assert group_rank[luis_id]["score"] == 3 * 1 + 2
+        assert group_rank[pedro_id]["highlight"] == "needs_support"
+        assert len(body["ranking_branch"]) == 6
+        assert {row["person_id"] for row in body["ranking_branch"] if row["highlight"] == "top"} == {luis_id, rosa_id}
+        assert sum(point["attempts"] for point in body["timeline"]) == 5
+        assert "personas alcanzadas×3" in body["criteria"]["score"]
+
+        week = (await pastora.get(f"/api/front-group-structure/groups/{main_id}/stats", params={"period": "week"})).json()
+        assert week["branch"]["attempts"] == 5
+        # Umbral configurable: subirlo cambia el semáforo (y se restaura).
+        assert (await pastora.put("/api/supervision/thresholds/participation_ratio_yellow", json={"value": 0.5})).status_code == 200
+        stricter = (await pastora.get(f"/api/front-group-structure/groups/{main_id}/stats", params={"period": "invasion", "campaign_id": campaign_id})).json()
+        assert stricter["branch"]["semaphore_reasons"]["participation"] == "red" and stricter["branch"]["semaphore"] == "red"
+        assert (await pastora.put("/api/supervision/thresholds/participation_ratio_yellow", json={"value": 0.3})).status_code == 200
+
+        # Permisos: el líder ve su rama pero no la de la pastora; un integrante no ve estadísticas.
+        assert (await luis.get(f"/api/front-group-structure/groups/{main_id}/stats")).status_code == 403
+        assert (await luis.get(f"/api/front-group-structure/groups/{child_id}/stats", params={"period": "all"})).json()["branch"]["people"] == 5
+        assert (await rosa.get(f"/api/front-group-structure/groups/{child_id}/stats")).status_code == 403
+        assert (await rosa.get("/api/front-group-structure/campaigns")).status_code == 403
+    finally:
+        for collection in ("outreach_visit_events", "outreach_visits", "outreach_households", "outreach_campaigns"):
+            await server.db[collection].delete_many({"campaign_id": campaign_id})
+        await fx.cleanup()

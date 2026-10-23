@@ -6,6 +6,7 @@ import { ArrowLeft, ChevronRight, GitBranch, Loader2, Network, TriangleAlert } f
 import { useAuth } from '../context/AuthContext';
 import { apiErrorMessage } from '../lib/apiErrors';
 import { GroupRosterView } from '../components/front-groups/GroupRosterView';
+import { GroupStatsPanel } from '../components/front-groups/GroupStatsPanel';
 
 export const plural = (count, one, many) => `${count ?? 0} ${count === 1 ? one : many}`;
 
@@ -92,6 +93,8 @@ export default function EstructuraFrontalPage() {
             <h2 className="mt-3 text-xs font-semibold uppercase text-slate-500">Toda la rama (sin contar dos veces)</h2>
             <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4"><Tile label="Grupos" value={group.branch.groups} /><Tile label="Personas" value={group.branch.people} testId="tot-rama-personas" /><Tile label="Parejas" value={group.branch.pairs} /><Tile label="Líderes y colíderes" value={group.branch.leaders} /></div>
           </section>
+
+          <GroupStatsPanel key={group.front_group_id} groupId={group.front_group_id} onOpenGroup={open} />
 
           <section className="space-y-2" data-testid="estructura-hijos">
             <h2 className="flex items-center gap-2 font-semibold text-[#101D36]"><GitBranch className="h-4 w-4 text-[#9A7A2F]" />Grupos de sus líderes ({node.children.length})</h2>

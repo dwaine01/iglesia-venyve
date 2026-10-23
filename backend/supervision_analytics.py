@@ -31,6 +31,9 @@ DEFAULT_THRESHOLDS = {
     "overdue_activity_ratio_yellow": {"value": 0.10, "label": "% de actividades vencidas sobre el total para marcar el grupo/mentor en amarillo", "status": "propuesta"},
     "accepted_not_started_days": {"value": 10, "label": "Días aceptado sin pasar a 'en proceso' para contarlo como debilidad", "status": "propuesta"},
     "stage_stall_days": {"value": 14, "label": "Días de retraso en una etapa abierta para considerarla detenida", "status": "propuesta"},
+    # ETAPA 5C-3: semáforo de participación de Grupos Frontales en invasiones.
+    "participation_ratio_green": {"value": 0.60, "label": "% de integrantes con actividad en el período para marcar el grupo en verde", "status": "propuesta"},
+    "participation_ratio_yellow": {"value": 0.30, "label": "% de integrantes con actividad en el período para marcar el grupo en amarillo (debajo: rojo)", "status": "propuesta"},
 }
 
 
@@ -426,7 +429,7 @@ class ThresholdUpdate(BaseModel):
     label: Optional[str] = None
 
 
-RATIO_KEYS = {"overdue_activity_ratio_red", "overdue_activity_ratio_yellow"}
+RATIO_KEYS = {"overdue_activity_ratio_red", "overdue_activity_ratio_yellow", "participation_ratio_green", "participation_ratio_yellow"}
 DAY_KEYS = {"mentor_inactivity_days", "accepted_not_started_days", "stage_stall_days"}
 
 
@@ -443,6 +446,10 @@ async def update_threshold(key: str, payload: ThresholdUpdate, current_user: dic
         raise HTTPException(status_code=422, detail="El umbral rojo no puede ser menor que el amarillo")
     if key == "overdue_activity_ratio_yellow" and payload.value > current["overdue_activity_ratio_red"]["value"]:
         raise HTTPException(status_code=422, detail="El umbral amarillo no puede ser mayor que el rojo")
+    if key == "participation_ratio_green" and payload.value < current["participation_ratio_yellow"]["value"]:
+        raise HTTPException(status_code=422, detail="El umbral verde de participación no puede ser menor que el amarillo")
+    if key == "participation_ratio_yellow" and payload.value > current["participation_ratio_green"]["value"]:
+        raise HTTPException(status_code=422, detail="El umbral amarillo de participación no puede ser mayor que el verde")
     entry = {**current.get(key, DEFAULT_THRESHOLDS[key]), "value": payload.value, "status": "confirmado"}
     if payload.label:
         entry["label"] = payload.label
