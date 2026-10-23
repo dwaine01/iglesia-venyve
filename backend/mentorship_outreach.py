@@ -215,8 +215,11 @@ async def can_use_outreach(current_user: dict) -> bool:
         return True
     if await is_active_mentor(current_user.get("person_id")):
         return True
-    # Líder/colíder de Grupo Frontal sin capacidad de invasiones: solo entra si
-    # efectivamente supervisa a algún mentor de su rama (lectura, ver `can_view_household`/`reveal_contact`).
+    # Líder/colíder de Grupo Frontal sin capacidad de invasiones: se le deja
+    # entrar al módulo (en modo lectura) en cuanto lidera/colidera alguna
+    # rama, sin importar si ya tiene mentores asignados hoy — así no pierde
+    # acceso justo cuando se le asigna el primero. La visibilidad real de
+    # datos sigue acotada por `supervised_mentor_person_ids`/`can_view_household`.
     branch_ids = await support_group_ids(db, current_user)
     return bool(branch_ids)
 
@@ -245,10 +248,12 @@ def compute_decision_status(visit: dict) -> str:
 
 
 async def supervision_snapshot(mentor_person_id: Optional[str]) -> dict:
-    """Snapshot al momento de crear el hogar/visita: Grupo Frontal principal
-    del mentor + sus ancestros ('supervisión instantánea'). No se recalcula
-    después — si el mentor cambia de rama, el histórico ya registrado no se
-    reescribe, igual que otros patrones de auditoría de la app."""
+    """Snapshot informativo al momento de crear el hogar/visita: Grupo Frontal
+    principal del mentor + sus ancestros, para mostrar siempre con qué equipo
+    se capturó el contacto aunque el mentor cambie de rama después. La
+    VISIBILIDAD de solo-lectura (quién puede verlo hoy) no usa este snapshot:
+    se recalcula en vivo con `supervised_mentor_person_ids`, para que un
+    líder deje de ver a un mentor que ya salió de su rama."""
     if not mentor_person_id:
         return {"front_group_id": None, "front_group_ancestor_ids": []}
     assignments = await db.front_group_assignments.find(
@@ -815,13 +820,14 @@ async def campaign_report(campaign_id: str, current_user: dict = Depends(get_cur
     mentors = []
     for mentor_id in mentor_ids:
         mentor_visits = [v for v in visits if v.get("mentor_person_id") == mentor_id]
+        participation_status = participation_by_mentor.get(mentor_id, "assigned")
         mentors.append({
             "mentor_person_id": mentor_id, "mentor_name": names.get(mentor_id, "Mentor"),
-            "participation_status": participation_by_mentor.get(mentor_id, "assigned"),
+            "participation_status": participation_status,
             "contacts_total": len(mentor_visits),
             "accepted": sum(1 for v in mentor_visits if v.get("status") == "wants_followup"),
             "books": [row for row in book_rows if row["mentor_person_id"] == mentor_id],
-            "has_activity": bool(mentor_visits),
+            "has_activity": bool(mentor_visits) or participation_status == "active",
         })
     return {"campaign": serialize(campaign), "mentors": mentors}
 
@@ -1053,6 +1059,27 @@ async def create_household(payload: HouseholdInput, current_user: dict = Depends
     return serialize(doc)
 
 
+async def enrich_households(households: list[dict]) -> list[dict]:
+    """Adjunta `campaign_name` y conteo de intentos (`attempts`/`last_occurred_at`)
+    — usado tanto en `/households` como en `/my-branch-overview` para que ambas
+    vistas muestren exactamente la misma información."""
+    household_ids = [h["household_id"] for h in households]
+    campaign_ids = {h["campaign_id"] for h in households if h.get("campaign_id")}
+    campaigns = await db.outreach_campaigns.find({"campaign_id": {"$in": list(campaign_ids)}}, {"_id": 0, "campaign_id": 1, "name": 1}).to_list(len(campaign_ids)) if campaign_ids else []
+    campaign_names = {c["campaign_id"]: c["name"] for c in campaigns}
+    event_stats: dict = {}
+    if household_ids:
+        async for item in db.outreach_visit_events.aggregate([
+            {"$match": {"household_id": {"$in": household_ids}}},
+            {"$group": {"_id": "$household_id", "count": {"$sum": 1}, "last_occurred_at": {"$max": "$occurred_at"}}},
+        ]):
+            event_stats[item["_id"]] = {"attempts": item["count"], "last_occurred_at": serialize(item["last_occurred_at"])}
+    for household in households:
+        household["campaign_name"] = campaign_names.get(household.get("campaign_id"))
+        household.update(event_stats.get(household["household_id"], {"attempts": 0, "last_occurred_at": None}))
+    return households
+
+
 @router.get("/households", response_model=dict)
 async def list_households(mentor_person_id: Optional[str] = None, campaign_id: Optional[str] = None, current_user: dict = Depends(get_current_user)):
     if not await can_use_outreach(current_user):
@@ -1069,16 +1096,7 @@ async def list_households(mentor_person_id: Optional[str] = None, campaign_id: O
     if campaign_id:
         query["campaign_id"] = campaign_id
     households = await db.outreach_households.find(query, {"_id": 0}).sort("created_at", -1).to_list(500)
-    household_ids = [h["household_id"] for h in households]
-    event_stats: dict = {}
-    if household_ids:
-        async for item in db.outreach_visit_events.aggregate([
-            {"$match": {"household_id": {"$in": household_ids}}},
-            {"$group": {"_id": "$household_id", "count": {"$sum": 1}, "last_occurred_at": {"$max": "$occurred_at"}}},
-        ]):
-            event_stats[item["_id"]] = {"attempts": item["count"], "last_occurred_at": serialize(item["last_occurred_at"])}
-    for household in households:
-        household.update(event_stats.get(household["household_id"], {"attempts": 0, "last_occurred_at": None}))
+    households = await enrich_households(households)
     return {"items": serialize(households), "total": len(households)}
 
 
@@ -1189,6 +1207,7 @@ async def my_branch_overview(current_user: dict = Depends(get_current_user)):
     if not mentor_ids:
         return {"is_supervisor": False, "households": [], "visits": []}
     households = await db.outreach_households.find({"mentor_person_id": {"$in": mentor_ids}, "archived": {"$ne": True}}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    households = await enrich_households(households)
     visits = await db.outreach_visits.find({"mentor_person_id": {"$in": mentor_ids}, "archived": {"$ne": True}}, {"_id": 0}).sort("created_at", -1).to_list(500)
     return {"is_supervisor": True, "households": serialize(households), "visits": await serialize_visits(visits, current_user)}
 

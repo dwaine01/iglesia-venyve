@@ -145,9 +145,9 @@ export default function OutreachPage() {
         )}
       </Tabs>
 
-      <AddVisitDialog open={addOpen} onOpenChange={setAddOpen} campaigns={campaigns} forcedMentorId={user.person_id} onCreated={loadMyVisits} />
-      <AddHouseholdDialog open={addHouseholdOpen} onOpenChange={setAddHouseholdOpen} campaigns={campaigns} forcedMentorId={user.person_id} onCreated={loadHouseholds} />
-      <LogVisitAttemptDialog household={attemptHousehold} open={Boolean(attemptHousehold)} onOpenChange={(value) => { if (!value) setAttemptHousehold(null); }} onLogged={() => { loadHouseholds(); loadMyVisits(); }} />
+      <AddVisitDialog open={addOpen} onOpenChange={setAddOpen} campaigns={campaigns} forcedMentorId={user.person_id} onCreated={() => { loadMyVisits(); loadCampaigns(); }} />
+      <AddHouseholdDialog open={addHouseholdOpen} onOpenChange={setAddHouseholdOpen} campaigns={campaigns} forcedMentorId={user.person_id} onCreated={() => { loadHouseholds(); loadCampaigns(); }} />
+      <LogVisitAttemptDialog household={attemptHousehold} open={Boolean(attemptHousehold)} onOpenChange={(value) => { if (!value) setAttemptHousehold(null); }} onLogged={() => { loadHouseholds(); loadMyVisits(); loadCampaigns(); }} />
       <TransferVisitDialog visit={transferVisit} onClose={() => setTransferVisit(null)} onTransferred={loadMyVisits} />
     </div>
   );

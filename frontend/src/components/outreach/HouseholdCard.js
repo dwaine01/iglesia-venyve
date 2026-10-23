@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import { ChevronDown, ChevronUp, Home, Loader2, MapPin, Plus } from 'lucide-react';
 import { toast } from 'sonner';
@@ -21,15 +21,14 @@ export const HouseholdCard = ({ household, readOnly, onLogAttempt, onChanged }) 
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [detail, setDetail] = useState(null);
+  const fetchedAttemptsRef = useRef(null);
 
-  const toggle = async () => {
-    if (open) { setOpen(false); return; }
-    setOpen(true);
-    if (detail) return;
+  const fetchDetail = async () => {
     setLoading(true);
     try {
       const response = await axios.get(`${API}/api/mentorship/outreach/households/${household.household_id}`, getAuthHeaders());
       setDetail(response.data);
+      fetchedAttemptsRef.current = household.attempts;
     } catch (error) {
       toast.error(errorDetailText(error, 'No se pudo cargar el detalle del hogar'));
     } finally {
@@ -37,12 +36,17 @@ export const HouseholdCard = ({ household, readOnly, onLogAttempt, onChanged }) 
     }
   };
 
-  const refresh = async () => {
-    setDetail(null);
-    if (open) {
-      const response = await axios.get(`${API}/api/mentorship/outreach/households/${household.household_id}`, getAuthHeaders());
-      setDetail(response.data);
+  const toggle = () => setOpen((prev) => !prev);
+
+  useEffect(() => {
+    if (open && fetchedAttemptsRef.current !== household.attempts) {
+      fetchDetail();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, household.attempts]);
+
+  const refresh = async () => {
+    await fetchDetail();
     if (onChanged) onChanged();
   };
 
@@ -106,3 +110,4 @@ export const HouseholdCard = ({ household, readOnly, onLogAttempt, onChanged }) 
     </div>
   );
 };
+

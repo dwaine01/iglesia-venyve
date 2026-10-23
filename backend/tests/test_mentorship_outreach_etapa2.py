@@ -69,7 +69,7 @@ async def activate_badge(pid: str) -> None:
     )
 
 
-async def make_front_group(name: str, leader_pid: str, parent_id: str | None = None) -> str:
+async def make_front_group(name: str, leader_pid: str, leader_user_id: str, parent_id: str | None = None) -> str:
     front_group_id = str(uuid.uuid4())
     ancestors = []
     if parent_id:
@@ -78,7 +78,7 @@ async def make_front_group(name: str, leader_pid: str, parent_id: str | None = N
     await server.db.front_groups.insert_one({
         "_id": front_group_id, "front_group_id": front_group_id, "name": name, "parent_group_id": parent_id,
         "ancestor_group_ids": ancestors, "depth": len(ancestors), "status": "active", "primary_leader_person_id": leader_pid,
-        "created_at": datetime.now(timezone.utc), "updated_at": datetime.now(timezone.utc),
+        "created_by_user_id": leader_user_id, "created_at": datetime.now(timezone.utc), "updated_at": datetime.now(timezone.utc),
     })
     assignment_id = str(uuid.uuid4())
     await server.db.front_group_assignments.insert_one({
@@ -269,9 +269,9 @@ async def test_branch_supervisor_sees_read_only_mentor_outside_branch_does_not()
     mentor_outside_pid = await create_person("Mentor Fuera")
     await activate_badge(mentor_in_branch_pid)
     await activate_badge(mentor_outside_pid)
-    front_group_id = await make_front_group("Rama QA Etapa2", leader_pid)
+    leader_user_id, leader_email = await create_user("Lider Rama", "lider", leader_pid)
+    front_group_id = await make_front_group("Rama QA Etapa2", leader_pid, leader_user_id)
     await add_member(front_group_id, mentor_in_branch_pid, role="mentor")
-    _, leader_email = await create_user("Lider Rama", "lider", leader_pid)
     _, mentor_in_email = await create_user("Mentor En Rama", "persona", mentor_in_branch_pid)
     _, mentor_out_email = await create_user("Mentor Fuera", "persona", mentor_outside_pid)
     leader_client, leader_headers = await auth_client(leader_email)
@@ -313,10 +313,10 @@ async def test_mentors_by_group_endpoint_returns_branch_mentors_and_requires_cam
     leader_pid = await create_person("Lider Grupo Mentores")
     mentor_pid = await create_person("Mentor De Grupo")
     await activate_badge(mentor_pid)
-    front_group_id = await make_front_group("Rama Mentores QA", leader_pid)
+    leader_user_id, leader_email = await create_user("Lider Grupo Mentores", "lider", leader_pid)
+    front_group_id = await make_front_group("Rama Mentores QA", leader_pid, leader_user_id)
     await add_member(front_group_id, mentor_pid, role="mentor")
     _, pastor_email = await create_user("Pastor Grupo", "pastor", pastor_pid)
-    _, leader_email = await create_user("Lider Grupo Mentores", "lider", leader_pid)
     pastor_client, pastor_headers = await auth_client(pastor_email)
     leader_client, leader_headers = await auth_client(leader_email)
     try:
