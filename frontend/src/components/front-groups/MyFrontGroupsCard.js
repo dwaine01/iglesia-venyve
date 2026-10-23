@@ -50,7 +50,10 @@ export function MyFrontGroupsCard() {
                     <div><dt className="inline font-medium">Líder: </dt><dd className="inline">{group.leader_name || 'Por definir'}</dd></div>
                     <div><dt className="inline font-medium">Colíder: </dt><dd className="inline">{group.co_leader_name || 'Por definir'}</dd></div>
                   </dl>
-                  {group.can_manage && <Link to={`/mi-grupo-frontal/${group.front_group_id}`} className="mt-3 inline-flex min-h-10 w-full items-center justify-center rounded-md border border-[#D9CFB4] bg-white px-3 text-sm font-semibold text-[#7A5F22] hover:bg-[#FBF6EA]" data-testid={`administrar-grupo-${group.front_group_id}`}>Administrar mi grupo</Link>}
+                  {group.can_manage && <div className="mt-3 grid grid-cols-2 gap-2">
+                    <Link to={`/mi-grupo-frontal/${group.front_group_id}`} className="inline-flex min-h-10 items-center justify-center rounded-md border border-[#D9CFB4] bg-white px-2 text-sm font-semibold text-[#7A5F22] hover:bg-[#FBF6EA]" data-testid={`administrar-grupo-${group.front_group_id}`}>Administrar</Link>
+                    <Link to={`/estructura-frontal/${group.front_group_id}`} className="inline-flex min-h-10 items-center justify-center rounded-md bg-[#101D36] px-2 text-sm font-semibold text-white" data-testid={`explorar-rama-${group.front_group_id}`}>Explorar mi rama</Link>
+                  </div>}
                 </>
               )}
             </li>

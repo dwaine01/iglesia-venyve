@@ -22,7 +22,7 @@ function PrivilegeBadge({ privilege }) {
 
 // ETAPA 5C: todas las personas y parejas del grupo; quien administra puede
 // asignar el privilegio "Líder de Grupo Frontal" (en pareja: a uno o a ambos).
-export function GroupRosterView({ groupId, roster, canManage, onChanged, onShowActivity }) {
+export function GroupRosterView({ groupId, roster, canManage, onChanged, onShowActivity, onOpenGroup, title = 'Integrantes' }) {
   const { API, getAuthHeaders, user } = useAuth();
   const [busy, setBusy] = useState('');
   const canOpenProfiles = canViewDirectory(user);
@@ -47,6 +47,7 @@ export function GroupRosterView({ groupId, roster, canManage, onChanged, onShowA
         {!person.has_account && <span className="shrink-0 text-[10px] text-slate-400">(sin cuenta)</span>}
       </p>
       <PrivilegeBadge privilege={person.leader_privilege} />
+      {onOpenGroup && person.leader_privilege && <button type="button" onClick={() => onOpenGroup(person.leader_privilege.front_group_id)} className="mr-3 mt-1 min-h-9 text-xs font-semibold text-[#7A5F22] underline" data-testid={`roster-open-group-${person.person_id}`}>Ver su grupo →</button>}
       {onShowActivity && <button type="button" onClick={() => onShowActivity(person)} className="mt-1 min-h-9 text-xs font-semibold text-[#101D36] underline" data-testid={`roster-activity-${person.person_id}`}>Ver actividad</button>}
     </div>
   );
@@ -55,7 +56,7 @@ export function GroupRosterView({ groupId, roster, canManage, onChanged, onShowA
   return (
     <section className="space-y-3 rounded-xl border border-[#E8E5DE] bg-white p-4 shadow-sm" data-testid="group-roster-view">
       <div className="flex items-center justify-between gap-2">
-        <h3 className="flex items-center gap-2 font-semibold text-[#101D36]"><Users className="h-4 w-4 text-[#9A7A2F]" />Integrantes</h3>
+        <h3 className="flex items-center gap-2 font-semibold text-[#101D36]"><Users className="h-4 w-4 text-[#9A7A2F]" />{title}</h3>
         <p className="text-xs text-slate-500" data-testid="group-roster-totals">{totals.people} {totals.people === 1 ? 'persona' : 'personas'} · {totals.pairs} {totals.pairs === 1 ? 'pareja' : 'parejas'} · {totals.individuals} {totals.individuals === 1 ? 'individual' : 'individuales'}</p>
       </div>
       {entries.length ? (

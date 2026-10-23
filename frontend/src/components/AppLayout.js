@@ -34,6 +34,7 @@ const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
     const personItems = [
       ...BASE_PORTAL_ITEMS,
       { to: '/grupo-frontal-pastoral', icon: Network, label: 'Mi grupo frontal', testId: 'nav-pastoral-front-group' },
+      { to: '/estructura-frontal', icon: Network, label: 'Estructura de grupos', testId: 'nav-front-group-structure' },
       { to: '/dashboard-general', icon: Crown, label: 'Panel General', end: true },
       { to: '/nucleo', icon: DatabaseZap, label: 'Gobierno del Núcleo', testId: 'nav-core-governance' },
       { to: '/procesos/dashboard', icon: Activity, label: 'Panel de Procesos', testId: 'nav-process-dashboard' },
@@ -112,7 +113,7 @@ const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
   // Default: lider
   const items = [
     ...BASE_PORTAL_ITEMS,
-    ...(canViewPastoralFrontGroup(user) ? [{ to: '/grupo-frontal-pastoral', icon: Network, label: 'Grupo de la pastora', testId: 'nav-pastoral-front-group' }] : []),
+    ...(canViewPastoralFrontGroup(user) ? [{ to: '/grupo-frontal-pastoral', icon: Network, label: 'Grupo de la pastora', testId: 'nav-pastoral-front-group' }, { to: '/estructura-frontal', icon: Network, label: 'Estructura de grupos', testId: 'nav-front-group-structure' }] : []),
     { to: '/', icon: LayoutDashboard, label: 'Panel principal', end: true },
     { to: '/procesos/dashboard', icon: Activity, label: 'Panel de Procesos', testId: 'nav-process-dashboard' },
     { to: '/procesos/consolidacion', icon: Activity, label: 'Consolidación', testId: 'nav-consolidation', end: true, extraActiveMatch: consolidationDetailMatch },
@@ -209,6 +210,7 @@ const breadcrumbMap = {
   '/dashboard-general': 'Panel General',
   '/mi-perfil': 'Mi perfil',
   '/grupo-frontal-pastoral': 'Grupo frontal principal',
+  '/estructura-frontal': 'Estructura por niveles',
   '/mis-estadisticas': 'Mis estadísticas',
   '/mi-progreso': 'Mi Progreso',
   '/presentacion': 'Manual de 7 Semanas',
