@@ -50,6 +50,7 @@ class FrontGroupCreate(BaseModel):
     rotation_order: int = Field(default=0, ge=0, le=100000)
     linked_structures: list[LinkedStructure] = Field(default_factory=list, max_length=50)
     primary_leader_person_id: Optional[str] = None
+    co_leader_person_id: Optional[str] = None
     leadership_reason: Optional[str] = Field(default=None, max_length=600)
 
 
@@ -116,6 +117,21 @@ class FrontGroupArchive(BaseModel):
     reason: str = Field(min_length=3, max_length=600)
 
 
+class DeleteReason(BaseModel):
+    reason: str = Field(min_length=3, max_length=600)
+
+
+async def record_admin_deletion(collection: str, target_id: str, current_user: dict, reason: str, detail: dict) -> None:
+    """Borrado total (admin): el documento desaparece, pero queda este
+    registro de auditoría independiente (quién, cuándo, por qué, qué se
+    borró) para que nunca sea un borrado sin rastro."""
+    await db.admin_deletions.insert_one({
+        "_id": str(uuid4()), "collection": collection, "target_id": target_id, "reason": reason,
+        "detail": serialize(detail), "actor_user_id": current_user["user_id"], "actor_person_id": current_user.get("person_id"),
+        "deleted_at": now_utc(),
+    })
+
+
 async def require_read(current_user: dict = Depends(get_current_user)) -> dict:
     """Lectura: capability global O coincidencia real con ALGUNA membresía
     (líder, colíder o simple integrante) — ver B2 #1: antes solo entraba quien
@@ -141,6 +157,15 @@ async def require_manage(current_user: dict = Depends(get_current_user)) -> dict
     if await _has_real_leadership(current_user):
         return current_user
     raise HTTPException(status_code=403, detail="Sin permiso para administrar Grupos Frontales")
+
+
+async def require_admin_delete(current_user: dict = Depends(get_current_user)) -> dict:
+    """Borrar (no archivar) es una potestad de administrador: autoridad
+    pastoral global o capability `front_groups.manage` — un líder/colíder de
+    rama real NO puede borrar, solo archivar."""
+    if is_global_pastoral_authority(current_user) or has_capability(current_user, FRONT_GROUPS_MANAGE):
+        return current_user
+    raise HTTPException(status_code=403, detail="Solo la autoridad pastoral o un administrador de Grupos Frontales puede borrar")
 
 
 def require_qualification_manager(current_user: dict = Depends(get_current_user)) -> dict:
@@ -237,16 +262,20 @@ async def create_front_group(payload: FrontGroupCreate, current_user: dict = Dep
         raise HTTPException(status_code=403, detail="Solo la autoridad pastoral puede crear un Grupo Frontal raíz")
     if payload.parent_group_id:
         await assert_group_scope(payload.parent_group_id, current_user, leader_required=True)
+    if payload.co_leader_person_id and payload.co_leader_person_id == payload.primary_leader_person_id:
+        raise HTTPException(status_code=422, detail="El líder y el colíder deben ser personas distintas")
     if payload.primary_leader_person_id:
         await load_person(payload.primary_leader_person_id)
         if not await db.users.find_one({"person_id": payload.primary_leader_person_id, "is_active": {"$ne": False}}, {"_id": 1}):
             raise HTTPException(status_code=409, detail="El líder principal necesita una cuenta activa en Plataforma 360")
+    if payload.co_leader_person_id:
+        await load_person(payload.co_leader_person_id)
     now = now_utc(); group_id = str(uuid4()); lineage = await lineage_for_parent(db, group_id, payload.parent_group_id)
     document = {
         "_id": group_id, "front_group_id": group_id,
-        **payload.model_dump(exclude={"parent_group_id", "linked_structures", "primary_leader_person_id", "leadership_reason"}), **lineage,
+        **payload.model_dump(exclude={"parent_group_id", "linked_structures", "primary_leader_person_id", "co_leader_person_id", "leadership_reason"}), **lineage,
         "linked_structures": [item.model_dump() for item in payload.linked_structures],
-        "primary_leader_person_id": payload.primary_leader_person_id, "tree_version": 1,
+        "primary_leader_person_id": payload.primary_leader_person_id, "co_leader_person_id": payload.co_leader_person_id, "tree_version": 1,
         "created_by_user_id": current_user["user_id"], "created_at": now, "updated_at": now,
     }
     await db.front_groups.insert_one(document)
@@ -258,7 +287,20 @@ async def create_front_group(payload: FrontGroupCreate, current_user: dict = Dep
             "started_at": now, "ended_at": None, "notes": payload.leadership_reason or "Asignación al crear la rama",
             "assigned_by_user_id": current_user["user_id"], "created_at": now,
         })
-    await audit(group_id, current_user, "group_created", {"parent_group_id": payload.parent_group_id})
+        # Aditivo: antes solo las rutas /leader y /co-leader otorgaban la
+        # capability; un líder designado AQUÍ (al crear) no la recibía y
+        # podía no ver el acceso a su propio panel.
+        await ensure_front_group_capability(payload.primary_leader_person_id)
+    if payload.co_leader_person_id:
+        co_assignment_id = str(uuid4())
+        await db.front_group_assignments.insert_one({
+            "_id": co_assignment_id, "assignment_id": co_assignment_id, "front_group_id": group_id,
+            "person_id": payload.co_leader_person_id, "role": "co_leader", "active": True,
+            "started_at": now, "ended_at": None, "notes": payload.leadership_reason or "Asignación al crear la rama",
+            "assigned_by_user_id": current_user["user_id"], "created_at": now,
+        })
+        await ensure_front_group_capability(payload.co_leader_person_id)
+    await audit(group_id, current_user, "group_created", {"parent_group_id": payload.parent_group_id, "co_leader_person_id": payload.co_leader_person_id})
     return serialize(document)
 
 
@@ -483,6 +525,28 @@ async def archive_front_group(group_id: str, payload: FrontGroupArchive, current
     return serialize(await load_group(db, group_id, include_archived=True))
 
 
+@router.delete("/{group_id}", response_model=dict)
+async def delete_front_group(group_id: str, payload: DeleteReason, current_user: dict = Depends(require_admin_delete)):
+    """Borrado TOTAL y permanente (decisión del dueño, a diferencia de
+    archivar): el grupo y toda su membresía/historial propio desaparecen de
+    verdad. Mismas salvaguardas estructurales que archivar — bloquea si tiene
+    subramas o procesos de Consolidación activos debajo — para no dejar
+    huérfanos; primero hay que borrar/mover esas ramas o procesos."""
+    group = await load_group(db, group_id, include_archived=True)
+    dependents = await db.front_groups.count_documents({"parent_group_id": group_id, "status": {"$ne": "archived"}})
+    if dependents:
+        raise HTTPException(status_code=409, detail={"message": "No se puede borrar: tiene Grupos Frontales dependientes activos", "dependent_group_count": dependents})
+    active_processes = await db.process_enrollments.count_documents({"front_group_id": group_id, "process_key": "consolidation", "status": {"$in": ["planned", "active", "paused"]}})
+    if active_processes:
+        raise HTTPException(status_code=409, detail={"message": "No se puede borrar: tiene procesos de Consolidación activos", "active_process_count": active_processes})
+    assignments_deleted = (await db.front_group_assignments.delete_many({"front_group_id": group_id})).deleted_count
+    await db.front_group_audit_events.delete_many({"front_group_id": group_id})
+    await db.mentor_qualifications.delete_many({"front_group_id": group_id})
+    await db.front_groups.delete_one({"front_group_id": group_id})
+    await record_admin_deletion("front_groups", group_id, current_user, payload.reason, {"name": group.get("name"), "assignments_deleted": assignments_deleted})
+    return {"deleted": True, "front_group_id": group_id, "name": group.get("name")}
+
+
 @router.get("/{group_id}/history", response_model=dict)
 async def group_history(group_id: str, current_user: dict = Depends(require_read)):
     await assert_group_scope(group_id, current_user)
@@ -553,3 +617,4 @@ async def ensure_front_group_indexes() -> None:
     await db.front_group_audit_events.create_index("event_id", unique=True)
     await db.front_group_audit_events.create_index([("front_group_id", 1), ("occurred_at", -1)])
     await db.person_contacts.create_index("valor_normalizado")
+    await db.admin_deletions.create_index([("collection", 1), ("deleted_at", -1)])

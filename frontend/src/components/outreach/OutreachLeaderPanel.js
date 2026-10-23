@@ -12,6 +12,7 @@ import { AddVisitDialog } from './AddVisitDialog';
 import { CampaignBooksDialog } from './CampaignBooksDialog';
 import { CampaignReportDialog } from './CampaignReportDialog';
 import { CreateCampaignDialog } from './CreateCampaignDialog';
+import { DeleteCampaignDialog } from './DeleteCampaignDialog';
 import { TransferVisitDialog } from './TransferVisitDialog';
 import { VisitCard } from './VisitCard';
 
@@ -95,6 +96,7 @@ export const OutreachLeaderPanel = ({ campaigns, onCampaignsChanged }) => {
                 <div className="flex gap-2">
                   <Button size="sm" variant="outline" onClick={() => setBooksCampaign(campaign)} data-testid={`outreach-campaign-books-button-${campaign.campaign_id}`}>Libros</Button>
                   <Button size="sm" variant="outline" onClick={() => setReportCampaign(campaign)} data-testid={`outreach-campaign-report-button-${campaign.campaign_id}`}>Informe</Button>
+                  {canCreateOutreachCampaign(user) && <DeleteCampaignDialog campaignId={campaign.campaign_id} campaignName={campaign.name} onDeleted={onCampaignsChanged} />}
                 </div>
               </div>
             ))}
