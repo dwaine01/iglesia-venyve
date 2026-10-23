@@ -165,7 +165,56 @@ python seed_user.py
 
 ---
 
-## 9. Estructura de archivos de deploy
+## 9. Rescate de acceso del pastor general (emergencia, sin scripts manuales)
+
+Si la cuenta del pastor general queda bloqueada en producción y no hay otro
+pastor disponible para usar el botón "Restablecer contraseña" del Panel
+General, el backend trae un mecanismo de rescate que se aplica solo con
+variables de entorno (sin shell, sin scripts, sin tocar Mongo a mano).
+
+**Reglas del mecanismo** (`backend/admin_recovery.py`, se ejecuta en cada
+arranque del backend):
+- Solo actúa si **ambas** variables `ADMIN_RECOVERY_EMAIL` y
+  `ADMIN_RECOVERY_PASSWORD` están presentes.
+- La contraseña debe tener **mínimo 12 caracteres**; si es más corta, se
+  ignora (deja un warning en los logs, nunca imprime la contraseña).
+- Solo actúa sobre una cuenta **que ya existe** con rol `pastor`, `pastora`,
+  `admin` o `superadmin`. Nunca crea cuentas nuevas ni cambia el rol de
+  nadie.
+- Es **idempotente**: guarda una huella (hash, nunca la contraseña) en la
+  colección `system_recovery`. Mientras esa huella no cambie, los reinicios
+  del backend no vuelven a tocar la cuenta — así, una vez que cambias la
+  contraseña manualmente, Railway puede reiniciarse sin pisarla de nuevo.
+- Fuerza el cambio de contraseña en el próximo ingreso
+  (`must_change_password`) e invalida cualquier sesión vieja
+  (`token_version`).
+
+### Procedimiento paso a paso
+
+1. Railway → servicio **backend** (`venyve-backend`) → **Variables**.
+2. Agrega:
+   ```
+   ADMIN_RECOVERY_EMAIL=admin@venyve.com
+   ADMIN_RECOVERY_PASSWORD=<una-contraseña-nueva-de-al-menos-12-caracteres>
+   ```
+3. Guarda — Railway hace **redeploy automático** del servicio backend.
+   Espera a que el deploy termine (revisa los logs: deben decir
+   `[admin_recovery] Contraseña de rescate aplicada para admin@venyve.com...`).
+4. Entra al panel con ese correo y la contraseña nueva. El sistema te pedirá
+   cambiarla de inmediato (pantalla "Crea tu clave personal").
+5. Cambia la contraseña desde ahí.
+6. **Borra ambas variables** (`ADMIN_RECOVERY_EMAIL` y
+   `ADMIN_RECOVERY_PASSWORD`) de Railway y guarda de nuevo para que el
+   redeploy las quite del entorno. Esto evita dejarlas expuestas de forma
+   permanente.
+
+> Si el correo no corresponde a una cuenta pastoral existente, o la
+> contraseña no cumple el mínimo, el backend no hace nada (ni crea, ni
+> cambia roles) — solo deja un warning en los logs de Railway.
+
+---
+
+## 10. Estructura de archivos de deploy
 
 ```
 iglesia-venyve/
