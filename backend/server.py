@@ -16,8 +16,11 @@ import json
 from dotenv import load_dotenv
 from access_control import (
     CORE_ACCESS_MANAGE,
+    EVANGELISM_LOG_WRITE,
+    INVITATION_CODES_MANAGE,
     access_defaults_for_role,
     ensure_access_defaults,
+    has_capability,
     normalized_access_scope,
     normalized_capabilities,
     is_global_pastoral_authority,
@@ -1012,6 +1015,8 @@ async def create_invite_code(body: InviteCodeCreate, authorization: Optional[str
 
     if rol != "lider" and not is_global_pastoral_authority(payload):
         raise HTTPException(status_code=403, detail="Solo pastores y lideres pueden generar codigos")
+    if not (is_global_pastoral_authority(payload) or has_capability(payload, INVITATION_CODES_MANAGE)):
+        raise HTTPException(status_code=403, detail="No tienes el módulo de Códigos de Invitación asignado")
 
     # Determinar rol a asignar segun quien crea
     if is_global_pastoral_authority(payload):
@@ -1054,6 +1059,8 @@ async def list_invite_codes(authorization: Optional[str] = Header(None)):
     creator_id = payload["user_id"]
     if rol != "lider" and not is_global_pastoral_authority(payload):
         raise HTTPException(status_code=403, detail="Solo pastores y lideres pueden ver codigos")
+    if not (is_global_pastoral_authority(payload) or has_capability(payload, INVITATION_CODES_MANAGE)):
+        raise HTTPException(status_code=403, detail="No tienes el módulo de Códigos de Invitación asignado")
 
     cursor = db.invite_codes.find({"created_by_user_id": creator_id}).sort("created_at", -1)
     items = []
@@ -2839,6 +2846,8 @@ async def create_journal_entry(entry: JournalEntryCreate, authorization: Optiona
     payload = await get_current_user(authorization)
     if payload.get("rol") != "lider" and not is_global_pastoral_authority(payload):
         raise HTTPException(status_code=403, detail="Solo líderes y pastores pueden registrar bitácora")
+    if not (is_global_pastoral_authority(payload) or has_capability(payload, EVANGELISM_LOG_WRITE)):
+        raise HTTPException(status_code=403, detail="No tienes el módulo de Bitácora Evangelística asignado")
 
     doc = {
         "leader_id": payload["user_id"],
@@ -2866,6 +2875,8 @@ async def list_journal_entries(
 ):
     """Listar entradas de bitácora del líder autenticado (o de todos si es pastor)."""
     payload = await get_current_user(authorization)
+    if not (is_global_pastoral_authority(payload) or has_capability(payload, EVANGELISM_LOG_WRITE)):
+        raise HTTPException(status_code=403, detail="No tienes el módulo de Bitácora Evangelística asignado")
     query: dict = {}
     if payload.get("rol") == "lider":
         query["leader_id"] = payload["user_id"]
@@ -2885,6 +2896,8 @@ async def list_journal_entries(
 async def journal_stats(authorization: Optional[str] = Header(None)):
     """Totales agregados (hoy, semana, mes, total) para el líder autenticado o todos (pastor)."""
     payload = await get_current_user(authorization)
+    if not (is_global_pastoral_authority(payload) or has_capability(payload, EVANGELISM_LOG_WRITE)):
+        raise HTTPException(status_code=403, detail="No tienes el módulo de Bitácora Evangelística asignado")
     base_query: dict = {}
     if payload.get("rol") == "lider":
         base_query["leader_id"] = payload["user_id"]

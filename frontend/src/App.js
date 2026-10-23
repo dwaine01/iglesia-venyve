@@ -101,7 +101,7 @@ import AppLayout from './components/AppLayout';
 import AccessDeniedPage from './components/AccessDeniedPage';
 import MiPerfilPage from './pages/MiPerfilPage';
 import MisEstadisticasPage from './pages/MisEstadisticasPage';
-import { canManageDirectMembership, canManageBaptismEvents, canManageDedicationEvents, canViewCare, canViewFinanceModule, canViewFormation, canViewFrontGroups, canViewGeo, canViewLeadership, canViewLibraryModule, canManageLibraryInventory, canViewLibraryPurchaseOrders, canViewLibraryReports, canViewOperations, canAccessCampaignOperator, canAccessOutreach, canCreateOutreachCampaign, hasAnyCapability, isPastoralAuthority } from './lib/accessControl';
+import { canManageDirectMembership, canManageBaptismEvents, canManageDedicationEvents, canViewCare, canViewFinanceModule, canViewFormation, canViewFrontGroups, canViewGeo, canViewLeadership, canViewLibraryModule, canManageLibraryInventory, canViewLibraryPurchaseOrders, canViewLibraryReports, canViewOperations, canAccessCampaignOperator, canAccessOutreach, canCreateOutreachCampaign, canViewProcesses, canViewCellular, canViewDoors, canViewDirectory, canManageInvitationCodes, canWriteEvangelismLog, canViewPresentationManual, hasAnyCapability, isPastoralAuthority } from './lib/accessControl';
 import { useBoardAccess } from './hooks/useBoardAccess';
 import { useMentorAccess } from './hooks/useMentorAccess';
 import './App.css';
@@ -195,20 +195,20 @@ function SupervisionAccessRoute({ children }) {
 function RoleDashboard() {
   const { user } = useAuth();
   if (isPastoralAuthority(user)) return <Navigate to="/dashboard-general" />;
+  if (!canViewProcesses(user)) return <Navigate to="/mi-perfil" replace />;
   if (user?.rol === 'persona') return <Navigate to="/procesos/dashboard" />;
   return <ProcessesDashboardPage />;
 }
 
-// ETAPA 5A: ver el Perfil 360 de OTRA persona exige una capability person.*;
-// ver el propio perfil (misma persona) siempre está permitido vía "Mi perfil".
+// ETAPA 5A: ver el Perfil 360 de OTRA persona exige la capability de
+// directorio (no basta tener capabilities person.* de solo autoconsulta).
 function PersonProfileRoute({ children }) {
   const { user, loading } = useAuth();
   const { personId } = useParams();
   if (loading) return <div className="flex min-h-screen items-center justify-center" data-testid="person-profile-route-loading">Cargando…</div>;
   if (!user) return <Navigate to="/login" replace />;
   if (personId && personId === user.person_id) return <Navigate to="/mi-perfil" replace />;
-  const canViewDirectory = isPastoralAuthority(user) || (user.capabilities || []).some((item) => item.startsWith('person.'));
-  if (!canViewDirectory) return <AccessDeniedPage />;
+  if (!canViewDirectory(user)) return <AccessDeniedPage />;
   return children;
 }
 
@@ -237,21 +237,21 @@ function App() {
             {/* Pastor routes */}
             <Route path="dashboard-general" element={<DashboardGeneralPage />} />
             <Route path="nucleo" element={<AccessManagerRoute><CoreGovernancePage /></AccessManagerRoute>} />
-            <Route path="procesos/dashboard" element={<ProcessesDashboardPage />} />
+            <Route path="procesos/dashboard" element={<CapabilityRoute allowed={canViewProcesses}><ProcessesDashboardPage /></CapabilityRoute>} />
             <Route path="procesos/7-semanas" element={<SevenWeeksPage />} />
             <Route path="procesos/7-semanas/:enrollmentId" element={<SevenWeeksDetailPage />} />
-            <Route path="procesos/consolidacion" element={<ConsolidationPage />} />
+            <Route path="procesos/consolidacion" element={<CapabilityRoute allowed={canViewProcesses}><ConsolidationPage /></CapabilityRoute>} />
             <Route path="procesos/consolidacion/mi-panel" element={<MentorPanelPage />} />
             <Route path="procesos/consolidacion/:enrollmentId" element={<ConsolidationDetailPage />} />
-            <Route path="procesos/discipulado" element={<DiscipleshipPage />} />
+            <Route path="procesos/discipulado" element={<CapabilityRoute allowed={canViewProcesses}><DiscipleshipPage /></CapabilityRoute>} />
             <Route path="formacion" element={<FormationRoute><FormationAdminPage /></FormationRoute>} />
             <Route path="formacion/cohortes/:cohortId" element={<FormationRoute><FormationCohortPage /></FormationRoute>} />
             <Route path="grupos-frontales" element={<CapabilityRoute allowed={canViewFrontGroups}><FrontGroupsPage /></CapabilityRoute>} />
             <Route path="liderazgo" element={<CapabilityRoute allowed={canViewLeadership}><LeadershipPage /></CapabilityRoute>} />
             <Route path="mapas" element={<CapabilityRoute allowed={canViewGeo}><Suspense fallback={<div className="flex min-h-[60vh] items-center justify-center" data-testid="geo-page-loading">Cargando Mapa 360…</div>}><GeoMapsPage /></Suspense></CapabilityRoute>} />
-            <Route path="procesos/mentoria" element={<MentorshipPage />} />
-            <Route path="procesos/cap" element={<CapPage />} />
-            <Route path="celulas/dashboard" element={<CellularDashboardPage />} />
+            <Route path="procesos/mentoria" element={<CapabilityRoute allowed={canViewProcesses}><MentorshipPage /></CapabilityRoute>} />
+            <Route path="procesos/cap" element={<CapabilityRoute allowed={canViewProcesses}><CapPage /></CapabilityRoute>} />
+            <Route path="celulas/dashboard" element={<CapabilityRoute allowed={canViewCellular}><CellularDashboardPage /></CapabilityRoute>} />
             <Route path="celulas/redes" element={<StaffRoute><CellularNetworksPage /></StaffRoute>} />
             <Route path="celulas/lista" element={<CellularListPage />} />
             <Route path="celulas/bandeja-ready" element={<StaffRoute><CellularReadyPage /></StaffRoute>} />
@@ -261,7 +261,7 @@ function App() {
             <Route path="celulas/genealogia" element={<CellularHealthPage mode="genealogy" />} />
             <Route path="celulas/:id/reunion-movil" element={<StaffRoute><CellularMeetingMobilePage /></StaffRoute>} />
             <Route path="celulas/:id" element={<CellularDetailPage />} />
-            <Route path="puertas/dashboard" element={<StaffRoute><DoorsDashboardPage /></StaffRoute>} />
+            <Route path="puertas/dashboard" element={<CapabilityRoute allowed={canViewDoors}><DoorsDashboardPage /></CapabilityRoute>} />
             <Route path="puertas/casos" element={<StaffRoute><DoorCasesPage /></StaffRoute>} />
             <Route path="puertas/:doorKey" element={<StaffRoute><DoorDetailPage /></StaffRoute>} />
             <Route path="junta/dashboard" element={<BoardAccessRoute><BoardDashboardPage /></BoardAccessRoute>} />
@@ -287,7 +287,7 @@ function App() {
             <Route path="semana/:weekNum" element={<Navigate to="/procesos/7-semanas" replace />} />
             <Route path="persona/:personId/semana/:weekNum" element={<Navigate to="/procesos/7-semanas" replace />} />
             <Route path="registro" element={<Navigate to="/procesos/consolidacion" replace />} />
-            <Route path="personas" element={<StaffRoute><PersonasListPage /></StaffRoute>} />
+            <Route path="personas" element={<CapabilityRoute allowed={canViewDirectory}><PersonasListPage /></CapabilityRoute>} />
             <Route path="personas/nueva" element={<StaffRoute><PersonaNuevaPage /></StaffRoute>} />
             <Route path="personas/importar" element={<CapabilityRoute allowed={canManageDirectMembership}><MembershipImportPage /></CapabilityRoute>} />
             <Route path="bautismos" element={<CapabilityRoute allowed={canManageBaptismEvents}><BaptismEventsPage /></CapabilityRoute>} />
@@ -316,13 +316,13 @@ function App() {
             <Route path="cuidado-pastoral/operacion-72" element={<CapabilityRoute allowed={canViewCare}><Operacion72DashboardPage /></CapabilityRoute>} />
             <Route path="cuidado-pastoral/visitas" element={<CapabilityRoute allowed={canViewCare}><PastoralVisitsPage /></CapabilityRoute>} />
             <Route path="personas/:personId" element={<PersonProfileRoute><PersonaPerfilPage /></PersonProfileRoute>} />
-            <Route path="directorio" element={<DirectorioTalentosPage />} />
-            <Route path="ministerios" element={<MinisteriosPage />} />
-            <Route path="ministerios/:ministryId" element={<MinisterioDetailPage />} />
-            <Route path="bitacora" element={<StaffRoute><BitacoraPage /></StaffRoute>} />
-            <Route path="codigos" element={<StaffRoute><CodigosInvitacionPage /></StaffRoute>} />
-            <Route path="estadisticas" element={<EstadisticasPage />} />
-            <Route path="presentacion" element={<PresentacionHomePage />} />
+            <Route path="directorio" element={<CapabilityRoute allowed={canViewDirectory}><DirectorioTalentosPage /></CapabilityRoute>} />
+            <Route path="ministerios" element={<CapabilityRoute allowed={canViewDirectory}><MinisteriosPage /></CapabilityRoute>} />
+            <Route path="ministerios/:ministryId" element={<CapabilityRoute allowed={canViewDirectory}><MinisterioDetailPage /></CapabilityRoute>} />
+            <Route path="bitacora" element={<CapabilityRoute allowed={canWriteEvangelismLog}><BitacoraPage /></CapabilityRoute>} />
+            <Route path="codigos" element={<CapabilityRoute allowed={canManageInvitationCodes}><CodigosInvitacionPage /></CapabilityRoute>} />
+            <Route path="estadisticas" element={<CapabilityRoute allowed={canViewDirectory}><EstadisticasPage /></CapabilityRoute>} />
+            <Route path="presentacion" element={<CapabilityRoute allowed={canViewPresentationManual}><PresentacionHomePage /></CapabilityRoute>} />
             <Route path="mi-perfil" element={<MiPerfilPage />} />
             <Route path="mis-estadisticas" element={<MisEstadisticasPage />} />
             

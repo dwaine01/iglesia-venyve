@@ -142,3 +142,13 @@ export const canAccessOutreach = (user, isActiveMentor = false) => (
   || hasCapability(user, 'mentorship.outreach.report')
   || Boolean(isActiveMentor)
 );
+
+// ETAPA 5A: estos eran visibles para cualquier "lider" solo por el cargo;
+// ahora son módulos con su propia capability (igual que los demás).
+export const canViewDirectory = (user) => hasCapability(user, 'person.directory.search');
+export const canManageInvitationCodes = (user) => hasCapability(user, 'invitations.codes.manage');
+export const canWriteEvangelismLog = (user) => hasCapability(user, 'evangelism.log.write');
+export const canViewPresentationManual = (user) => hasCapability(user, 'presentation.manual.view');
+export const canViewProcesses = (user) => hasAnyCapability(user, ['processes.read', 'processes.participate', 'processes.write']);
+export const canViewCellular = (user) => hasAnyCapability(user, ['cellular.read', 'cellular.write', 'cellular.manage']);
+export const canViewDoors = (user) => hasAnyCapability(user, ['doors.read', 'doors.write', 'doors.manage']);

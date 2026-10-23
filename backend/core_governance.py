@@ -541,6 +541,10 @@ async def update_user_access(
     allowed = set(PERSON_DOMAIN_CAPABILITIES + PROCESS_CAPABILITIES + CELLULAR_CAPABILITIES + DOOR_BOARD_CAPABILITIES + FINANCE_CAPABILITIES + JOURNEY_GOVERNANCE_CAPABILITIES + OPERATIONS_CAPABILITIES + CARE_CAPABILITIES + FORMATION_CAPABILITIES + CAMPAIGN_CAPABILITIES + MENTORSHIP_CAPABILITIES + [MEMBERSHIP_DOCUMENTS_MANAGE, MEMBERSHIP_DIRECT_IMPORT, BOARD_ACCESS, PERSON_PASTORAL_NOTES_READ, CORE_GOVERNANCE_MANAGE, CORE_ACCESS_MANAGE, "person.profile.read"]) | catalog_keys
     capabilities = defaults["capabilities"]
     manual_level = requested_level in {"lider", "persona"}
+    if manual_level and payload.capabilities is None and (target.get("permissions_mode") or "role_defaults") == "manual":
+        # ETAPA 5A: una edición que no toca `capabilities` (ej. solo activar/
+        # desactivar) NUNCA debe revivir el paquete por cargo en una cuenta manual.
+        capabilities = target.get("capabilities") or []
     if payload.capabilities is not None:
         if not is_global_pastoral_authority(current_user):
             raise HTTPException(status_code=403, detail="Solo el pastor puede personalizar capacidades")
@@ -550,11 +554,11 @@ async def update_user_access(
         if invalid:
             raise HTTPException(status_code=400, detail=f"Capabilities inválidas: {', '.join(invalid)}")
         if manual_level:
-            # ETAPA 5A: líder/persona en modo manual — lo enviado es la lista
-            # completa (permite RECORTAR, no solo agregar sobre el paquete por cargo).
-            # Nunca via la matriz: core.governance.manage / core.access.manage
-            # (delegación estructural, no un módulo).
-            capabilities = sorted((set(payload.capabilities) & catalog_keys) | (existing_capabilities & catalog_keys))
+            # ETAPA 5A: líder/persona en modo manual — lo enviado ES la lista
+            # completa (permite RECORTAR, no solo agregar). Nunca via la
+            # matriz: core.governance.manage / core.access.manage (delegación
+            # estructural, no un módulo).
+            capabilities = sorted(set(payload.capabilities) & catalog_keys)
         else:
             customizable = set(JOURNEY_GOVERNANCE_CAPABILITIES + OPERATIONS_CAPABILITIES + FORMATION_CAPABILITIES + CAMPAIGN_CAPABILITIES + MENTORSHIP_CAPABILITIES + [MEMBERSHIP_DOCUMENTS_MANAGE, MEMBERSHIP_DIRECT_IMPORT]) | catalog_keys
             non_customizable = sorted(set(payload.capabilities) - set(defaults["capabilities"]) - customizable - existing_capabilities)

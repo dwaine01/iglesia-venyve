@@ -129,6 +129,14 @@ FORMATION_CAPABILITIES = [
     DEDICATION_READ, DEDICATION_EVENTS_MANAGE, DEDICATION_CERTIFICATES_ISSUE,
 ]
 
+# ETAPA 5A: estas tres herramientas de staff (códigos, bitácora, manual) eran
+# accesibles por cualquier "lider" solo por el cargo; ahora son módulos como
+# cualquier otro, con su propia capability.
+INVITATION_CODES_MANAGE = "invitations.codes.manage"
+EVANGELISM_LOG_WRITE = "evangelism.log.write"
+PRESENTATION_MANUAL_VIEW = "presentation.manual.view"
+STAFF_TOOLS_CAPABILITIES = [INVITATION_CODES_MANAGE, EVANGELISM_LOG_WRITE, PRESENTATION_MANUAL_VIEW]
+
 
 # ETAPA 5A: matriz módulo × acción para altas/ediciones de cuentas. Única
 # fuente de verdad consumida por el backend (validación) y el frontend
@@ -262,6 +270,11 @@ CAPABILITY_CATALOG = [
     {"module_key": "board", "label": "Junta Directiva (requiere grupo de privilegio Junta)", "items": [
         {"capability": BOARD_ACCESS, "action": "consultar", "label": "Consultar: Junta Directiva"},
     ]},
+    {"module_key": "staff_tools", "label": "Herramientas de Evangelismo y Comunicación", "items": [
+        {"capability": INVITATION_CODES_MANAGE, "action": "administrar", "label": "Administrar: generar Códigos de Invitación"},
+        {"capability": EVANGELISM_LOG_WRITE, "action": "agregar", "label": "Agregar: registrar Bitácora Evangelística"},
+        {"capability": PRESENTATION_MANUAL_VIEW, "action": "consultar", "label": "Consultar: Manual de las 7 Semanas"},
+    ]},
 ]
 
 
@@ -370,11 +383,11 @@ PERSON_DOMAIN_CAPABILITIES = [
 
 _ROLE_ACCESS_DEFAULTS = {
     "pastor": {
-        "capabilities": [*PERSON_DOMAIN_CAPABILITIES, *PROCESS_CAPABILITIES, *CELLULAR_CAPABILITIES, *DOOR_BOARD_CAPABILITIES, *FINANCE_CAPABILITIES, *JOURNEY_GOVERNANCE_CAPABILITIES, *OPERATIONS_CAPABILITIES, *CARE_CAPABILITIES, *FORMATION_CAPABILITIES, *LIBRARY_CAPABILITIES, MEMBERSHIP_DOCUMENTS_MANAGE, MEMBERSHIP_DIRECT_IMPORT, PERSON_PASTORAL_NOTES_READ, CORE_GOVERNANCE_MANAGE, CORE_ACCESS_MANAGE],
+        "capabilities": [*PERSON_DOMAIN_CAPABILITIES, *PROCESS_CAPABILITIES, *CELLULAR_CAPABILITIES, *DOOR_BOARD_CAPABILITIES, *FINANCE_CAPABILITIES, *JOURNEY_GOVERNANCE_CAPABILITIES, *OPERATIONS_CAPABILITIES, *CARE_CAPABILITIES, *FORMATION_CAPABILITIES, *LIBRARY_CAPABILITIES, *STAFF_TOOLS_CAPABILITIES, MEMBERSHIP_DOCUMENTS_MANAGE, MEMBERSHIP_DIRECT_IMPORT, PERSON_PASTORAL_NOTES_READ, CORE_GOVERNANCE_MANAGE, CORE_ACCESS_MANAGE],
         "access_scope": {"persons": "all"},
     },
     "lider": {
-        "capabilities": [*PERSON_DOMAIN_CAPABILITIES, PROCESSES_READ, PROCESSES_WRITE, PROCESSES_PARTICIPATE, FRONT_GROUPS_VIEW, FRONT_GROUP_WORK_ASSIGN, LEADERSHIP_VIEW, CELLULAR_READ, CELLULAR_WRITE, CELLULAR_ATTENDANCE, CELLULAR_NEEDS, CELLULAR_SENSITIVE_READ, DOORS_READ, OPERATIONS_VIEW, OPERATIONS_CHECKIN, OPERATIONS_VOLUNTEER, CARE_ASSIGNED_READ, CARE_ASSIGNED_WRITE, LIBRARY_DELIVER],
+        "capabilities": [*PERSON_DOMAIN_CAPABILITIES, PROCESSES_READ, PROCESSES_WRITE, PROCESSES_PARTICIPATE, FRONT_GROUPS_VIEW, FRONT_GROUP_WORK_ASSIGN, LEADERSHIP_VIEW, CELLULAR_READ, CELLULAR_WRITE, CELLULAR_ATTENDANCE, CELLULAR_NEEDS, CELLULAR_SENSITIVE_READ, DOORS_READ, OPERATIONS_VIEW, OPERATIONS_CHECKIN, OPERATIONS_VOLUNTEER, CARE_ASSIGNED_READ, CARE_ASSIGNED_WRITE, LIBRARY_DELIVER, *STAFF_TOOLS_CAPABILITIES],
         "access_scope": {"persons": "created_by"},
     },
     "persona": {
@@ -494,7 +507,7 @@ async def ensure_access_defaults(db) -> None:
             },
         )
     await db.users.update_many({"rol": "persona", **manual_excluded}, {"$addToSet": {"capabilities": {"$each": [OPERATIONS_VIEW, OPERATIONS_VOLUNTEER]}}})
-    await db.users.update_many({"rol": "lider", **manual_excluded}, {"$addToSet": {"capabilities": {"$each": [OPERATIONS_VIEW, OPERATIONS_CHECKIN, OPERATIONS_VOLUNTEER, LIBRARY_DELIVER]}}})
+    await db.users.update_many({"rol": "lider", **manual_excluded}, {"$addToSet": {"capabilities": {"$each": [OPERATIONS_VIEW, OPERATIONS_CHECKIN, OPERATIONS_VOLUNTEER, LIBRARY_DELIVER, *STAFF_TOOLS_CAPABILITIES]}}})
     await db.users.update_many(
         {"$or": [{"access_level": "coordinador_general"}, {"rol": "lider", "capabilities": CORE_ACCESS_MANAGE}], **manual_excluded},
         {"$addToSet": {"capabilities": {"$each": [*CARE_CAPABILITIES, MEMBERSHIP_DIRECT_IMPORT, FORMATION_READ, FORMATION_COHORTS_MANAGE, FORMATION_ENROLL, FORMATION_ATTENDANCE_WRITE, FORMATION_GRADES_READ, FORMATION_GRADES_WRITE, FORMATION_PROGRESS_MANAGE, FORMATION_HISTORICAL_CREDIT_MANAGE, FORMATION_PROMOTE, BAPTISM_READ, BAPTISM_WRITE, BAPTISM_CERTIFICATES_ISSUE, BAPTISM_EVENTS_MANAGE, DEDICATION_READ, DEDICATION_EVENTS_MANAGE, DEDICATION_CERTIFICATES_ISSUE, *LIBRARY_CAPABILITIES, MENTORSHIP_BADGE_MANAGE, MENTORSHIP_OUTREACH_ASSIGN, CONSOLIDATION_MENTOR_TRANSFER]}, "privilege_groups": "care"}, "$set": {"access_scope.persons": "all", "access_policy_version": ACCESS_POLICY_VERSION}},
