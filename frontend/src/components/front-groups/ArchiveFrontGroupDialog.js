@@ -27,12 +27,12 @@ export const ArchiveFrontGroupDialog = ({ groupId, onArchived }) => {
 
   return <>
     <Button variant="outline" onClick={() => setOpen(true)} className="border-red-200 text-red-700 hover:bg-red-50" data-testid="front-group-archive-button"><Archive className="h-4 w-4" />Archivar</Button>
-    <AlertDialog open={open} onOpenChange={setOpen}>
+    <AlertDialog open={open} onOpenChange={(value) => { setOpen(value); if (!value) setReason(''); }}>
       <AlertDialogContent className="bg-white" data-testid="front-group-archive-dialog">
         <AlertDialogHeader><AlertDialogTitle>Archivar Grupo Frontal</AlertDialogTitle><AlertDialogDescription>Se bloquea si tiene grupos dependientes o procesos de Consolidación activos. Indique el motivo.</AlertDialogDescription></AlertDialogHeader>
         <div><Label htmlFor="front-group-archive-reason">Motivo</Label><Input id="front-group-archive-reason" value={reason} onChange={(event) => setReason(event.target.value)} data-testid="front-group-archive-reason-input" /></div>
         <AlertDialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)} data-testid="front-group-archive-cancel-button">Cancelar</Button>
+          <Button variant="outline" onClick={() => { setOpen(false); setReason(''); }} data-testid="front-group-archive-cancel-button">Cancelar</Button>
           <Button onClick={confirm} disabled={saving} className="bg-red-700 text-white hover:bg-red-800" data-testid="front-group-archive-confirm-button">{saving && <Loader2 className="h-4 w-4 animate-spin" />}Archivar</Button>
         </AlertDialogFooter>
       </AlertDialogContent>

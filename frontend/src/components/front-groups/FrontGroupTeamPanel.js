@@ -55,7 +55,7 @@ export const FrontGroupTeamPanel = ({ group, assignments, groups = [], canManage
     } catch (error) { toast.error(apiErrorMessage(error, 'No se pudo trasladar')); } finally { setBusy(false); }
   };
 
-  const otherGroups = groups.filter((item) => item.front_group_id !== group.front_group_id);
+  const otherGroups = groups.filter((item) => item.front_group_id !== group.front_group_id && item.permissions?.manage);
 
   return <div className="grid gap-6 xl:grid-cols-[1fr_360px]" data-testid="front-group-team-panel">
     <section className="border border-slate-200 bg-white"><header className="border-b border-slate-200 px-5 py-4"><h3 className="font-['Spectral'] text-xl font-semibold">Equipo e historial</h3></header>

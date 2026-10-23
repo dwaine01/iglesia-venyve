@@ -45,7 +45,7 @@ export const PersonQuickPicker = ({ groupId, onPicked, role = 'member', placehol
         ...form, role, idempotency_key: idemRef.current, assign,
         confirm_distinct_person: confirmDistinct, distinct_reason: distinctReason || null,
       }, getAuthHeaders());
-      toast.success('Persona registrada y agregada');
+      toast.success(assign ? 'Persona registrada y agregada' : 'Persona registrada');
       pick(response.data.person);
       setForm({ nombre: '', apellido: '', telefono: '', email: '' }); setConfirmDistinct(false); setDistinctReason('');
       idemRef.current = `fg-quick-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -86,7 +86,7 @@ export const PersonQuickPicker = ({ groupId, onPicked, role = 'member', placehol
         </div>}
       </div>}
       <Button type="button" onClick={createPerson} disabled={busy || (candidates?.requiresConfirmation && (!confirmDistinct || distinctReason.trim().length < 2))} className="w-full bg-slate-900" data-testid="person-quick-picker-submit-button">
-        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}Registrar y agregar
+        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}{assign ? 'Registrar y agregar' : 'Registrar y usar'}
       </Button>
     </div>}
   </div>;

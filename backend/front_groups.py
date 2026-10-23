@@ -451,6 +451,8 @@ async def end_member(group_id: str, person_id: str, payload: MemberEnd, current_
 
 @router.post("/{group_id}/members/transfer", response_model=dict)
 async def transfer_member(group_id: str, payload: MemberTransfer, current_user: dict = Depends(require_manage)):
+    if group_id == payload.to_group_id:
+        raise HTTPException(status_code=422, detail="El grupo de origen y el destino no pueden ser el mismo")
     await assert_group_scope(group_id, current_user, leader_required=True)
     await assert_group_scope(payload.to_group_id, current_user, leader_required=True)
     if await db.front_group_assignments.find_one({"front_group_id": payload.to_group_id, "person_id": payload.person_id, "active": True}, {"_id": 1}):
@@ -517,7 +519,7 @@ async def quick_person(group_id: str, payload: GroupQuickPerson, current_user: d
     if payload.assign and not existing_assignment:
         assignment_id = str(uuid4())
         await db.front_group_assignments.insert_one({"_id": assignment_id, "assignment_id": assignment_id, "front_group_id": group_id, "person_id": person["person_id"], "role": payload.role, "notes": payload.notes, "active": True, "started_at": now, "ended_at": None, "assigned_by_user_id": current_user["user_id"], "created_at": now})
-    await audit(group_id, current_user, "member_quick_created", {"person_id": person["person_id"], "role": payload.role, "created": result["created"], "assigned": payload.assign})
+    await audit(group_id, current_user, "member_quick_created" if payload.assign else "person_quick_created_for_designation", {"person_id": person["person_id"], "role": payload.role, "created": result["created"], "assigned": payload.assign})
     return {"person": person, "assignment_added": payload.assign and not bool(existing_assignment)}
 
 

@@ -5,11 +5,11 @@ import { Loader2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 const ACTION_LABELS = {
-  group_created: 'Grupo creado', group_designated: 'Pareja designada', group_conformed: 'Grupo conformado',
-  member_assigned: 'Integrante asignado', member_quick_created: 'Alta rápida de integrante',
+  group_created: 'Grupo creado', group_designated: 'Pareja designada', child_designated: 'Pareja designada (grupo dependiente)', group_conformed: 'Grupo conformado',
+  member_assigned: 'Integrante asignado', member_quick_created: 'Alta rápida de integrante', person_quick_created_for_designation: 'Persona registrada (para designación)',
   member_ended: 'Baja de integrante', member_transferred_out: 'Traslado (salida)', member_transferred_in: 'Traslado (entrada)',
   primary_leader_assigned: 'Líder asignado', co_leader_assigned: 'Colíder asignado',
-  group_moved: 'Grupo trasladado', group_updated: 'Grupo actualizado', group_archived: 'Grupo archivado',
+  group_moved: 'Grupo trasladado', group_updated: 'Grupo actualizado', group_archived: 'Grupo archivado', child_designated: 'Designó pareja en un grupo dependiente',
 };
 
 export const FrontGroupHistoryPanel = ({ groupId }) => {
