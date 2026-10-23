@@ -13,6 +13,7 @@ export const MyLibraryHoldingsCard = () => {
     let active = true;
     axios.get(`${API}/api/library/my-holdings`, getAuthHeaders())
       .then((response) => { if (active) setItems(response.data.items || []); })
+      .catch(() => { if (active) setItems([]); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [API, getAuthHeaders]);

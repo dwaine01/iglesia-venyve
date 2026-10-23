@@ -262,6 +262,8 @@ async def update_activity_result(activity_id: str, payload: ActivityResultUpdate
         raise HTTPException(status_code=403, detail="Solo el mentor responsable puede registrar esta actividad")
     if payload.status == "rescheduled" and not payload.rescheduled_date:
         raise HTTPException(status_code=422, detail="Indique la nueva fecha para reprogramar")
+    if activity["status"] == "done" and payload.status != "done":
+        raise HTTPException(status_code=409, detail="La actividad ya fue realizada; no se puede revertir")
     now = now_utc()
     # 'sin respuesta' y 'reprogramada' son INTENTOS, no cierran la actividad: sigue
     # 'pending' (aparece en Hoy/Atrasado/Próximo y se puede volver a registrar más

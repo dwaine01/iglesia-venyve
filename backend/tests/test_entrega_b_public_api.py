@@ -163,7 +163,8 @@ def test_deliver_book_idempotent(ctx):
 def test_no_answer_not_counted(ctx):
     act = next(i for i in activities(ctx) if i["stage_key"] == "mcd" and i["status"] == "pending")
     r = requests.put(f"{API}/activities/{act['activity_id']}/result", json={"status": "no_answer", "note": "No contestó"}, headers=ctx["a_h"], timeout=30)
-    assert r.status_code == 200 and r.json()["status"] == "no_answer"
+    assert r.status_code == 200 and r.json()["status"] == "pending" and r.json()["last_result"] == "no_answer"
+    ctx["no_answer_id"] = act["activity_id"]
     assert sum(1 for i in activities(ctx) if i["status"] == "done") == 1
 
 
@@ -217,7 +218,8 @@ def test_decision_pause_resume_no_membership(ctx):
     r = requests.put(url, json={"new_status": "paused", "reason": "Viaje"}, headers=ctx["a_h"], timeout=30)
     assert r.status_code == 200 and r.json()["decision_status"] == "paused" and r.json()["decision_paused_reason"] == "Viaje"
     r = requests.put(url, json={"new_status": "accepted"}, headers=ctx["a_h"], timeout=30)
-    assert r.status_code == 200 and r.json()["decision_status"] == "accepted"
+    # Reanudar recalcula: ya hay 1 actividad realizada -> in_progress
+    assert r.status_code == 200 and r.json()["decision_status"] == "in_progress"
     assert mongo.person_memberships.find_one({"person_id": ctx["person_id"]}) is None
 
 
@@ -260,3 +262,52 @@ def test_mentor_transfer_moves_activities(ctx):
         assert all(a["mentor_person_id"] == ctx["a_pid"] for a in acts), "actividades quedan con el mentor anterior tras transferir"
     finally:
         mongo.mentor_qualifications.delete_many({"qa_t41": True})
+
+
+# Iter42: 'sin respuesta' sigue visible en panel (intento, no cierre)
+def test_no_answer_activity_still_in_panel(ctx):
+    p = requests.get(f"{API}/my-panel", headers=ctx["a_h"], timeout=30).json()
+    ids = [x["activity_id"] for x in p["overdue"] + p["today"] + p["upcoming"]]
+    assert ctx["no_answer_id"] in ids
+
+
+# Iter42: reprogramada puede luego registrarse como Realizada
+def test_rescheduled_can_be_completed_later(ctx):
+    r = requests.put(f"{API}/activities/{ctx['rescheduled_id']}/result", json={"status": "done", "note": "Ahora sí"}, headers=ctx["a_h"], timeout=30)
+    assert r.status_code == 200 and r.json()["status"] == "done" and r.json()["last_result"] == "done"
+    p = requests.get(f"{API}/my-panel", headers=ctx["a_h"], timeout=30).json()
+    assert ctx["rescheduled_id"] not in [x["activity_id"] for x in p["overdue"] + p["today"] + p["upcoming"]]
+
+
+# Iter42: mismo libro MCD no puede entregarse dos veces a la misma persona desde otra actividad
+def test_same_book_not_delivered_twice_across_activities(ctx):
+    book = mongo.library_books.find_one({"sku": "MCD", "is_active": True})
+    h = mongo.library_holdings.find_one({"book_id": book["book_id"], "holder_type": "user", "holder_id": ctx["a_uid"]})
+    act = next(i for i in activities(ctx) if i["stage_key"] == "mcd" and i["status"] == "pending")
+    r = requests.put(f"{API}/activities/{act['activity_id']}/result", json={"status": "done", "deliver_book": True}, headers=ctx["a_h"], timeout=30)
+    assert r.status_code == 409, r.text
+    assert "ya se le entregó" in r.json()["detail"].lower()
+    after = next(i for i in activities(ctx) if i["activity_id"] == act["activity_id"])
+    assert after["status"] == "pending"
+    h2 = mongo.library_holdings.find_one({"book_id": book["book_id"], "holder_type": "user", "holder_id": ctx["a_uid"]})
+    assert h2["quantity_on_hand"] == h["quantity_on_hand"]
+
+
+# Iter42: expediente pausado no aparece en buckets; reanudar lo devuelve
+def test_paused_enrollment_hidden_from_buckets(ctx):
+    url = f"{API}/{ctx['enrollment_id']}/decision-status"
+    assert requests.put(url, json={"new_status": "paused", "reason": "Viaje QA"}, headers=ctx["a_h"], timeout=30).status_code == 200
+    p = requests.get(f"{API}/my-panel", headers=ctx["a_h"], timeout=30).json()
+    assert not any(x["enrollment_id"] == ctx["enrollment_id"] for x in p["overdue"] + p["today"] + p["upcoming"])
+    r = requests.put(url, json={"new_status": "accepted"}, headers=ctx["a_h"], timeout=30)
+    assert r.json()["decision_status"] == "in_progress"
+    p = requests.get(f"{API}/my-panel", headers=ctx["a_h"], timeout=30).json()
+    assert any(x["enrollment_id"] == ctx["enrollment_id"] for x in p["overdue"] + p["today"])
+
+
+# Iter42: actividad 'done' NO debería poder revertirse a no_answer (pierde avance)
+def test_done_activity_cannot_be_reverted(ctx):
+    done = next(i for i in activities(ctx) if i["status"] == "done")
+    r = requests.put(f"{API}/activities/{done['activity_id']}/result", json={"status": "no_answer"}, headers=ctx["a_h"], timeout=30)
+    after = next(i for i in activities(ctx) if i["activity_id"] == done["activity_id"])
+    assert after["status"] == "done", f"actividad realizada revertida a pending vía API (resp {r.status_code})"

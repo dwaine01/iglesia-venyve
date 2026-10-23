@@ -312,6 +312,12 @@ async def test_activity_result_done_with_book_delivery_is_idempotent():
 
         delivery_movements = await server.db.library_movements.count_documents({"book_id": book_id, "movement_type": "DELIVERY", "person_id": started["converted_person_id"]})
         assert delivery_movements == 1, "no debe duplicar el movimiento DELIVERY en un reintento"
+
+        reverted = await mentor_client.put(
+            f"/api/processes/consolidation/activities/{first_mcd['activity_id']}/result",
+            json={"status": "no_answer", "note": "intento de revertir"}, headers=mentor_headers,
+        )
+        assert reverted.status_code == 409, "una actividad ya 'realizada' no debe poder revertirse a 'sin respuesta'/'pendiente'"
     finally:
         await mentor_client.aclose()
         await cleanup()

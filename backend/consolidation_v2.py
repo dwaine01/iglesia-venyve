@@ -266,6 +266,8 @@ async def reassign_front_group(enrollment_id: str, payload: ConsolidationGroupAs
         await db.mentor_assignments.update_many({"enrollment_id": enrollment_id, "active": True}, {"$set": {"active": False, "ended_at": now, "ended_by_user_id": current_user["user_id"], "end_reason": payload.reason}})
         mentor_id = None
     await db.process_enrollments.update_one({"enrollment_id": enrollment_id}, {"$set": {"front_group_id": payload.front_group_id, "mentor_person_id": mentor_id, "responsible_person_id": mentor_id, "routing_decision": decision, "updated_at": now}, "$push": {"routing_history": {**decision, "source_cell_id": enrollment.get("source_cell_id"), "actor_user_id": current_user["user_id"], "occurred_at": now}}})
+    from consolidation_activities import sync_activities_mentor
+    await sync_activities_mentor(enrollment_id, mentor_id)
     await create_source_work_assignment(source_type="consolidation", source_id=enrollment_id, source_sub_id=None, title="Ejecutar Consolidación", description="Asignación operativa de Consolidación al Grupo Frontal.", assigned_group_id=payload.front_group_id, assigned_person_id=mentor_id, priority="high", due_at=enrollment.get("next_action_at"), actor_user_id=current_user["user_id"], reason=payload.reason)
     await record_event(db, enrollment, current_user["user_id"], "front_group_reassigned", "Grupo Frontal responsable actualizado", f"{previous_group_id or 'Sin grupo'} → {payload.front_group_id}. {payload.reason}")
     return await enrollment_detail(db, await load_consolidation(db, enrollment_id))
