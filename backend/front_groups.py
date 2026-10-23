@@ -14,7 +14,7 @@ from access_control import (
 )
 from front_group_tree import (
     build_tree, direct_assignments, group_in_scope as tree_group_in_scope, lineage_for_parent,
-    load_group, manageable_group_ids, readable_group_ids, support_group_ids, move_subtree,
+    load_group, manageable_group_ids, member_group_ids, readable_group_ids, support_group_ids, move_subtree,
 )
 from person_matching import GroupQuickPerson, normalize_text, quick_create_person
 from server import db, get_current_user
@@ -94,6 +94,7 @@ class DesignationCreate(BaseModel):
 
 class ConformGroup(BaseModel):
     name: Optional[str] = Field(default=None, min_length=2, max_length=160)
+    co_leader_person_id: Optional[str] = None
     member_person_ids: list[str] = Field(default_factory=list, max_length=200)
 
 
@@ -239,21 +240,34 @@ async def list_front_groups(include_archived: bool = Query(False), current_user:
     if include_archived and not is_global_pastoral_authority(current_user):
         raise HTTPException(status_code=403, detail="Solo la autoridad pastoral puede consultar grupos archivados")
     query = {} if include_archived else {"status": {"$ne": "archived"}}
-    allowed = await readable_group_ids(db, current_user)
-    if allowed is not None: query["front_group_id"] = {"$in": list(allowed)}
-    groups = await db.front_groups.find(query, {"_id": 0}).sort([("depth", 1), ("rotation_order", 1), ("name", 1)]).to_list(10000)
-    items = [await group_summary(group, current_user) for group in groups]
+    items = await visible_group_items(query, current_user)
     return {"items": items, "total": len(items)}
 
 
 @router.get("/tree", response_model=dict)
 async def front_group_tree(current_user: dict = Depends(require_read)):
-    allowed = await readable_group_ids(db, current_user)
-    query = {"status": {"$ne": "archived"}}
-    if allowed is not None: query["front_group_id"] = {"$in": list(allowed)}
-    groups = await db.front_groups.find(query, {"_id": 0}).to_list(10000)
-    items = [await group_summary(group, current_user) for group in groups]
+    items = await visible_group_items({"status": {"$ne": "archived"}}, current_user)
     return {"items": build_tree(items), "total": len(items)}
+
+
+async def visible_group_items(query: dict, current_user: dict) -> list[dict]:
+    """Grupos legibles con su resumen completo + los grupos donde solo es
+    integrante, en vista mínima (nombre, líder y colíder; sin conteos)."""
+    allowed = await readable_group_ids(db, current_user)
+    member_only: set[str] = set()
+    if allowed is not None:
+        member_only = await member_group_ids(db, current_user.get("person_id")) - allowed
+        query = {**query, "front_group_id": {"$in": [*allowed, *member_only]}}
+    groups = await db.front_groups.find(query, {"_id": 0}).sort([("depth", 1), ("rotation_order", 1), ("name", 1)]).to_list(10000)
+    items = []
+    for group in groups:
+        if group["front_group_id"] in member_only:
+            item = await member_view(group)
+            item.update({"parent_group_id": group.get("parent_group_id"), "depth": group.get("depth", 0), "rotation_order": group.get("rotation_order", 0), "permissions": {"manage": False, "support": False}})
+            items.append(item)
+        else:
+            items.append(await group_summary(group, current_user))
+    return items
 
 
 @router.post("", response_model=dict, status_code=201)
@@ -304,8 +318,23 @@ async def create_front_group(payload: FrontGroupCreate, current_user: dict = Dep
     return serialize(document)
 
 
+async def member_view(group: dict) -> dict:
+    """Lo único que ve un simple integrante de su grupo: nombre, líder y
+    colíder. Nunca la lista de integrantes ni sus procesos."""
+    leader_name = await person_name(group.get("primary_leader_person_id"))
+    return {
+        "front_group_id": group["front_group_id"], "name": group.get("name"),
+        "display_name": group.get("name") or (f"Equipo de {leader_name}" if leader_name else "Equipo sin líder"),
+        "status": group.get("status"), "pastoral_main": bool(group.get("pastoral_main")),
+        "primary_leader_name": leader_name, "co_leader_name": await person_name(group.get("co_leader_person_id")),
+        "member_view": True,
+    }
+
+
 @router.get("/{group_id}", response_model=dict)
 async def front_group_detail(group_id: str, current_user: dict = Depends(require_read)):
+    if not await group_in_scope(group_id, current_user) and group_id in await member_group_ids(db, current_user.get("person_id")):
+        return await member_view(await load_group(db, group_id))
     group = await assert_group_scope(group_id, current_user)
     assignments = await db.front_group_assignments.find({"front_group_id": group_id}, {"_id": 0}).sort("started_at", -1).to_list(2000)
     for item in assignments:
@@ -315,6 +344,9 @@ async def front_group_detail(group_id: str, current_user: dict = Depends(require
     child_count = await db.front_groups.count_documents({"parent_group_id": group_id, "status": {"$ne": "archived"}})
     group = await group_summary(group, current_user)
     group["assignments"] = serialize(assignments)
+    parent = await db.front_groups.find_one({"front_group_id": group.get("parent_group_id")}, {"_id": 0, "name": 1, "pastoral_main": 1}) if group.get("parent_group_id") else None
+    group["parent_group_name"] = (parent or {}).get("name")
+    group["parent_is_pastoral_main"] = bool((parent or {}).get("pastoral_main"))
     group["stats"] = {
         "people_reached": len(await db.process_enrollments.distinct("person_id", {"front_group_id": group_id, "process_key": "consolidation"})),
         "active_processes": group["active_process_count"], "members": group["team_count"],
@@ -386,15 +418,19 @@ async def assign_co_leader(group_id: str, payload: CoLeaderAssignment, current_u
     group = await load_group(db, group_id)
     if group.get("primary_leader_person_id") == payload.person_id:
         raise HTTPException(status_code=422, detail="El líder y el colíder deben ser personas distintas")
-    now = now_utc()
-    await db.front_group_assignments.update_many({"front_group_id": group_id, "role": "co_leader", "active": True}, {"$set": {"active": False, "ended_at": now, "ended_by_user_id": current_user["user_id"], "end_reason": payload.reason}})
+    return serialize(await replace_co_leader(group_id, payload.person_id, payload.reason, current_user, now_utc()))
+
+
+async def replace_co_leader(group_id: str, person_id: str, reason: str, current_user: dict, now: datetime) -> dict:
+    """Un solo colíder activo por grupo: cierra el anterior y abre el nuevo."""
+    await db.front_group_assignments.update_many({"front_group_id": group_id, "role": "co_leader", "active": True}, {"$set": {"active": False, "ended_at": now, "ended_by_user_id": current_user["user_id"], "end_reason": reason}})
     assignment_id = str(uuid4())
-    assignment = {"_id": assignment_id, "assignment_id": assignment_id, "front_group_id": group_id, "person_id": payload.person_id, "role": "co_leader", "active": True, "started_at": now, "ended_at": None, "notes": payload.reason, "assigned_by_user_id": current_user["user_id"], "created_at": now}
+    assignment = {"_id": assignment_id, "assignment_id": assignment_id, "front_group_id": group_id, "person_id": person_id, "role": "co_leader", "active": True, "started_at": now, "ended_at": None, "notes": reason, "assigned_by_user_id": current_user["user_id"], "created_at": now}
     await db.front_group_assignments.insert_one(assignment)
-    await db.front_groups.update_one({"front_group_id": group_id}, {"$set": {"co_leader_person_id": payload.person_id, "updated_at": now, "updated_by_user_id": current_user["user_id"]}})
-    await ensure_front_group_capability(payload.person_id)
-    await audit(group_id, current_user, "co_leader_assigned", {"assignment_id": assignment_id, "person_id": payload.person_id, "reason": payload.reason})
-    return serialize(assignment)
+    await db.front_groups.update_one({"front_group_id": group_id}, {"$set": {"co_leader_person_id": person_id, "updated_at": now, "updated_by_user_id": current_user["user_id"]}})
+    await ensure_front_group_capability(person_id)
+    await audit(group_id, current_user, "co_leader_assigned", {"assignment_id": assignment_id, "person_id": person_id, "reason": reason})
+    return assignment
 
 
 @router.post("/{parent_id}/designations", response_model=dict, status_code=201)
@@ -447,6 +483,139 @@ async def create_designation(parent_id: str, payload: DesignationCreate, current
     return await group_summary(document, current_user)
 
 
+class RosterEntry(BaseModel):
+    """Una persona sola (individuo) o dos personas (pareja)."""
+    person_ids: list[str] = Field(min_length=1, max_length=2)
+
+
+class RosterSave(BaseModel):
+    entries: list[RosterEntry] = Field(default_factory=list, max_length=300)
+
+
+class LeaderPrivilege(BaseModel):
+    person_id: str
+    co_leader_person_id: Optional[str] = None
+    reason: Optional[str] = Field(default=None, max_length=600)
+
+
+async def user_name(user_id: Optional[str]) -> Optional[str]:
+    if not user_id or not ObjectId.is_valid(user_id): return None
+    user = await db.users.find_one({"_id": ObjectId(user_id)}, {"nombre": 1})
+    return (user or {}).get("nombre")
+
+
+async def leader_privilege_for(group_id: str, person_id: str) -> Optional[dict]:
+    """Privilegio 'Líder de Grupo Frontal' que esta persona recibió desde
+    este grupo (= designación de un grupo dependiente)."""
+    child = await db.front_groups.find_one(
+        {"parent_group_id": group_id, "status": {"$ne": "archived"}, "$or": [{"primary_leader_person_id": person_id}, {"co_leader_person_id": person_id}]},
+        {"_id": 0}, sort=[("created_at", 1)],
+    )
+    if not child: return None
+    return {
+        "front_group_id": child["front_group_id"], "name": child.get("name"), "status": child.get("status"),
+        "as": "leader" if child.get("primary_leader_person_id") == person_id else "co_leader",
+        "assigned_by_name": await user_name(child.get("designated_by_user_id") or child.get("created_by_user_id")),
+        "assigned_at": serialize(child.get("designated_at") or child.get("created_at")),
+    }
+
+
+async def roster_view(group: dict) -> dict:
+    """Integrantes del grupo organizados en individuos y parejas."""
+    group_id = group["front_group_id"]
+    assignments = await db.front_group_assignments.find({"front_group_id": group_id, "role": "member", "active": True}, {"_id": 0}).sort("started_at", 1).to_list(2000)
+    entries, by_pair = [], {}
+    for item in assignments:
+        card = {"person_id": item["person_id"], "name": await person_name(item["person_id"]),
+                "has_account": bool(await db.users.find_one({"person_id": item["person_id"], "is_active": {"$ne": False}}, {"_id": 1})),
+                "leader_privilege": await leader_privilege_for(group_id, item["person_id"])}
+        pair_id = item.get("pair_id")
+        if pair_id and pair_id in by_pair:
+            by_pair[pair_id]["people"].append(card)
+            continue
+        entry = {"type": "pair" if pair_id else "individual", "pair_id": pair_id, "people": [card]}
+        if pair_id: by_pair[pair_id] = entry
+        entries.append(entry)
+    for entry in entries:  # una 'pareja' huérfana (su compañero salió) se muestra como individuo
+        if entry["type"] == "pair" and len(entry["people"]) < 2: entry["type"] = "individual"
+    pairs = sum(1 for entry in entries if entry["type"] == "pair")
+    return {
+        "front_group_id": group_id, "entries": entries,
+        "totals": {"people": len(assignments), "pairs": pairs, "individuals": len(entries) - pairs},
+    }
+
+
+@router.get("/{group_id}/roster", response_model=dict)
+async def get_roster(group_id: str, current_user: dict = Depends(require_read)):
+    group = await assert_group_scope(group_id, current_user, level="support")
+    return await roster_view(group)
+
+
+@router.put("/{group_id}/roster", response_model=dict)
+async def save_roster(group_id: str, payload: RosterSave, current_user: dict = Depends(require_manage)):
+    """Guarda la lista confirmada (individuos y parejas). Quien no esté en la
+    lista deja de ser integrante (con historial); nunca duplica personas."""
+    group = await assert_group_scope(group_id, current_user, leader_required=True)
+    return await apply_roster(group, payload, current_user)
+
+
+async def apply_roster(group: dict, payload: RosterSave, current_user: dict) -> dict:
+    group_id = group["front_group_id"]
+    leadership = {item for item in [group.get("primary_leader_person_id"), group.get("co_leader_person_id")] if item}
+    desired: dict[str, Optional[tuple]] = {}
+    for entry in payload.entries:
+        if len(set(entry.person_ids)) != len(entry.person_ids):
+            raise HTTPException(status_code=422, detail="Una pareja debe tener dos personas distintas")
+        for person_id in entry.person_ids:
+            if person_id in desired:
+                raise HTTPException(status_code=422, detail="Una misma persona aparece dos veces en la lista")
+            if person_id in leadership:
+                raise HTTPException(status_code=422, detail="El líder y el colíder del grupo no se agregan como integrantes")
+            await load_person(person_id)
+            desired[person_id] = tuple(sorted(entry.person_ids)) if len(entry.person_ids) == 2 else None
+    now = now_utc()
+    current = await db.front_group_assignments.find({"front_group_id": group_id, "role": "member", "active": True}, {"_id": 0}).to_list(2000)
+    current_by_person = {item["person_id"]: item for item in current}
+    for item in current:
+        if item["person_id"] not in desired:
+            await db.front_group_assignments.update_one({"assignment_id": item["assignment_id"]}, {"$set": {"active": False, "ended_at": now, "ended_by_user_id": current_user["user_id"], "end_reason": "Retirado de la lista del grupo"}})
+    pair_ids: dict[tuple, str] = {}
+    for members in {value for value in desired.values() if value}:
+        existing = [current_by_person.get(person_id, {}).get("pair_id") for person_id in members]
+        pair_ids[members] = existing[0] if existing[0] and existing[0] == existing[1] else str(uuid4())
+    added = 0
+    for person_id, members in desired.items():
+        pair_id = pair_ids.get(members) if members else None
+        existing = current_by_person.get(person_id)
+        if existing:
+            if existing.get("pair_id") != pair_id:
+                await db.front_group_assignments.update_one({"assignment_id": existing["assignment_id"]}, {"$set": {"pair_id": pair_id, "updated_at": now}})
+            continue
+        assignment_id = str(uuid4())
+        await db.front_group_assignments.insert_one({"_id": assignment_id, "assignment_id": assignment_id, "front_group_id": group_id, "person_id": person_id, "role": "member", "pair_id": pair_id, "active": True, "started_at": now, "ended_at": None, "notes": "Agregado a la lista del grupo", "assigned_by_user_id": current_user["user_id"], "created_at": now})
+        added += 1
+    await audit(group_id, current_user, "roster_saved", {"people": len(desired), "pairs": len(pair_ids), "added": added, "removed": len([item for item in current if item["person_id"] not in desired])})
+    return await roster_view(group)
+
+
+@router.post("/{group_id}/leader-privilege", response_model=dict, status_code=201)
+async def grant_leader_privilege(group_id: str, payload: LeaderPrivilege, current_user: dict = Depends(require_manage)):
+    """Privilegio 'Líder de Grupo Frontal' desde la lista del grupo. Reutiliza
+    la designación: crea el grupo dependiente pendiente → la persona ve en su
+    portal 'Crear mi grupo frontal'. En una pareja se puede elegir a uno como
+    líder o a ambos (uno líder y el otro colíder del nuevo grupo)."""
+    await assert_group_scope(group_id, current_user, leader_required=True)
+    for person_id in [payload.person_id, *([payload.co_leader_person_id] if payload.co_leader_person_id else [])]:
+        if not await db.front_group_assignments.find_one({"front_group_id": group_id, "person_id": person_id, "role": "member", "active": True}, {"_id": 1}):
+            raise HTTPException(status_code=422, detail="Solo se asigna como líder a integrantes de este grupo")
+    if not await db.users.find_one({"person_id": payload.person_id, "is_active": {"$ne": False}}, {"_id": 1}):
+        raise HTTPException(status_code=409, detail="La persona necesita una cuenta activa en Plataforma 360 para ver y crear su grupo")
+    return await create_designation(group_id, DesignationCreate(
+        leader_person_id=payload.person_id, co_leader_person_id=payload.co_leader_person_id,
+        reason=payload.reason or "Asignado como Líder de Grupo Frontal",
+    ), current_user)
+
+
 @router.put("/{group_id}/conform", response_model=dict)
 async def conform_group(group_id: str, payload: ConformGroup, current_user: dict = Depends(get_current_user)):
     """A4: el líder DESIGNADO abre 'Conformar mi grupo frontal'. Reutiliza el
@@ -456,13 +625,23 @@ async def conform_group(group_id: str, payload: ConformGroup, current_user: dict
     is_designated_leader = bool(current_user.get("person_id")) and await db.front_group_assignments.find_one({"front_group_id": group_id, "person_id": current_user.get("person_id"), "role": "leader", "active": True}, {"_id": 1})
     if not is_designated_leader and not is_global_pastoral_authority(current_user) and not has_capability(current_user, FRONT_GROUPS_MANAGE):
         raise HTTPException(status_code=403, detail="Solo el líder designado de este grupo puede conformarlo")
+    leader_person_id = group.get("primary_leader_person_id")
+    if payload.co_leader_person_id:
+        if payload.co_leader_person_id == leader_person_id:
+            raise HTTPException(status_code=422, detail="El líder y el colíder deben ser personas distintas")
+        await load_person(payload.co_leader_person_id)
+    for person_id in payload.member_person_ids:
+        await load_person(person_id)
     now = now_utc()
     update = {"status": "active", "updated_at": now, "updated_by_user_id": current_user["user_id"]}
     if payload.name: update["name"] = payload.name
     await db.front_groups.update_one({"front_group_id": group_id}, {"$set": update})
+    if payload.co_leader_person_id and payload.co_leader_person_id != group.get("co_leader_person_id"):
+        await replace_co_leader(group_id, payload.co_leader_person_id, "Elegido al conformar el grupo", current_user, now)
     added = 0
     for person_id in payload.member_person_ids:
-        await load_person(person_id)
+        if person_id in {leader_person_id, payload.co_leader_person_id}:
+            continue
         if not await db.front_group_assignments.find_one({"front_group_id": group_id, "person_id": person_id, "active": True}, {"_id": 1}):
             assignment_id = str(uuid4())
             await db.front_group_assignments.insert_one({"_id": assignment_id, "assignment_id": assignment_id, "front_group_id": group_id, "person_id": person_id, "role": "member", "active": True, "started_at": now, "ended_at": None, "notes": "Agregado al conformar el grupo", "assigned_by_user_id": current_user["user_id"], "created_at": now})

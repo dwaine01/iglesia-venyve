@@ -27,6 +27,58 @@ async def _own_person(current_user: dict) -> dict:
     return doc
 
 
+async def _name(person_id: str | None) -> str | None:
+    if not person_id or not ObjectId.is_valid(person_id):
+        return None
+    doc = await db.persons.find_one({"_id": ObjectId(person_id)}, {"nombre": 1, "apellido": 1})
+    return f"{doc.get('nombre', '')} {doc.get('apellido', '')}".strip() if doc else None
+
+
+async def my_front_groups(person_id: str) -> list[dict]:
+    """Grupos a los que pertenece la persona: SOLO nombre, líder y colíder
+    (pertenecer no da acceso a los demás integrantes). Si es líder designado
+    de un grupo aún sin conformar, lo marca para 'Crear mi grupo frontal'."""
+    memberships = await db.front_group_assignments.find({"person_id": person_id, "active": True}, {"_id": 0, "front_group_id": 1, "role": 1}).to_list(50)
+    groups = []
+    seen: set[str] = set()
+    # Líder/colíder primero: si la persona tiene varios roles en un grupo, gana el de liderazgo.
+    memberships.sort(key=lambda item: {"leader": 0, "co_leader": 1}.get(item.get("role"), 2))
+    for membership in memberships:
+        group_id = membership["front_group_id"]
+        if group_id in seen:
+            continue
+        seen.add(group_id)
+        group = await db.front_groups.find_one({"front_group_id": group_id, "status": {"$ne": "archived"}}, {"_id": 0, "front_group_id": 1, "name": 1, "status": 1, "pastoral_main": 1, "parent_group_id": 1, "designated_by_user_id": 1, "designated_at": 1})
+        if not group:
+            continue
+        leader = await db.front_group_assignments.find_one({"front_group_id": group_id, "role": "leader", "active": True}, {"_id": 0, "person_id": 1})
+        co_leader = await db.front_group_assignments.find_one({"front_group_id": group_id, "role": "co_leader", "active": True}, {"_id": 0, "person_id": 1})
+        my_role = membership.get("role")
+        pending = group.get("status") == "pending_formation"
+        groups.append({
+            "front_group_id": group_id,
+            "name": group.get("name"),
+            "status": group.get("status"),
+            "pastoral_main": bool(group.get("pastoral_main")),
+            "my_role": my_role,
+            "leader_name": await _name((leader or {}).get("person_id")),
+            "co_leader_name": await _name((co_leader or {}).get("person_id")),
+            "can_create": pending and my_role == "leader",
+            "can_manage": not pending and my_role in {"leader", "co_leader"},
+        })
+        if my_role in {"leader", "co_leader"}:
+            # Privilegio de líder: quién lo asignó y de qué grupo proviene (estructura por niveles).
+            parent = await db.front_groups.find_one({"front_group_id": group.get("parent_group_id")}, {"_id": 0, "name": 1, "pastoral_main": 1}) if group.get("parent_group_id") else None
+            assigned_by = await db.users.find_one({"_id": ObjectId(group["designated_by_user_id"])}, {"nombre": 1}) if ObjectId.is_valid(group.get("designated_by_user_id") or "") else None
+            groups[-1].update({
+                "from_group_name": (parent or {}).get("name"),
+                "from_pastoral_main": bool((parent or {}).get("pastoral_main")),
+                "assigned_by_name": (assigned_by or {}).get("nombre"),
+                "assigned_at": group["designated_at"].isoformat() if group.get("designated_at") else None,
+            })
+    return groups
+
+
 @router.get("/profile", response_model=dict)
 async def my_profile(current_user: dict = Depends(get_current_user)):
     doc = await _own_person(current_user)
@@ -42,29 +94,7 @@ async def my_profile(current_user: dict = Depends(get_current_user)):
         async for catalog in db.ministry_catalog.find({"_id": {"$in": catalog_ids}}, {"nombre": 1}):
             ministry_names[str(catalog["_id"])] = catalog.get("nombre")
     ministries = [{"ministry_id": item["ministry_id"], "nombre": ministry_names.get(item["ministry_id"], "Ministerio"), "rol": item.get("role")} for item in ministries_docs]
-    memberships = await db.front_group_assignments.find({"person_id": person_id, "active": True}, {"_id": 0, "front_group_id": 1, "role": 1}).to_list(20)
-    groups = []
-    for membership in memberships:
-        group = await db.front_groups.find_one({"front_group_id": membership["front_group_id"]}, {"_id": 0, "front_group_id": 1, "name": 1})
-        if not group:
-            continue
-        leader = await db.front_group_assignments.find_one({"front_group_id": membership["front_group_id"], "role": "leader", "active": True}, {"_id": 0, "person_id": 1})
-        co_leader = await db.front_group_assignments.find_one({"front_group_id": membership["front_group_id"], "role": "co_leader", "active": True}, {"_id": 0, "person_id": 1})
-        leader_name = None
-        co_leader_name = None
-        if leader and leader.get("person_id") and ObjectId.is_valid(leader["person_id"]):
-            leader_doc = await db.persons.find_one({"_id": ObjectId(leader["person_id"])}, {"nombre": 1, "apellido": 1})
-            leader_name = f"{leader_doc.get('nombre','')} {leader_doc.get('apellido','')}".strip() if leader_doc else None
-        if co_leader and co_leader.get("person_id") and ObjectId.is_valid(co_leader["person_id"]):
-            co_leader_doc = await db.persons.find_one({"_id": ObjectId(co_leader["person_id"])}, {"nombre": 1, "apellido": 1})
-            co_leader_name = f"{co_leader_doc.get('nombre','')} {co_leader_doc.get('apellido','')}".strip() if co_leader_doc else None
-        groups.append({
-            "front_group_id": group["front_group_id"],
-            "name": group.get("name"),
-            "my_role": membership.get("role"),
-            "leader_name": leader_name,
-            "co_leader_name": co_leader_name,
-        })
+    groups = await my_front_groups(person_id)
     mentor_badge = await db.mentor_badges.find_one({"person_id": person_id}, {"_id": 0, "active": 1, "since": 1})
     linked_user = await db.users.find_one({"person_id": person_id}, {"access_title": 1, "access_level": 1, "rol": 1})
     return {
@@ -82,12 +112,21 @@ async def my_profile(current_user: dict = Depends(get_current_user)):
     }
 
 
+@router.get("/front-groups", response_model=dict)
+async def my_front_groups_route(current_user: dict = Depends(get_current_user)):
+    person_id = current_user.get("person_id")
+    return {"items": await my_front_groups(person_id) if person_id else []}
+
+
 @router.get("/stats", response_model=dict)
 async def my_stats(current_user: dict = Depends(get_current_user)):
     """Resultados del propio trabajo (como mentor y/o como líder). Reutiliza
     exactamente la misma agregación de Supervisión, solo que el alcance
     siempre queda forzado a 'uno mismo', sin importar el cargo o permisos."""
-    person_id = current_user.get("person_id")
+    return await person_activity(current_user.get("person_id"))
+
+
+async def person_activity(person_id: str | None) -> dict:
     if not person_id:
         return {"as_mentor": None, "as_leader": None, "has_any_activity": False}
     self_ctx = {"scope": {"level": "self", "group_ids": None, "self_person_id": person_id}, "filters": Filters(), "mentor_ids": [person_id]}

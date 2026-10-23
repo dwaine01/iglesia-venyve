@@ -16,7 +16,7 @@ import { ContextGuideButton } from './guides/ContextGuideButton';
 import { FloatingLibraryScanButton } from './library/FloatingLibraryScanButton';
 import { resolveRouteGuide } from './guides/guideRouteMap';
 import { BRAND } from '../config/brand';
-import { canManageBaptismEvents, canManageDedicationEvents, canViewCare, canViewFinanceModule, canViewFormation, canViewFrontGroups, canViewGeo, canViewLeadership, canViewLibraryModule, canViewOperations, canAccessCampaignOperator, canAccessOutreach, canCreateOutreachCampaign, canViewProcesses, canViewCellular, canViewDoors, canViewDirectory, canManageInvitationCodes, canWriteEvangelismLog, canViewPresentationManual, hasAnyCapability, isPastoralAuthority } from '../lib/accessControl';
+import { canManageBaptismEvents, canManageDedicationEvents, canViewCare, canViewFinanceModule, canViewFormation, canViewFrontGroups, canViewGeo, canViewLeadership, canViewLibraryModule, canViewOperations, canAccessCampaignOperator, canAccessOutreach, canCreateOutreachCampaign, canViewPastoralFrontGroup, canViewProcesses, canViewCellular, canViewDoors, canViewDirectory, canManageInvitationCodes, canWriteEvangelismLog, canViewPresentationManual, hasAnyCapability, isPastoralAuthority } from '../lib/accessControl';
 import { useBoardAccess } from '../hooks/useBoardAccess';
 import { useMentorAccess } from '../hooks/useMentorAccess';
 const LOGO_URL = LOGO_IGLESIA;
@@ -33,6 +33,7 @@ const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
   if (isPastoralAuthority(user)) {
     const personItems = [
       ...BASE_PORTAL_ITEMS,
+      { to: '/grupo-frontal-pastoral', icon: Network, label: 'Mi grupo frontal', testId: 'nav-pastoral-front-group' },
       { to: '/dashboard-general', icon: Crown, label: 'Panel General', end: true },
       { to: '/nucleo', icon: DatabaseZap, label: 'Gobierno del Núcleo', testId: 'nav-core-governance' },
       { to: '/procesos/dashboard', icon: Activity, label: 'Panel de Procesos', testId: 'nav-process-dashboard' },
@@ -111,6 +112,7 @@ const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
   // Default: lider
   const items = [
     ...BASE_PORTAL_ITEMS,
+    ...(canViewPastoralFrontGroup(user) ? [{ to: '/grupo-frontal-pastoral', icon: Network, label: 'Grupo de la pastora', testId: 'nav-pastoral-front-group' }] : []),
     { to: '/', icon: LayoutDashboard, label: 'Panel principal', end: true },
     { to: '/procesos/dashboard', icon: Activity, label: 'Panel de Procesos', testId: 'nav-process-dashboard' },
     { to: '/procesos/consolidacion', icon: Activity, label: 'Consolidación', testId: 'nav-consolidation', end: true, extraActiveMatch: consolidationDetailMatch },
@@ -206,6 +208,7 @@ const breadcrumbMap = {
   '/dashboard': 'Panel principal',
   '/dashboard-general': 'Panel General',
   '/mi-perfil': 'Mi perfil',
+  '/grupo-frontal-pastoral': 'Grupo frontal principal',
   '/mis-estadisticas': 'Mis estadísticas',
   '/mi-progreso': 'Mi Progreso',
   '/presentacion': 'Manual de 7 Semanas',

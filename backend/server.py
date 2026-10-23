@@ -516,6 +516,11 @@ from self_portal import router as self_portal_router
 
 app.include_router(self_portal_router)
 
+# --- ETAPA 5C: grupo frontal principal de la pastora (reutiliza front_groups) ---
+from pastoral_front_group import router as pastoral_front_group_router
+
+app.include_router(pastoral_front_group_router)
+
 
 # --- Invitaciones de acceso (C5): establecer contraseña sobre una cuenta creada sin temporal ---
 from access_invitations import router as access_invitations_router, ensure_indexes as access_invitations_ensure

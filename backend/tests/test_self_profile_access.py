@@ -24,6 +24,7 @@ async def _person(nombre: str) -> str:
         "person_number": f"VV-{uuid.uuid4().int % 999999:06d}",
         "nombre": nombre,
         "apellido": "Prueba",
+        "idempotency_key": f"self-profile-{oid}",
         "fecha_nacimiento": "1990-01-01",
         "created_at": datetime.now(timezone.utc),
     })
