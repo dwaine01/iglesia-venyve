@@ -7,6 +7,7 @@ import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Checkbox } from './ui/checkbox';
 import AddDiscipleDialog from './AddDiscipleDialog';
+import { errorDetailText } from '../lib/errorText';
 
 const STAGE_SHORT_LABELS = {
   visitor_followup: 'Seguimiento', prayer: 'Oración', invasion: 'Invasión',
@@ -14,6 +15,7 @@ const STAGE_SHORT_LABELS = {
   lbs_1: 'LBS · Liberación', lbs_2: 'LBS · Bendición', lbs_3: 'LBS · Sanidad',
   retreat: 'Retiro', discipleship_handoff: 'Entrega a discipulado',
 };
+
 
 const DiscipleCard = ({ enrollment, canEdit, onChanged, API, getAuthHeaders }) => {
   const [expanded, setExpanded] = useState(false);
@@ -26,7 +28,7 @@ const DiscipleCard = ({ enrollment, canEdit, onChanged, API, getAuthHeaders }) =
       await axios.put(`${API}/api/processes/enrollments/${enrollment.enrollment_id}/stages/${enrollment.current_stage_key}/tasks/${taskId}`, { completed }, getAuthHeaders());
       if (onChanged) onChanged();
     } catch (error) {
-      toast.error(error?.response?.data?.detail || 'No se pudo actualizar el paso');
+      toast.error(errorDetailText(error, 'No se pudo actualizar el paso'));
     } finally {
       setBusy(false);
     }
@@ -39,7 +41,7 @@ const DiscipleCard = ({ enrollment, canEdit, onChanged, API, getAuthHeaders }) =
       toast.success('Etapa completada');
       if (onChanged) onChanged();
     } catch (error) {
-      toast.error(error?.response?.data?.detail || 'No se pudo completar la etapa');
+      toast.error(errorDetailText(error, 'No se pudo completar la etapa'));
     } finally {
       setBusy(false);
     }
@@ -86,6 +88,11 @@ const DiscipleCard = ({ enrollment, canEdit, onChanged, API, getAuthHeaders }) =
                 </label>
               ))}
               {(currentStage.tasks || []).length === 0 && <p className="text-xs text-slate-400">Esta etapa no tiene pasos individuales.</p>}
+              {enrollment.current_stage_key === 'welcome_party' && (
+                <p className="text-xs text-amber-700" data-testid={`disciple-welcome-party-hint-${enrollment.enrollment_id}`}>
+                  Para cerrar la Fiesta de bienvenida y avanzar a LBS (Liberación, Bendición y Sanidad · 21 días) se necesita la firma de la Carta de Membresía y que el mentor esté autorizado para LBS. Si falta, pide apoyo a tu líder o coordinador.
+                </p>
+              )}
               <Button size="sm" disabled={busy || currentStage.status === 'completed'} onClick={completeStage} className="bg-[#132443]" data-testid={`disciple-complete-stage-${enrollment.enrollment_id}`}>
                 {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />} Completar etapa
               </Button>
@@ -110,7 +117,7 @@ export default function MentorDisciplesSection({ personId, isOwnProfile, API, ge
       const response = await axios.get(`${API}/api/processes/consolidation/by-mentor/${personId}`, getAuthHeaders());
       setData(response.data);
     } catch (requestError) {
-      setError(requestError?.response?.data?.detail || 'No se pudieron cargar los discípulos.');
+      setError(errorDetailText(requestError, 'No se pudieron cargar los discípulos.'));
     } finally {
       setLoading(false);
     }

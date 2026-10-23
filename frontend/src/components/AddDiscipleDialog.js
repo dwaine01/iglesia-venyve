@@ -9,6 +9,7 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Textarea } from './ui/textarea';
+import { errorDetailText } from '../lib/errorText';
 
 export default function AddDiscipleDialog({ open, onOpenChange, mentorPersonId, API, getAuthHeaders, onCreated }) {
   const [contactType, setContactType] = useState('new');
@@ -72,7 +73,7 @@ export default function AddDiscipleDialog({ open, onOpenChange, mentorPersonId, 
       onOpenChange(false);
       if (onCreated) onCreated();
     } catch (error) {
-      toast.error(error?.response?.data?.detail || 'No se pudo agregar el discípulo');
+      toast.error(errorDetailText(error, 'No se pudo agregar el discípulo'));
     } finally {
       setSaving(false);
     }

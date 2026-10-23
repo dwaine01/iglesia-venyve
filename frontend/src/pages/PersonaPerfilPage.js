@@ -26,7 +26,7 @@ import { FormationProfileSection } from '../components/formation/FormationProfil
 import { PersonArchiveDialog } from '../components/PersonArchiveDialog';
 import { PersonJourneyStatusStrip } from '../components/PersonJourneyStatusStrip';
 import { toast } from 'sonner';
-import { canDeliverLibraryBooks, canIssueBaptismCertificates, canManageMembershipDocuments, canRegularizeMembership, canWriteBaptism, isGeneralCoordinator, isPastoralAuthority } from '../lib/accessControl';
+import { canDeliverLibraryBooks, canIssueBaptismCertificates, canManageMembershipDocuments, canRegularizeMembership, canViewOtherMentorDisciples, canWriteBaptism, isPastoralAuthority } from '../lib/accessControl';
 import { LibraryPersonSection } from '../components/library/LibraryPersonSection';
 
 // P-001 Slice 2A - Person Profile 360 (shell full-screen).
@@ -319,7 +319,7 @@ export default function PersonaPerfilPage() {
 
           <TabsContent value="mentor" className="mt-0 rounded-xl border border-[#E8E5DE] bg-white p-4 shadow-sm sm:p-6">
             <MentorBadgeSection personId={personId} API={API} getAuthHeaders={getAuthHeaders} onChanged={refreshProfile} onBadgeStatusLoaded={setMentorBadgeActive} />
-            {mentorBadgeActive && (user?.person_id === personId || isPastoralAuthority(user) || isGeneralCoordinator(user)) && (
+            {mentorBadgeActive && (user?.person_id === personId || canViewOtherMentorDisciples(user)) && (
               <div className="mt-6 border-t border-[#E8E5DE] pt-6">
                 <MentorDisciplesSection personId={personId} isOwnProfile={user?.person_id === personId} API={API} getAuthHeaders={getAuthHeaders} />
               </div>

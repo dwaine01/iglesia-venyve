@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { mentorAccessDisabled, mentorAccessHint, mentorAccessSuffix } from '../../lib/accessControl';
+import { errorDetailText } from '../../lib/errorText';
 
 export const CreateCampaignDialog = ({ open, onOpenChange, mentorOptions, onCreated }) => {
   const { API, getAuthHeaders } = useAuth();
@@ -41,7 +42,7 @@ export const CreateCampaignDialog = ({ open, onOpenChange, mentorOptions, onCrea
       onOpenChange(false);
       if (onCreated) onCreated();
     } catch (error) {
-      toast.error(error?.response?.data?.detail || 'No se pudo crear la invasión');
+      toast.error(errorDetailText(error, 'No se pudo crear la invasión'));
     } finally {
       setSaving(false);
     }
@@ -49,7 +50,7 @@ export const CreateCampaignDialog = ({ open, onOpenChange, mentorOptions, onCrea
 
   return (
     <Dialog open={open} onOpenChange={(next) => { onOpenChange(next); if (!next) reset(); }}>
-      <DialogContent className="bg-white" data-testid="create-campaign-dialog">
+      <DialogContent className="max-h-[85vh] overflow-y-auto bg-white" data-testid="create-campaign-dialog">
         <DialogHeader>
           <DialogTitle>Crear invasión</DialogTitle>
         </DialogHeader>

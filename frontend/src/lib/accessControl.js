@@ -29,6 +29,8 @@ export const isGeneralCoordinator = (user) => COORDINATOR_ACCESS_LEVELS.has(Stri
 
 export const canCreateOutreachCampaign = (user) => isPastoralAuthority(user) || isGeneralCoordinator(user);
 
+export const canViewOtherMentorDisciples = (user) => isPastoralAuthority(user) || isGeneralCoordinator(user) || hasCapability(user, 'consolidation.assign');
+
 export const canViewFinanceModule = (user) => (
   isPastoralAuthority(user)
   || (
