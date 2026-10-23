@@ -350,7 +350,7 @@ async def update_activity_result(activity_id: str, payload: ActivityResultUpdate
         # Una segunda entrega intentada desde OTRA actividad de Consolidación
         # sigue rechazándose (no se debe entregar dos veces por error).
         outreach_delivery = book and await db.library_movements.find_one(
-            {"book_id": book["book_id"], "movement_type": "DELIVERY", "person_id": enrollment["person_id"], "process_key": OUTREACH_FIRST_CONTACT_PROCESS_KEY},
+            {"book_id": book["book_id"], "movement_type": "DELIVERY", "person_id": enrollment["person_id"], "process_key": OUTREACH_FIRST_CONTACT_PROCESS_KEY, "reversed_by_movement_id": None},
             {"_id": 0, "movement_id": 1}, sort=[("occurred_at", 1)],
         )
         if outreach_delivery:

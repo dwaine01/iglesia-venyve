@@ -4,6 +4,7 @@ import { Loader2, SlidersHorizontal } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { useAuth } from '../../context/AuthContext';
+import { errorDetailText } from '../../lib/errorText';
 import { Button } from '../ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '../ui/dialog';
 import { Input } from '../ui/input';
@@ -27,7 +28,7 @@ export const AdjustInventoryDialog = ({ onAdjusted }) => {
     try {
       await axios.post(`${API}/api/library/adjustments`, { book_id: form.book_id, direction: form.direction, quantity: Number(form.quantity), reason: form.reason }, getAuthHeaders());
       toast.success('Ajuste registrado'); setOpen(false); setForm({ book_id: '', direction: 'increase', quantity: '1', reason: '' }); await onAdjusted();
-    } catch (error) { toast.error(error?.response?.data?.detail || 'No se pudo registrar el ajuste'); }
+    } catch (error) { toast.error(errorDetailText(error, 'No se pudo registrar el ajuste')); }
     finally { setSaving(false); }
   };
 

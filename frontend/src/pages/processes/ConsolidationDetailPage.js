@@ -21,6 +21,11 @@ const DECISION_STATUS_LABEL = {
   start_scheduled: 'Inicio programado', in_progress: 'En proceso', paused: 'Pausado o desistió', completed: 'Completado',
 };
 
+const CALL_SCHEDULE_LABEL = { morning: 'Mañana', midday: 'Medio día', night: 'Noche' };
+const ATTEMPT_RESULT_LABEL = {
+  contacted: 'Contactado', no_answer: 'Sin respuesta', not_home: 'No está en casa', rejected: 'Rechazó',
+};
+
 export default function ConsolidationDetailPage() {
   const { enrollmentId } = useParams();
   const navigate = useNavigate();
@@ -87,14 +92,14 @@ export default function ConsolidationDetailPage() {
             <p><span className="text-slate-500">Invasión:</span> {journey.outreach_origin.campaign_name || 'Sin invasión'}{journey.outreach_origin.campaign_location ? ` · ${journey.outreach_origin.campaign_location}` : ''}</p>
             <p><span className="text-slate-500">Hogar:</span> {journey.outreach_origin.household_address || 'Sin hogar registrado'}</p>
             <p><span className="text-slate-500">Materiales entregados en el primer contacto:</span> {[journey.outreach_origin.materials_delivered?.mcd && 'MCD', journey.outreach_origin.materials_delivered?.npt && 'NPT'].filter(Boolean).join(', ') || 'Ninguno'}</p>
-            <p><span className="text-slate-500">Horario de llamadas acordado:</span> {journey.outreach_origin.agreed_call_schedule || '—'}</p>
+            <p><span className="text-slate-500">Horario de llamadas acordado:</span> {CALL_SCHEDULE_LABEL[journey.outreach_origin.agreed_call_schedule] || '—'}</p>
           </div>
           {journey.outreach_origin.attempts?.length > 0 && (
             <div className="mt-3" data-testid="journey-outreach-attempts">
               <h3 className="text-sm font-semibold text-slate-700">Historial de intentos del hogar</h3>
               <div className="mt-1 space-y-1">
                 {journey.outreach_origin.attempts.map((attempt, index) => (
-                  <p key={index} className="text-xs text-slate-500" data-testid={`journey-outreach-attempt-${index}`}>{attempt.occurred_at ? new Date(attempt.occurred_at).toLocaleString('es-US') : '—'} · {attempt.result || attempt.event_type}{attempt.note ? ` · ${attempt.note}` : ''}</p>
+                  <p key={index} className="text-xs text-slate-500" data-testid={`journey-outreach-attempt-${index}`}>{attempt.occurred_at ? new Date(attempt.occurred_at).toLocaleString('es-US') : '—'} · {ATTEMPT_RESULT_LABEL[attempt.result] || attempt.result || attempt.event_type}{attempt.note ? ` · ${attempt.note}` : ''}</p>
                 ))}
               </div>
             </div>

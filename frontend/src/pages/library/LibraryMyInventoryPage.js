@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 
 import { useAuth } from '../../context/AuthContext';
 import { canManageLibraryInventory } from '../../lib/accessControl';
+import { errorDetailText } from '../../lib/errorText';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
@@ -43,14 +44,14 @@ export default function LibraryMyInventoryPage() {
     try {
       await axios.post(`${API}/api/library/movements`, { book_id: bookId, movement_type: 'RETURN', quantity, from_holder: { type: 'user', id: user.id }, to_holder: { type: 'warehouse', id: 'central' }, notes: reason }, getAuthHeaders());
       toast.success('Material devuelto a Central'); setReturnReason({ ...returnReason, [bookId]: '' }); setReturnQty({ ...returnQty, [bookId]: '' }); await refresh();
-    } catch (error) { toast.error(error?.response?.data?.detail || 'No se pudo devolver'); }
+    } catch (error) { toast.error(errorDetailText(error, 'No se pudo devolver')); }
   };
 
   const resolveRequest = async (requestId, quantityApproved) => {
     try {
       await axios.post(`${API}/api/library/requests/${requestId}/resolve`, { quantity_approved: quantityApproved, notes: '' }, getAuthHeaders());
       toast.success('Solicitud resuelta'); await refresh();
-    } catch (error) { toast.error(error?.response?.data?.detail || 'No se pudo resolver la solicitud'); }
+    } catch (error) { toast.error(errorDetailText(error, 'No se pudo resolver la solicitud')); }
   };
 
   return <main className="min-h-screen bg-[#F4F1EA] px-4 py-6 sm:px-8" data-testid="library-my-inventory-page">

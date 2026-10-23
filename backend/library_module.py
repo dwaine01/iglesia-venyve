@@ -8,7 +8,7 @@ import re
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from access_control import (
     LIBRARY_CATALOG_MANAGE, LIBRARY_DELIVER, LIBRARY_INVENTORY_MANAGE, LIBRARY_REPORTS_READ,
@@ -221,6 +221,14 @@ class AdjustInventoryInput(BaseModel):
     direction: Literal["increase", "decrease"]
     quantity: int = Field(gt=0)
     reason: str = Field(min_length=3, max_length=500)
+
+    @field_validator("reason")
+    @classmethod
+    def reason_not_blank(cls, value: str) -> str:
+        stripped = value.strip()
+        if len(stripped) < 3:
+            raise ValueError("Indique el motivo de este ajuste")
+        return stripped
 
 
 class LibrarianGrantInput(BaseModel):
