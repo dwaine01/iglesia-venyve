@@ -132,7 +132,7 @@ async def consolidation_dashboard(current_user: dict = Depends(require_read)):
         group_ids = list(await readable_group_ids(db, current_user) or [])
         query["$or"] = [{"front_group_id": {"$in": group_ids}}, {"person_id": current_user.get("person_id")}, {"mentor_person_id": current_user.get("person_id")}]
     items = await db.process_enrollments.find(query, {"_id": 0}).to_list(10000)
-    by_entry = {key: 0 for key in ["complete_cycle", "direct_church", "cell", "visitor_followup"]}
+    by_entry = {key: 0 for key in ["complete_cycle", "direct_church", "cell", "visitor_followup", "invasion"]}
     by_stage = {}
     for item in items:
         by_entry[item.get("entry_mode", "visitor_followup")] = by_entry.get(item.get("entry_mode", "visitor_followup"), 0) + 1

@@ -11,6 +11,7 @@ import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Textarea } from '../ui/textarea';
+import { errorDetailText } from '../../lib/errorText';
 
 const STATUS_LABELS = {
   assigned: 'Asignado',
@@ -42,6 +43,13 @@ export const VisitCard = ({ visit, canManage, onUpdated, onTransfer }) => {
   const [spiritualStatus, setSpiritualStatus] = useState(visit.spiritual_status || 'unspecified');
   const [attendsChurch, setAttendsChurch] = useState(boolToTri(visit.attends_church));
   const [isBackslidden, setIsBackslidden] = useState(boolToTri(visit.is_backslidden));
+  const [addressLine1, setAddressLine1] = useState(visit.address_line1 || '');
+  const [addressLine2, setAddressLine2] = useState(visit.address_line2 || '');
+  const [addressCity, setAddressCity] = useState(visit.address_city || '');
+  const [addressState, setAddressState] = useState(visit.address_state || '');
+  const [addressZip, setAddressZip] = useState(visit.address_zip || '');
+  const [agreedStartDate, setAgreedStartDate] = useState(visit.agreed_start_date || '');
+  const [callSchedule, setCallSchedule] = useState(visit.call_schedule || 'unspecified');
   const [note, setNote] = useState(visit.note || '');
   const [busy, setBusy] = useState(false);
 
@@ -51,12 +59,15 @@ export const VisitCard = ({ visit, canManage, onUpdated, onTransfer }) => {
       await axios.put(`${API}/api/mentorship/outreach/visits/${visit.visit_id}/report`, {
         status, visit_date: visitDate || null, received_mcd: receivedMcd, received_npt: receivedNpt, lbs_decision: lbsDecision,
         contact_birth_date: birthDate || null, spiritual_status: spiritualStatus === 'unspecified' ? null : spiritualStatus,
-        attends_church: triToBool(attendsChurch), is_backslidden: triToBool(isBackslidden), note: note || null,
+        attends_church: triToBool(attendsChurch), is_backslidden: triToBool(isBackslidden),
+        address_line1: addressLine1 || null, address_line2: addressLine2 || null, address_city: addressCity || null,
+        address_state: addressState || null, address_zip: addressZip || null, agreed_start_date: agreedStartDate || null,
+        call_schedule: callSchedule === 'unspecified' ? null : callSchedule, note: note || null,
       }, getAuthHeaders());
       toast.success('Informe actualizado');
       if (onUpdated) onUpdated();
     } catch (error) {
-      toast.error(error?.response?.data?.detail || 'No se pudo guardar el informe');
+      toast.error(errorDetailText(error, 'No se pudo guardar el informe'));
     } finally {
       setBusy(false);
     }
@@ -69,7 +80,7 @@ export const VisitCard = ({ visit, canManage, onUpdated, onTransfer }) => {
       toast.success('Se inició la Ley de las 7 Semanas');
       if (onUpdated) onUpdated();
     } catch (error) {
-      toast.error(error?.response?.data?.detail || 'No se pudo iniciar el proceso');
+      toast.error(errorDetailText(error, 'No se pudo iniciar el proceso'));
     } finally {
       setBusy(false);
     }
@@ -109,13 +120,14 @@ export const VisitCard = ({ visit, canManage, onUpdated, onTransfer }) => {
       </div>
 
       <div className="mt-4 flex flex-wrap gap-3">
-        <label className="flex min-h-11 items-center gap-3 rounded-lg border border-slate-200 px-3 py-2 text-sm" data-testid={`outreach-visit-mcd-checkbox-${visit.visit_id}`}>
-          <Checkbox checked={receivedMcd} onCheckedChange={(value) => setReceivedMcd(Boolean(value))} className="h-6 w-6" /> Recibió &quot;Mi conexión con Dios&quot;
+        <label className={`flex min-h-11 items-center gap-3 rounded-lg border border-slate-200 px-3 py-2 text-sm ${visit.mcd_delivered ? 'opacity-70' : ''}`} data-testid={`outreach-visit-mcd-checkbox-${visit.visit_id}`}>
+          <Checkbox checked={receivedMcd} disabled={visit.mcd_delivered} onCheckedChange={(value) => setReceivedMcd(Boolean(value))} className="h-6 w-6" /> Recibió &quot;Mi conexión con Dios&quot;{visit.mcd_delivered ? ' (ya entregado)' : ''}
         </label>
-        <label className="flex min-h-11 items-center gap-3 rounded-lg border border-slate-200 px-3 py-2 text-sm" data-testid={`outreach-visit-npt-checkbox-${visit.visit_id}`}>
-          <Checkbox checked={receivedNpt} onCheckedChange={(value) => setReceivedNpt(Boolean(value))} className="h-6 w-6" /> Recibió &quot;Nací para triunfar&quot;
+        <label className={`flex min-h-11 items-center gap-3 rounded-lg border border-slate-200 px-3 py-2 text-sm ${visit.npt_delivered ? 'opacity-70' : ''}`} data-testid={`outreach-visit-npt-checkbox-${visit.visit_id}`}>
+          <Checkbox checked={receivedNpt} disabled={visit.npt_delivered} onCheckedChange={(value) => setReceivedNpt(Boolean(value))} className="h-6 w-6" /> Recibió &quot;Nací para triunfar&quot;{visit.npt_delivered ? ' (ya entregado)' : ''}
         </label>
       </div>
+      {(receivedMcd || receivedNpt) && <p className="mt-1 text-xs text-slate-400" data-testid={`outreach-visit-delivery-hint-${visit.visit_id}`}>Al guardar, se descuenta 1 unidad de su inventario de Librería 360 por cada material marcado.</p>}
 
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         <div className="space-y-1.5">
@@ -156,6 +168,50 @@ export const VisitCard = ({ visit, canManage, onUpdated, onTransfer }) => {
           </Select>
         </div>
       </div>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <div className="space-y-1.5 sm:col-span-2">
+          <Label>Dirección (calle)</Label>
+          <Input value={addressLine1} onChange={(event) => setAddressLine1(event.target.value)} placeholder="Calle y número" data-testid={`outreach-visit-address-line1-input-${visit.visit_id}`} />
+        </div>
+        <div className="space-y-1.5 sm:col-span-2">
+          <Label>Referencia (opcional)</Label>
+          <Input value={addressLine2} onChange={(event) => setAddressLine2(event.target.value)} placeholder="Apto, edificio, punto de referencia" data-testid={`outreach-visit-address-line2-input-${visit.visit_id}`} />
+        </div>
+        <div className="space-y-1.5">
+          <Label>Ciudad</Label>
+          <Input value={addressCity} onChange={(event) => setAddressCity(event.target.value)} data-testid={`outreach-visit-address-city-input-${visit.visit_id}`} />
+        </div>
+        <div className="space-y-1.5">
+          <Label>Estado</Label>
+          <Input value={addressState} onChange={(event) => setAddressState(event.target.value)} data-testid={`outreach-visit-address-state-input-${visit.visit_id}`} />
+        </div>
+        <div className="space-y-1.5">
+          <Label>Código postal</Label>
+          <Input value={addressZip} onChange={(event) => setAddressZip(event.target.value)} data-testid={`outreach-visit-address-zip-input-${visit.visit_id}`} />
+        </div>
+      </div>
+
+      {status === 'wants_followup' && (
+        <div className="mt-4 grid gap-3 sm:grid-cols-2" data-testid={`outreach-visit-call-plan-${visit.visit_id}`}>
+          <div className="space-y-1.5">
+            <Label>Fecha de inicio acordada</Label>
+            <Input type="date" value={agreedStartDate} onChange={(event) => setAgreedStartDate(event.target.value)} data-testid={`outreach-visit-agreed-start-date-input-${visit.visit_id}`} />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Horario de llamadas acordado</Label>
+            <Select value={callSchedule} onValueChange={setCallSchedule}>
+              <SelectTrigger data-testid={`outreach-visit-call-schedule-select-${visit.visit_id}`}><SelectValue /></SelectTrigger>
+              <SelectContent className="bg-white">
+                <SelectItem value="unspecified">Sin especificar</SelectItem>
+                <SelectItem value="morning">Mañana</SelectItem>
+                <SelectItem value="midday">Mediodía</SelectItem>
+                <SelectItem value="night">Noche</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      )}
 
       <div className="mt-4 space-y-1.5">
         <Label>LBS</Label>

@@ -24,6 +24,7 @@ from access_control import (
     FINANCE_CAPABILITIES,
     FORMATION_CAPABILITIES,
     JOURNEY_GOVERNANCE_CAPABILITIES,
+    LIBRARY_DELIVER,
     MEMBERSHIP_DOCUMENTS_MANAGE,
     MEMBERSHIP_DIRECT_IMPORT,
     MENTORSHIP_BADGE_MANAGE,
@@ -356,6 +357,13 @@ async def list_access_candidates(current_user: dict = Depends(require_access_man
 
 @router.post("/users", response_model=UserAccessItem, status_code=201)
 async def create_user_access(payload: UserAccessCreate, current_user: dict = Depends(require_access_manager)):
+    return await create_user_access_core(payload, current_user)
+
+
+async def create_user_access_core(payload: UserAccessCreate, current_user: dict) -> dict:
+    """Lógica reutilizable de `POST /users`: usada por la ruta normal y por
+    `mentorship_outreach.py` para auto-crear la cuenta de un mentor sin
+    acceso al armar el roster de una invasión (mismo flujo, sin round-trip HTTP)."""
     ensure_level_allowed(current_user, payload.access_level)
     ensure_privileges_allowed(current_user, payload.privilege_groups)
     await ensure_finance_limit(payload.privilege_groups)
@@ -377,7 +385,7 @@ async def create_user_access(payload: UserAccessCreate, current_user: dict = Dep
         raise HTTPException(status_code=409, detail="Este correo ya tiene acceso")
     defaults = access_defaults(payload.access_level, payload.privilege_groups)
     if payload.mentor_access:
-        defaults["capabilities"] = sorted(set([*defaults["capabilities"], *PERSON_SELF_CAPABILITIES, MENTORSHIP_OUTREACH_REPORT, PROCESSES_PARTICIPATE]))
+        defaults["capabilities"] = sorted(set([*defaults["capabilities"], *PERSON_SELF_CAPABILITIES, MENTORSHIP_OUTREACH_REPORT, PROCESSES_PARTICIPATE, LIBRARY_DELIVER]))
     now = datetime.now(timezone.utc)
     surname = person.get("apellidos") or person.get("apellido") or ""
     user_doc = {

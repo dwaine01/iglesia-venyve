@@ -23,6 +23,11 @@ export const mentorAccessSuffix = (item) => (mentorAccessDisabled(item) ? ' (sin
 
 export const mentorAccessHint = 'Crea su acceso en su perfil 360 → pestaña Mentor';
 
+// Usados solo en CreateCampaignDialog: ahí un mentor SIN cuenta ya no se deshabilita
+// (se le crea la cuenta en el mismo paso); una cuenta inactiva sigue bloqueada.
+export const mentorNeedsAccountCreation = (item) => item?.has_account === false;
+export const mentorAccountBlocked = (item) => item?.has_account === true && item?.account_active === false;
+
 const COORDINATOR_ACCESS_LEVELS = new Set(['coordinador_general', 'general_coordinator']);
 
 export const isGeneralCoordinator = (user) => COORDINATOR_ACCESS_LEVELS.has(String(user?.access_level || '').trim().toLowerCase());

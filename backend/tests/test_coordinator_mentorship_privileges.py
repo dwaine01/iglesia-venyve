@@ -173,7 +173,7 @@ async def test_coordinator_general_can_manage_mentors_campaigns_and_assign_to_an
         )
         assert badge.status_code == 200, badge.text
 
-        campaign = await coord_client.post("/api/mentorship/outreach/campaigns", json={"name": "Invasion QA Coordinador", "location": "Zona QA Coordinador", "start_date": "2026-03-01"}, headers=coord_headers)
+        campaign = await coord_client.post("/api/mentorship/outreach/campaigns", json={"name": "Invasion QA Coordinador", "location": "Zona QA Coordinador", "start_date": "2026-03-01", "end_date": "2026-03-07"}, headers=coord_headers)
         assert campaign.status_code == 201, campaign.text
 
         visit = await coord_client.post(

@@ -24,6 +24,13 @@ export default function AddDiscipleDialog({ open, onOpenChange, mentorPersonId, 
   const [spiritualStatus, setSpiritualStatus] = useState('unspecified');
   const [attendsChurch, setAttendsChurch] = useState('unspecified');
   const [isBackslidden, setIsBackslidden] = useState('unspecified');
+  const [addressLine1, setAddressLine1] = useState('');
+  const [addressLine2, setAddressLine2] = useState('');
+  const [addressCity, setAddressCity] = useState('');
+  const [addressState, setAddressState] = useState('');
+  const [addressZip, setAddressZip] = useState('');
+  const [agreedStartDate, setAgreedStartDate] = useState('');
+  const [callSchedule, setCallSchedule] = useState('unspecified');
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -46,7 +53,9 @@ export default function AddDiscipleDialog({ open, onOpenChange, mentorPersonId, 
   const reset = () => {
     setContactType('new'); setName(''); setPhone(''); setZone('');
     setQuery(''); setResults([]); setSelectedPerson(null);
-    setBirthDate(''); setSpiritualStatus('unspecified'); setAttendsChurch('unspecified'); setIsBackslidden('unspecified'); setNote('');
+    setBirthDate(''); setSpiritualStatus('unspecified'); setAttendsChurch('unspecified'); setIsBackslidden('unspecified');
+    setAddressLine1(''); setAddressLine2(''); setAddressCity(''); setAddressState(''); setAddressZip('');
+    setAgreedStartDate(''); setCallSchedule('unspecified'); setNote('');
   };
 
   const triToBool = (value) => (value === 'yes' ? true : value === 'no' ? false : null);
@@ -68,7 +77,10 @@ export default function AddDiscipleDialog({ open, onOpenChange, mentorPersonId, 
       await axios.put(`${API}/api/mentorship/outreach/visits/${visitId}/report`, {
         status: 'wants_followup', contact_birth_date: birthDate || null,
         spiritual_status: spiritualStatus === 'unspecified' ? null : spiritualStatus,
-        attends_church: triToBool(attendsChurch), is_backslidden: triToBool(isBackslidden), note: note || null,
+        attends_church: triToBool(attendsChurch), is_backslidden: triToBool(isBackslidden),
+        address_line1: addressLine1 || null, address_line2: addressLine2 || null, address_city: addressCity || null,
+        address_state: addressState || null, address_zip: addressZip || null, agreed_start_date: agreedStartDate || null,
+        call_schedule: callSchedule === 'unspecified' ? null : callSchedule, note: note || null,
       }, getAuthHeaders());
       await axios.post(`${API}/api/mentorship/outreach/visits/${visitId}/start-seven-weeks`, {}, getAuthHeaders());
       toast.success('Discípulo agregado e iniciado en la Ley de las 7 Semanas');
@@ -158,6 +170,49 @@ export default function AddDiscipleDialog({ open, onOpenChange, mentorPersonId, 
               </Select>
             </div>
           </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label>Dirección (calle)</Label>
+              <Input value={addressLine1} onChange={(event) => setAddressLine1(event.target.value)} placeholder="Calle y número" data-testid="add-disciple-address-line1-input" />
+            </div>
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label>Referencia (opcional)</Label>
+              <Input value={addressLine2} onChange={(event) => setAddressLine2(event.target.value)} placeholder="Apto, edificio, punto de referencia" data-testid="add-disciple-address-line2-input" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Ciudad</Label>
+              <Input value={addressCity} onChange={(event) => setAddressCity(event.target.value)} data-testid="add-disciple-address-city-input" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Estado</Label>
+              <Input value={addressState} onChange={(event) => setAddressState(event.target.value)} data-testid="add-disciple-address-state-input" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Código postal</Label>
+              <Input value={addressZip} onChange={(event) => setAddressZip(event.target.value)} data-testid="add-disciple-address-zip-input" />
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label>Fecha de inicio acordada</Label>
+              <Input type="date" value={agreedStartDate} onChange={(event) => setAgreedStartDate(event.target.value)} data-testid="add-disciple-agreed-start-date-input" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Horario de llamadas acordado</Label>
+              <Select value={callSchedule} onValueChange={setCallSchedule}>
+                <SelectTrigger data-testid="add-disciple-call-schedule-select"><SelectValue /></SelectTrigger>
+                <SelectContent className="bg-white">
+                  <SelectItem value="unspecified">Sin especificar</SelectItem>
+                  <SelectItem value="morning">Mañana</SelectItem>
+                  <SelectItem value="midday">Mediodía</SelectItem>
+                  <SelectItem value="night">Noche</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
 
           <div className="space-y-1.5">
             <Label>Nota</Label>

@@ -124,11 +124,12 @@ async def test_mentor_tracks_mcd_npt_and_lbs_steps_for_own_disciple_end_to_end()
 
             enrollment_id = await _bootstrap_disciple(mentor_person_id, email, "Discipulo MCD NPT LBS", password="MentorMcdFinalPass1!")
 
-            # Un líder formaliza el inicio de Consolidación (requiere processes.write, que el
-            # mentor no tiene) confirmando al MISMO mentor responsable.
-            started = await pastor_client.post(f"/api/processes/consolidation/{enrollment_id}/start", json={"mentor_person_id": mentor_person_id, "response_result": "Acepto"}, headers=pastor_headers)
-            assert started.status_code == 200, started.text
-            assert started.json()["current_stage_key"] == "mcd"
+            # `start-seven-weeks` ya entra por la puerta "invasion": S1 (oración) y S2
+            # (invasión) quedan completadas por la campaña y el expediente abre listo
+            # en MCD con el mentor ya asignado, sin pasar por el "/start" manual de
+            # Consolidación (ese es solo para la puerta genérica "visitor_followup").
+            detail = (await mentor_client.get(f"/api/processes/consolidation/{enrollment_id}", headers=mentor_headers)).json()
+            assert detail["current_stage_key"] == "mcd"
 
             # Desde aquí, el MENTOR (con processes.participate) marca su propio avance.
             after_mcd = await _complete_stage(mentor_client, mentor_headers, enrollment_id, "mcd")
@@ -167,23 +168,24 @@ async def test_only_pastor_and_coordinador_general_create_campaign_with_location
 
         rejected = await leader_client.post(
             "/api/mentorship/outreach/campaigns",
-            json={"name": "Invasion Rechazada", "location": "Sector Norte", "start_date": "2026-03-15"},
+            json={"name": "Invasion Rechazada", "location": "Sector Norte", "start_date": "2026-03-15", "end_date": "2026-03-21"},
             headers=leader_headers,
         )
         assert rejected.status_code == 403
 
         created = await pastor_client.post(
             "/api/mentorship/outreach/campaigns",
-            json={"name": "Invasion Sector Norte", "location": "Sector Norte", "start_date": "2026-03-15"},
+            json={"name": "Invasion Sector Norte", "location": "Sector Norte", "start_date": "2026-03-15", "end_date": "2026-03-21"},
             headers=pastor_headers,
         )
         assert created.status_code == 201, created.text
         assert created.json()["location"] == "Sector Norte"
         assert created.json()["start_date"] == "2026-03-15"
+        assert created.json()["end_date"] == "2026-03-21"
 
         created_by_coord = await coord_client.post(
             "/api/mentorship/outreach/campaigns",
-            json={"name": "Invasion Coordinador", "location": "Sector Sur", "start_date": "2026-03-20"},
+            json={"name": "Invasion Coordinador", "location": "Sector Sur", "start_date": "2026-03-20", "end_date": "2026-03-26"},
             headers=coord_headers,
         )
         assert created_by_coord.status_code == 201, created_by_coord.text
@@ -200,19 +202,20 @@ async def test_campaign_assigned_mentor_roster_requires_active_badge():
     mentor_with_badge = await create_person("Mentor Con Insignia Roster")
     mentor_without_badge = await create_person("Mentor Sin Insignia Roster")
     await activate_badge(mentor_with_badge)
+    await create_user("Mentor Con Insignia Roster", "persona", mentor_with_badge)
     _, pastor_email = await create_user("Pastor Roster", "pastor")
     pastor_client, pastor_headers = await auth_client(pastor_email)
     try:
         rejected = await pastor_client.post(
             "/api/mentorship/outreach/campaigns",
-            json={"name": "Invasion Roster Invalido", "location": "Sector Este", "start_date": "2026-03-10", "assigned_mentor_ids": [mentor_without_badge]},
+            json={"name": "Invasion Roster Invalido", "location": "Sector Este", "start_date": "2026-03-10", "end_date": "2026-03-16", "assigned_mentors": [{"person_id": mentor_without_badge}]},
             headers=pastor_headers,
         )
         assert rejected.status_code == 409
 
         created = await pastor_client.post(
             "/api/mentorship/outreach/campaigns",
-            json={"name": "Invasion Roster Valido", "location": "Sector Este", "start_date": "2026-03-10", "assigned_mentor_ids": [mentor_with_badge, mentor_with_badge]},
+            json={"name": "Invasion Roster Valido", "location": "Sector Este", "start_date": "2026-03-10", "end_date": "2026-03-16", "assigned_mentors": [{"person_id": mentor_with_badge}, {"person_id": mentor_with_badge}]},
             headers=pastor_headers,
         )
         assert created.status_code == 201, created.text

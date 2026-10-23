@@ -159,6 +159,7 @@ class MovementInput(BaseModel):
     to_holder: Optional[HolderInput] = None
     person_id: Optional[str] = None
     process_key: Optional[str] = Field(default=None, max_length=80)
+    campaign_id: Optional[str] = Field(default=None, max_length=80)
     payment_status: Optional[PAYMENT_STATUSES] = None
     amount_charged_cents: Optional[int] = Field(default=None, ge=0)
     amount_paid_cents: Optional[int] = Field(default=None, ge=0)
@@ -218,6 +219,7 @@ async def ensure_indexes_and_seed() -> None:
     await db.library_movements.create_index("movement_id", unique=True)
     await db.library_movements.create_index([("book_id", 1), ("occurred_at", -1)])
     await db.library_movements.create_index([("person_id", 1)])
+    await db.library_movements.create_index([("campaign_id", 1)])
     await db.library_holdings.create_index([("book_id", 1), ("holder_type", 1), ("holder_id", 1)], unique=True)
     await db.library_requests.create_index("request_id", unique=True)
 
@@ -348,7 +350,7 @@ async def apply_movement(payload: MovementInput, actor_user_id: str, is_reversal
         "_id": movement_id, "movement_id": movement_id, "book_id": book["book_id"], "book_name": book["name"],
         "movement_type": payload.movement_type, "quantity": payload.quantity, "from_holder": from_holder, "to_holder": to_holder,
         "from_holder_label": await holder_label(from_holder), "to_holder_label": await holder_label(to_holder),
-        "person_id": payload.person_id, "process_key": payload.process_key,
+        "person_id": payload.person_id, "process_key": payload.process_key, "campaign_id": payload.campaign_id,
         "payment_status": payload.payment_status, "amount_charged_cents": payload.amount_charged_cents,
         "amount_paid_cents": payload.amount_paid_cents, "payment_method": payload.payment_method,
         "due_date": payload.due_date, "notes": payload.notes, "actor_user_id": actor_user_id,
@@ -431,16 +433,52 @@ async def library_inventory(current_user: dict = Depends(manager)):
 
 @router.get("/my-holdings", response_model=dict)
 async def my_holdings(current_user: dict = Depends(participant)):
-    holdings = await db.library_holdings.find({"holder_type": "user", "holder_id": current_user["user_id"]}, {"_id": 0}).to_list(2000)
+    """Para cada material: cuánto tiene ahora (`on_hand`, pool único) y, cuando
+    viene de una Invasión, el desglose asignados/entregados/me quedan por cada
+    invasión (`campaigns`) usando `campaign_id` de los movimientos ASSIGNMENT/
+    DELIVERY — pedido explícito del dueño (Entrega A de Invasiones)."""
+    uid = current_user["user_id"]
+    holdings = await db.library_holdings.find({"holder_type": "user", "holder_id": uid}, {"_id": 0}).to_list(2000)
+    on_hand_by_book = {h["book_id"]: h["quantity_on_hand"] for h in holdings}
     books = {book["book_id"]: book for book in await db.library_books.find({}, {"_id": 0}).to_list(2000)}
+    movements = await db.library_movements.find(
+        {"$or": [{"to_holder.type": "user", "to_holder.id": uid}, {"from_holder.type": "user", "from_holder.id": uid}]},
+        {"_id": 0, "book_id": 1, "movement_type": 1, "quantity": 1, "campaign_id": 1, "to_holder": 1, "from_holder": 1},
+    ).to_list(5000)
+    campaign_ids = {m["campaign_id"] for m in movements if m.get("campaign_id")}
+    campaign_names = {c["campaign_id"]: c["name"] for c in (await db.outreach_campaigns.find({"campaign_id": {"$in": list(campaign_ids)}}, {"_id": 0, "campaign_id": 1, "name": 1}).to_list(len(campaign_ids)) if campaign_ids else [])}
+    by_book: dict[str, dict] = {}
+    for movement in movements:
+        bucket = by_book.setdefault(movement["book_id"], {"received_movements": 0, "delivered_movements": 0, "campaigns": {}})
+        incoming = (movement.get("to_holder") or {}).get("type") == "user" and (movement.get("to_holder") or {}).get("id") == uid
+        outgoing = (movement.get("from_holder") or {}).get("type") == "user" and (movement.get("from_holder") or {}).get("id") == uid
+        if incoming:
+            bucket["received_movements"] += 1
+        if outgoing:
+            bucket["delivered_movements"] += 1
+        campaign_id = movement.get("campaign_id")
+        if campaign_id:
+            campaign_bucket = bucket["campaigns"].setdefault(campaign_id, {"campaign_id": campaign_id, "campaign_name": campaign_names.get(campaign_id, "Invasión"), "assigned": 0, "delivered": 0})
+            if incoming and movement["movement_type"] == "ASSIGNMENT":
+                campaign_bucket["assigned"] += movement["quantity"]
+            if outgoing and movement["movement_type"] == "DELIVERY":
+                campaign_bucket["delivered"] += movement["quantity"]
     items = []
-    for holding in holdings:
-        book = books.get(holding["book_id"])
-        if not book or holding["quantity_on_hand"] <= 0:
+    for book_id, book in books.items():
+        on_hand = on_hand_by_book.get(book_id, 0)
+        info = by_book.get(book_id)
+        if on_hand <= 0 and not info:
             continue
-        received = await db.library_movements.count_documents({"to_holder.type": "user", "to_holder.id": current_user["user_id"], "book_id": holding["book_id"]})
-        delivered_out = await db.library_movements.count_documents({"from_holder.type": "user", "from_holder.id": current_user["user_id"], "book_id": holding["book_id"]})
-        items.append({"book": book, "on_hand": holding["quantity_on_hand"], "received_movements": received, "delivered_movements": delivered_out})
+        campaigns = []
+        for entry in (info or {}).get("campaigns", {}).values():
+            entry["remaining"] = entry["assigned"] - entry["delivered"]
+            campaigns.append(entry)
+        items.append({
+            "book": book, "on_hand": on_hand,
+            "received_movements": (info or {}).get("received_movements", 0),
+            "delivered_movements": (info or {}).get("delivered_movements", 0),
+            "campaigns": campaigns,
+        })
     return {"items": serialize(items)}
 
 
@@ -502,12 +540,16 @@ async def create_movement(payload: MovementInput, current_user: dict = Depends(p
 
 
 @router.get("/movements", response_model=dict)
-async def list_movements(current_user: dict = Depends(participant), book_id: Optional[str] = None, person_id: Optional[str] = None, limit: int = Query(default=100, le=500)):
+async def list_movements(current_user: dict = Depends(participant), book_id: Optional[str] = None, person_id: Optional[str] = None, campaign_id: Optional[str] = None, movement_type: Optional[str] = None, limit: int = Query(default=100, le=500)):
     query: dict = {}
     if book_id:
         query["book_id"] = book_id
     if person_id:
         query["person_id"] = person_id
+    if campaign_id:
+        query["campaign_id"] = campaign_id
+    if movement_type:
+        query["movement_type"] = movement_type
     if not is_library_manager(current_user):
         query["$or"] = [{"from_holder.type": "user", "from_holder.id": current_user["user_id"]}, {"to_holder.type": "user", "to_holder.id": current_user["user_id"]}]
     movements = await db.library_movements.find(query, {"_id": 0}).sort("occurred_at", -1).limit(limit).to_list(limit)

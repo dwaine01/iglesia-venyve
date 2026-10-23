@@ -106,7 +106,7 @@ async def test_pastor_can_create_mentor_account_with_outreach_report_only():
         )
         assert response.status_code == 201, response.text
         caps = set(response.json()["capabilities"])
-        expected = set(access_defaults("persona")["capabilities"]) | set(PERSON_SELF_CAPABILITIES) | {"mentorship.outreach.report"}
+        expected = set(access_defaults("persona")["capabilities"]) | set(PERSON_SELF_CAPABILITIES) | {"mentorship.outreach.report", "processes.participate", "library.deliver"}
         assert caps == expected, f"debe ser persona + sus capacidades de perfil propio + outreach.report, obtuvo {caps}"
 
         login = await client.post("/api/auth/login", json={"email": email, "password": "MentorTempPass123!"})
@@ -274,7 +274,7 @@ async def test_new_mentor_sees_only_own_visits_and_no_admin_capability():
             dashboard = await mentor_client.get("/api/mentorship/outreach/dashboard", headers=mentor_headers)
             assert dashboard.status_code == 403
 
-            campaign = await mentor_client.post("/api/mentorship/outreach/campaigns", json={"name": "No deberia poder", "location": "Zona QA", "start_date": "2026-03-01"}, headers=mentor_headers)
+            campaign = await mentor_client.post("/api/mentorship/outreach/campaigns", json={"name": "No deberia poder", "location": "Zona QA", "start_date": "2026-03-01", "end_date": "2026-03-07"}, headers=mentor_headers)
             assert campaign.status_code == 403
         finally:
             await mentor_client.aclose()
