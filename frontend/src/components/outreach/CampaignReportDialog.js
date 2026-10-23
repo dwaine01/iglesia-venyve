@@ -8,16 +8,18 @@ import { Badge } from '../ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
 import { errorDetailText } from '../../lib/errorText';
 
-const BookDeliveries = ({ campaignId, bookId }) => {
+const BookDeliveries = ({ campaignId, bookId, mentorPersonId }) => {
   const { API, getAuthHeaders } = useAuth();
   const [items, setItems] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    axios.get(`${API}/api/mentorship/outreach/campaigns/${campaignId}/books/${bookId}/deliveries`, getAuthHeaders())
+    axios.get(`${API}/api/mentorship/outreach/campaigns/${campaignId}/books/${bookId}/deliveries`, {
+      ...getAuthHeaders(), params: { mentor_person_id: mentorPersonId },
+    })
       .then((response) => setItems(response.data.items || []))
       .finally(() => setLoading(false));
-  }, [API, getAuthHeaders, campaignId, bookId]);
+  }, [API, getAuthHeaders, campaignId, bookId, mentorPersonId]);
 
   if (loading) return <Loader2 className="h-4 w-4 animate-spin text-slate-400" />;
   if (!items || items.length === 0) return <p className="text-xs text-slate-400">Sin entregas registradas todavía.</p>;
@@ -76,7 +78,7 @@ export const CampaignReportDialog = ({ open, onOpenChange, campaign }) => {
                         </button>
                         {openBook === `${mentor.mentor_person_id}-${book.book_id}` && (
                           <div className="ml-2 border-l border-slate-200 pl-2">
-                            <BookDeliveries campaignId={campaign.campaign_id} bookId={book.book_id} />
+                            <BookDeliveries campaignId={campaign.campaign_id} bookId={book.book_id} mentorPersonId={mentor.mentor_person_id} />
                           </div>
                         )}
                       </div>

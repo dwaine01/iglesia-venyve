@@ -76,14 +76,38 @@ async def activate_badge(pid: str) -> None:
     )
 
 
+_ORIGINAL_CENTRAL_STOCK: dict[str, int] = {}
+
+
 async def set_central_stock(sku: str, quantity: int) -> str:
     book = await server.db.library_books.find_one({"sku": sku, "is_active": True}, {"_id": 0, "book_id": 1})
+    if sku not in _ORIGINAL_CENTRAL_STOCK:
+        existing = await server.db.library_holdings.find_one({"book_id": book["book_id"], "holder_type": "warehouse", "holder_id": "central"})
+        _ORIGINAL_CENTRAL_STOCK[sku] = (existing or {}).get("quantity_on_hand", 0)
     await server.db.library_holdings.update_one(
         {"book_id": book["book_id"], "holder_type": "warehouse", "holder_id": "central"},
         {"$set": {"quantity_on_hand": quantity, "reserved_qty": 0, "updated_at": datetime.now(timezone.utc)}, "$setOnInsert": {"_id": str(uuid.uuid4())}},
         upsert=True,
     )
     return book["book_id"]
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _restore_central_stock_after_module():
+    """Las existencias centrales reales de MCD/NPT se sobrescriben con
+    `set_central_stock` para pruebas deterministas; se restauran al terminar
+    este archivo para no dejar el inventario real desincronizado."""
+    yield
+    async def _restore():
+        for sku, original in _ORIGINAL_CENTRAL_STOCK.items():
+            book = await server.db.library_books.find_one({"sku": sku}, {"_id": 0, "book_id": 1})
+            if book:
+                await server.db.library_holdings.update_one(
+                    {"book_id": book["book_id"], "holder_type": "warehouse", "holder_id": "central"},
+                    {"$set": {"quantity_on_hand": original}},
+                )
+    import asyncio
+    asyncio.get_event_loop().run_until_complete(_restore())
 
 
 async def cleanup(campaign_ids=None):
@@ -564,3 +588,107 @@ async def test_only_pastor_or_coordinador_can_assign_campaign_books():
         await pastor_client.aclose()
         await leader_client.aclose()
         await cleanup([campaign_id] if campaign_id else None)
+
+
+@pytest.mark.asyncio
+async def test_combined_mcd_npt_report_does_not_double_deliver_mcd_on_retry():
+    """Regresión del bug de atomicidad (testing_agent iteración 39): si el
+    mismo PUT trae received_mcd=True y received_npt=True, y el mentor no tiene
+    NPT, MCD ya se entregó cuando NPT lanza 409. Un reintento con solo MCD=True
+    NO debe generar un segundo movimiento DELIVERY ni descontar de nuevo."""
+    await cleanup()
+    pastor_pid = await create_person("Pastor EntregaA Atomico")
+    _, pastor_email = await create_user("Pastor EntregaA Atomico", "pastor", pastor_pid)
+    mentor_pid = await create_person("Mentor Atomico MCD NPT")
+    await activate_badge(mentor_pid)
+    mentor_email = f"qa.entregaa.atomico.{uuid.uuid4().hex[:6]}@example.com"
+    await create_user("Mentor Atomico MCD NPT", "persona", mentor_pid, capabilities=["mentorship.outreach.report", "library.deliver"])
+    await server.db.users.update_one({"person_id": mentor_pid}, {"$set": {"email": mentor_email}})
+    mcd_book_id = await set_central_stock("MCD", 50)
+    npt_book_id = await set_central_stock("NPT", 0)  # el mentor no tendrá NPT asignado
+
+    pastor_client, pastor_headers = await auth_client(pastor_email)
+    campaign_id = None
+    try:
+        created = await pastor_client.post(
+            "/api/mentorship/outreach/campaigns",
+            json={"name": "Invasion Atomica", "location": "Zona QA", "start_date": "2026-04-01", "end_date": "2026-04-07", "assigned_mentors": [{"person_id": mentor_pid}]},
+            headers=pastor_headers,
+        )
+        campaign_id = created.json()["campaign_id"]
+        await pastor_client.post(
+            f"/api/mentorship/outreach/campaigns/{campaign_id}/books",
+            json={"assignments": [{"mentor_person_id": mentor_pid, "book_id": mcd_book_id, "quantity": 1}]},
+            headers=pastor_headers,
+        )
+
+        mentor_client, mentor_headers = await auth_client(mentor_email)
+        try:
+            visit = await mentor_client.post(
+                "/api/mentorship/outreach/visits",
+                json={"contact_type": "new", "contact_name": "Casa Atomica Combo", "contact_phone": "8095552222", "mentor_person_id": mentor_pid, "campaign_id": campaign_id},
+                headers=mentor_headers,
+            )
+            visit_id = visit.json()["visit_id"]
+
+            combined = await mentor_client.put(
+                f"/api/mentorship/outreach/visits/{visit_id}/report",
+                json={"status": "visited", "received_mcd": True, "received_npt": True},
+                headers=mentor_headers,
+            )
+            assert combined.status_code == 409, combined.text  # falla por NPT sin stock
+
+            mcd_movements = await server.db.library_movements.count_documents({"campaign_id": campaign_id, "movement_type": "DELIVERY", "book_id": mcd_book_id})
+            assert mcd_movements == 1, "el MCD ya entregado antes del fallo de NPT debe quedar persistido una sola vez"
+
+            retry = await mentor_client.put(
+                f"/api/mentorship/outreach/visits/{visit_id}/report",
+                json={"status": "visited", "received_mcd": True},
+                headers=mentor_headers,
+            )
+            assert retry.status_code == 200, retry.text
+
+            mcd_movements_after_retry = await server.db.library_movements.count_documents({"campaign_id": campaign_id, "movement_type": "DELIVERY", "book_id": mcd_book_id})
+            assert mcd_movements_after_retry == 1, "el reintento NO debe duplicar el movimiento DELIVERY de MCD"
+            central_mcd = await server.db.library_holdings.find_one({"book_id": mcd_book_id, "holder_type": "warehouse", "holder_id": "central"})
+            assert central_mcd["quantity_on_hand"] == 49, "solo se debió descontar 1 unidad del central (vía ASSIGNMENT), no dos"
+        finally:
+            await mentor_client.aclose()
+    finally:
+        await pastor_client.aclose()
+        await cleanup([campaign_id] if campaign_id else None)
+
+
+@pytest.mark.asyncio
+async def test_roster_account_creation_is_all_or_nothing():
+    """Regresión del bug de cuentas huérfanas (testing_agent iteración 39): si
+    un mentor del roster trae credenciales válidas y OTRO no, no debe crearse
+    NINGUNA cuenta (ni la del primero) cuando la invasión falla por el segundo."""
+    await cleanup()
+    pastor_pid = await create_person("Pastor EntregaA Rollback")
+    _, pastor_email = await create_user("Pastor EntregaA Rollback", "pastor", pastor_pid)
+    mentor_a_pid = await create_person("Mentor Rollback A")
+    await activate_badge(mentor_a_pid)
+    mentor_b_pid = await create_person("Mentor Rollback B Sin Clave")
+    await activate_badge(mentor_b_pid)
+
+    pastor_client, pastor_headers = await auth_client(pastor_email)
+    try:
+        email_a = f"qa.entregaa.rollbacka.{uuid.uuid4().hex[:6]}@example.com"
+        response = await pastor_client.post(
+            "/api/mentorship/outreach/campaigns",
+            json={
+                "name": "Invasion Rollback Cuentas", "location": "Zona QA", "start_date": "2026-04-01", "end_date": "2026-04-07",
+                "assigned_mentors": [
+                    {"person_id": mentor_a_pid, "email": email_a, "temporary_password": "MentorRollbackA123!"},
+                    {"person_id": mentor_b_pid},  # sin correo/clave -> debe fallar
+                ],
+            },
+            headers=pastor_headers,
+        )
+        assert response.status_code == 422, response.text
+        assert not await server.db.users.find_one({"person_id": mentor_a_pid}), "no debe quedar una cuenta huérfana para el mentor A si el B falla la validación"
+        assert not await server.db.users.find_one({"email": email_a})
+    finally:
+        await pastor_client.aclose()
+        await cleanup()

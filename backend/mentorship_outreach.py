@@ -384,8 +384,13 @@ async def ensure_mentor_roster_accounts(roster: list, current_user: dict) -> lis
     """Para cada mentor del roster: exige insignia activa y, si no tiene
     cuenta, la auto-crea con `create_user_access_core` (mentor_access=True)
     usando el correo/clave temporal que escribió el coordinador en el
-    formulario — la clave nunca se registra en logs."""
-    accounts_created = []
+    formulario — la clave nunca se registra en logs.
+
+    Valida TODO el roster primero (insignia, credenciales, correo libre y sin
+    duplicados dentro del mismo roster) y solo después crea cuentas, para que
+    el error de un mentor no deje cuentas huérfanas de los mentores anteriores."""
+    to_create = []
+    seen_emails = set()
     for entry in roster:
         if not await is_active_mentor(entry.person_id):
             name = await person_display_name(entry.person_id) or "Uno de los mentores seleccionados"
@@ -395,6 +400,15 @@ async def ensure_mentor_roster_accounts(roster: list, current_user: dict) -> lis
         if not entry.email or not entry.temporary_password:
             name = await person_display_name(entry.person_id) or "Uno de los mentores seleccionados"
             raise HTTPException(status_code=422, detail=f"{name} no tiene cuenta todavía; indique un correo y una contraseña temporal (mínimo 10 caracteres) para crearla")
+        email_key = str(entry.email).strip().lower()
+        if email_key in seen_emails:
+            raise HTTPException(status_code=422, detail=f"El correo {entry.email} se repite para más de un mentor del roster")
+        seen_emails.add(email_key)
+        if await db.users.find_one({"email": email_key}, {"_id": 1}):
+            raise HTTPException(status_code=409, detail=f"El correo {entry.email} ya tiene acceso")
+        to_create.append(entry)
+    accounts_created = []
+    for entry in to_create:
         created = await create_user_access_core(
             UserAccessCreate(person_id=entry.person_id, email=entry.email, temporary_password=entry.temporary_password, access_level="persona", mentor_access=True),
             current_user,
@@ -525,11 +539,19 @@ async def list_campaign_books(campaign_id: str, current_user: dict = Depends(get
 
 
 @router.get("/campaigns/{campaign_id}/books/{book_id}/deliveries", response_model=dict)
-async def campaign_book_deliveries(campaign_id: str, book_id: str, current_user: dict = Depends(get_current_user)):
-    """Para que un líder 'abra' un libro de la invasión y vea a qué personas se entregó."""
+async def campaign_book_deliveries(campaign_id: str, book_id: str, mentor_person_id: Optional[str] = None, current_user: dict = Depends(get_current_user)):
+    """Para que un líder 'abra' un libro de la invasión y vea a qué personas se
+    entregó. Si se indica `mentor_person_id`, se limita a las entregas hechas
+    desde el inventario de ESE mentor (evita mezclar destinatarios de otros
+    mentores de la misma invasión y libro)."""
     if not is_outreach_leader(current_user):
         raise HTTPException(status_code=403, detail="Sin permiso para consultar las entregas de este libro")
-    movements = await db.library_movements.find({"campaign_id": campaign_id, "book_id": book_id, "movement_type": "DELIVERY"}, {"_id": 0}).sort("occurred_at", -1).to_list(500)
+    query = {"campaign_id": campaign_id, "book_id": book_id, "movement_type": "DELIVERY"}
+    if mentor_person_id:
+        mentor_user_id = await mentor_user_id_for(mentor_person_id)
+        query["from_holder.type"] = "user"
+        query["from_holder.id"] = mentor_user_id
+    movements = await db.library_movements.find(query, {"_id": 0}).sort("occurred_at", -1).to_list(500)
     person_ids = {m["person_id"] for m in movements if m.get("person_id")}
     valid_oids = [ObjectId(pid) for pid in person_ids if ObjectId.is_valid(pid)]
     people = await db.persons.find({"_id": {"$in": valid_oids}}, {"_id": 1, "nombre": 1, "apellido": 1}).to_list(len(valid_oids)) if valid_oids else []
@@ -691,7 +713,13 @@ async def update_visit_report(visit_id: str, payload: VisitReportInput, current_
         already_delivered = bool(visit.get(movement_field))
         if fields[field_name] is True and not already_delivered:
             target_person_id, _ = await resolve_or_create_target_person(visit, current_user)
-            fields[movement_field] = await deliver_outreach_book(visit, sku, target_person_id, current_user)
+            movement_id = await deliver_outreach_book(visit, sku, target_person_id, current_user)
+            # Se persiste de inmediato (no solo en `fields`): si la entrega del
+            # siguiente libro falla, esta ya quedó marcada y un reintento no
+            # vuelve a descontarla ni a duplicar el movimiento DELIVERY.
+            visit[movement_field] = movement_id
+            fields[movement_field] = movement_id
+            await db.outreach_visits.update_one({"visit_id": visit_id}, {"$set": {movement_field: movement_id}})
         elif fields[field_name] is False and already_delivered:
             raise HTTPException(status_code=409, detail="Ya se entregó este material; para corregirlo use la reversión de movimientos en Librería 360")
         # True + ya entregado antes: idempotente, no se repite el movimiento ni se vuelve a descontar.

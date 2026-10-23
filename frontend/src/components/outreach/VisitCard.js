@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import axios from 'axios';
+import { Link } from 'react-router-dom';
 import { CheckCircle2, Loader2, MapPin, Phone, Save, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -253,9 +254,11 @@ export const VisitCard = ({ visit, canManage, onUpdated, onTransfer }) => {
           <p className="text-xs text-slate-500" data-testid={`outreach-visit-unsaved-status-hint-${visit.visit_id}`}>Guarde el informe para poder iniciar la Ley de las 7 Semanas.</p>
         )}
         {visit.enrollment_id && (
-          <Badge variant="outline" data-testid={`outreach-visit-seven-weeks-badge-${visit.visit_id}`}>
-            <CheckCircle2 className="mr-1 h-3.5 w-3.5" />7 Semanas iniciada
-          </Badge>
+          <Link to={`/procesos/consolidacion/${visit.enrollment_id}`} data-testid={`outreach-visit-seven-weeks-badge-${visit.visit_id}`}>
+            <Badge variant="outline" className="cursor-pointer hover:bg-[#F6F4EF]">
+              <CheckCircle2 className="mr-1 h-3.5 w-3.5" />7 Semanas iniciada · Ver expediente
+            </Badge>
+          </Link>
         )}
       </div>
     </div>
