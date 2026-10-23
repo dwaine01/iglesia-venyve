@@ -24,6 +24,7 @@ const RosterRow = ({ campaignId, mentor, onRemoved }) => {
       setPreview(data);
     } catch (error) {
       toast.error(errorDetailText(error, 'No se pudo calcular si se puede quitar'));
+      setConfirming(false);
     }
   };
 
@@ -56,10 +57,13 @@ const RosterRow = ({ campaignId, mentor, onRemoved }) => {
           {preview && (
             <>
               {preview.blocked ? (
-                <p className="flex items-start gap-1.5 text-xs text-amber-800" data-testid={`campaign-roster-blocked-${mentor.person_id}`}>
-                  <ShieldAlert className="h-4 w-4 shrink-0" />
-                  No se puede quitar: tiene {preview.households} hogar(es), {preview.visits} visita(s) y {preview.books_in_custody} libro(s) en custodia de esta invasión. Transfiera los contactos y devuelva los libros primero.
-                </p>
+                <>
+                  <p className="flex items-start gap-1.5 text-xs text-amber-800" data-testid={`campaign-roster-blocked-${mentor.person_id}`}>
+                    <ShieldAlert className="h-4 w-4 shrink-0" />
+                    No se puede quitar: tiene {preview.households} hogar(es), {preview.visits} visita(s) y {preview.books_in_custody} libro(s) en custodia de esta invasión. Transfiera los contactos y devuelva los libros primero.
+                  </p>
+                  <Button size="sm" variant="ghost" onClick={() => { setConfirming(false); setPreview(null); }} data-testid={`campaign-roster-cancel-blocked-${mentor.person_id}`}>Cerrar</Button>
+                </>
               ) : (
                 <>
                   <Input placeholder="Motivo" value={reason} onChange={(event) => setReason(event.target.value)} data-testid={`campaign-roster-remove-reason-${mentor.person_id}`} />

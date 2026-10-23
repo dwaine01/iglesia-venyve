@@ -113,9 +113,9 @@ export const AddCampaignMentorsDialog = ({ open, onOpenChange, campaign, mentorO
                 const checked = selected.includes(mentor.person_id);
                 return (
                   <div key={mentor.person_id} className="rounded px-1 py-1">
-                    <label className={`flex items-center gap-2 text-sm ${blocked ? 'cursor-not-allowed text-slate-400' : 'cursor-pointer text-[#101D36] hover:bg-[#F6F4EF]'}`}>
-                      <input type="checkbox" checked={checked} disabled={blocked} onChange={() => toggle(mentor.person_id)} data-testid={`add-campaign-mentor-checkbox-${mentor.person_id}`} />
-                      {mentor.name}{blocked ? ' (sin acceso)' : ''}{needsAccount ? ' (sin cuenta · se invitará)' : ''}
+                    <label className={`flex items-start gap-2 text-sm ${blocked ? 'cursor-not-allowed text-slate-400' : 'cursor-pointer text-[#101D36] hover:bg-[#F6F4EF]'}`}>
+                      <input type="checkbox" checked={checked} disabled={blocked} onChange={() => toggle(mentor.person_id)} className="mt-0.5 shrink-0" data-testid={`add-campaign-mentor-checkbox-${mentor.person_id}`} />
+                      <span className="break-words">{mentor.name}{blocked ? ' (sin acceso)' : ''}{needsAccount ? ' (sin cuenta · se invitará)' : ''}</span>
                     </label>
                     {checked && needsAccount && (
                       <div className="ml-6 mt-2" data-testid={`add-campaign-mentor-email-wrap-${mentor.person_id}`}>

@@ -95,7 +95,7 @@ export const OutreachLeaderPanel = ({ campaigns, onCampaignsChanged }) => {
                     </p>
                   )}
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   {canCreateOutreachCampaign(user) && <Button size="sm" variant="outline" onClick={() => setRosterCampaignId(campaign.campaign_id)} data-testid={`outreach-campaign-mentors-button-${campaign.campaign_id}`}>Mentores</Button>}
                   <Button size="sm" variant="outline" onClick={() => setBooksCampaign(campaign)} data-testid={`outreach-campaign-books-button-${campaign.campaign_id}`}>Libros</Button>
                   <Button size="sm" variant="outline" onClick={() => setReportCampaign(campaign)} data-testid={`outreach-campaign-report-button-${campaign.campaign_id}`}>Informe</Button>

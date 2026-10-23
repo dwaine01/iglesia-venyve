@@ -775,11 +775,7 @@ async def add_campaign_mentors(campaign_id: str, payload: AddMentorsInput, curre
 
     group_candidate_ids: set = set()
     for front_group_id in payload.front_group_ids:
-        branch_ids = await descendant_group_ids(db, front_group_id)
-        members = await db.front_group_assignments.distinct("person_id", {"front_group_id": {"$in": branch_ids}, "active": True})
-        if members:
-            badge_docs = await db.mentor_badges.find({"person_id": {"$in": members}, "active": True}, {"_id": 0, "person_id": 1}).to_list(len(members))
-            group_candidate_ids.update(doc["person_id"] for doc in badge_docs)
+        group_candidate_ids.update(await mentor_ids_in_group_branch(front_group_id))
 
     already_assigned = sorted((set(explicit_ids) | group_candidate_ids) & existing_ids)
     candidate_ids = [pid for pid in explicit_ids if pid not in existing_ids]
@@ -816,18 +812,20 @@ async def add_campaign_mentors(campaign_id: str, payload: AddMentorsInput, curre
 
 async def books_in_custody_for_campaign(campaign_id: str, mentor_person_id: str) -> int:
     """Libros que este mentor todavía tiene consigo de ESTA invasión
-    (asignados - entregados - devueltos, filtrado por campaign_id en el
-    ledger de Librería). 0 si nunca tuvo cuenta."""
+    (entradas: ASSIGNMENT/TRANSFER hacia él; salidas: DELIVERY/RETURN/TRANSFER
+    desde él, filtrado por campaign_id en el ledger de Librería). 0 si nunca
+    tuvo cuenta."""
     user_doc = await db.users.find_one({"person_id": mentor_person_id}, {"_id": 1})
     if not user_doc:
         return 0
     mentor_user_id = str(user_doc["_id"])
     rows = await db.library_movements.aggregate([
         {"$match": {"campaign_id": campaign_id, "$or": [{"to_holder.id": mentor_user_id}, {"from_holder.id": mentor_user_id}]}},
-        {"$group": {"_id": "$movement_type", "total": {"$sum": "$quantity"}}},
-    ]).to_list(20)
-    totals = {row["_id"]: row["total"] for row in rows}
-    return max(totals.get("ASSIGNMENT", 0) - totals.get("DELIVERY", 0) - totals.get("RETURN", 0), 0)
+        {"$group": {"_id": {"type": "$movement_type", "to_me": {"$eq": ["$to_holder.id", mentor_user_id]}}, "total": {"$sum": "$quantity"}}},
+    ]).to_list(50)
+    incoming = sum(row["total"] for row in rows if row["_id"]["to_me"] and row["_id"]["type"] in ("ASSIGNMENT", "TRANSFER"))
+    outgoing = sum(row["total"] for row in rows if not row["_id"]["to_me"] and row["_id"]["type"] in ("DELIVERY", "RETURN", "TRANSFER"))
+    return max(incoming - outgoing, 0)
 
 
 @router.get("/campaigns/{campaign_id}/mentors/{mentor_person_id}/remove-preview", response_model=dict)
@@ -1364,6 +1362,23 @@ async def create_visit_event(household_id: str, payload: VisitEventInput, curren
     return {"event": serialize(event_doc), "visits": await serialize_visits(created_visits, current_user)}
 
 
+async def mentor_ids_in_group_branch(front_group_id: str) -> list:
+    """Mentores (insignia activa, persona no archivada) de ese Grupo Frontal
+    o de cualquiera de sus sub-grupos. Compartido por `mentors_by_group` y
+    `add_campaign_mentors` para no repetir el criterio."""
+    group_ids = await descendant_group_ids(db, front_group_id)
+    person_ids = await db.front_group_assignments.distinct("person_id", {"front_group_id": {"$in": group_ids}, "active": True})
+    if not person_ids:
+        return []
+    badge_docs = await db.mentor_badges.find({"person_id": {"$in": person_ids}, "active": True}, {"_id": 0, "person_id": 1}).to_list(len(person_ids))
+    mentor_ids = [doc["person_id"] for doc in badge_docs]
+    if not mentor_ids:
+        return []
+    valid_oids = [ObjectId(pid) for pid in mentor_ids if ObjectId.is_valid(pid)]
+    archived_ids = {str(p["_id"]) for p in await db.persons.find({"_id": {"$in": valid_oids}, "is_archived": True}, {"_id": 1}).to_list(len(valid_oids))}
+    return [pid for pid in mentor_ids if pid not in archived_ids]
+
+
 @router.get("/mentors-by-group/{front_group_id}", response_model=dict)
 async def mentors_by_group(front_group_id: str, current_user: dict = Depends(get_current_user)):
     """Para el roster de una invasión: todos los mentores (insignia activa)
@@ -1371,16 +1386,11 @@ async def mentors_by_group(front_group_id: str, current_user: dict = Depends(get
     if not can_manage_outreach_campaigns(current_user):
         raise HTTPException(status_code=403, detail="Solo la pastora/pastor o un coordinador general puede armar el roster por grupo")
     await load_front_group(db, front_group_id)
-    group_ids = await descendant_group_ids(db, front_group_id)
-    person_ids = await db.front_group_assignments.distinct("person_id", {"front_group_id": {"$in": group_ids}, "active": True})
-    if not person_ids:
-        return {"items": []}
-    badge_docs = await db.mentor_badges.find({"person_id": {"$in": person_ids}, "active": True}, {"_id": 0, "person_id": 1}).to_list(len(person_ids))
-    mentor_ids = [d["person_id"] for d in badge_docs]
+    mentor_ids = await mentor_ids_in_group_branch(front_group_id)
     if not mentor_ids:
         return {"items": []}
     valid_oids = [ObjectId(pid) for pid in mentor_ids if ObjectId.is_valid(pid)]
-    people = await db.persons.find({"_id": {"$in": valid_oids}, "is_archived": {"$ne": True}}, {"_id": 1, "nombre": 1, "apellido": 1}).to_list(len(valid_oids))
+    people = await db.persons.find({"_id": {"$in": valid_oids}}, {"_id": 1, "nombre": 1, "apellido": 1}).to_list(len(valid_oids))
     accounts = await db.users.find({"person_id": {"$in": mentor_ids}}, {"_id": 0, "person_id": 1, "is_active": 1}).to_list(len(mentor_ids))
     account_status = {item["person_id"]: bool(item.get("is_active", True)) for item in accounts}
     items = [{
