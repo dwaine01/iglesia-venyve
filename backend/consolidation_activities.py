@@ -180,7 +180,7 @@ async def ensure_consolidation_calendar(enrollment: dict, actor_user_id: str) ->
             "moment_key": template["moment_key"], "moment_label": template["moment_label"],
             "title": template["title"], "content": template.get("content"), "order": template["order"],
             "scheduled_date": scheduled_date.isoformat(), "status": "pending", "last_result": None, "result_at": None,
-            "note": None, "next_step": None, "rescheduled_date": None, "book_delivery_movement_id": None,
+            "note": None, "next_step": None, "rescheduled_date": None, "reschedule_history": [], "book_delivery_movement_id": None,
             "created_at": now, "updated_at": now,
         })
     await db.consolidation_activities.insert_many(docs)
@@ -317,6 +317,14 @@ async def update_activity_result(activity_id: str, payload: ActivityResultUpdate
     if payload.status == "rescheduled":
         update["rescheduled_date"] = payload.rescheduled_date.isoformat()
         update["scheduled_date"] = payload.rescheduled_date.isoformat()
+        # Etapa 3: historial append-only de reprogramaciones — antes solo
+        # quedaba la última fecha (`rescheduled_date` se sobrescribía), sin
+        # rastro de los reintentos anteriores.
+        history_entry = {
+            "from_date": activity.get("scheduled_date"), "to_date": payload.rescheduled_date.isoformat(),
+            "note": payload.note, "actor_user_id": current_user["user_id"], "actor_person_id": current_user.get("person_id"),
+            "at": serialize(now),
+        }
     if payload.deliver_book and payload.status == "done" and activity["stage_key"] in BOOK_SKU_BY_STAGE and not activity.get("book_delivery_movement_id"):
         sku = BOOK_SKU_BY_STAGE[activity["stage_key"]]
         book = await db.library_books.find_one({"sku": sku}, {"_id": 0, "book_id": 1, "name": 1})
@@ -328,7 +336,10 @@ async def update_activity_result(activity_id: str, payload: ActivityResultUpdate
             campaign_id=enrollment.get("campaign_id"), process_key="consolidation", notes=f"Entrega durante actividad: {activity['title']}",
         )
         update["book_delivery_movement_id"] = movement_id
-    await db.consolidation_activities.update_one({"activity_id": activity_id}, {"$set": update})
+    mongo_update: dict = {"$set": update}
+    if payload.status == "rescheduled":
+        mongo_update["$push"] = {"reschedule_history": history_entry}
+    await db.consolidation_activities.update_one({"activity_id": activity_id}, mongo_update)
     if payload.status == "done" and enrollment.get("decision_status") == "start_scheduled":
         await db.process_enrollments.update_one({"enrollment_id": enrollment["enrollment_id"]}, {"$set": {"decision_status": "in_progress", "updated_at": now}})
     await record_event(db, enrollment, current_user["user_id"], "activity_result", f"{activity['title']}: {payload.status}", payload.note or "")

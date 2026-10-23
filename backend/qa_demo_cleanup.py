@@ -99,6 +99,16 @@ async def qa_cleanup_plan(db) -> dict:
         ("outreach_visit_history", {"visit_id": {"$in": outreach_visit_ids}}),
         ("outreach_campaigns", {"created_by_user_id": {"$in": user_ids}}),
     ]
+    qa_outreach_households = await db.outreach_households.find(
+        {"$or": [{"mentor_person_id": {"$in": person_ids}}, {"created_by_user_id": {"$in": user_ids}}]},
+        {"_id": 1, "household_id": 1},
+    ).to_list(100000)
+    outreach_household_ids = [item["household_id"] for item in qa_outreach_households]
+    outreach_queries += [
+        ("outreach_households", {"_id": {"$in": [item["_id"] for item in qa_outreach_households]}}),
+        ("outreach_visit_events", {"$or": [{"household_id": {"$in": outreach_household_ids}}, {"mentor_person_id": {"$in": person_ids}}]}),
+        ("outreach_participations", {"mentor_person_id": {"$in": person_ids}}),
+    ]
     qa_recovery_records = await db.system_recovery.find(
         {"email": {"$regex": QA_EMAIL_PATTERN, "$options": "i"}}, {"_id": 1}
     ).to_list(10000)

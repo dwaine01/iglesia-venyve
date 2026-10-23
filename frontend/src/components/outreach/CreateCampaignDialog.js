@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Users } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { useAuth } from '../../context/AuthContext';
@@ -8,6 +8,7 @@ import { Button } from '../ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Textarea } from '../ui/textarea';
 import { mentorAccountBlocked, mentorAccessHint, mentorNeedsAccountCreation } from '../../lib/accessControl';
 import { errorDetailText } from '../../lib/errorText';
@@ -19,13 +20,35 @@ export const CreateCampaignDialog = ({ open, onOpenChange, mentorOptions, onCrea
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [zoneNotes, setZoneNotes] = useState('');
+  const [meetingTime, setMeetingTime] = useState('');
+  const [meetingPlace, setMeetingPlace] = useState('');
+  const [sectorsText, setSectorsText] = useState('');
+  const [instructions, setInstructions] = useState('');
   const [selectedMentors, setSelectedMentors] = useState([]);
+  const [extraMentors, setExtraMentors] = useState([]);
   const [credentials, setCredentials] = useState({});
   const [saving, setSaving] = useState(false);
+  const [groups, setGroups] = useState([]);
+  const [groupId, setGroupId] = useState('');
+  const [loadingGroup, setLoadingGroup] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    axios.get(`${API}/api/front-groups`, getAuthHeaders())
+      .then((response) => setGroups(response.data.items || []))
+      .catch(() => setGroups([]));
+  }, [open, API, getAuthHeaders]);
+
+  const combinedOptions = useMemo(() => {
+    const map = new Map();
+    [...(mentorOptions || []), ...extraMentors].forEach((item) => map.set(item.person_id, item));
+    return Array.from(map.values());
+  }, [mentorOptions, extraMentors]);
 
   const reset = () => {
     setName(''); setLocation(''); setStartDate(''); setEndDate(''); setZoneNotes('');
-    setSelectedMentors([]); setCredentials({});
+    setMeetingTime(''); setMeetingPlace(''); setSectorsText(''); setInstructions('');
+    setSelectedMentors([]); setExtraMentors([]); setCredentials({}); setGroupId('');
   };
 
   const toggleMentor = (personId) => {
@@ -42,6 +65,31 @@ export const CreateCampaignDialog = ({ open, onOpenChange, mentorOptions, onCrea
     setCredentials((prev) => ({ ...prev, [personId]: { ...prev[personId], [field]: value } }));
   };
 
+  const addGroupMentors = async () => {
+    if (!groupId) { toast.error('Seleccione un Grupo Frontal'); return; }
+    setLoadingGroup(true);
+    try {
+      const response = await axios.get(`${API}/api/mentorship/outreach/mentors-by-group/${groupId}`, getAuthHeaders());
+      const found = response.data.items || [];
+      if (found.length === 0) {
+        toast.message('Ese grupo no tiene mentores con insignia activa todavía');
+        return;
+      }
+      setExtraMentors((prev) => {
+        const map = new Map(prev.map((item) => [item.person_id, item]));
+        found.forEach((item) => map.set(item.person_id, item));
+        return Array.from(map.values());
+      });
+      const addableIds = found.filter((item) => !mentorAccountBlocked(item)).map((item) => item.person_id);
+      setSelectedMentors((prev) => Array.from(new Set([...prev, ...addableIds])));
+      toast.success(`${found.length} mentor(es) del grupo agregados al roster`);
+    } catch (error) {
+      toast.error(errorDetailText(error, 'No se pudo cargar los mentores de ese grupo'));
+    } finally {
+      setLoadingGroup(false);
+    }
+  };
+
   const submit = async () => {
     if (!name.trim() || !location.trim() || !startDate || !endDate) {
       toast.error('Completa el lugar, el nombre, la fecha de inicio y la fecha de fin de la invasión');
@@ -49,7 +97,7 @@ export const CreateCampaignDialog = ({ open, onOpenChange, mentorOptions, onCrea
     }
     const assignedMentors = [];
     for (const personId of selectedMentors) {
-      const mentor = mentorOptions.find((item) => item.person_id === personId);
+      const mentor = combinedOptions.find((item) => item.person_id === personId);
       if (mentorNeedsAccountCreation(mentor)) {
         const cred = credentials[personId] || {};
         if (!cred.email || !cred.password || cred.password.length < 10) {
@@ -65,11 +113,16 @@ export const CreateCampaignDialog = ({ open, onOpenChange, mentorOptions, onCrea
         assignedMentors.push({ person_id: personId });
       }
     }
+    const sectors = sectorsText.split(/\n|,/).map((item) => item.trim()).filter(Boolean);
     setSaving(true);
     try {
       const response = await axios.post(
         `${API}/api/mentorship/outreach/campaigns`,
-        { name: name.trim(), location: location.trim(), start_date: startDate, end_date: endDate, zone_notes: zoneNotes || null, assigned_mentors: assignedMentors },
+        {
+          name: name.trim(), location: location.trim(), start_date: startDate, end_date: endDate, zone_notes: zoneNotes || null,
+          meeting_time: meetingTime || null, meeting_place: meetingPlace || null, sectors, instructions: instructions || null,
+          assigned_mentors: assignedMentors,
+        },
         getAuthHeaders(),
       );
       const created = response.data.accounts_created || [];
@@ -109,14 +162,50 @@ export const CreateCampaignDialog = ({ open, onOpenChange, mentorOptions, onCrea
               <Input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} data-testid="create-campaign-end-date-input" />
             </div>
           </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label>Hora de encuentro</Label>
+              <Input type="time" value={meetingTime} onChange={(event) => setMeetingTime(event.target.value)} data-testid="create-campaign-meeting-time-input" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Lugar de encuentro</Label>
+              <Input value={meetingPlace} onChange={(event) => setMeetingPlace(event.target.value)} placeholder="Dónde se reúne el equipo" data-testid="create-campaign-meeting-place-input" />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Sectores / lugares a cubrir (uno por línea)</Label>
+            <Textarea value={sectorsText} onChange={(event) => setSectorsText(event.target.value)} placeholder={'Sector A\nSector B'} data-testid="create-campaign-sectors-input" />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Instrucciones para los mentores (opcional)</Label>
+            <Textarea value={instructions} onChange={(event) => setInstructions(event.target.value)} placeholder="Qué llevar, cómo presentarse, seguridad, etc." data-testid="create-campaign-instructions-input" />
+          </div>
           <div className="space-y-1.5">
             <Label>Notas de zona (opcional)</Label>
             <Textarea value={zoneNotes} onChange={(event) => setZoneNotes(event.target.value)} placeholder="Observaciones generales de la semana" data-testid="create-campaign-notes-input" />
           </div>
+
+          {groups.length > 0 && (
+            <div className="space-y-1.5 rounded-md border border-dashed border-[#D8D3C8] bg-[#FAF9F5] p-2">
+              <Label>Agregar mentores de un Grupo Frontal completo</Label>
+              <div className="flex gap-2">
+                <Select value={groupId} onValueChange={setGroupId}>
+                  <SelectTrigger data-testid="create-campaign-group-select"><SelectValue placeholder="Seleccione una rama" /></SelectTrigger>
+                  <SelectContent className="bg-white">
+                    {groups.map((group) => <SelectItem key={group.front_group_id} value={group.front_group_id}>{group.display_name || group.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <Button type="button" variant="outline" disabled={loadingGroup} onClick={addGroupMentors} data-testid="create-campaign-add-group-button">
+                  {loadingGroup ? <Loader2 className="h-4 w-4 animate-spin" /> : <Users className="h-4 w-4" />} Agregar grupo
+                </Button>
+              </div>
+            </div>
+          )}
+
           <div className="space-y-1.5">
             <Label>Mentores asignados a esta invasión</Label>
             <div className="max-h-72 space-y-2 overflow-y-auto rounded-md border border-[#E8E5DE] p-2" data-testid="create-campaign-mentor-list">
-              {mentorOptions.map((mentor) => {
+              {combinedOptions.map((mentor) => {
                 const blocked = mentorAccountBlocked(mentor);
                 const needsAccount = mentorNeedsAccountCreation(mentor);
                 const checked = selectedMentors.includes(mentor.person_id);
@@ -144,9 +233,9 @@ export const CreateCampaignDialog = ({ open, onOpenChange, mentorOptions, onCrea
                   </div>
                 );
               })}
-              {mentorOptions.length === 0 && <p className="text-xs text-slate-400">Sin mentores con insignia activa todavía.</p>}
+              {combinedOptions.length === 0 && <p className="text-xs text-slate-400">Sin mentores con insignia activa todavía.</p>}
             </div>
-            {mentorOptions.some(mentorAccountBlocked) && <p className="text-xs text-slate-500" data-testid="create-campaign-mentor-access-hint">{mentorAccessHint}</p>}
+            {combinedOptions.some(mentorAccountBlocked) && <p className="text-xs text-slate-500" data-testid="create-campaign-mentor-access-hint">{mentorAccessHint}</p>}
           </div>
           <Button disabled={saving} onClick={submit} className="w-full bg-[#132443]" data-testid="create-campaign-submit-button">
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Crear invasión'}
