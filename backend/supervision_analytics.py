@@ -55,6 +55,10 @@ async def mentor_ids_in_scope(scope: dict) -> Optional[list]:
     return [scope["self_person_id"]]
 
 
+async def direct_group_member_ids(front_group_id: str) -> list:
+    return await db.front_group_assignments.distinct("person_id", {"front_group_id": front_group_id, "active": True})
+
+
 class Filters(BaseModel):
     date_from: Optional[date] = None
     date_to: Optional[date] = None
@@ -76,7 +80,8 @@ async def build_filters(
     if filters.front_group_id:
         if scope["level"] == "branch" and filters.front_group_id not in scope["group_ids"]:
             raise HTTPException(status_code=403, detail="Ese Grupo Frontal no está en su rama")
-        group_member_ids = await db.front_group_assignments.distinct("person_id", {"front_group_id": filters.front_group_id, "active": True})
+        branch_ids = await descendant_group_ids(db, filters.front_group_id)
+        group_member_ids = await db.front_group_assignments.distinct("person_id", {"front_group_id": {"$in": branch_ids}, "active": True})
         allowed_mentor_ids = group_member_ids if allowed_mentor_ids is None else sorted(set(group_member_ids) & set(allowed_mentor_ids))
     if filters.mentor_person_id:
         if allowed_mentor_ids is not None and filters.mentor_person_id not in allowed_mentor_ids:
@@ -208,8 +213,8 @@ def compute_semaphore(activities_total: int, activities_overdue: int, thresholds
 
 
 async def load_thresholds() -> dict:
-    doc = await db.supervision_thresholds.find_one({"_id": "default"}, {"_id": 0})
-    return doc or DEFAULT_THRESHOLDS
+    doc = await db.supervision_thresholds.find_one({"_id": "default"}, {"_id": 0}) or {}
+    return {key: doc.get(key, default) for key, default in DEFAULT_THRESHOLDS.items()}
 
 
 async def person_names(person_ids: list) -> dict:
@@ -256,7 +261,7 @@ async def weakness_summary(ctx: dict, thresholds: dict) -> dict:
     if mentor_ids is None:
         mentor_candidates = await db.outreach_participations.distinct("mentor_person_id", campaign_query(ctx))
     else:
-        mentor_candidates = mentor_ids
+        mentor_candidates = await db.outreach_participations.distinct("mentor_person_id", {**campaign_query(ctx), "mentor_person_id": {"$in": mentor_ids}})
     cutoff_inactive = now_utc() - timedelta(days=thresholds["mentor_inactivity_days"]["value"])
     mentors_without_activity = 0
     if mentor_candidates:
@@ -286,8 +291,8 @@ async def drilldown_groups(parent_group_id: Optional[str] = Query(default=None),
     elif scope["level"] == "global":
         query["parent_group_id"] = None
     elif scope["level"] == "branch":
-        query["front_group_id"] = {"$in": scope["group_ids"]}
-        query["parent_group_id"] = None
+        led = await db.front_group_assignments.distinct("front_group_id", {"person_id": scope["self_person_id"], "role": {"$in": ["leader", "co_leader"]}, "active": True})
+        query["front_group_id"] = {"$in": led}
     else:
         return {"groups": []}
     groups = await db.front_groups.find(query, {"_id": 0, "front_group_id": 1, "name": 1, "primary_leader_person_id": 1, "co_leader_person_id": 1}).sort("name", 1).to_list(500)
@@ -310,7 +315,9 @@ async def drilldown_groups(parent_group_id: Optional[str] = Query(default=None),
 
 @router.get("/mentors", response_model=dict)
 async def drilldown_mentors(ctx: dict = Depends(build_filters)):
-    if ctx["mentor_ids"] is None:
+    if ctx["filters"].front_group_id:
+        mentor_ids = await direct_group_member_ids(ctx["filters"].front_group_id)
+    elif ctx["mentor_ids"] is None:
         mentor_ids = await db.outreach_participations.distinct("mentor_person_id", campaign_query(ctx))
     else:
         mentor_ids = ctx["mentor_ids"]
@@ -371,7 +378,9 @@ async def indicator_detail(indicator_key: str, ctx: dict = Depends(build_filters
         items = [{**row, "person_name": names.get(enrollment_by_id.get(row["enrollment_id"], {}).get("person_id"), "—"), "mentor_person_id": enrollment_by_id.get(row["enrollment_id"], {}).get("mentor_person_id")} for row in rows]
         return {"total": total, "items": serialize(items)}
     if indicator_key == "mentors_without_activity":
-        mentor_ids = ctx["mentor_ids"] if ctx["mentor_ids"] is not None else await db.outreach_participations.distinct("mentor_person_id", {})
+        mentor_ids = ctx["mentor_ids"] if ctx["mentor_ids"] is not None else await db.outreach_participations.distinct("mentor_person_id", campaign_query(ctx))
+        if ctx["mentor_ids"] is not None:
+            mentor_ids = await db.outreach_participations.distinct("mentor_person_id", {**campaign_query(ctx), "mentor_person_id": {"$in": mentor_ids}})
         cutoff = now_utc() - timedelta(days=thresholds["mentor_inactivity_days"]["value"])
         active_recent = set(await db.outreach_visits.distinct("mentor_person_id", {"mentor_person_id": {"$in": mentor_ids}, "created_at": {"$gte": cutoff}})) if mentor_ids else set()
         inactive_ids = [m for m in mentor_ids if m not in active_recent]
@@ -388,12 +397,16 @@ async def indicator_detail(indicator_key: str, ctx: dict = Depends(build_filters
         query = {**mentor_query(ctx), "process_key": CONSOLIDATION_KEY, "decision_status": {"$in": ["accepted", "start_scheduled"]}, "created_at": {"$lte": cutoff}}
         total = await db.process_enrollments.count_documents(query)
         rows = await db.process_enrollments.find(query, {"_id": 0}).sort("created_at", 1).skip(skip).limit(limit).to_list(limit)
-        return {"total": total, "items": serialize(rows)}
+        names = await person_names([row["person_id"] for row in rows])
+        items = [{**row, "person_name": names.get(row["person_id"], "Persona")} for row in rows]
+        return {"total": total, "items": serialize(items)}
     if indicator_key == "paused":
         query = {**mentor_query(ctx), "process_key": CONSOLIDATION_KEY, "decision_status": "paused"}
         total = await db.process_enrollments.count_documents(query)
         rows = await db.process_enrollments.find(query, {"_id": 0}).sort("updated_at", -1).skip(skip).limit(limit).to_list(limit)
-        return {"total": total, "items": serialize(rows)}
+        names = await person_names([row["person_id"] for row in rows])
+        items = [{**row, "person_name": names.get(row["person_id"], "Persona")} for row in rows]
+        return {"total": total, "items": serialize(items)}
     return {"total": 0, "items": []}
 
 
@@ -409,15 +422,27 @@ async def get_thresholds(current_user: dict = Depends(get_current_user)):
 
 
 class ThresholdUpdate(BaseModel):
-    value: float
+    value: float = Field(ge=0)
     label: Optional[str] = None
+
+
+RATIO_KEYS = {"overdue_activity_ratio_red", "overdue_activity_ratio_yellow"}
+DAY_KEYS = {"mentor_inactivity_days", "accepted_not_started_days", "stage_stall_days"}
 
 
 @router.put("/thresholds/{key}", response_model=dict)
 async def update_threshold(key: str, payload: ThresholdUpdate, current_user: dict = Depends(require_threshold_admin)):
     if key not in DEFAULT_THRESHOLDS:
         raise HTTPException(status_code=404, detail="Umbral desconocido")
+    if key in RATIO_KEYS and not (0 <= payload.value <= 1):
+        raise HTTPException(status_code=422, detail="Los umbrales de porcentaje deben estar entre 0 y 1")
+    if key in DAY_KEYS and payload.value < 1:
+        raise HTTPException(status_code=422, detail="Los umbrales en días deben ser al menos 1")
     current = await load_thresholds()
+    if key == "overdue_activity_ratio_red" and payload.value < current["overdue_activity_ratio_yellow"]["value"]:
+        raise HTTPException(status_code=422, detail="El umbral rojo no puede ser menor que el amarillo")
+    if key == "overdue_activity_ratio_yellow" and payload.value > current["overdue_activity_ratio_red"]["value"]:
+        raise HTTPException(status_code=422, detail="El umbral amarillo no puede ser mayor que el rojo")
     entry = {**current.get(key, DEFAULT_THRESHOLDS[key]), "value": payload.value, "status": "confirmado"}
     if payload.label:
         entry["label"] = payload.label

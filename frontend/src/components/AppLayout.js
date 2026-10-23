@@ -92,6 +92,9 @@ const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
     }
     if (canViewFrontGroups(user)) {
       personaItems.push({ to: '/grupos-frontales', icon: Network, label: 'Grupos Frontales', testId: 'nav-front-groups' });
+      if (!canAccessOutreach(user, isActiveMentor)) {
+        personaItems.push({ to: '/mentoria/supervision', icon: BarChart3, label: 'Supervisión de mi Rama', testId: 'nav-supervision' });
+      }
     }
     return personaItems;
   }
@@ -166,7 +169,7 @@ const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
   ) && (
     item.to !== '/mentoria/visitas' || canAccessOutreach(user, isActiveMentor)
   ) && (
-    item.to !== '/mentoria/supervision' || canAccessOutreach(user, isActiveMentor)
+    item.to !== '/mentoria/supervision' || canAccessOutreach(user, isActiveMentor) || canViewFrontGroups(user)
   ));
 };
 

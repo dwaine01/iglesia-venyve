@@ -114,7 +114,7 @@ async def test_scope_permissions_global_branch_self():
     leader_pid = await create_person("Lider Scope")
     other_leader_pid = await create_person("Lider Otro Scope")
     mentor_pid = await create_person("Mentor Scope")
-    _, pastor_email = await create_user("Pastor Scope", "pastor", pastor_pid)
+    pastor_uid, pastor_email = await create_user("Pastor Scope", "pastor", pastor_pid)
     _, leader_email = await create_user("Lider Scope", "lider", leader_pid)
     _, other_leader_email = await create_user("Lider Otro Scope", "lider", other_leader_pid)
     _, mentor_email = await create_user("Mentor Scope", "persona", mentor_pid)
@@ -123,8 +123,8 @@ async def test_scope_permissions_global_branch_self():
     other_client, other_headers = await auth_client(other_leader_email)
     mentor_client, mentor_headers = await auth_client(mentor_email)
     try:
-        group_a = await make_front_group("Rama A Scope", leader_pid, pastor_pid)
-        group_b = await make_front_group("Rama B Scope", other_leader_pid, pastor_pid)
+        group_a = await make_front_group("Rama A Scope", leader_pid, pastor_uid)
+        group_b = await make_front_group("Rama B Scope", other_leader_pid, pastor_uid)
         await add_member(group_a, mentor_pid, role="mentor")
         target_person = await create_person("Discipulo Scope")
         other_person = await create_person("Discipulo Otra Rama")
@@ -217,7 +217,7 @@ async def test_campaign_and_front_group_delete_preview_and_audit_history():
     await cleanup()
     pastor_pid = await create_person("Pastor Preview")
     leader_pid = await create_person("Lider Preview")
-    _, pastor_email = await create_user("Pastor Preview", "pastor", pastor_pid)
+    pastor_uid, pastor_email = await create_user("Pastor Preview", "pastor", pastor_pid)
     _, leader_email = await create_user("Lider Preview", "lider", leader_pid)
     pastor_client, pastor_headers = await auth_client(pastor_email)
     leader_client, leader_headers = await auth_client(leader_email)
@@ -235,7 +235,7 @@ async def test_campaign_and_front_group_delete_preview_and_audit_history():
         denied_preview = await leader_client.get(f"/api/mentorship/outreach/campaigns/{campaign_id}/delete-preview", headers=leader_headers)
         assert denied_preview.status_code == 403
 
-        group_id = await make_front_group("Rama Preview E4", leader_pid, pastor_pid)
+        group_id = await make_front_group("Rama Preview E4", leader_pid, pastor_uid)
         blocked_person = await create_person("Discipulo Bloqueo")
         await make_enrollment(blocked_person, leader_pid, group_id)
         await server.db.process_enrollments.update_one({"front_group_id": group_id}, {"$set": {"status": "active"}})
@@ -276,12 +276,12 @@ async def test_migration_c11_diagnose_and_idempotent_apply():
     pastor_pid = await create_person("Pastor C11")
     mentor_pid = await create_person("Mentor C11")
     leader_pid = await create_person("Lider C11")
-    _, pastor_email = await create_user("Pastor C11", "pastor", pastor_pid)
+    pastor_uid, pastor_email = await create_user("Pastor C11", "pastor", pastor_pid)
     _, leader_email = await create_user("Lider C11", "lider", leader_pid)
     pastor_client, pastor_headers = await auth_client(pastor_email)
     leader_client, leader_headers = await auth_client(leader_email)
     try:
-        group_id = await make_front_group("Rama C11", mentor_pid, pastor_pid)
+        group_id = await make_front_group("Rama C11", mentor_pid, pastor_uid)
         person_id = await create_person("Discipulo C11")
         enrollment_id = await make_enrollment(person_id, mentor_pid, None, source="mentorship_outreach", source_id=str(uuid.uuid4()))
 

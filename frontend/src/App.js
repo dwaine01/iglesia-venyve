@@ -180,6 +180,14 @@ function OutreachAccessRoute({ children }) {
   return children;
 }
 
+function SupervisionAccessRoute({ children }) {
+  const { user } = useAuth();
+  const mentorAccess = useMentorAccess();
+  if (!user || mentorAccess.loading) return <div className="flex min-h-screen items-center justify-center" data-testid="supervision-access-loading">Cargando…</div>;
+  if (!canAccessOutreach(user, mentorAccess.isActiveMentor) && !canViewFrontGroups(user)) return <Navigate to="/" replace />;
+  return children;
+}
+
 // Redirect to correct dashboard based on role
 function RoleDashboard() {
   const { user } = useAuth();
@@ -278,7 +286,7 @@ function App() {
             <Route path="libreria/etiquetas" element={<CapabilityRoute allowed={canManageLibraryInventory}><LibraryLabelsPage /></CapabilityRoute>} />
             <Route path="campanas/ven-y-come/control" element={<CapabilityRoute allowed={canAccessCampaignOperator}><CampaignControlPage /></CapabilityRoute>} />
             <Route path="mentoria/visitas" element={<OutreachAccessRoute><OutreachPage /></OutreachAccessRoute>} />
-            <Route path="mentoria/supervision" element={<OutreachAccessRoute><SupervisionPage /></OutreachAccessRoute>} />
+            <Route path="mentoria/supervision" element={<SupervisionAccessRoute><SupervisionPage /></SupervisionAccessRoute>} />
             <Route path="admin/historial-borrados" element={<CapabilityRoute allowed={canCreateOutreachCampaign}><AdminDeletionsPage /></CapabilityRoute>} />
             <Route path="admin/migracion-c11" element={<CapabilityRoute allowed={canCreateOutreachCampaign}><MigrationC11Page /></CapabilityRoute>} />
             <Route path="operaciones" element={<CapabilityRoute allowed={canViewOperations}><OperationsDashboardPage /></CapabilityRoute>} />
