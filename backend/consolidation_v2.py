@@ -32,6 +32,7 @@ from consolidation_service import (
     load_person,
     mentor_qualification,
 )
+from consolidation_activities import build_mentor_activity_buckets, ensure_consolidation_calendar
 from front_groups import assert_group_scope, group_in_scope
 from front_group_routing import confirm_routing, routing_recommendation
 from front_group_tree import readable_group_ids
@@ -228,7 +229,7 @@ async def create_intake(payload: ConsolidationIntake, current_user: dict = Depen
         "initial_result": payload.initial_result,
     }})
     enrollment = await db.process_enrollments.find_one({"enrollment_id": enrollment["enrollment_id"]}, {"_id": 0})
-    await configure_entry_stages(db, enrollment, payload.entry_mode, current_user["user_id"])
+    await configure_entry_stages(db, enrollment, payload.entry_mode, current_user["user_id"], mentor_person_id=payload.mentor_person_id)
     if payload.mentor_person_id:
         enrollment = await db.process_enrollments.find_one({"enrollment_id": enrollment["enrollment_id"]}, {"_id": 0})
         await assign_mentor(db, enrollment, payload.mentor_person_id, current_user["user_id"], "Asignación inicial")
@@ -331,7 +332,35 @@ async def consolidation_by_mentor(mentor_person_id: str, current_user: dict = De
         "mentor_name": " ".join(part for part in [(mentor_person or {}).get("nombre"), (mentor_person or {}).get("apellido")] if part) or None,
         "viewer_is_mentor": is_self,
         "items": items, "total": len(items),
+        # ENTREGA B: mismos registros de 'Hoy'/'Atrasado'/'Próximo' que ve el
+        # propio mentor, para que pastora/coordinadores supervisen a cualquiera.
+        "activity_buckets": await build_mentor_activity_buckets(mentor_person_id),
     }
+
+
+class DecisionStatusUpdate(BaseModel):
+    new_status: Literal["contacted", "pending_decision", "accepted", "paused"]
+    reason: Optional[str] = Field(default=None, max_length=500)
+
+
+@router.put("/{enrollment_id}/decision-status", response_model=dict)
+async def update_decision_status(enrollment_id: str, payload: DecisionStatusUpdate, current_user: dict = Depends(get_current_user)):
+    """Los 7 estados de la persona contactada (ninguno implica el siguiente):
+    Contactado, Pendiente de decisión, Aceptó consolidación, Inicio programado,
+    En proceso, Pausado o desistió (con motivo), Completado. Los últimos tres
+    ('start_scheduled'/'in_progress'/'completed') los calcula el sistema al
+    generar el calendario o completar actividades/etapas; aquí solo se pueden
+    fijar a mano los primeros cuatro + la pausa. Aceptar NO otorga membresía."""
+    enrollment = await load_scoped(enrollment_id, current_user)
+    if payload.new_status == "paused" and not payload.reason:
+        raise HTTPException(status_code=422, detail="Indique el motivo de la pausa o el desistimiento")
+    now = now_utc()
+    update = {"decision_status": payload.new_status, "updated_at": now}
+    update["decision_paused_reason"] = payload.reason if payload.new_status == "paused" else None
+    update["decision_paused_at"] = now if payload.new_status == "paused" else None
+    await db.process_enrollments.update_one({"enrollment_id": enrollment_id}, {"$set": update})
+    await record_event(db, enrollment, current_user["user_id"], "decision_status_updated", f"Estado de decisión: {payload.new_status}", payload.reason or "")
+    return await enrollment_detail(db, await load_consolidation(db, enrollment_id))
 
 
 @router.get("/{enrollment_id}", response_model=dict)
@@ -350,8 +379,11 @@ async def start_visitor_process(enrollment_id: str, payload: VisitorStart, curre
     await db.process_stage_progress.update_one({"enrollment_id": enrollment_id, "stage_key": "visitor_followup"}, {"$set": {"status": "completed", "completed_at": now, "result": payload.response_result, "updated_at": now}})
     await db.process_stage_progress.update_many({"enrollment_id": enrollment_id, "stage_key": {"$in": ["prayer", "invasion"]}}, {"$set": {"status": "skipped", "skipped_at": now, "skip_reason": "Seguimiento posterior de visitante", "updated_at": now}})
     await db.process_stage_progress.update_one({"enrollment_id": enrollment_id, "stage_key": "mcd"}, {"$set": {"status": "open", "opened_at": now, "updated_at": now}})
-    await db.process_enrollments.update_one({"enrollment_id": enrollment_id}, {"$set": {"current_stage_key": "mcd", "consolidation_status": "in_progress", "process_started_at": payload.started_at, "next_action": "Completar MCD", "next_action_at": None, "updated_at": now}})
+    await db.process_enrollments.update_one({"enrollment_id": enrollment_id}, {"$set": {"current_stage_key": "mcd", "consolidation_status": "in_progress", "decision_status": "accepted", "process_started_at": payload.started_at, "next_action": "Completar MCD", "next_action_at": None, "updated_at": now}})
     await record_event(db, enrollment, current_user["user_id"], "visitor_started", "Visitante inició Consolidación", payload.response_result)
+    # ENTREGA B: genera el calendario individual de actividades (idempotente).
+    refreshed = await db.process_enrollments.find_one({"enrollment_id": enrollment_id}, {"_id": 0})
+    await ensure_consolidation_calendar(refreshed, current_user["user_id"])
     return await enrollment_detail(db, await load_consolidation(db, enrollment_id))
 
 
@@ -435,7 +467,7 @@ async def close_retreat(enrollment_id: str, payload: RetreatClose, current_user:
                 task.update({"completed": True, "completed_at": now})
             await db.process_stage_progress.update_one({"_id": stage["_id"]}, {"$set": {"status": "completed", "tasks": tasks, "completed_at": now, "updated_at": now}})
     await db.process_enrollments.update_one({"enrollment_id": enrollment_id}, {"$set": {
-        "status": "completed", "consolidation_status": "completed", "progress_pct": 100,
+        "status": "completed", "consolidation_status": "completed", "decision_status": "completed", "progress_pct": 100,
         "current_stage_key": "discipleship_handoff", "retreat_completed_at": payload.retreat_date,
         "formation_recommendation_id": recommendation_id, "completed_at": now,
         "next_action": f"Inscribir en {module['name']}" if module else "Configurar programa de Formación / Discipulado", "next_action_at": None, "updated_at": now,

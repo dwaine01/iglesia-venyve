@@ -366,6 +366,36 @@ async def apply_movement(payload: MovementInput, actor_user_id: str, is_reversal
     return doc
 
 
+async def deliver_from_mentor_to_person(
+    sku: str, mentor_person_id: str, target_person_id: str, actor_user_id: str,
+    campaign_id: Optional[str] = None, process_key: Optional[str] = None, notes: str = "",
+) -> str:
+    """Entrega 1 unidad desde el inventario del mentor (cuenta de usuario) hacia
+    una Persona 360, vía un movimiento DELIVERY normal de Librería 360.
+    Compartido por Invasiones (informe de visita) y por el calendario de
+    actividades de Consolidación (ENTREGA B) para no duplicar esta lógica."""
+    mentor_user = await db.users.find_one({"person_id": mentor_person_id}, {"_id": 1})
+    if not mentor_user:
+        raise HTTPException(status_code=409, detail="El mentor responsable no tiene cuenta; no se puede entregar desde su inventario")
+    book = await db.library_books.find_one({"sku": sku, "is_active": True}, {"_id": 0, "book_id": 1, "name": 1})
+    if not book:
+        raise HTTPException(status_code=409, detail=f"No se encontró el material {sku} activo en Librería 360; contacte al Encargado de Librería")
+    try:
+        movement = await apply_movement(
+            MovementInput(
+                book_id=book["book_id"], movement_type="DELIVERY", quantity=1,
+                from_holder=HolderInput(type="user", id=str(mentor_user["_id"])), to_holder=HolderInput(type="person", id=target_person_id),
+                person_id=target_person_id, process_key=process_key, campaign_id=campaign_id, notes=notes or "Entrega desde el inventario del mentor",
+            ),
+            actor_user_id,
+        )
+    except HTTPException as exc:
+        if exc.status_code == 409:
+            raise HTTPException(status_code=409, detail=f"No le quedan unidades de {book['name']} en su inventario para entregar; pida más a su líder")
+        raise
+    return movement["movement_id"]
+
+
 @router.get("/dashboard", response_model=dict)
 async def library_dashboard(current_user: dict = Depends(participant)):
     books = await db.library_books.find({"is_active": True}, {"_id": 0}).to_list(2000)

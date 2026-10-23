@@ -32,7 +32,7 @@ from core_governance import UserAccessCreate, create_user_access_core
 from core_person import _normalize as normalize_person_name, next_person_number
 from geo_address import normalize_address_document
 from geo_service import enqueue_geo_job, pending_geo_fields, process_geo_job
-from library_module import CENTRAL_HOLDER, HolderInput, MovementInput, apply_movement
+from library_module import CENTRAL_HOLDER, HolderInput, MovementInput, apply_movement, deliver_from_mentor_to_person
 from process_engine import create_enrollment, now_utc, serialize
 from server import db, get_current_user
 
@@ -319,25 +319,10 @@ async def deliver_outreach_book(visit: dict, sku: str, target_person_id: str, cu
     """Descuenta 1 unidad del inventario del mentor responsable y la entrega a
     `target_person_id` (movimiento DELIVERY, library_module.py), etiquetada con
     la invasión de la visita para poder reportarla por invasión."""
-    book = await db.library_books.find_one({"sku": sku, "is_active": True}, {"_id": 0, "book_id": 1, "name": 1})
-    if not book:
-        raise HTTPException(status_code=409, detail=f"No se encontró el material {sku} activo en Librería 360; contacte al Encargado de Librería")
-    mentor_user_id = await mentor_user_id_for(visit["mentor_person_id"])
-    try:
-        movement = await apply_movement(
-            MovementInput(
-                book_id=book["book_id"], movement_type="DELIVERY", quantity=1,
-                from_holder=HolderInput(type="user", id=mentor_user_id), to_holder=HolderInput(type="person", id=target_person_id),
-                person_id=target_person_id, process_key=OUTREACH_PROCESS_KEY, campaign_id=visit.get("campaign_id"),
-                notes="Entrega en visita de invasión",
-            ),
-            current_user["user_id"],
-        )
-    except HTTPException as exc:
-        if exc.status_code == 409:
-            raise HTTPException(status_code=409, detail=f"No le quedan unidades de {book['name']} en su inventario para entregar; pida más a su líder")
-        raise
-    return movement["movement_id"]
+    return await deliver_from_mentor_to_person(
+        sku, visit["mentor_person_id"], target_person_id, current_user["user_id"],
+        campaign_id=visit.get("campaign_id"), process_key=OUTREACH_PROCESS_KEY, notes="Entrega en visita de invasión",
+    )
 
 
 async def sync_visit_address_to_person(visit: dict, person_id: str, current_user: dict, background_tasks: BackgroundTasks) -> None:
@@ -779,17 +764,21 @@ async def start_seven_weeks(visit_id: str, background_tasks: BackgroundTasks, cu
         db, "consolidation", person_id, mentor_person_id, current_user["user_id"],
         status="active", next_action="Dar seguimiento al visitante", source="mentorship_outreach", source_id=visit_id,
     )
+    if visit.get("agreed_start_date") or visit.get("call_schedule") or visit.get("campaign_id"):
+        # Se guarda ANTES de abrir etapas: `configure_entry_stages` genera el
+        # calendario individual de actividades (Entrega B) usando esta fecha de
+        # inicio acordada, así que debe estar en el expediente desde antes.
+        await db.process_enrollments.update_one(
+            {"enrollment_id": enrollment["enrollment_id"]},
+            {"$set": {"outreach_agreed_start_date": visit.get("agreed_start_date"), "outreach_call_schedule": visit.get("call_schedule"), "campaign_id": visit.get("campaign_id")}},
+        )
+        enrollment = await db.process_enrollments.find_one({"enrollment_id": enrollment["enrollment_id"]}, {"_id": 0})
     if created_enrollment:
         # Puerta "invasion": S1 (oración) y S2 (invasión/contacto) ya se vivieron
         # con la campaña, así que el expediente abre completo y listo para MCD.
-        await configure_entry_stages(db, enrollment, "invasion", current_user["user_id"])
+        await configure_entry_stages(db, enrollment, "invasion", current_user["user_id"], mentor_person_id=mentor_person_id)
         enrollment = await db.process_enrollments.find_one({"enrollment_id": enrollment["enrollment_id"]}, {"_id": 0})
         await assign_mentor(db, enrollment, mentor_person_id, current_user["user_id"], "Inicia la Ley de las 7 Semanas desde una invasión")
-    if visit.get("agreed_start_date") or visit.get("call_schedule"):
-        await db.process_enrollments.update_one(
-            {"enrollment_id": enrollment["enrollment_id"]},
-            {"$set": {"outreach_agreed_start_date": visit.get("agreed_start_date"), "outreach_call_schedule": visit.get("call_schedule")}},
-        )
     now = now_utc()
     await db.outreach_visits.update_one({"visit_id": visit_id}, {"$set": {
         "enrollment_id": enrollment["enrollment_id"], "converted_person_id": person_id, "converted_at": now, "updated_at": now,

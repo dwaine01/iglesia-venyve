@@ -164,8 +164,17 @@ async def recalculate_enrollment(db, enrollment_id: str, actor_user_id: str, all
                 {"stage_progress_id": next_stage["stage_progress_id"]},
                 {"$set": {"status": "open", "opened_at": now, "due_at": due_at, "updated_at": now}},
             )
+            if enrollment["process_key"] == "consolidation" and next_stage["stage_key"] == "mcd":
+                # ENTREGA B: la puerta "complete_cycle" llega a MCD avanzando
+                # etapa por etapa (no al crear el expediente); genera aquí el
+                # calendario individual de actividades (idempotente).
+                from consolidation_activities import ensure_consolidation_calendar
+                refreshed = await db.process_enrollments.find_one({"enrollment_id": enrollment_id}, {"_id": 0})
+                await ensure_consolidation_calendar(refreshed, actor_user_id)
     else:
         update.update({"status": "completed", "progress_pct": 100, "completed_at": now, "current_stage_key": definition["stages"][-1]["key"]})
+        if enrollment["process_key"] == "consolidation":
+            update["decision_status"] = "completed"
     await db.process_enrollments.update_one({"enrollment_id": enrollment_id}, {"$set": update})
     updated = await db.process_enrollments.find_one({"enrollment_id": enrollment_id}, {"_id": 0})
     if allow_automation and updated.get("status") == "completed" and enrollment.get("status") != "completed":

@@ -7,7 +7,7 @@ import {
   LayoutDashboard, BookOpen, Map, Calendar, Users, BarChart3, LogOut, Menu, ChevronRight,
   Crown, Star, Trophy, Presentation, NotebookPen, KeyRound, IdCard, Church, Search, DatabaseZap,
   Activity, Award, BookHeart, Compass, GraduationCap, HeartHandshake, Network, RadioTower, DoorOpen, Gavel, Landmark, MapPinned,
-  PanelLeftClose, PanelLeftOpen, ShieldCheck, Droplets, Baby, Bus, Footprints
+  PanelLeftClose, PanelLeftOpen, ShieldCheck, Droplets, Baby, Bus, Footprints, ClipboardCheck
 } from 'lucide-react';
 
 import { LOGO_IGLESIA } from '../data/presentationData';
@@ -57,6 +57,9 @@ const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
       { type: 'separator', label: 'Administración' },
       { to: '/estadisticas', icon: BarChart3, label: 'Estadísticas Globales' },
     ];
+    if (isActiveMentor) {
+      personItems.push({ to: '/procesos/consolidacion/mi-panel', icon: ClipboardCheck, label: 'Mi Panel de Mentor', testId: 'nav-mentor-panel' });
+    }
     return personItems;
   }
   
@@ -77,6 +80,9 @@ const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
     }
     if (canAccessOutreach(user, isActiveMentor)) {
       personaItems.push({ to: '/mentoria/visitas', icon: Footprints, label: 'Mis Visitas', testId: 'nav-outreach' });
+    }
+    if (isActiveMentor) {
+      personaItems.push({ to: '/procesos/consolidacion/mi-panel', icon: ClipboardCheck, label: 'Mi Panel de Mentor', testId: 'nav-mentor-panel' });
     }
     return personaItems;
   }
@@ -117,6 +123,9 @@ const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
   }
   if (canViewFinanceModule(user) && !items.some((item) => item.to === '/finanzas')) {
     items.splice(1, 0, { to: '/finanzas', icon: Landmark, label: 'Contabilidad y Finanzas', testId: 'nav-finance' });
+  }
+  if (isActiveMentor) {
+    items.push({ to: '/procesos/consolidacion/mi-panel', icon: ClipboardCheck, label: 'Mi Panel de Mentor', testId: 'nav-mentor-panel' });
   }
   return items.filter((item) => (
     item.to !== '/grupos-frontales' || canViewFrontGroups(user)
@@ -174,6 +183,7 @@ const breadcrumbMap = {
   '/procesos/dashboard': 'Panel de Procesos',
   '/procesos/7-semanas': 'Ley de las 7 Semanas',
   '/procesos/consolidacion': 'Consolidación',
+  '/procesos/consolidacion/mi-panel': 'Mi Panel de Mentor',
   '/procesos/discipulado': 'Educación / Discipulado',
   '/grupos-frontales': 'Grupos Frontales',
   '/liderazgo': 'Liderazgo',

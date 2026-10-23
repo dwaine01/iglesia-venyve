@@ -60,7 +60,11 @@ async def assert_consolidation_scope(db, enrollment: dict, current_user: dict, l
     raise HTTPException(status_code=403, detail="Consolidación fuera de su ámbito")
 
 
-async def configure_entry_stages(db, enrollment: dict, entry_mode: str, actor_user_id: str) -> None:
+async def configure_entry_stages(db, enrollment: dict, entry_mode: str, actor_user_id: str, mentor_person_id: str | None = None) -> None:
+    """`mentor_person_id` es opcional y SOLO se usa para el calendario de
+    actividades (Entrega B): el llamador suele asignar el mentor con
+    `assign_mentor` justo DESPUÉS de esta función, así que el expediente aún
+    no lo tiene en la base de datos cuando se genera el calendario aquí."""
     definition = await get_definition(db, "consolidation", 2)
     start_key = ENTRY_START[entry_mode]
     start = next(item for item in definition["stages"] if item["key"] == start_key)
@@ -76,11 +80,21 @@ async def configure_entry_stages(db, enrollment: dict, entry_mode: str, actor_us
         else:
             fields = {"status": "locked", "opened_at": None, "due_at": None, "updated_at": now}
         await db.process_stage_progress.update_one({"enrollment_id": enrollment["enrollment_id"], "stage_key": stage["key"]}, {"$set": fields})
+    # "Contactado" al entrar por seguimiento de visitante; el resto de puertas ya
+    # implica que la persona aceptó (lo decidió antes de que exista el expediente).
+    initial_decision_status = "contacted" if entry_mode == "visitor_followup" else "accepted"
     await db.process_enrollments.update_one(
         {"enrollment_id": enrollment["enrollment_id"]},
-        {"$set": {"current_stage_key": start_key, "entry_mode": entry_mode, "consolidation_status": "followup_pending" if entry_mode == "visitor_followup" else "in_progress", "updated_at": now}},
+        {"$set": {"current_stage_key": start_key, "entry_mode": entry_mode, "consolidation_status": "followup_pending" if entry_mode == "visitor_followup" else "in_progress", "decision_status": initial_decision_status, "updated_at": now}},
     )
     await record_event(db, enrollment, actor_user_id, "entry_configured", "Puerta de entrada registrada", entry_mode)
+    if start_key == "mcd":
+        # ENTREGA B: genera el calendario individual de actividades (idempotente).
+        from consolidation_activities import ensure_consolidation_calendar
+        refreshed = await db.process_enrollments.find_one({"enrollment_id": enrollment["enrollment_id"]}, {"_id": 0})
+        if mentor_person_id and not refreshed.get("mentor_person_id"):
+            refreshed["mentor_person_id"] = mentor_person_id
+        await ensure_consolidation_calendar(refreshed, actor_user_id)
 
 
 async def assert_mentor_eligible(db, mentor_person_id: str) -> None:
