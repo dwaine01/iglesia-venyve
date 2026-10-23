@@ -26,7 +26,7 @@ import { FormationProfileSection } from '../components/formation/FormationProfil
 import { PersonArchiveDialog } from '../components/PersonArchiveDialog';
 import { PersonJourneyStatusStrip } from '../components/PersonJourneyStatusStrip';
 import { toast } from 'sonner';
-import { canDeliverLibraryBooks, canIssueBaptismCertificates, canManageMembershipDocuments, canRegularizeMembership, canViewOtherMentorDisciples, canWriteBaptism, isPastoralAuthority } from '../lib/accessControl';
+import { canDeliverLibraryBooks, canIssueBaptismCertificates, canManageMembershipDocuments, canRegularizeMembership, canViewDirectory, canViewOtherMentorDisciples, canWriteBaptism, isPastoralAuthority } from '../lib/accessControl';
 import { LibraryPersonSection } from '../components/library/LibraryPersonSection';
 
 // P-001 Slice 2A - Person Profile 360 (shell full-screen).
@@ -49,8 +49,9 @@ const SECTION_LABELS = {
   mentor: 'Mentor',
 };
 
-export default function PersonaPerfilPage() {
-  const { personId } = useParams();
+export default function PersonaPerfilPage({ personId: personIdProp, ownProfileExtra = null }) {
+  const params = useParams();
+  const personId = personIdProp || params.personId;
   const { API, getAuthHeaders, user } = useAuth();
   const navigate = useNavigate();
   const [profile, setProfile] = useState(null);
@@ -126,6 +127,8 @@ export default function PersonaPerfilPage() {
   const canRegularize = canRegularizeMembership(user);
   const baptismCanWrite = canWriteBaptism(user);
   const baptismCanIssueCertificate = canIssueBaptismCertificates(user);
+  const isOwnProfile = Boolean(user?.person_id) && user.person_id === personId;
+  const backPath = canViewDirectory(user) ? '/personas' : '/';
   const canArchive = isPastoralAuthority(user) && user?.person_id !== personId && profile?.identity?.account_role !== 'pastor';
   const allSections = [
     'resumen', 'contacto', 'direcciones', 'household',
@@ -166,8 +169,8 @@ export default function PersonaPerfilPage() {
           <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-md p-3">
             {error || 'Persona no encontrada.'}
           </div>
-          <Button variant="outline" onClick={() => navigate('/personas')}>
-            Volver a Personas
+          <Button variant="outline" onClick={() => navigate(backPath)}>
+            {canViewDirectory(user) ? 'Volver a Personas' : 'Volver al inicio'}
           </Button>
         </div>
       </div>
@@ -183,7 +186,7 @@ export default function PersonaPerfilPage() {
           onEdit={profile.profile_can_write ? () => setEditorOpen(true) : undefined}
           onArchive={canArchive ? () => { setArchiveError(''); setArchiveOpen(true); } : undefined}
           onSelectTab={setActiveTab}
-          onBack={() => navigate('/personas')}
+          onBack={canViewDirectory(user) ? () => navigate('/personas') : undefined}
         />
         <PersonArchiveDialog
           open={archiveOpen}
@@ -194,6 +197,7 @@ export default function PersonaPerfilPage() {
           onConfirm={archivePerson}
         />
         <PersonJourneyStatusStrip status={profile.journey_status} />
+        {ownProfileExtra}
         {profile.profile_can_write && (
           <PersonProfileEditor
             open={editorOpen}
@@ -319,9 +323,9 @@ export default function PersonaPerfilPage() {
 
           <TabsContent value="mentor" className="mt-0 rounded-xl border border-[#E8E5DE] bg-white p-4 shadow-sm sm:p-6">
             <MentorBadgeSection personId={personId} API={API} getAuthHeaders={getAuthHeaders} onChanged={refreshProfile} onBadgeStatusLoaded={setMentorBadgeActive} />
-            {mentorBadgeActive && (user?.person_id === personId || canViewOtherMentorDisciples(user)) && (
+            {mentorBadgeActive && (isOwnProfile || canViewOtherMentorDisciples(user)) && (
               <div className="mt-6 border-t border-[#E8E5DE] pt-6">
-                <MentorDisciplesSection personId={personId} isOwnProfile={user?.person_id === personId} API={API} getAuthHeaders={getAuthHeaders} />
+                <MentorDisciplesSection personId={personId} isOwnProfile={isOwnProfile} API={API} getAuthHeaders={getAuthHeaders} />
               </div>
             )}
           </TabsContent>

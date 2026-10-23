@@ -10,7 +10,7 @@ from bson import ObjectId
 from bson.errors import InvalidId
 from fastapi import APIRouter, HTTPException, Depends
 
-from core_person import db, require_person_profile_user, serialize_person
+from core_person import db, require_person_profile_or_self, serialize_person
 from access_control import (
     BAPTISM_READ,
     FORMATION_READ,
@@ -205,7 +205,7 @@ def build_header(
 
 
 @router.get("/persons/{person_id}/profile")
-async def get_person_profile(person_id: str, current_user: dict = Depends(require_person_profile_user)):
+async def get_person_profile(person_id: str, current_user: dict = Depends(require_person_profile_or_self)):
     try:
         oid = ObjectId(person_id)
     except InvalidId:
@@ -219,6 +219,9 @@ async def get_person_profile(person_id: str, current_user: dict = Depends(requir
             person[optional_field] = doc[optional_field]
 
     in_scope = can_access_person(current_user, person)
+    if not in_scope:
+        # Una cuenta sin alcance sobre esta Persona no abre su ficha.
+        raise HTTPException(status_code=403, detail="No autorizado para ver esta Persona")
     can_read_contacts = in_scope and has_capability(current_user, PERSON_CONTACTS_READ)
     can_read_addresses = in_scope and has_capability(current_user, PERSON_ADDRESSES_READ)
     can_read_profile = in_scope and has_capability(current_user, PERSON_PROFILE_SENSITIVE_READ)

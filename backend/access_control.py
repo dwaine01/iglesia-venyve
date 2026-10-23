@@ -479,6 +479,32 @@ def can_access_person(user: dict, person: dict) -> bool:
     return False
 
 
+def is_own_person(user: dict, person_id: str | None) -> bool:
+    """La Persona vinculada a la propia cuenta."""
+    own = user.get("person_id")
+    return bool(own) and bool(person_id) and own == person_id
+
+
+# Lectura de la propia ficha: toda cuenta puede ver su Perfil 360 completo
+# sin permiso de directorio. Solo lecturas; las escrituras siguen dependiendo
+# de lo que la cuenta tenga concedido.
+SELF_PROFILE_READ_CAPABILITIES = [item for item in PERSON_SELF_CAPABILITIES if item.endswith(".read")]
+
+
+def self_view_user(user: dict) -> dict:
+    """Usuario efectivo para leer la PROPIA ficha. Añade las lecturas de uno
+    mismo y, si el alcance original no cubría a la propia Persona, lo limita
+    a 'self' sin conceder escrituras que antes no podía ejercer."""
+    effective = dict(user)
+    original_caps = list(user.get("capabilities") or []) if isinstance(user.get("capabilities"), list) else []
+    own_person = {"person_id": user.get("person_id")}
+    if not can_access_person(user, own_person):
+        original_caps = [item for item in original_caps if item.endswith(".read") or not item.startswith(("person.", "processes."))]
+        effective["access_scope"] = {"persons": "self"}
+    effective["capabilities"] = sorted(set(original_caps) | set(SELF_PROFILE_READ_CAPABILITIES))
+    return effective
+
+
 def authorize_person(user: dict, person: dict, capability: str) -> None:
     if not has_capability(user, capability) or not can_access_person(user, person):
         raise HTTPException(status_code=403, detail="Acceso no autorizado para esta persona")
