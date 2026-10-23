@@ -13,9 +13,10 @@ No duplica el motor de Consolidación v2 (`consolidation_service.py`,
 siguen siendo la fuente de verdad para abrir/cerrar/bloquear; esto es un nivel
 de detalle operativo DENTRO de esas etapas.
 """
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Literal, Optional
 from uuid import uuid4
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -74,6 +75,47 @@ def require_pastoral_or_coordinator(current_user: dict = Depends(get_current_use
     if not is_global_pastoral_authority(current_user) and not is_general_coordinator(current_user):
         raise HTTPException(status_code=403, detail="Solo la pastora/pastor o un coordinador general puede configurar el catálogo de actividades")
     return current_user
+
+
+DEFAULT_CHURCH_TIMEZONE = "UTC"  # sin configurar aún; la pastora la fija en Configuración (PUT /settings/timezone)
+
+
+async def get_church_timezone() -> str:
+    """Zona horaria de la congregación para 'Hoy/Atrasado' (configurable por
+    pastora/coordinador, en vez de la hora del servidor). Singleton en Mongo."""
+    settings = await db.mentorship_settings.find_one({"_id": "global"}, {"_id": 0, "church_timezone": 1})
+    return (settings or {}).get("church_timezone") or DEFAULT_CHURCH_TIMEZONE
+
+
+def local_today(tz_name: str) -> date:
+    try:
+        return datetime.now(ZoneInfo(tz_name)).date()
+    except (ZoneInfoNotFoundError, ValueError):
+        return now_utc().date()
+
+
+class ChurchTimezoneUpdate(BaseModel):
+    church_timezone: str = Field(min_length=2, max_length=64)
+
+
+@router.get("/settings/timezone", response_model=dict)
+async def get_church_timezone_setting(current_user: dict = Depends(get_current_user)):
+    return {"church_timezone": await get_church_timezone()}
+
+
+@router.put("/settings/timezone", response_model=dict)
+async def update_church_timezone_setting(payload: ChurchTimezoneUpdate, current_user: dict = Depends(require_pastoral_or_coordinator)):
+    try:
+        ZoneInfo(payload.church_timezone)
+    except (ZoneInfoNotFoundError, ValueError):
+        raise HTTPException(status_code=422, detail="Zona horaria inválida (use un identificador IANA, p. ej. America/New_York)")
+    now = now_utc()
+    await db.mentorship_settings.update_one(
+        {"_id": "global"},
+        {"$set": {"church_timezone": payload.church_timezone, "updated_at": now, "updated_by_user_id": current_user["user_id"]}},
+        upsert=True,
+    )
+    return {"church_timezone": payload.church_timezone}
 
 
 async def seed_activity_catalog() -> None:
@@ -164,7 +206,7 @@ async def build_mentor_activity_buckets(mentor_person_id: str, upcoming_days: in
     Incluye actividades 'pendientes' aunque su último intento haya sido 'sin
     respuesta' o 'reprogramada' (son intentos, no cierran la actividad); excluye
     expedientes pausados/desistidos o ya completados."""
-    today = now_utc().date()
+    today = local_today(await get_church_timezone())
     upcoming_limit = (today + timedelta(days=upcoming_days)).isoformat()
     paused_or_done = await db.process_enrollments.distinct(
         "enrollment_id", {"process_key": "consolidation", "mentor_person_id": mentor_person_id, "$or": [{"decision_status": "paused"}, {"status": "completed"}]},

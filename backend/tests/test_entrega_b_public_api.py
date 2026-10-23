@@ -311,3 +311,52 @@ def test_done_activity_cannot_be_reverted(ctx):
     r = requests.put(f"{API}/activities/{done['activity_id']}/result", json={"status": "no_answer"}, headers=ctx["a_h"], timeout=30)
     after = next(i for i in activities(ctx) if i["activity_id"] == done["activity_id"])
     assert after["status"] == "done", f"actividad realizada revertida a pending vía API (resp {r.status_code})"
+
+
+# Bug residual iter42 #2: reasignar Grupo Frontal (sin el mentor actual en el
+# nuevo grupo) debe mover las actividades PENDIENTES al mentor nuevo (None),
+# sin reescribir el historial de las ya 'done'.
+def test_reassign_front_group_moves_pending_activities(ctx):
+    pid = ObjectId()
+    now = datetime.now(timezone.utc)
+    mongo.persons.insert_one({"_id": pid, "person_number": f"VV-T41{uuid.uuid4().hex[:6].upper()}", "nombre": "QA", "apellido": "T41 Reasigna",
+                              "idempotency_key": f"qa:t41:{uuid.uuid4()}", "version": 1, "created_at": now, "updated_at": now})
+    CREATED["persons"].append(pid)
+    intake = requests.post(f"{API}/intakes", json={"person_id": str(pid), "entry_mode": "direct_church", "mentor_person_id": ctx["b_pid"]}, headers=ctx["pastor_h"], timeout=30)
+    assert intake.status_code == 201, intake.text
+    eid = intake.json()["enrollment_id"]
+    CREATED["enrollments"].append(eid)
+    # Marca una actividad como realizada ANTES de reasignar, para confirmar que no se reescribe.
+    acts = requests.get(f"{API}/{eid}/activities", headers=ctx["b_h"], timeout=30).json()["items"]
+    done_act = acts[0]
+    r_done = requests.put(f"{API}/activities/{done_act['activity_id']}/result", json={"status": "done", "note": "QA"}, headers=ctx["b_h"], timeout=30)
+    assert r_done.status_code == 200, r_done.text
+    fg = requests.post(f"{BASE_URL}/api/front-groups", json={"name": f"QA T41 FG {uuid.uuid4().hex[:5]}"}, headers=ctx["pastor_h"], timeout=30)
+    assert fg.status_code == 201, fg.text
+    fg_id = fg.json()["front_group_id"]
+    resp = requests.put(f"{API}/{eid}/front-group", json={"front_group_id": fg_id, "reason": "QA: grupo sin este mentor"}, headers=ctx["pastor_h"], timeout=30)
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["mentor_person_id"] is None, "el mentor debía quedar sin asignar al cambiar a un grupo donde no es miembro"
+    after = list(mongo.consolidation_activities.find({"enrollment_id": eid}, {"_id": 0, "status": 1, "mentor_person_id": 1}))
+    pending_after = [a for a in after if a["status"] == "pending"]
+    done_after = [a for a in after if a["status"] == "done"]
+    assert pending_after and all(a["mentor_person_id"] is None for a in pending_after), "las actividades pendientes no siguieron el cambio de mentor"
+    assert done_after and all(a["mentor_person_id"] == ctx["b_pid"] for a in done_after), "la actividad ya realizada no debe reescribir su mentor histórico"
+
+
+# Configuración de zona horaria de la iglesia para 'Hoy/Atrasado' (antes fija a la hora del servidor)
+def test_church_timezone_setting_restricted_and_validated(ctx):
+    original = requests.get(f"{API}/settings/timezone", headers=ctx["a_h"], timeout=30)
+    assert original.status_code == 200
+    original_tz = original.json()["church_timezone"]
+    forbidden = requests.put(f"{API}/settings/timezone", json={"church_timezone": "America/New_York"}, headers=ctx["a_h"], timeout=30)
+    assert forbidden.status_code == 403
+    invalid = requests.put(f"{API}/settings/timezone", json={"church_timezone": "Not/AZone"}, headers=ctx["pastor_h"], timeout=30)
+    assert invalid.status_code == 422
+    try:
+        ok = requests.put(f"{API}/settings/timezone", json={"church_timezone": "America/New_York"}, headers=ctx["pastor_h"], timeout=30)
+        assert ok.status_code == 200 and ok.json()["church_timezone"] == "America/New_York"
+        got = requests.get(f"{API}/settings/timezone", headers=ctx["b_h"], timeout=30)
+        assert got.json()["church_timezone"] == "America/New_York"
+    finally:
+        requests.put(f"{API}/settings/timezone", json={"church_timezone": original_tz}, headers=ctx["pastor_h"], timeout=30)
