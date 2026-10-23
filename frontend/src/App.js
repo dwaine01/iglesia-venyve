@@ -36,6 +36,7 @@ import PresentacionJoinPage from './pages/PresentacionJoinPage';
 import PresentacionImprimirPage from './pages/PresentacionImprimirPage';
 import PresentacionNotasPage from './pages/PresentacionNotasPage';
 import CodigosInvitacionPage from './pages/CodigosInvitacionPage';
+import AcceptInvitationPage from './pages/AcceptInvitationPage';
 import CoreGovernancePage from './pages/CoreGovernancePage';
 import FormationAdminPage from './pages/formation/FormationAdminPage';
 import FormationCohortPage from './pages/formation/FormationCohortPage';
@@ -190,6 +191,7 @@ function App() {
       <Router>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/aceptar-invitacion" element={<AcceptInvitationPage />} />
           <Route path="/cambiar-clave" element={<ChangePasswordPage />} />
           <Route path="/acuerdo-confidencialidad" element={<AccessOnboardingPage />} />
           <Route path="/verificar/carnet/:token" element={<MembershipVerificationPage />} />
