@@ -7,7 +7,7 @@ import {
   LayoutDashboard, BookOpen, Map, Calendar, Users, BarChart3, LogOut, Menu, ChevronRight,
   Crown, Star, Trophy, Presentation, NotebookPen, KeyRound, IdCard, Church, Search, DatabaseZap,
   Activity, Award, BookHeart, Compass, GraduationCap, HeartHandshake, Network, RadioTower, DoorOpen, Gavel, Landmark, MapPinned,
-  PanelLeftClose, PanelLeftOpen, ShieldCheck, Droplets, Baby, Bus, Footprints, ClipboardCheck, Trash2, DatabaseBackup
+  PanelLeftClose, PanelLeftOpen, ShieldCheck, Droplets, Baby, Bus, Footprints, ClipboardCheck, Trash2, DatabaseBackup, UserCircle
 } from 'lucide-react';
 
 import { LOGO_IGLESIA } from '../data/presentationData';
@@ -26,8 +26,13 @@ const consolidationDetailMatch = (pathname) => /^\/procesos\/consolidacion\/(?!m
 
 const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
   const rol = user?.rol;
+  const BASE_PORTAL_ITEMS = [
+    { to: '/mi-perfil', icon: UserCircle, label: 'Mi perfil', testId: 'nav-mi-perfil' },
+    { to: '/mis-estadisticas', icon: BarChart3, label: 'Mis estadísticas', testId: 'nav-mis-estadisticas' },
+  ];
   if (isPastoralAuthority(user)) {
     const personItems = [
+      ...BASE_PORTAL_ITEMS,
       { to: '/dashboard-general', icon: Crown, label: 'Panel General', end: true },
       { to: '/nucleo', icon: DatabaseZap, label: 'Gobierno del Núcleo', testId: 'nav-core-governance' },
       { to: '/procesos/dashboard', icon: Activity, label: 'Panel de Procesos', testId: 'nav-process-dashboard' },
@@ -70,6 +75,7 @@ const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
   
   if (rol === 'persona') {
     const personaItems = [
+      ...BASE_PORTAL_ITEMS,
       { to: '/procesos/dashboard', icon: Trophy, label: 'Mi Progreso', end: true },
       { to: '/procesos/consolidacion', icon: Activity, label: 'Mi Consolidación', end: true, extraActiveMatch: consolidationDetailMatch },
       { to: '/procesos/discipulado', icon: BookHeart, label: 'Mi Discipulado' },
@@ -101,6 +107,7 @@ const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
   
   // Default: lider
   const items = [
+    ...BASE_PORTAL_ITEMS,
     { to: '/', icon: LayoutDashboard, label: 'Panel principal', end: true },
     { to: '/procesos/dashboard', icon: Activity, label: 'Panel de Procesos', testId: 'nav-process-dashboard' },
     { to: '/procesos/consolidacion', icon: Activity, label: 'Consolidación', testId: 'nav-consolidation', end: true, extraActiveMatch: consolidationDetailMatch },
@@ -177,6 +184,8 @@ const breadcrumbMap = {
   '/': 'Panel principal',
   '/dashboard': 'Panel principal',
   '/dashboard-general': 'Panel General',
+  '/mi-perfil': 'Mi perfil',
+  '/mis-estadisticas': 'Mis estadísticas',
   '/mi-progreso': 'Mi Progreso',
   '/presentacion': 'Manual de 7 Semanas',
   '/introduccion': 'Introducción del Manual',

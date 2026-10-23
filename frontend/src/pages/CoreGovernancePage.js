@@ -17,6 +17,7 @@ export default function CoreGovernancePage() {
   const [integrity, setIntegrity] = useState(null);
   const [users, setUsers] = useState([]);
   const [candidates, setCandidates] = useState([]);
+  const [catalog, setCatalog] = useState([]);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
   const [saving, setSaving] = useState(null);
@@ -25,12 +26,18 @@ export default function CoreGovernancePage() {
   const load = useCallback(async () => {
     setError('');
     try {
-      const requests = [axios.get(`${API}/api/core/governance/users`, getAuthHeaders()), axios.get(`${API}/api/core/governance/access-candidates`, getAuthHeaders())];
-      if (isPastoralAuthority(user)) requests.push(axios.get(`${API}/api/core/governance/integrity`, getAuthHeaders()));
-      const [usersResponse, candidatesResponse, integrityResponse] = await Promise.all(requests);
+      const [usersResponse, candidatesResponse, catalogResponse] = await Promise.all([
+        axios.get(`${API}/api/core/governance/users`, getAuthHeaders()),
+        axios.get(`${API}/api/core/governance/access-candidates`, getAuthHeaders()),
+        axios.get(`${API}/api/core/governance/capability-catalog`, getAuthHeaders()),
+      ]);
       setUsers(usersResponse.data.items || []);
       setCandidates(candidatesResponse.data.items || []);
-      setIntegrity(integrityResponse?.data || null);
+      setCatalog(catalogResponse.data.modules || []);
+      if (isPastoralAuthority(user)) {
+        const integrityResponse = await axios.get(`${API}/api/core/governance/integrity`, getAuthHeaders());
+        setIntegrity(integrityResponse.data || null);
+      }
     } catch (requestError) {
       setError(translateTechnicalText(requestError?.response?.data?.detail || 'No se pudo cargar la gestión de accesos.'));
     } finally {
@@ -84,7 +91,7 @@ export default function CoreGovernancePage() {
           <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md border border-[#D4B871]/30 bg-[#0B1428] text-[#D4B871]"><DatabaseZap className="h-6 w-6" /></div>
           <div><p className="text-xs font-semibold uppercase text-[#D4B871]">Acceso controlado</p><h1 className="mt-1 font-['Spectral'] text-3xl font-bold sm:text-4xl" data-testid="core-page-title">Gestión de accesos</h1><p className="mt-2 max-w-3xl text-sm leading-6 text-white/65">Cada cuenta nace desde un Perfil 360 y recibe únicamente el nivel autorizado.</p></div>
           </div>
-          <CreateAccessDialog candidates={candidates} currentUser={user} onCreate={createAccess} />
+          <CreateAccessDialog candidates={candidates} currentUser={user} catalog={catalog} onCreate={createAccess} />
         </div>
       </motion.header>
 
@@ -92,7 +99,7 @@ export default function CoreGovernancePage() {
         <>
           {isPastoralAuthority(user) && integrity && <><div className="px-4 py-6 sm:px-6 lg:px-8"><CoreHealthCards integrity={integrity} /></div><CoreMigrationPanel integrity={integrity} running={running} onRun={runMigration} />{integrity.duplicate_candidates?.length > 0 && <div className="mx-4 mt-6 rounded-md border border-amber-200 bg-amber-50 p-4 sm:mx-6 lg:mx-8" data-testid="core-duplicate-alert"><div className="flex gap-2"><ShieldCheck className="mt-0.5 h-4 w-4 text-amber-700" /><div><p className="font-semibold text-amber-900">Candidatos a duplicado: {integrity.duplicate_candidates.length}</p><p className="mt-1 text-xs text-amber-800">Se mantienen separados hasta una revisión humana; la migración nunca fusiona identidades ambiguas.</p></div></div></div>}</>}
           {isPastoralAuthority(user) && <ConfidentialityPolicyPanel />}
-          <CoreAccessTable items={users} currentUser={user} saving={saving} onSave={saveAccess} />
+          <CoreAccessTable items={users} currentUser={user} catalog={catalog} saving={saving} onSave={saveAccess} />
         </>
       )}
     </div>

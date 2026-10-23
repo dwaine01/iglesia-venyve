@@ -508,6 +508,12 @@ from core_governance import router as core_governance_router, ensure_indexes as 
 
 app.include_router(core_governance_router)
 
+# --- ETAPA 5A: portal base (Mi perfil / Mis estadísticas) — nunca exige capability ---
+from self_portal import router as self_portal_router
+
+app.include_router(self_portal_router)
+
+
 # --- Invitaciones de acceso (C5): establecer contraseña sobre una cuenta creada sin temporal ---
 from access_invitations import router as access_invitations_router, ensure_indexes as access_invitations_ensure
 

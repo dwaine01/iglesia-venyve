@@ -130,6 +130,145 @@ FORMATION_CAPABILITIES = [
 ]
 
 
+# ETAPA 5A: matriz módulo × acción para altas/ediciones de cuentas. Única
+# fuente de verdad consumida por el backend (validación) y el frontend
+# (matriz de permisos). Cada cuenta nueva nace en modo "manual": solo recibe
+# lo que el administrador marque aquí explícitamente (más el paquete de
+# mentor si corresponde); no hereda el paquete amplio por cargo.
+CAPABILITY_CATALOG = [
+    {"module_key": "persons", "label": "Personas y Directorio 360", "items": [
+        {"capability": PERSON_DIRECTORY_SEARCH, "action": "consultar", "label": "Consultar: buscar personas en el directorio"},
+        {"capability": PERSON_PROFILE_SENSITIVE_READ, "action": "consultar", "label": "Consultar: datos sensibles del perfil (nacimiento, género, estado civil)"},
+        {"capability": PERSON_PROFILE_WRITE, "action": "editar", "label": "Editar: datos del perfil de una persona"},
+        {"capability": PERSON_CONTACTS_READ, "action": "consultar", "label": "Consultar: teléfonos y correos"},
+        {"capability": PERSON_CONTACTS_WRITE, "action": "editar", "label": "Editar: teléfonos y correos"},
+        {"capability": PERSON_ADDRESSES_READ, "action": "consultar", "label": "Consultar: direcciones"},
+        {"capability": PERSON_ADDRESSES_WRITE, "action": "editar", "label": "Editar: direcciones"},
+        {"capability": PERSON_HOUSEHOLD_READ, "action": "consultar", "label": "Consultar: hogar/household"},
+        {"capability": PERSON_HOUSEHOLD_WRITE, "action": "editar", "label": "Editar: hogar/household"},
+        {"capability": PERSON_FAMILY_READ, "action": "consultar", "label": "Consultar: relaciones familiares"},
+        {"capability": PERSON_FAMILY_WRITE, "action": "editar", "label": "Editar: relaciones familiares"},
+        {"capability": PERSON_ARRIVAL_READ, "action": "consultar", "label": "Consultar: llegada y origen"},
+        {"capability": PERSON_ARRIVAL_WRITE, "action": "editar", "label": "Editar: llegada y origen"},
+        {"capability": PERSON_ATTENDANCE_READ, "action": "consultar", "label": "Consultar: asistencia"},
+        {"capability": PERSON_ATTENDANCE_WRITE, "action": "agregar", "label": "Agregar/editar: registros de asistencia"},
+        {"capability": PERSON_NOTES_READ, "action": "consultar", "label": "Consultar: notas"},
+        {"capability": PERSON_NOTES_WRITE, "action": "agregar", "label": "Agregar/editar: notas"},
+        {"capability": PERSON_PASTORAL_NOTES_READ, "action": "consultar", "label": "Consultar: notas pastorales"},
+        {"capability": PERSON_HISTORY_READ, "action": "consultar", "label": "Consultar: historial"},
+        {"capability": PERSON_TALENTS_READ, "action": "consultar", "label": "Consultar: talentos y dones"},
+        {"capability": PERSON_TALENTS_WRITE, "action": "editar", "label": "Editar: talentos y dones"},
+        {"capability": PERSON_MINISTRIES_READ, "action": "consultar", "label": "Consultar: ministerios asignados"},
+        {"capability": PERSON_MINISTRIES_WRITE, "action": "editar", "label": "Editar: ministerios asignados"},
+        {"capability": MINISTRIES_CATALOG_MANAGE, "action": "administrar", "label": "Administrar: catálogo de ministerios"},
+    ]},
+    {"module_key": "processes", "label": "Procesos (Consolidación, 7 Semanas, Discipulado)", "items": [
+        {"capability": PROCESSES_READ, "action": "consultar", "label": "Consultar: procesos de otras personas"},
+        {"capability": PROCESSES_WRITE, "action": "editar", "label": "Editar: avance de procesos"},
+        {"capability": PROCESSES_PARTICIPATE, "action": "agregar", "label": "Participar en un proceso propio"},
+        {"capability": PROCESSES_MANAGE, "action": "administrar", "label": "Administrar: configuración de procesos"},
+        {"capability": PROCESS_ALERTS_MANAGE, "action": "administrar", "label": "Administrar: alertas de procesos"},
+    ]},
+    {"module_key": "front_groups", "label": "Grupos Frontales y Liderazgo", "items": [
+        {"capability": FRONT_GROUPS_VIEW, "action": "consultar", "label": "Consultar: Grupos Frontales"},
+        {"capability": FRONT_GROUPS_MANAGE, "action": "administrar", "label": "Administrar: Grupos Frontales"},
+        {"capability": FRONT_GROUP_WORK_ASSIGN, "action": "agregar", "label": "Agregar: asignar trabajo a integrantes"},
+        {"capability": FRONT_GROUP_ROTATION_MANAGE, "action": "administrar", "label": "Administrar: rotación de Grupos Frontales"},
+        {"capability": LEADERSHIP_VIEW, "action": "consultar", "label": "Consultar: Liderazgo"},
+        {"capability": LEADERSHIP_REQUIREMENTS_MANAGE, "action": "administrar", "label": "Administrar: requisitos de liderazgo"},
+        {"capability": LEADERSHIP_PROMOTE, "action": "administrar", "label": "Administrar: promover liderazgo"},
+        {"capability": MENTOR_QUALIFICATIONS_MANAGE, "action": "administrar", "label": "Administrar: calificación de mentores LBS"},
+    ]},
+    {"module_key": "mentorship_outreach", "label": "Mentoría e Invasiones", "items": [
+        {"capability": MENTORSHIP_BADGE_MANAGE, "action": "administrar", "label": "Administrar: insignia de Mentor"},
+        {"capability": MENTORSHIP_OUTREACH_ASSIGN, "action": "administrar", "label": "Administrar: asignar visitas e invasiones"},
+        {"capability": MENTORSHIP_OUTREACH_REPORT, "action": "agregar", "label": "Agregar: rendir informe de visitas propias"},
+        {"capability": CONSOLIDATION_MENTOR_TRANSFER, "action": "administrar", "label": "Administrar: transferir mentor"},
+        {"capability": CONSOLIDATION_RETREAT_CLOSE, "action": "administrar", "label": "Administrar: cerrar Retiro"},
+        {"capability": CONSOLIDATION_ASSIGN, "action": "administrar", "label": "Administrar: asignación de Consolidación"},
+        {"capability": CAMPAIGN_VENYCOME_MANAGE, "action": "administrar", "label": "Administrar: Campaña Ven y Come"},
+    ]},
+    {"module_key": "library", "label": "Librería 360", "items": [
+        {"capability": LIBRARY_DELIVER, "action": "agregar", "label": "Agregar: recibir/entregar libros"},
+        {"capability": LIBRARY_CATALOG_MANAGE, "action": "administrar", "label": "Administrar: catálogo de Librería"},
+        {"capability": LIBRARY_INVENTORY_MANAGE, "action": "administrar", "label": "Administrar: inventario de Librería"},
+        {"capability": LIBRARY_REPORTS_READ, "action": "consultar", "label": "Consultar: reportes de Librería"},
+    ]},
+    {"module_key": "cellular", "label": "Sistema Celular", "items": [
+        {"capability": CELLULAR_READ, "action": "consultar", "label": "Consultar: células"},
+        {"capability": CELLULAR_WRITE, "action": "editar", "label": "Editar: datos de células"},
+        {"capability": CELLULAR_MANAGE, "action": "administrar", "label": "Administrar: Sistema Celular"},
+        {"capability": CELLULAR_ATTENDANCE, "action": "agregar", "label": "Agregar: asistencia celular"},
+        {"capability": CELLULAR_NEEDS, "action": "agregar", "label": "Agregar: necesidades celulares"},
+        {"capability": CELLULAR_SENSITIVE_READ, "action": "consultar", "label": "Consultar: información celular sensible"},
+        {"capability": CELLULAR_MULTIPLY, "action": "administrar", "label": "Administrar: multiplicación celular"},
+    ]},
+    {"module_key": "doors_media", "label": "9 Puertas y recursos de Junta", "items": [
+        {"capability": DOORS_READ, "action": "consultar", "label": "Consultar: 9 Puertas"},
+        {"capability": DOORS_WRITE, "action": "editar", "label": "Editar: casos de 9 Puertas"},
+        {"capability": DOORS_MANAGE, "action": "administrar", "label": "Administrar: 9 Puertas"},
+        {"capability": BOARD_AUDIO, "action": "administrar", "label": "Administrar: grabación de audio de Junta"},
+        {"capability": BOARD_AI, "action": "administrar", "label": "Administrar: generación por IA en Junta"},
+    ]},
+    {"module_key": "operations", "label": "Operaciones y Eventos", "items": [
+        {"capability": OPERATIONS_VIEW, "action": "consultar", "label": "Consultar: Operaciones y eventos"},
+        {"capability": OPERATIONS_MANAGE, "action": "administrar", "label": "Administrar: Operaciones"},
+        {"capability": OPERATIONS_CHECKIN, "action": "agregar", "label": "Agregar: check-in de eventos"},
+        {"capability": OPERATIONS_VOLUNTEER, "action": "agregar", "label": "Agregar: voluntariado en turnos"},
+        {"capability": OPERATIONS_REPORTS, "action": "consultar", "label": "Consultar: reportes de Operaciones"},
+    ]},
+    {"module_key": "care", "label": "Cuidado Pastoral", "items": [
+        {"capability": CARE_ASSIGNED_READ, "action": "consultar", "label": "Consultar: casos pastorales asignados"},
+        {"capability": CARE_ASSIGNED_WRITE, "action": "editar", "label": "Editar: casos pastorales asignados"},
+        {"capability": CARE_MANAGE, "action": "administrar", "label": "Administrar: Cuidado Pastoral"},
+        {"capability": CARE_CONFIDENTIAL_READ, "action": "consultar", "label": "Consultar: expediente confidencial"},
+        {"capability": CARE_CONFIDENTIAL_WRITE, "action": "editar", "label": "Editar: expediente confidencial"},
+        {"capability": CARE_AUDIT_READ, "action": "consultar", "label": "Consultar: auditoría de Cuidado Pastoral"},
+    ]},
+    {"module_key": "formation", "label": "Formación, Bautismo y Presentación de Niños", "items": [
+        {"capability": FORMATION_READ, "action": "consultar", "label": "Consultar: Formación"},
+        {"capability": FORMATION_PROGRAMS_MANAGE, "action": "administrar", "label": "Administrar: programas de Formación"},
+        {"capability": FORMATION_COHORTS_MANAGE, "action": "administrar", "label": "Administrar: promociones de Formación"},
+        {"capability": FORMATION_ENROLL, "action": "agregar", "label": "Agregar: inscribir estudiantes"},
+        {"capability": FORMATION_ATTENDANCE_WRITE, "action": "agregar", "label": "Agregar: tomar asistencia"},
+        {"capability": FORMATION_GRADES_READ, "action": "consultar", "label": "Consultar: notas"},
+        {"capability": FORMATION_GRADES_WRITE, "action": "editar", "label": "Editar: notas"},
+        {"capability": FORMATION_PROGRESS_MANAGE, "action": "administrar", "label": "Administrar: progreso de Formación"},
+        {"capability": FORMATION_HISTORICAL_CREDIT_MANAGE, "action": "administrar", "label": "Administrar: acreditar formación histórica"},
+        {"capability": FORMATION_PROMOTE, "action": "administrar", "label": "Administrar: promover estudiantes"},
+        {"capability": FORMATION_CERTIFICATES_ISSUE, "action": "administrar", "label": "Administrar: certificados de Formación"},
+        {"capability": BAPTISM_READ, "action": "consultar", "label": "Consultar: Bautismo"},
+        {"capability": BAPTISM_WRITE, "action": "editar", "label": "Editar: registros de Bautismo"},
+        {"capability": BAPTISM_CERTIFICATES_ISSUE, "action": "administrar", "label": "Administrar: certificados de Bautismo"},
+        {"capability": BAPTISM_EVENTS_MANAGE, "action": "administrar", "label": "Administrar: eventos de Bautismo"},
+        {"capability": DEDICATION_READ, "action": "consultar", "label": "Consultar: Presentación de Niños"},
+        {"capability": DEDICATION_EVENTS_MANAGE, "action": "administrar", "label": "Administrar: eventos de Presentación"},
+        {"capability": DEDICATION_CERTIFICATES_ISSUE, "action": "administrar", "label": "Administrar: certificados de Presentación"},
+    ]},
+    {"module_key": "geo", "label": "Mapa 360", "items": [
+        {"capability": GEO_VIEW_AGGREGATE, "action": "consultar", "label": "Consultar: mapa agregado (sin direcciones exactas)"},
+        {"capability": GEO_VIEW_PRECISE, "action": "consultar", "label": "Consultar: mapa con direcciones exactas"},
+        {"capability": GEO_MANAGE_LOCATIONS, "action": "administrar", "label": "Administrar: corregir ubicaciones"},
+    ]},
+    {"module_key": "membership", "label": "Membresía", "items": [
+        {"capability": MEMBERSHIP_DOCUMENTS_MANAGE, "action": "administrar", "label": "Administrar: emitir carnet/certificado"},
+        {"capability": MEMBERSHIP_DIRECT_IMPORT, "action": "administrar", "label": "Administrar: regularizar membresía existente"},
+        {"capability": MEMBERSHIP_ACCEPTANCE_MANAGE, "action": "administrar", "label": "Administrar: registrar firma de membresía"},
+    ]},
+    {"module_key": "finance", "label": "Finanzas (requiere grupo de privilegio Finanzas)", "items": [
+        {"capability": FINANCE_READ, "action": "consultar", "label": "Consultar: Finanzas"},
+        {"capability": FINANCE_MANAGE, "action": "administrar", "label": "Administrar: Finanzas"},
+    ]},
+    {"module_key": "board", "label": "Junta Directiva (requiere grupo de privilegio Junta)", "items": [
+        {"capability": BOARD_ACCESS, "action": "consultar", "label": "Consultar: Junta Directiva"},
+    ]},
+]
+
+
+def capability_catalog_keys() -> set[str]:
+    return {item["capability"] for module in CAPABILITY_CATALOG for item in module["items"]}
+
+
 def resolved_access_level(user: dict) -> str:
     """Normalize current and legacy coordinator account shapes."""
     role = str(user.get("rol") or user.get("role") or "").strip().lower()
@@ -333,30 +472,34 @@ def authorize_person(user: dict, person: dict, capability: str) -> None:
 
 
 async def ensure_access_defaults(db) -> None:
-    """Idempotently materialize and version additive grants for rollout."""
+    """Idempotently materialize and version additive grants for rollout.
+    ETAPA 5A: nunca toca cuentas en permissions_mode="manual" (nacidas desde
+    la matriz módulo×acción); solo retro-completa cuentas heredadas del
+    modelo por cargo, para no quitarles nada de lo que ya tenían."""
+    manual_excluded = {"permissions_mode": {"$ne": "manual"}}
     for role, defaults in _ROLE_ACCESS_DEFAULTS.items():
         await db.users.update_many(
-            {"rol": role, "capabilities": {"$exists": False}},
+            {"rol": role, "capabilities": {"$exists": False}, **manual_excluded},
             {"$set": {"capabilities": defaults["capabilities"]}},
         )
         await db.users.update_many(
-            {"rol": role, "access_scope": {"$exists": False}},
+            {"rol": role, "access_scope": {"$exists": False}, **manual_excluded},
             {"$set": {"access_scope": defaults["access_scope"]}},
         )
         await db.users.update_many(
-            {"rol": role, "$or": [{"parent_user_id": {"$exists": False}}, {"access_policy_version": {"$lt": ACCESS_POLICY_VERSION}}, {"access_policy_version": {"$exists": False}}]},
+            {"rol": role, "$or": [{"parent_user_id": {"$exists": False}}, {"access_policy_version": {"$lt": ACCESS_POLICY_VERSION}}, {"access_policy_version": {"$exists": False}}], **manual_excluded},
             {
                 "$addToSet": {"capabilities": {"$each": defaults["capabilities"]}},
                 "$set": {"access_policy_version": ACCESS_POLICY_VERSION},
             },
         )
-    await db.users.update_many({"rol": "persona"}, {"$addToSet": {"capabilities": {"$each": [OPERATIONS_VIEW, OPERATIONS_VOLUNTEER]}}})
-    await db.users.update_many({"rol": "lider"}, {"$addToSet": {"capabilities": {"$each": [OPERATIONS_VIEW, OPERATIONS_CHECKIN, OPERATIONS_VOLUNTEER, LIBRARY_DELIVER]}}})
+    await db.users.update_many({"rol": "persona", **manual_excluded}, {"$addToSet": {"capabilities": {"$each": [OPERATIONS_VIEW, OPERATIONS_VOLUNTEER]}}})
+    await db.users.update_many({"rol": "lider", **manual_excluded}, {"$addToSet": {"capabilities": {"$each": [OPERATIONS_VIEW, OPERATIONS_CHECKIN, OPERATIONS_VOLUNTEER, LIBRARY_DELIVER]}}})
     await db.users.update_many(
-        {"$or": [{"access_level": "coordinador_general"}, {"rol": "lider", "capabilities": CORE_ACCESS_MANAGE}]},
+        {"$or": [{"access_level": "coordinador_general"}, {"rol": "lider", "capabilities": CORE_ACCESS_MANAGE}], **manual_excluded},
         {"$addToSet": {"capabilities": {"$each": [*CARE_CAPABILITIES, MEMBERSHIP_DIRECT_IMPORT, FORMATION_READ, FORMATION_COHORTS_MANAGE, FORMATION_ENROLL, FORMATION_ATTENDANCE_WRITE, FORMATION_GRADES_READ, FORMATION_GRADES_WRITE, FORMATION_PROGRESS_MANAGE, FORMATION_HISTORICAL_CREDIT_MANAGE, FORMATION_PROMOTE, BAPTISM_READ, BAPTISM_WRITE, BAPTISM_CERTIFICATES_ISSUE, BAPTISM_EVENTS_MANAGE, DEDICATION_READ, DEDICATION_EVENTS_MANAGE, DEDICATION_CERTIFICATES_ISSUE, *LIBRARY_CAPABILITIES, MENTORSHIP_BADGE_MANAGE, MENTORSHIP_OUTREACH_ASSIGN, CONSOLIDATION_MENTOR_TRANSFER]}, "privilege_groups": "care"}, "$set": {"access_scope.persons": "all", "access_policy_version": ACCESS_POLICY_VERSION}},
     )
     await db.users.update_many(
-        {"capabilities": MENTORSHIP_OUTREACH_REPORT},
+        {"capabilities": MENTORSHIP_OUTREACH_REPORT, **manual_excluded},
         {"$addToSet": {"capabilities": {"$each": [*PERSON_SELF_CAPABILITIES, PROCESSES_PARTICIPATE, LIBRARY_DELIVER]}}},
     )

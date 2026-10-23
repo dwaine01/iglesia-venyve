@@ -1,5 +1,5 @@
 import React, { lazy, Suspense } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { Toaster } from './components/ui/sonner';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import LoginPage from './pages/LoginPage';
@@ -98,6 +98,9 @@ import BoardMeetingsPage from './pages/board/BoardMeetingsPage';
 import BoardMeetingDetailPage from './pages/board/BoardMeetingDetailPage';
 import BoardMinutesPage from './pages/board/BoardMinutesPage';
 import AppLayout from './components/AppLayout';
+import AccessDeniedPage from './components/AccessDeniedPage';
+import MiPerfilPage from './pages/MiPerfilPage';
+import MisEstadisticasPage from './pages/MisEstadisticasPage';
 import { canManageDirectMembership, canManageBaptismEvents, canManageDedicationEvents, canViewCare, canViewFinanceModule, canViewFormation, canViewFrontGroups, canViewGeo, canViewLeadership, canViewLibraryModule, canManageLibraryInventory, canViewLibraryPurchaseOrders, canViewLibraryReports, canViewOperations, canAccessCampaignOperator, canAccessOutreach, canCreateOutreachCampaign, hasAnyCapability, isPastoralAuthority } from './lib/accessControl';
 import { useBoardAccess } from './hooks/useBoardAccess';
 import { useMentorAccess } from './hooks/useMentorAccess';
@@ -119,7 +122,7 @@ function PastorOnlyRoute({ children }) {
   const { user, loading } = useAuth();
   if (loading) return <div className="flex items-center justify-center min-h-screen"><div className="text-lg text-muted-foreground">Cargando...</div></div>;
   if (!user) return <Navigate to="/login" />;
-  if (!isPastoralAuthority(user)) return <Navigate to="/" />;
+  if (!isPastoralAuthority(user)) return <AccessDeniedPage />;
   return children;
 }
 
@@ -128,7 +131,7 @@ function StaffRoute({ children }) {
   const { user, loading } = useAuth();
   if (loading) return <div className="flex items-center justify-center min-h-screen"><div className="text-lg text-muted-foreground">Cargando...</div></div>;
   if (!user) return <Navigate to="/login" />;
-  if (!isPastoralAuthority(user) && user.rol !== 'lider') return <Navigate to="/" />;
+  if (!isPastoralAuthority(user) && user.rol !== 'lider') return <AccessDeniedPage />;
   return children;
 }
 
@@ -136,7 +139,7 @@ function AccessManagerRoute({ children }) {
   const { user, loading } = useAuth();
   if (loading) return <div className="flex min-h-screen items-center justify-center">Cargando…</div>;
   if (!user) return <Navigate to="/login" replace />;
-  if (!hasAnyCapability(user, ['core.access.manage'])) return <Navigate to="/" replace />;
+  if (!hasAnyCapability(user, ['core.access.manage'])) return <AccessDeniedPage />;
   return children;
 }
 
@@ -144,7 +147,7 @@ function FinanceRoute({ children }) {
   const { user, loading } = useAuth();
   if (loading) return <div className="flex min-h-screen items-center justify-center">Cargando…</div>;
   if (!user) return <Navigate to="/login" replace />;
-  if (!canViewFinanceModule(user)) return <Navigate to="/" replace />;
+  if (!canViewFinanceModule(user)) return <AccessDeniedPage />;
   return children;
 }
 
@@ -152,7 +155,7 @@ function FormationRoute({ children }) {
   const { user, loading } = useAuth();
   if (loading) return <div className="flex min-h-screen items-center justify-center" data-testid="formation-route-loading">Cargando…</div>;
   if (!user) return <Navigate to="/login" replace />;
-  if (!canViewFormation(user)) return <Navigate to="/" replace />;
+  if (!canViewFormation(user)) return <AccessDeniedPage />;
   return children;
 }
 
@@ -160,7 +163,7 @@ function CapabilityRoute({ children, allowed }) {
   const { user, loading } = useAuth();
   if (loading) return <div className="flex min-h-screen items-center justify-center" data-testid="capability-route-loading">Cargando…</div>;
   if (!user) return <Navigate to="/login" replace />;
-  if (!allowed(user)) return <Navigate to="/" replace />;
+  if (!allowed(user)) return <AccessDeniedPage />;
   return children;
 }
 
@@ -168,7 +171,7 @@ function BoardAccessRoute({ children }) {
   const { user } = useAuth();
   const access = useBoardAccess();
   if (!user || access.loading) return <div className="flex min-h-screen items-center justify-center" data-testid="board-access-loading">Cargando…</div>;
-  if (!access.allowed) return <Navigate to="/" replace />;
+  if (!access.allowed) return <AccessDeniedPage />;
   return children;
 }
 
@@ -176,7 +179,7 @@ function OutreachAccessRoute({ children }) {
   const { user } = useAuth();
   const mentorAccess = useMentorAccess();
   if (!user || mentorAccess.loading) return <div className="flex min-h-screen items-center justify-center" data-testid="outreach-access-loading">Cargando…</div>;
-  if (!canAccessOutreach(user, mentorAccess.isActiveMentor)) return <Navigate to="/" replace />;
+  if (!canAccessOutreach(user, mentorAccess.isActiveMentor)) return <AccessDeniedPage />;
   return children;
 }
 
@@ -184,7 +187,7 @@ function SupervisionAccessRoute({ children }) {
   const { user } = useAuth();
   const mentorAccess = useMentorAccess();
   if (!user || mentorAccess.loading) return <div className="flex min-h-screen items-center justify-center" data-testid="supervision-access-loading">Cargando…</div>;
-  if (!canAccessOutreach(user, mentorAccess.isActiveMentor) && !canViewFrontGroups(user)) return <Navigate to="/" replace />;
+  if (!canAccessOutreach(user, mentorAccess.isActiveMentor) && !canViewFrontGroups(user)) return <AccessDeniedPage />;
   return children;
 }
 
@@ -194,6 +197,19 @@ function RoleDashboard() {
   if (isPastoralAuthority(user)) return <Navigate to="/dashboard-general" />;
   if (user?.rol === 'persona') return <Navigate to="/procesos/dashboard" />;
   return <ProcessesDashboardPage />;
+}
+
+// ETAPA 5A: ver el Perfil 360 de OTRA persona exige una capability person.*;
+// ver el propio perfil (misma persona) siempre está permitido vía "Mi perfil".
+function PersonProfileRoute({ children }) {
+  const { user, loading } = useAuth();
+  const { personId } = useParams();
+  if (loading) return <div className="flex min-h-screen items-center justify-center" data-testid="person-profile-route-loading">Cargando…</div>;
+  if (!user) return <Navigate to="/login" replace />;
+  if (personId && personId === user.person_id) return <Navigate to="/mi-perfil" replace />;
+  const canViewDirectory = isPastoralAuthority(user) || (user.capabilities || []).some((item) => item.startsWith('person.'));
+  if (!canViewDirectory) return <AccessDeniedPage />;
+  return children;
 }
 
 function App() {
@@ -299,7 +315,7 @@ function App() {
             <Route path="cuidado-pastoral/casos/:caseId" element={<CapabilityRoute allowed={canViewCare}><PastoralExpedienteDetailPage /></CapabilityRoute>} />
             <Route path="cuidado-pastoral/operacion-72" element={<CapabilityRoute allowed={canViewCare}><Operacion72DashboardPage /></CapabilityRoute>} />
             <Route path="cuidado-pastoral/visitas" element={<CapabilityRoute allowed={canViewCare}><PastoralVisitsPage /></CapabilityRoute>} />
-            <Route path="personas/:personId" element={<PersonaPerfilPage />} />
+            <Route path="personas/:personId" element={<PersonProfileRoute><PersonaPerfilPage /></PersonProfileRoute>} />
             <Route path="directorio" element={<DirectorioTalentosPage />} />
             <Route path="ministerios" element={<MinisteriosPage />} />
             <Route path="ministerios/:ministryId" element={<MinisterioDetailPage />} />
@@ -307,6 +323,8 @@ function App() {
             <Route path="codigos" element={<StaffRoute><CodigosInvitacionPage /></StaffRoute>} />
             <Route path="estadisticas" element={<EstadisticasPage />} />
             <Route path="presentacion" element={<PresentacionHomePage />} />
+            <Route path="mi-perfil" element={<MiPerfilPage />} />
+            <Route path="mis-estadisticas" element={<MisEstadisticasPage />} />
             
             {/* Persona routes */}
             <Route path="mi-progreso" element={<Navigate to="/procesos/dashboard" replace />} />
