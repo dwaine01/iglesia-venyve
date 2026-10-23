@@ -41,8 +41,8 @@ export const FrontGroupDesignationDialog = ({ parentGroupId, onCreated }) => {
     <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto bg-white" data-testid="front-group-designation-dialog">
       <DialogHeader><DialogTitle>Designar pareja de liderazgo</DialogTitle><DialogDescription>Se crea de inmediato el grupo dependiente (pendiente de conformación); el líder designado lo conformará desde su propio portal.</DialogDescription></DialogHeader>
       <div className="space-y-4">
-        <div><Label>Líder</Label>{leader ? <SelectedPersonChip person={leader} onClear={() => setLeader(null)} /> : <PersonQuickPicker groupId={parentGroupId} onPicked={setLeader} placeholder="Buscar al líder…" />}</div>
-        <div><Label>Colíder (opcional)</Label>{coLeader ? <SelectedPersonChip person={coLeader} onClear={() => setCoLeader(null)} /> : <PersonQuickPicker groupId={parentGroupId} onPicked={setCoLeader} placeholder="Buscar al colíder…" />}</div>
+        <div><Label>Líder</Label>{leader ? <SelectedPersonChip person={leader} onClear={() => setLeader(null)} /> : <PersonQuickPicker groupId={parentGroupId} onPicked={setLeader} placeholder="Buscar al líder…" assign={false} />}</div>
+        <div><Label>Colíder (opcional)</Label>{coLeader ? <SelectedPersonChip person={coLeader} onClear={() => setCoLeader(null)} /> : <PersonQuickPicker groupId={parentGroupId} onPicked={setCoLeader} placeholder="Buscar al colíder…" assign={false} />}</div>
         <div><Label htmlFor="fg-designation-reason">Motivo (opcional)</Label><Input id="fg-designation-reason" value={reason} onChange={(event) => setReason(event.target.value)} data-testid="front-group-designation-reason-input" /></div>
         <Button onClick={submit} disabled={saving || !leader} className="w-full bg-amber-700 text-white hover:bg-amber-800" data-testid="front-group-designation-submit-button">{saving && <Loader2 className="h-4 w-4 animate-spin" />}Designar pareja</Button>
       </div>

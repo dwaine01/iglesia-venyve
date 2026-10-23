@@ -14,16 +14,18 @@ const ACTION_LABELS = {
 
 export const FrontGroupHistoryPanel = ({ groupId }) => {
   const { API, getAuthHeaders } = useAuth();
-  const [items, setItems] = useState([]); const [loading, setLoading] = useState(true);
+  const [items, setItems] = useState([]); const [loading, setLoading] = useState(true); const [error, setError] = useState('');
   useEffect(() => {
-    let active = true; setLoading(true);
+    let active = true; setLoading(true); setError('');
     axios.get(`${API}/api/front-groups/${groupId}/history`, getAuthHeaders())
       .then((response) => { if (active) setItems(response.data.items || []); })
+      .catch(() => { if (active) setError('No se pudo cargar el historial.'); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [API, getAuthHeaders, groupId]);
 
   if (loading) return <div className="grid min-h-40 place-items-center" data-testid="front-group-history-loading"><Loader2 className="h-5 w-5 animate-spin text-amber-700" /></div>;
+  if (error) return <p className="p-6 text-center text-sm text-red-600" data-testid="front-group-history-error">{error}</p>;
   if (!items.length) return <p className="p-6 text-center text-sm text-slate-500" data-testid="front-group-history-empty">Sin eventos registrados.</p>;
   return <ul className="divide-y divide-slate-200 border border-slate-200 bg-white" data-testid="front-group-history-panel">
     {items.map((item) => <li key={item.event_id} className="px-5 py-3 text-sm" data-testid={`front-group-history-${item.event_id}`}>

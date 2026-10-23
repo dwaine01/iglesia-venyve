@@ -12,7 +12,7 @@ import { Label } from '../ui/label';
 
 // C4: busca en Persona 360 (sin pasar por /api/core/persons) y permite dar de
 // alta sin salir del flujo; coincidencia FUERTE bloquea, POSIBLE exige motivo.
-export const PersonQuickPicker = ({ groupId, onPicked, role = 'member', placeholder = 'Buscar por nombre…' }) => {
+export const PersonQuickPicker = ({ groupId, onPicked, role = 'member', placeholder = 'Buscar por nombre…', assign = true }) => {
   const { API, getAuthHeaders } = useAuth();
   const [search, setSearch] = useState(''); const [results, setResults] = useState([]); const [searching, setSearching] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
@@ -42,7 +42,7 @@ export const PersonQuickPicker = ({ groupId, onPicked, role = 'member', placehol
     setBusy(true);
     try {
       const response = await axios.post(`${API}/api/front-groups/${groupId}/quick-person`, {
-        ...form, role, idempotency_key: idemRef.current,
+        ...form, role, idempotency_key: idemRef.current, assign,
         confirm_distinct_person: confirmDistinct, distinct_reason: distinctReason || null,
       }, getAuthHeaders());
       toast.success('Persona registrada y agregada');

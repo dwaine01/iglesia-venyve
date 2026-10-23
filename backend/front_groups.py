@@ -401,6 +401,7 @@ async def create_designation(parent_id: str, payload: DesignationCreate, current
     await ensure_front_group_capability(payload.leader_person_id)
     await ensure_front_group_capability(payload.co_leader_person_id)
     await audit(group_id, current_user, "group_designated", {"parent_group_id": parent_id, "leader_person_id": payload.leader_person_id, "co_leader_person_id": payload.co_leader_person_id, "reason": payload.reason})
+    await audit(parent_id, current_user, "child_designated", {"child_group_id": group_id, "leader_person_id": payload.leader_person_id, "co_leader_person_id": payload.co_leader_person_id, "reason": payload.reason})
     return await group_summary(document, current_user)
 
 
@@ -452,14 +453,14 @@ async def end_member(group_id: str, person_id: str, payload: MemberEnd, current_
 async def transfer_member(group_id: str, payload: MemberTransfer, current_user: dict = Depends(require_manage)):
     await assert_group_scope(group_id, current_user, leader_required=True)
     await assert_group_scope(payload.to_group_id, current_user, leader_required=True)
+    if await db.front_group_assignments.find_one({"front_group_id": payload.to_group_id, "person_id": payload.person_id, "active": True}, {"_id": 1}):
+        raise HTTPException(status_code=409, detail="Esa persona ya es integrante activo del grupo destino")
     now = now_utc()
     result = await db.front_group_assignments.update_many({"front_group_id": group_id, "person_id": payload.person_id, "active": True}, {"$set": {"active": False, "ended_at": now, "ended_by_user_id": current_user["user_id"], "end_reason": payload.reason}})
     if result.modified_count == 0:
         raise HTTPException(status_code=404, detail="La persona no es integrante activo del grupo de origen")
-    existing = await db.front_group_assignments.find_one({"front_group_id": payload.to_group_id, "person_id": payload.person_id, "role": payload.role, "active": True}, {"_id": 1})
-    if not existing:
-        assignment_id = str(uuid4())
-        await db.front_group_assignments.insert_one({"_id": assignment_id, "assignment_id": assignment_id, "front_group_id": payload.to_group_id, "person_id": payload.person_id, "role": payload.role, "active": True, "started_at": now, "ended_at": None, "notes": payload.reason, "assigned_by_user_id": current_user["user_id"], "created_at": now})
+    assignment_id = str(uuid4())
+    await db.front_group_assignments.insert_one({"_id": assignment_id, "assignment_id": assignment_id, "front_group_id": payload.to_group_id, "person_id": payload.person_id, "role": payload.role, "active": True, "started_at": now, "ended_at": None, "notes": payload.reason, "assigned_by_user_id": current_user["user_id"], "created_at": now})
     await audit(group_id, current_user, "member_transferred_out", {"person_id": payload.person_id, "to_group_id": payload.to_group_id, "reason": payload.reason})
     await audit(payload.to_group_id, current_user, "member_transferred_in", {"person_id": payload.person_id, "from_group_id": group_id, "reason": payload.reason})
     return {"transferred": True}
@@ -513,11 +514,11 @@ async def quick_person(group_id: str, payload: GroupQuickPerson, current_user: d
         raise HTTPException(status_code=409, detail={"message": "Hay una Persona con nombre parecido. Use la existente o confirme que es alguien distinto (con un motivo).", "candidates": result["candidates"], "requires_confirmation": True})
     person = result["person"]; now = now_utc()
     existing_assignment = await db.front_group_assignments.find_one({"front_group_id": group_id, "person_id": person["person_id"], "role": payload.role, "active": True}, {"_id": 1})
-    if not existing_assignment:
+    if payload.assign and not existing_assignment:
         assignment_id = str(uuid4())
         await db.front_group_assignments.insert_one({"_id": assignment_id, "assignment_id": assignment_id, "front_group_id": group_id, "person_id": person["person_id"], "role": payload.role, "notes": payload.notes, "active": True, "started_at": now, "ended_at": None, "assigned_by_user_id": current_user["user_id"], "created_at": now})
-    await audit(group_id, current_user, "member_quick_created", {"person_id": person["person_id"], "role": payload.role, "created": result["created"]})
-    return {"person": person, "assignment_added": not bool(existing_assignment)}
+    await audit(group_id, current_user, "member_quick_created", {"person_id": person["person_id"], "role": payload.role, "created": result["created"], "assigned": payload.assign})
+    return {"person": person, "assignment_added": payload.assign and not bool(existing_assignment)}
 
 
 @router.get("/{group_id}/qualified-mentors", response_model=dict)

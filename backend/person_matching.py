@@ -49,6 +49,7 @@ class PersonQuickCreate(PersonMatchQuery):
 class GroupQuickPerson(PersonQuickCreate):
     role: Literal["member", "mentor"] = "member"
     notes: Optional[str] = Field(default=None, max_length=600)
+    assign: bool = True
 
 
 def _person_card(doc: dict) -> dict:
