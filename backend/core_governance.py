@@ -44,6 +44,7 @@ from access_control import (
     normalized_capabilities,
     resolved_access_level,
     CAPABILITY_CATALOG,
+    STAFF_TOOLS_CAPABILITIES,
 )
 from canonical_identity import IdentityConflictError, ensure_user_person_link, migrate_core_identity
 from server import db, get_current_user
@@ -161,6 +162,10 @@ def manual_capabilities_for(payload: "UserAccessCreate", current_user: dict) -> 
         invalid = sorted(set(requested) - capability_catalog_keys())
         if invalid:
             raise HTTPException(status_code=400, detail=f"Capacidades inválidas: {', '.join(invalid)}")
+    if payload.access_level == "persona":
+        # Códigos de invitación y Bitácora siguen exigiendo rol=lider/pastor
+        # en el servidor; nunca quedan activos para una cuenta persona.
+        requested = [item for item in requested if item not in STAFF_TOOLS_CAPABILITIES]
     mentor_bundle = [*PERSON_SELF_CAPABILITIES, MENTORSHIP_OUTREACH_REPORT, PROCESSES_PARTICIPATE, LIBRARY_DELIVER] if payload.mentor_access else []
     return sorted(set(requested) | set(mentor_bundle))
 
@@ -553,12 +558,21 @@ async def update_user_access(
         invalid = sorted(set(payload.capabilities) - effective_allowed - existing_capabilities)
         if invalid:
             raise HTTPException(status_code=400, detail=f"Capabilities inválidas: {', '.join(invalid)}")
+        privilege_gated = (
+            (set(FINANCE_CAPABILITIES) if "finance" not in requested_groups else set())
+            | ({BOARD_ACCESS, BOARD_CONFIDENTIAL_ACCESS} if "board" not in requested_groups else set())
+        )
+        blocked = sorted((set(payload.capabilities) & privilege_gated) - existing_capabilities)
+        if blocked:
+            raise HTTPException(status_code=400, detail=f"Capabilities no personalizables sin el grupo de privilegio correspondiente: {', '.join(blocked)}")
         if manual_level:
             # ETAPA 5A: líder/persona en modo manual — lo enviado ES la lista
             # completa (permite RECORTAR, no solo agregar). Nunca via la
             # matriz: core.governance.manage / core.access.manage (delegación
-            # estructural, no un módulo).
-            capabilities = sorted(set(payload.capabilities) & catalog_keys)
+            # estructural, no un módulo). Códigos/Bitácora siguen exigiendo
+            # rol=lider/pastor en el servidor: nunca quedan activos en persona.
+            effective_catalog = catalog_keys - set(STAFF_TOOLS_CAPABILITIES) if requested_level == "persona" else catalog_keys
+            capabilities = sorted(set(payload.capabilities) & effective_catalog)
         else:
             customizable = set(JOURNEY_GOVERNANCE_CAPABILITIES + OPERATIONS_CAPABILITIES + FORMATION_CAPABILITIES + CAMPAIGN_CAPABILITIES + MENTORSHIP_CAPABILITIES + [MEMBERSHIP_DOCUMENTS_MANAGE, MEMBERSHIP_DIRECT_IMPORT]) | catalog_keys
             non_customizable = sorted(set(payload.capabilities) - set(defaults["capabilities"]) - customizable - existing_capabilities)

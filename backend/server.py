@@ -2878,7 +2878,7 @@ async def list_journal_entries(
     if not (is_global_pastoral_authority(payload) or has_capability(payload, EVANGELISM_LOG_WRITE)):
         raise HTTPException(status_code=403, detail="No tienes el módulo de Bitácora Evangelística asignado")
     query: dict = {}
-    if payload.get("rol") == "lider":
+    if not is_global_pastoral_authority(payload):
         query["leader_id"] = payload["user_id"]
     # Pastor ve todas por defecto; puede filtrar después en frontend por leader_id si lo necesita.
 
@@ -2899,7 +2899,7 @@ async def journal_stats(authorization: Optional[str] = Header(None)):
     if not (is_global_pastoral_authority(payload) or has_capability(payload, EVANGELISM_LOG_WRITE)):
         raise HTTPException(status_code=403, detail="No tienes el módulo de Bitácora Evangelística asignado")
     base_query: dict = {}
-    if payload.get("rol") == "lider":
+    if not is_global_pastoral_authority(payload):
         base_query["leader_id"] = payload["user_id"]
 
     today = _today_iso()

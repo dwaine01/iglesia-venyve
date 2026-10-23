@@ -196,6 +196,8 @@ const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
     item.to !== '/presentacion' || canViewPresentationManual(user)
   ) && (
     item.to !== '/estadisticas' || canViewDirectory(user)
+  ) && (
+    item.to !== '/' || canViewProcesses(user)
   )).filter((item, index, all) => item.type !== 'separator' || all.slice(index + 1).some((next) => next.type !== 'separator'));
 };
 
@@ -262,7 +264,7 @@ function SidebarContent({ onClose, testIdPrefix = '', boardAllowed = false, isAc
   const getRolLabel = () => {
     if (isPastoralAuthority(user)) return 'Pastor (Acceso Maestro)';
     if (user?.access_level === 'coordinador_general') return 'Coordinador general';
-    if (user?.rol === 'persona') return 'Consolidado';
+    if (user?.rol === 'persona') return canViewProcesses(user) ? 'Consolidado' : 'Miembro';
     return 'Líder';
   };
 
