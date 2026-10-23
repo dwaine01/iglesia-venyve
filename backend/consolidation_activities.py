@@ -37,6 +37,10 @@ STAGE_WEEK_LABEL = {"mcd": "S3", "npt": "S4", "lbs_1": "S5", "lbs_2": "S6", "lbs
 STAGE_TITLE = {"mcd": "Mi Conexión con Dios", "npt": "Nací Para Triunfar", "lbs_1": "LBS · Liberación", "lbs_2": "LBS · Bendición", "lbs_3": "LBS · Sanidad"}
 BOOK_SKU_BY_STAGE = {"mcd": "MCD", "npt": "NPT"}  # solo estas dos etapas entregan un libro físico
 RESULT_STATUSES = ("pending", "done", "no_answer", "rescheduled")
+# Debe coincidir con `mentorship_outreach.OUTREACH_PROCESS_KEY`: distingue la
+# entrega hecha en el primer contacto de Invasión (se "reconoce", C8) de una
+# segunda entrega intentada desde otra actividad (se sigue rechazando, 409).
+OUTREACH_FIRST_CONTACT_PROCESS_KEY = "outreach_invasion"
 
 MCD_MOMENTS = [("morning", "Mañana"), ("midday", "Medio día"), ("night", "Noche")]
 NPT_MOMENTS = [("9am", "9:00 a.m."), ("12m", "12:00 m."), ("3pm", "3:00 p.m."), ("6pm", "6:00 p.m.")]
@@ -181,6 +185,7 @@ async def ensure_consolidation_calendar(enrollment: dict, actor_user_id: str) ->
             "title": template["title"], "content": template.get("content"), "order": template["order"],
             "scheduled_date": scheduled_date.isoformat(), "status": "pending", "last_result": None, "result_at": None,
             "note": None, "next_step": None, "rescheduled_date": None, "reschedule_history": [], "book_delivery_movement_id": None,
+            "book_delivery_acknowledged": False, "completed_at": None, "registered_by_user_id": None, "attempts": [],
             "created_at": now, "updated_at": now,
         })
     await db.consolidation_activities.insert_many(docs)
@@ -312,15 +317,26 @@ async def update_activity_result(activity_id: str, payload: ActivityResultUpdate
     # tarde); solo 'done' es terminal y cuenta para el avance de la etapa.
     update = {
         "status": "done" if payload.status == "done" else "pending", "last_result": payload.status,
-        "result_at": now, "note": payload.note, "next_step": payload.next_step, "updated_at": now,
+        "result_at": now, "note": payload.note, "next_step": payload.next_step,
+        "registered_by_user_id": current_user["user_id"], "updated_at": now,
     }
+    if payload.status == "done":
+        update["completed_at"] = now  # C7: hora real de completado, no solo la fecha agendada.
+    push: dict = {}
+    if payload.status == "no_answer":
+        # C7: historial completo de intentos sin respuesta (antes se perdía
+        # el intento anterior al registrar uno nuevo).
+        push["attempts"] = {
+            "result": "no_answer", "note": payload.note, "actor_user_id": current_user["user_id"],
+            "actor_person_id": current_user.get("person_id"), "at": serialize(now),
+        }
     if payload.status == "rescheduled":
         update["rescheduled_date"] = payload.rescheduled_date.isoformat()
         update["scheduled_date"] = payload.rescheduled_date.isoformat()
         # Etapa 3: historial append-only de reprogramaciones — antes solo
         # quedaba la última fecha (`rescheduled_date` se sobrescribía), sin
         # rastro de los reintentos anteriores.
-        history_entry = {
+        push["reschedule_history"] = {
             "from_date": activity.get("scheduled_date"), "to_date": payload.rescheduled_date.isoformat(),
             "note": payload.note, "actor_user_id": current_user["user_id"], "actor_person_id": current_user.get("person_id"),
             "at": serialize(now),
@@ -328,17 +344,30 @@ async def update_activity_result(activity_id: str, payload: ActivityResultUpdate
     if payload.deliver_book and payload.status == "done" and activity["stage_key"] in BOOK_SKU_BY_STAGE and not activity.get("book_delivery_movement_id"):
         sku = BOOK_SKU_BY_STAGE[activity["stage_key"]]
         book = await db.library_books.find_one({"sku": sku}, {"_id": 0, "book_id": 1, "name": 1})
-        already_delivered = book and await db.library_movements.find_one({"book_id": book["book_id"], "movement_type": "DELIVERY", "person_id": enrollment["person_id"]}, {"_id": 1})
-        if already_delivered:
-            raise HTTPException(status_code=409, detail=f"Ya se le entregó {book['name']} a esta persona antes; no se puede entregar de nuevo")
-        movement_id = await deliver_from_mentor_to_person(
-            sku, enrollment["mentor_person_id"], enrollment["person_id"], current_user["user_id"],
-            campaign_id=enrollment.get("campaign_id"), process_key="consolidation", notes=f"Entrega durante actividad: {activity['title']}",
+        # C8: 'reconocimiento' — si YA se le entregó este material en el
+        # primer contacto de Invasión, no se duplica el movimiento ni el
+        # descuento; solo se enlaza el movimiento ya existente a la actividad.
+        # Una segunda entrega intentada desde OTRA actividad de Consolidación
+        # sigue rechazándose (no se debe entregar dos veces por error).
+        outreach_delivery = book and await db.library_movements.find_one(
+            {"book_id": book["book_id"], "movement_type": "DELIVERY", "person_id": enrollment["person_id"], "process_key": OUTREACH_FIRST_CONTACT_PROCESS_KEY, "reversed_by_movement_id": None},
+            {"_id": 0, "movement_id": 1}, sort=[("occurred_at", 1)],
         )
-        update["book_delivery_movement_id"] = movement_id
+        if outreach_delivery:
+            update["book_delivery_movement_id"] = outreach_delivery["movement_id"]
+            update["book_delivery_acknowledged"] = True
+        else:
+            already_delivered = book and await db.library_movements.find_one({"book_id": book["book_id"], "movement_type": "DELIVERY", "person_id": enrollment["person_id"]}, {"_id": 1})
+            if already_delivered:
+                raise HTTPException(status_code=409, detail=f"Ya se le entregó {book['name']} a esta persona antes; no se puede entregar de nuevo")
+            movement_id = await deliver_from_mentor_to_person(
+                sku, enrollment["mentor_person_id"], enrollment["person_id"], current_user["user_id"],
+                campaign_id=enrollment.get("campaign_id"), process_key="consolidation", notes=f"Entrega durante actividad: {activity['title']}",
+            )
+            update["book_delivery_movement_id"] = movement_id
     mongo_update: dict = {"$set": update}
-    if payload.status == "rescheduled":
-        mongo_update["$push"] = {"reschedule_history": history_entry}
+    if push:
+        mongo_update["$push"] = push
     await db.consolidation_activities.update_one({"activity_id": activity_id}, mongo_update)
     if payload.status == "done" and enrollment.get("decision_status") == "start_scheduled":
         await db.process_enrollments.update_one({"enrollment_id": enrollment["enrollment_id"]}, {"$set": {"decision_status": "in_progress", "updated_at": now}})

@@ -8,7 +8,7 @@ import re
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from access_control import (
     LIBRARY_CATALOG_MANAGE, LIBRARY_DELIVER, LIBRARY_INVENTORY_MANAGE, LIBRARY_REPORTS_READ,
@@ -182,6 +182,8 @@ class MovementInput(BaseModel):
             raise ValueError("La liberación de reserva requiere el responsable (from_holder)")
         if self.movement_type == "LOAN" and not self.due_date:
             raise ValueError("Un préstamo requiere fecha esperada de devolución")
+        if self.movement_type in {"RETURN", "ADJUSTMENT"} and not (self.notes or "").strip():
+            raise ValueError("Indique el motivo de esta devolución o ajuste")
         return self
 
 
@@ -208,6 +210,25 @@ class RequestBookInput(BaseModel):
 class ResolveRequestInput(BaseModel):
     quantity_approved: int = Field(ge=0)
     notes: str = Field(default="", max_length=500)
+
+
+class AdjustInventoryInput(BaseModel):
+    """C8: ajuste de existencias (recuento físico, corrección de un error,
+    etc.) SIEMPRE con motivo e historial — nunca silencioso; usa el mismo
+    movimiento ADJUSTMENT del ledger, así que nunca puede dejar negativo."""
+    book_id: str
+    holder: HolderInput = Field(default_factory=lambda: HolderInput(**CENTRAL_HOLDER))
+    direction: Literal["increase", "decrease"]
+    quantity: int = Field(gt=0)
+    reason: str = Field(min_length=3, max_length=500)
+
+    @field_validator("reason")
+    @classmethod
+    def reason_not_blank(cls, value: str) -> str:
+        stripped = value.strip()
+        if len(stripped) < 3:
+            raise ValueError("Indique el motivo de este ajuste")
+        return stripped
 
 
 class LibrarianGrantInput(BaseModel):
@@ -466,26 +487,36 @@ async def my_holdings(current_user: dict = Depends(participant)):
     """Para cada material: cuánto tiene ahora (`on_hand`, pool único) y, cuando
     viene de una Invasión, el desglose asignados/entregados/me quedan por cada
     invasión (`campaigns`) usando `campaign_id` de los movimientos ASSIGNMENT/
-    DELIVERY — pedido explícito del dueño (Entrega A de Invasiones)."""
+    DELIVERY — pedido explícito del dueño (Entrega A de Invasiones). Etapa 3
+    (C8) agrega, sin tocar lo anterior: cuánto ha devuelto a Central
+    (`returned_quantity`) y el detalle de cada entrega con destinatario y
+    fecha (`deliveries`)."""
     uid = current_user["user_id"]
     holdings = await db.library_holdings.find({"holder_type": "user", "holder_id": uid}, {"_id": 0}).to_list(2000)
     on_hand_by_book = {h["book_id"]: h["quantity_on_hand"] for h in holdings}
     books = {book["book_id"]: book for book in await db.library_books.find({}, {"_id": 0}).to_list(2000)}
     movements = await db.library_movements.find(
         {"$or": [{"to_holder.type": "user", "to_holder.id": uid}, {"from_holder.type": "user", "from_holder.id": uid}]},
-        {"_id": 0, "book_id": 1, "movement_type": 1, "quantity": 1, "campaign_id": 1, "to_holder": 1, "from_holder": 1},
-    ).to_list(5000)
+        {"_id": 0, "book_id": 1, "movement_type": 1, "quantity": 1, "campaign_id": 1, "to_holder": 1, "from_holder": 1, "person_id": 1, "occurred_at": 1},
+    ).sort("occurred_at", 1).to_list(5000)
     campaign_ids = {m["campaign_id"] for m in movements if m.get("campaign_id")}
     campaign_names = {c["campaign_id"]: c["name"] for c in (await db.outreach_campaigns.find({"campaign_id": {"$in": list(campaign_ids)}}, {"_id": 0, "campaign_id": 1, "name": 1}).to_list(len(campaign_ids)) if campaign_ids else [])}
+    recipient_ids = {m["person_id"] for m in movements if m.get("person_id")}
+    valid_oids = [ObjectId(pid) for pid in recipient_ids if ObjectId.is_valid(pid)]
+    recipient_names = {str(p["_id"]): f"{p.get('nombre', '')} {p.get('apellido', '')}".strip() for p in (await db.persons.find({"_id": {"$in": valid_oids}}, {"_id": 1, "nombre": 1, "apellido": 1}).to_list(len(valid_oids)) if valid_oids else [])}
     by_book: dict[str, dict] = {}
     for movement in movements:
-        bucket = by_book.setdefault(movement["book_id"], {"received_movements": 0, "delivered_movements": 0, "campaigns": {}})
+        bucket = by_book.setdefault(movement["book_id"], {"received_movements": 0, "delivered_movements": 0, "returned_quantity": 0, "campaigns": {}, "deliveries": []})
         incoming = (movement.get("to_holder") or {}).get("type") == "user" and (movement.get("to_holder") or {}).get("id") == uid
         outgoing = (movement.get("from_holder") or {}).get("type") == "user" and (movement.get("from_holder") or {}).get("id") == uid
         if incoming:
             bucket["received_movements"] += 1
         if outgoing:
             bucket["delivered_movements"] += 1
+        if outgoing and movement["movement_type"] == "DELIVERY":
+            bucket["deliveries"].append({"person_id": movement.get("person_id"), "person_name": recipient_names.get(movement.get("person_id"), "—"), "quantity": movement["quantity"], "occurred_at": serialize(movement.get("occurred_at"))})
+        if outgoing and movement["movement_type"] == "RETURN":
+            bucket["returned_quantity"] += movement["quantity"]
         campaign_id = movement.get("campaign_id")
         if campaign_id:
             campaign_bucket = bucket["campaigns"].setdefault(campaign_id, {"campaign_id": campaign_id, "campaign_name": campaign_names.get(campaign_id, "Invasión"), "assigned": 0, "delivered": 0})
@@ -507,6 +538,8 @@ async def my_holdings(current_user: dict = Depends(participant)):
             "book": book, "on_hand": on_hand,
             "received_movements": (info or {}).get("received_movements", 0),
             "delivered_movements": (info or {}).get("delivered_movements", 0),
+            "returned_quantity": (info or {}).get("returned_quantity", 0),
+            "deliveries": (info or {}).get("deliveries", []),
             "campaigns": campaigns,
         })
     return {"items": serialize(items)}
@@ -605,6 +638,18 @@ async def reverse_movement(movement_id: str, reason: str = Query(min_length=3, m
     reversal = await apply_movement(reversal_payload, current_user["user_id"], is_reversal=True, reversed_movement_id=movement_id)
     await db.library_movements.update_one({"movement_id": movement_id}, {"$set": {"reversed_by_movement_id": reversal["movement_id"], "reversal_reason": reason}})
     return serialize(reversal)
+
+
+@router.post("/adjustments", response_model=dict, status_code=201)
+async def create_adjustment(payload: AdjustInventoryInput, current_user: dict = Depends(manager)):
+    movement_payload = MovementInput(
+        book_id=payload.book_id, movement_type="ADJUSTMENT", quantity=payload.quantity,
+        to_holder=payload.holder if payload.direction == "increase" else None,
+        from_holder=payload.holder if payload.direction == "decrease" else None,
+        notes=payload.reason,
+    )
+    movement = await apply_movement(movement_payload, current_user["user_id"])
+    return serialize(movement)
 
 
 @router.get("/persons/{person_id}/materials", response_model=dict)

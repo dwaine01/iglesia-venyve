@@ -13,6 +13,7 @@ import { Label } from '../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Textarea } from '../ui/textarea';
 import { errorDetailText } from '../../lib/errorText';
+import { PersonMatchDialog } from './PersonMatchDialog';
 
 const STATUS_LABELS = {
   assigned: 'Asignado',
@@ -63,7 +64,18 @@ export const VisitCard = ({ visit, canManage, onUpdated, onTransfer }) => {
   const [note, setNote] = useState(visit.note || '');
   const [busy, setBusy] = useState(false);
 
-  const save = async () => {
+  const [personMatch, setPersonMatch] = useState(null);
+
+  const extractMatch = (error, action) => {
+    const detail = error?.response?.data?.detail;
+    if (error?.response?.status === 409 && detail && typeof detail === 'object' && detail.candidates) {
+      setPersonMatch({ action, message: detail.message, candidates: detail.candidates, requiresConfirmation: Boolean(detail.requires_confirmation) });
+      return true;
+    }
+    return false;
+  };
+
+  const save = async (overrides = {}) => {
     setBusy(true);
     try {
       await axios.put(`${API}/api/mentorship/outreach/visits/${visit.visit_id}/report`, {
@@ -73,33 +85,49 @@ export const VisitCard = ({ visit, canManage, onUpdated, onTransfer }) => {
         address_line1: addressLine1 || null, address_line2: addressLine2 || null, address_city: addressCity || null,
         address_state: addressState || null, address_zip: addressZip || null, agreed_start_date: agreedStartDate || null,
         call_schedule: callSchedule === 'unspecified' ? null : callSchedule, note: note || null,
+        ...overrides,
       }, getAuthHeaders());
       toast.success('Informe actualizado');
+      setPersonMatch(null);
       if (onUpdated) onUpdated();
     } catch (error) {
-      toast.error(errorDetailText(error, 'No se pudo guardar el informe'));
+      if (!extractMatch(error, { type: 'save', overrides })) toast.error(errorDetailText(error, 'No se pudo guardar el informe'));
     } finally {
       setBusy(false);
     }
   };
 
-  const startSevenWeeks = async () => {
+  const startSevenWeeks = async (overrides = {}) => {
     setBusy(true);
     try {
-      await axios.post(`${API}/api/mentorship/outreach/visits/${visit.visit_id}/start-seven-weeks`, {}, getAuthHeaders());
+      await axios.post(`${API}/api/mentorship/outreach/visits/${visit.visit_id}/start-seven-weeks`, overrides, getAuthHeaders());
       toast.success('Se inició la Ley de las 7 Semanas');
+      setPersonMatch(null);
       if (onUpdated) onUpdated();
     } catch (error) {
-      toast.error(errorDetailText(error, 'No se pudo iniciar el proceso'));
+      if (!extractMatch(error, { type: 'start', overrides })) toast.error(errorDetailText(error, 'No se pudo iniciar el proceso'));
     } finally {
       setBusy(false);
     }
+  };
+
+  const pickPersonMatch = (personId) => {
+    const { type, overrides } = personMatch.action;
+    const next = { ...overrides, person_id: personId };
+    if (type === 'save') save(next); else startSevenWeeks(next);
+  };
+
+  const confirmDistinctPerson = (reason) => {
+    const { type, overrides } = personMatch.action;
+    const next = { ...overrides, confirm_distinct_person: true, distinct_reason: reason };
+    if (type === 'save') save(next); else startSevenWeeks(next);
   };
 
   const needsTransfer = visit.lbs_decision === 'needs_lbs' && !visit.mentor_lbs_qualified;
   const locked = Boolean(visit.read_only);
 
   return (
+    <>
     <div className="rounded-xl border border-[#E8E5DE] bg-white p-4 shadow-sm" data-testid={`outreach-visit-card-${visit.visit_id}`}>
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
@@ -258,12 +286,12 @@ export const VisitCard = ({ visit, canManage, onUpdated, onTransfer }) => {
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
         {!locked && (
-          <Button size="sm" disabled={busy} onClick={save} className="bg-[#132443]" data-testid={`outreach-visit-save-button-${visit.visit_id}`}>
+          <Button size="sm" disabled={busy} onClick={() => save()} className="bg-[#132443]" data-testid={`outreach-visit-save-button-${visit.visit_id}`}>
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Guardar informe
           </Button>
         )}
         {!locked && visit.status === 'wants_followup' && !visit.enrollment_id && (
-          <Button size="sm" variant="outline" disabled={busy} onClick={startSevenWeeks} data-testid={`outreach-visit-start-seven-weeks-button-${visit.visit_id}`}>
+          <Button size="sm" variant="outline" disabled={busy} onClick={() => startSevenWeeks()} data-testid={`outreach-visit-start-seven-weeks-button-${visit.visit_id}`}>
             <Sparkles className="h-4 w-4" /> Iniciar Ley de las 7 Semanas
           </Button>
         )}
@@ -279,5 +307,7 @@ export const VisitCard = ({ visit, canManage, onUpdated, onTransfer }) => {
         )}
       </div>
     </div>
+    <PersonMatchDialog match={personMatch} busy={busy} onPick={pickPersonMatch} onConfirmDistinct={confirmDistinctPerson} onClose={() => setPersonMatch(null)} />
+    </>
   );
 };

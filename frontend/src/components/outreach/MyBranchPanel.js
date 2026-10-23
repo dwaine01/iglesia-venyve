@@ -11,6 +11,7 @@ import { VisitCard } from './VisitCard';
 export const MyBranchPanel = () => {
   const { API, getAuthHeaders } = useAuth();
   const [overview, setOverview] = useState(null);
+  const [library, setLibrary] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
@@ -18,6 +19,10 @@ export const MyBranchPanel = () => {
     try {
       const response = await axios.get(`${API}/api/mentorship/outreach/my-branch-overview`, getAuthHeaders());
       setOverview(response.data);
+      if (response.data?.is_supervisor) {
+        const libraryRes = await axios.get(`${API}/api/mentorship/outreach/my-branch-library`, getAuthHeaders());
+        setLibrary(libraryRes.data.items || []);
+      }
     } catch (error) {
       toast.error(errorDetailText(error, 'No se pudo cargar la supervisión de tu rama'));
     } finally {
@@ -51,6 +56,19 @@ export const MyBranchPanel = () => {
           {overview.visits.length === 0 && <p className="text-sm text-slate-400">Sin contactos registrados todavía.</p>}
         </div>
       </div>
+      {library.length > 0 && (
+        <div>
+          <h3 className="font-['Spectral'] text-lg font-semibold text-[#101D36]">Materiales de tu rama</h3>
+          <div className="mt-3 space-y-2" data-testid="outreach-my-branch-library">
+            {library.map((item) => (
+              <div key={`${item.mentor_person_id}-${item.book_id}`} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[#E8E5DE] p-3 text-sm" data-testid={`outreach-branch-library-row-${item.mentor_person_id}-${item.book_id}`}>
+                <div><b className="text-[#101D36]">{item.mentor_name}</b><span className="ml-2 text-slate-500">{item.book_name}</span></div>
+                <span className="text-xs text-slate-500">Asignado: {item.assigned} · Entregado: {item.delivered_total} · Devuelto: {item.returned} · En custodia: {item.in_custody}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

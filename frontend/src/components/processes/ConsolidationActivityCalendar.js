@@ -107,7 +107,8 @@ export const ConsolidationActivityCalendar = ({ enrollmentId, currentStageKey, c
                           <span className="text-xs text-slate-500">{formatDate(activity.scheduled_date)} · {activity.moment_label}{activity.note ? ` · "${activity.note}"` : ''}</span>
                         </div>
                         <Badge className={badge.className} data-testid={`activity-status-${activity.activity_id}`}>{badge.label}</Badge>
-                        {activity.book_delivery_movement_id && <Badge className="bg-indigo-100 text-indigo-700"><PackageCheck className="mr-1 h-3 w-3" />Libro entregado</Badge>}
+                        {activity.attempts?.length > 0 && <Badge variant="outline" className="text-[10px]" data-testid={`activity-attempts-${activity.activity_id}`}>{activity.attempts.length} intento{activity.attempts.length > 1 ? 's' : ''} sin respuesta</Badge>}
+                        {activity.book_delivery_movement_id && <Badge className="bg-indigo-100 text-indigo-700" data-testid={`activity-book-delivered-${activity.activity_id}`}><PackageCheck className="mr-1 h-3 w-3" />{activity.book_delivery_acknowledged ? 'Ya se había entregado' : 'Libro entregado'}</Badge>}
                         {canRegister && activity.status === 'pending' && (
                           <Button size="sm" variant="outline" onClick={() => openRegister(activity)} data-testid={`activity-register-button-${activity.activity_id}`}>Registrar</Button>
                         )}

@@ -29,11 +29,11 @@ from access_control import (
 )
 from consolidation_service import assert_mentor_eligible, assign_mentor, configure_entry_stages, load_person, mentor_qualification
 from core_governance import UserAccessCreate, create_user_access_core
-from core_person import _normalize as normalize_person_name, next_person_number
 from front_group_tree import descendant_group_ids, load_group as load_front_group, support_group_ids
 from geo_address import normalize_address_document
 from geo_service import enqueue_geo_job, pending_geo_fields, process_geo_job
 from library_module import CENTRAL_HOLDER, HolderInput, MovementInput, apply_movement, deliver_from_mentor_to_person
+from person_matching import PersonQuickCreate, quick_create_person
 from process_engine import create_enrollment, now_utc, serialize
 from server import db, get_current_user
 
@@ -168,11 +168,25 @@ class VisitReportInput(BaseModel):
     agreed_start_date: Optional[date] = None
     call_schedule: Optional[Literal["morning", "midday", "night"]] = None
     note: Optional[str] = Field(default=None, max_length=1000)
+    # Etapa 3: para resolver la Persona 360 sin crear/fusionar en silencio
+    # (ver `resolve_or_create_target_person`) cuando la entrega de MCD/NPT
+    # dispara una coincidencia fuerte/posible. Nunca se persisten en la visita.
+    person_id: Optional[str] = None
+    confirm_distinct_person: bool = False
+    distinct_reason: Optional[str] = Field(default=None, max_length=400)
 
 
 class VisitTransferInput(BaseModel):
     new_mentor_person_id: str
     reason: Optional[str] = Field(default=None, max_length=500)
+
+
+class StartSevenWeeksInput(BaseModel):
+    """Igual idea que `VisitReportInput`: resolver la Persona 360 sin crear
+    ni fusionar en silencio cuando hay una coincidencia fuerte/posible."""
+    person_id: Optional[str] = None
+    confirm_distinct_person: bool = False
+    distinct_reason: Optional[str] = Field(default=None, max_length=400)
 
 
 def normalize_phone(value: Optional[str]) -> str:
@@ -407,44 +421,6 @@ async def serialize_visits(visits: list[dict], current_user: dict) -> list[dict]
     return results
 
 
-async def find_or_create_person_for_visit(contact_name: Optional[str], contact_phone: Optional[str], user_id: str, birth_date: Optional[str] = None) -> tuple:
-    """Deduplica por teléfono (contra person_contacts) y, si no hay teléfono, por nombre
-    exacto (igual criterio que campaign_venycome.find_or_create_person); si no encuentra
-    nada, crea una Persona 360 mínima."""
-    phone_digits = normalize_phone(contact_phone)
-    if phone_digits:
-        contacts = await db.person_contacts.find({"tipo": {"$in": ["telefono", "whatsapp"]}}, {"_id": 0, "person_id": 1, "valor": 1}).to_list(5000)
-        for contact in contacts:
-            if normalize_phone(contact.get("valor")) == phone_digits and ObjectId.is_valid(contact.get("person_id", "")):
-                person = await db.persons.find_one({"_id": ObjectId(contact["person_id"]), "is_archived": {"$ne": True}}, {"_id": 1})
-                if person:
-                    return contact["person_id"], False
-    if contact_name and contact_name.strip():
-        norm = normalize_person_name(contact_name)
-        if norm:
-            candidates = await db.persons.find({"search_key": norm, "is_archived": {"$ne": True}}, {"_id": 1}).to_list(5)
-            if len(candidates) == 1:
-                return str(candidates[0]["_id"]), False
-    now = now_utc()
-    tokens = (contact_name or "Contacto Invasión").strip().split()
-    nombre = tokens[0] if tokens else "Contacto"
-    apellido = " ".join(tokens[1:]) if len(tokens) > 1 else ""
-    doc = {
-        "nombre": nombre, "apellido": apellido, "fecha_nacimiento": birth_date, "age_category": None,
-        "person_number": await next_person_number(), "search_key": normalize_person_name(contact_name or nombre),
-        "idempotency_key": str(uuid4()), "version": 1, "created_by": user_id,
-        "created_at": now, "updated_at": now, "source": "mentorship_outreach",
-    }
-    result = await db.persons.insert_one(doc)
-    new_person_id = str(result.inserted_id)
-    if phone_digits:
-        await db.person_contacts.insert_one({
-            "_id": str(uuid4()), "person_id": new_person_id, "tipo": "telefono",
-            "valor": contact_phone, "es_principal": True, "created_at": now,
-        })
-    return new_person_id, True
-
-
 async def resolve_and_insert_contact_visit(
     contact_type: str, person_id: Optional[str], contact_name: Optional[str], contact_phone: Optional[str],
     contact_zone: Optional[str], campaign_id: Optional[str], mentor_person_id: str, note: Optional[str],
@@ -503,20 +479,43 @@ async def resolve_and_insert_contact_visit(
     return doc
 
 
-async def resolve_or_create_target_person(visit: dict, current_user: dict) -> tuple:
-    """Resuelve (y reutiliza) la Persona 360 de esta visita. Si el contacto
-    todavía no tiene Perfil 360, usa el MISMO `find_or_create_person_for_visit`
-    que usa `start_seven_weeks` — así una entrega de libro y el inicio de la Ley
-    de las 7 Semanas en la misma visita siempre apuntan a la misma persona."""
+async def resolve_or_create_target_person(
+    visit: dict, current_user: dict, person_id_override: Optional[str] = None,
+    confirm_distinct_person: bool = False, distinct_reason: Optional[str] = None,
+) -> tuple:
+    """Resuelve (y reutiliza) la Persona 360 de esta visita con el MISMO
+    servicio de coincidencias (`person_matching.py`) que usan los Grupos
+    Frontales: coincidencia FUERTE bloquea (409 + candidatos) y coincidencia
+    POSIBLE exige elegir la existente o confirmar con motivo — nunca crea ni
+    fusiona en silencio. Se usa igual desde la entrega de libro (C8) y desde
+    iniciar la Ley de las 7 Semanas, así ambas terminan apuntando a la MISMA
+    Persona 360."""
     created_person = False
     if visit.get("converted_person_id"):
         person_id = visit["converted_person_id"]
     elif visit.get("contact_type") == "existing" and visit.get("person_id"):
         person_id = visit["person_id"]
+    elif person_id_override:
+        if not ObjectId.is_valid(person_id_override) or not await db.persons.find_one({"_id": ObjectId(person_id_override), "is_archived": {"$ne": True}}, {"_id": 1}):
+            raise HTTPException(status_code=404, detail="La persona seleccionada no existe")
+        person_id = person_id_override
+        await db.outreach_visits.update_one({"visit_id": visit["visit_id"]}, {"$set": {"converted_person_id": person_id, "updated_at": now_utc()}})
+        visit["converted_person_id"] = person_id
     else:
-        person_id, created_person = await find_or_create_person_for_visit(
-            visit.get("contact_name"), visit.get("contact_phone"), current_user["user_id"], visit.get("contact_birth_date"),
+        tokens = (visit.get("contact_name") or "Contacto Invasión").strip().split()
+        nombre = tokens[0] if tokens else "Contacto"
+        apellido = " ".join(tokens[1:]) if len(tokens) > 1 else "Invasión"
+        match_payload = PersonQuickCreate(
+            nombre=nombre, apellido=apellido, fecha_nacimiento=visit.get("contact_birth_date"), telefono=visit.get("contact_phone"),
+            idempotency_key=f"outreach-visit:{visit['visit_id']}",
+            confirm_distinct_person=confirm_distinct_person, distinct_reason=distinct_reason,
         )
+        result = await quick_create_person(db, match_payload, current_user["user_id"], source="mentorship_outreach")
+        if result["status"] == "strong_match":
+            raise HTTPException(status_code=409, detail={"message": "Ya existe una Persona 360 que coincide con este contacto; use el perfil encontrado.", "candidates": result["candidates"]})
+        if result["status"] == "possible_match":
+            raise HTTPException(status_code=409, detail={"message": "Hay una Persona 360 con nombre parecido. Use la existente o confirme que es alguien distinto (con un motivo).", "candidates": result["candidates"], "requires_confirmation": True})
+        person_id, created_person = result["person"]["person_id"], result["created"]
         await db.outreach_visits.update_one({"visit_id": visit["visit_id"]}, {"$set": {"converted_person_id": person_id, "updated_at": now_utc()}})
         visit["converted_person_id"] = person_id
     if visit.get("contact_birth_date"):
@@ -912,6 +911,9 @@ async def update_visit_report(visit_id: str, payload: VisitReportInput, current_
     if not is_outreach_leader(current_user) and visit.get("mentor_person_id") != current_user.get("person_id"):
         raise HTTPException(status_code=403, detail="Solo el mentor responsable o un líder puede actualizar este informe")
     fields = payload.dict(exclude_unset=True)
+    person_override = fields.pop("person_id", None)
+    confirm_distinct = fields.pop("confirm_distinct_person", False)
+    distinct_reason = fields.pop("distinct_reason", None)
     if visit.get("enrollment_id") and fields.get("status") and fields["status"] != "wants_followup":
         raise HTTPException(status_code=409, detail="Ya inició la Ley de las 7 Semanas; el estado no se puede cambiar")
     for sku, field_name, movement_field in (("MCD", "received_mcd", "mcd_delivery_movement_id"), ("NPT", "received_npt", "npt_delivery_movement_id")):
@@ -919,7 +921,7 @@ async def update_visit_report(visit_id: str, payload: VisitReportInput, current_
             continue
         already_delivered = bool(visit.get(movement_field))
         if fields[field_name] is True and not already_delivered:
-            target_person_id, _ = await resolve_or_create_target_person(visit, current_user)
+            target_person_id, _ = await resolve_or_create_target_person(visit, current_user, person_override, confirm_distinct, distinct_reason)
             movement_id = await deliver_outreach_book(visit, sku, target_person_id, current_user)
             # Se persiste de inmediato (no solo en `fields`): si la entrega del
             # siguiente libro falla, esta ya quedó marcada y un reintento no
@@ -967,7 +969,7 @@ async def transfer_visit(visit_id: str, payload: VisitTransferInput, current_use
 
 
 @router.post("/visits/{visit_id}/start-seven-weeks", response_model=dict)
-async def start_seven_weeks(visit_id: str, background_tasks: BackgroundTasks, current_user: dict = Depends(get_current_user)):
+async def start_seven_weeks(visit_id: str, background_tasks: BackgroundTasks, current_user: dict = Depends(get_current_user), payload: Optional[StartSevenWeeksInput] = None):
     if not await can_use_outreach(current_user):
         raise HTTPException(status_code=403, detail="Sin permiso para iniciar la Ley de las 7 Semanas")
     visit = await load_visit(visit_id)
@@ -979,12 +981,22 @@ async def start_seven_weeks(visit_id: str, background_tasks: BackgroundTasks, cu
         raise HTTPException(status_code=409, detail="Esta visita ya inició la Ley de las 7 Semanas")
     mentor_person_id = visit["mentor_person_id"]
     await assert_mentor_eligible(db, mentor_person_id)
-    person_id, created_person = await resolve_or_create_target_person(visit, current_user)
+    payload = payload or StartSevenWeeksInput()
+    person_id, created_person = await resolve_or_create_target_person(visit, current_user, payload.person_id, payload.confirm_distinct_person, payload.distinct_reason)
     await sync_visit_address_to_person(visit, person_id, current_user, background_tasks)
     enrollment, created_enrollment = await create_enrollment(
         db, "consolidation", person_id, mentor_person_id, current_user["user_id"],
         status="active", next_action="Dar seguimiento al visitante", source="mentorship_outreach", source_id=visit_id,
     )
+    if created_enrollment and visit.get("front_group_id") and not enrollment.get("front_group_id"):
+        # Etapa 3 (punto 1 del dueño): el expediente nace con el Grupo
+        # Frontal/supervisión del mentor al momento de la visita (mismo
+        # snapshot que ya se guarda en el hogar/visita).
+        await db.process_enrollments.update_one(
+            {"enrollment_id": enrollment["enrollment_id"]},
+            {"$set": {"front_group_id": visit["front_group_id"], "front_group_ancestor_ids": visit.get("front_group_ancestor_ids") or []}},
+        )
+        enrollment = await db.process_enrollments.find_one({"enrollment_id": enrollment["enrollment_id"]}, {"_id": 0})
     if visit.get("agreed_start_date") or visit.get("call_schedule") or visit.get("campaign_id"):
         # Se guarda ANTES de abrir etapas: `configure_entry_stages` genera el
         # calendario individual de actividades (Entrega B) usando esta fecha de
@@ -1210,6 +1222,63 @@ async def my_branch_overview(current_user: dict = Depends(get_current_user)):
     households = await enrich_households(households)
     visits = await db.outreach_visits.find({"mentor_person_id": {"$in": mentor_ids}, "archived": {"$ne": True}}, {"_id": 0}).sort("created_at", -1).to_list(500)
     return {"is_supervisor": True, "households": serialize(households), "visits": await serialize_visits(visits, current_user)}
+
+
+@router.get("/my-branch-library", response_model=dict)
+async def my_branch_library(current_user: dict = Depends(get_current_user)):
+    """C8 (Librería): espejo de solo lectura de Librería 360 para el propio
+    mentor y, si supervisa una rama, para cada mentor de su rama — asignado,
+    entregado (con destinatario y fecha), devuelto y en custodia (on_hand).
+    Nunca escribe movimientos de Librería; solo los refleja."""
+    if not await can_use_outreach(current_user):
+        raise HTTPException(status_code=403, detail="Sin permiso para consultar materiales de invasiones")
+    if is_outreach_leader(current_user):
+        mentor_ids = sorted(await db.outreach_participations.distinct("mentor_person_id", {}))
+    else:
+        mentor_ids = sorted(await supervised_mentor_person_ids(current_user))
+    if not mentor_ids:
+        return {"items": []}
+    users = await db.users.find({"person_id": {"$in": mentor_ids}}, {"_id": 1, "person_id": 1}).to_list(len(mentor_ids))
+    user_to_person = {str(u["_id"]): u["person_id"] for u in users}
+    user_ids = list(user_to_person.keys())
+    if not user_ids:
+        return {"items": []}
+    movements = await db.library_movements.find(
+        {"$or": [{"from_holder.type": "user", "from_holder.id": {"$in": user_ids}}, {"to_holder.type": "user", "to_holder.id": {"$in": user_ids}}]},
+        {"_id": 0},
+    ).sort("occurred_at", 1).to_list(10000)
+    holdings = await db.library_holdings.find({"holder_type": "user", "holder_id": {"$in": user_ids}}, {"_id": 0}).to_list(5000)
+    on_hand_by = {(h["holder_id"], h["book_id"]): h["quantity_on_hand"] for h in holdings}
+    books = {b["book_id"]: b["name"] for b in await db.library_books.find({}, {"_id": 0, "book_id": 1, "name": 1}).to_list(2000)}
+    recipient_ids = {m["person_id"] for m in movements if m.get("person_id")}
+    valid_oids = [ObjectId(pid) for pid in recipient_ids | set(mentor_ids) if ObjectId.is_valid(pid)]
+    people = await db.persons.find({"_id": {"$in": valid_oids}}, {"_id": 1, "nombre": 1, "apellido": 1}).to_list(len(valid_oids)) if valid_oids else []
+    names = {str(p["_id"]): f"{p.get('nombre', '')} {p.get('apellido', '')}".strip() for p in people}
+    buckets: dict = {}
+    for movement in movements:
+        from_h, to_h = movement.get("from_holder") or {}, movement.get("to_holder") or {}
+        mentor_user_id = from_h.get("id") if from_h.get("type") == "user" and from_h.get("id") in user_ids else (to_h.get("id") if to_h.get("type") == "user" and to_h.get("id") in user_ids else None)
+        if not mentor_user_id:
+            continue
+        mentor_person_id = user_to_person[mentor_user_id]
+        key = (mentor_user_id, movement["book_id"])
+        bucket = buckets.setdefault(key, {
+            "mentor_person_id": mentor_person_id, "mentor_name": names.get(mentor_person_id, "Mentor"),
+            "book_id": movement["book_id"], "book_name": books.get(movement["book_id"], movement["book_id"]),
+            "assigned": 0, "delivered": [], "returned": 0,
+        })
+        if movement["movement_type"] == "ASSIGNMENT" and to_h.get("id") == mentor_user_id:
+            bucket["assigned"] += movement["quantity"]
+        elif movement["movement_type"] == "DELIVERY" and from_h.get("id") == mentor_user_id:
+            bucket["delivered"].append({"person_id": movement.get("person_id"), "person_name": names.get(movement.get("person_id"), "—"), "quantity": movement["quantity"], "occurred_at": serialize(movement.get("occurred_at"))})
+        elif movement["movement_type"] == "RETURN" and from_h.get("id") == mentor_user_id:
+            bucket["returned"] += movement["quantity"]
+    items = []
+    for (mentor_user_id, book_id), bucket in buckets.items():
+        bucket["delivered_total"] = sum(entry["quantity"] for entry in bucket["delivered"])
+        bucket["in_custody"] = on_hand_by.get((mentor_user_id, book_id), 0)
+        items.append(bucket)
+    return {"items": items}
 
 
 @router.get("/dashboard", response_model=dict)

@@ -259,6 +259,7 @@ class TestReturnFlow:
             "book_id": book_id, "movement_type": "RETURN", "quantity": 1,
             "from_holder": {"type": "user", "id": lider["user_id"]},
             "to_holder": {"type": "warehouse", "id": "central"},
+            "notes": "TEST devolución a Central",
         }, timeout=30)
         assert r.status_code == 201, r.text
 

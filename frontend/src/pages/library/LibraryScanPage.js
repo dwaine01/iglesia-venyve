@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 
 import { useAuth } from '../../context/AuthContext';
 import { canManageLibraryInventory } from '../../lib/accessControl';
+import { errorDetailText } from '../../lib/errorText';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
@@ -86,7 +87,7 @@ export default function LibraryScanPage() {
         lines: [{ book_id: material.book_id, quantity_received_now: Number(receivePoQty || 0) }], scan_method: materialScanMethod,
       }, getAuthHeaders());
       toast.success(`Recepción registrada en ${selectedPO.po_number}`); reset();
-    } catch (error) { toast.error(error?.response?.data?.detail || 'No se pudo registrar la recepción'); }
+    } catch (error) { toast.error(errorDetailText(error, 'No se pudo registrar la recepción')); }
     finally { setBusy(false); }
   };
 
@@ -120,11 +121,12 @@ export default function LibraryScanPage() {
         payment_method: form.payment_method, notes: form.notes, scan_method: materialScanMethod !== 'MANUAL' ? materialScanMethod : personScanMethod,
       }, getAuthHeaders());
       toast.success(`Material entregado a ${person.display_name}`); reset();
-    } catch (error) { toast.error(error?.response?.data?.detail || 'No se pudo confirmar la entrega'); }
+    } catch (error) { toast.error(errorDetailText(error, 'No se pudo confirmar la entrega')); }
     finally { setBusy(false); }
   };
 
   const confirmReturn = async () => {
+    if (!form.notes.trim()) { toast.error('Indique el motivo de la devolución'); return; }
     setBusy(true);
     try {
       await axios.post(`${API}/api/library/movements`, {
@@ -133,7 +135,7 @@ export default function LibraryScanPage() {
         person_id: person.person_id, notes: form.notes, scan_method: materialScanMethod !== 'MANUAL' ? materialScanMethod : personScanMethod,
       }, getAuthHeaders());
       toast.success('Devolución registrada'); reset();
-    } catch (error) { toast.error(error?.response?.data?.detail || 'No se pudo registrar la devolución'); }
+    } catch (error) { toast.error(errorDetailText(error, 'No se pudo registrar la devolución')); }
     finally { setBusy(false); }
   };
 
@@ -147,7 +149,7 @@ export default function LibraryScanPage() {
         notes: form.notes, scan_method: materialScanMethod,
       }, getAuthHeaders());
       toast.success('Transferencia registrada'); reset();
-    } catch (error) { toast.error(error?.response?.data?.detail || 'No se pudo transferir el material'); }
+    } catch (error) { toast.error(errorDetailText(error, 'No se pudo transferir el material')); }
     finally { setBusy(false); }
   };
 
@@ -226,9 +228,9 @@ export default function LibraryScanPage() {
           <div><Label>Estado de pago</Label><Select value={form.payment_status} onValueChange={(v) => setForm({ ...form, payment_status: v })}><SelectTrigger data-testid="confirm-payment-status-select"><SelectValue /></SelectTrigger><SelectContent className="bg-white">{Object.entries(PAYMENT_LABELS).map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}</SelectContent></Select></div>
           <div><Label>Monto pagado (USD)</Label><Input type="number" min="0" step="0.01" value={form.amount_paid} onChange={(e) => setForm({ ...form, amount_paid: e.target.value })} disabled={!['pagado', 'pago_parcial'].includes(form.payment_status)} data-testid="confirm-amount-paid-input" /></div>
         </div>}
-        <div><Label>Notas (opcional)</Label><Textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} data-testid="confirm-notes-input" /></div>
+        <div><Label>{action === 'return' ? 'Motivo (obligatorio)' : 'Notas (opcional)'}</Label><Textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} data-testid="confirm-notes-input" /></div>
 
-        <Button className="w-full bg-[#132443]" disabled={busy} onClick={action === 'deliver' ? confirmDeliver : action === 'return' ? confirmReturn : confirmTransfer} data-testid="confirm-action-button">
+        <Button className="w-full bg-[#132443]" disabled={busy || (action === 'return' && !form.notes.trim())} onClick={action === 'deliver' ? confirmDeliver : action === 'return' ? confirmReturn : confirmTransfer} data-testid="confirm-action-button">
           {busy && <Loader2 className="h-4 w-4 animate-spin" />}{action === 'deliver' ? 'CONFIRMAR ENTREGA' : action === 'return' ? 'CONFIRMAR DEVOLUCIÓN' : 'CONFIRMAR TRANSFERENCIA'}
         </Button>
       </div>}
