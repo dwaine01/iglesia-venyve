@@ -102,6 +102,7 @@ import AccessDeniedPage from './components/AccessDeniedPage';
 import MiPerfilPage from './pages/MiPerfilPage';
 import MiGrupoFrontalPage from './pages/MiGrupoFrontalPage';
 import GrupoFrontalPastoralPage from './pages/GrupoFrontalPastoralPage';
+import EstructuraFrontalPage from './pages/EstructuraFrontalPage';
 import MisEstadisticasPage from './pages/MisEstadisticasPage';
 import { canManageDirectMembership, canManageBaptismEvents, canManageDedicationEvents, canViewCare, canViewFinanceModule, canViewFormation, canViewFrontGroups, canViewGeo, canViewLeadership, canViewLibraryModule, canManageLibraryInventory, canViewLibraryPurchaseOrders, canViewLibraryReports, canViewOperations, canAccessCampaignOperator, canAccessOutreach, canCreateOutreachCampaign, canViewPastoralFrontGroup, canViewProcesses, canViewCellular, canViewDoors, canViewDirectory, canManageInvitationCodes, canWriteEvangelismLog, canViewPresentationManual, hasAnyCapability, isPastoralAuthority } from './lib/accessControl';
 import { useBoardAccess } from './hooks/useBoardAccess';
@@ -328,6 +329,8 @@ function App() {
             <Route path="presentacion" element={<CapabilityRoute allowed={canViewPresentationManual}><PresentacionHomePage /></CapabilityRoute>} />
             <Route path="mi-perfil" element={<MiPerfilPage />} />
             <Route path="mi-grupo-frontal/:groupId" element={<MiGrupoFrontalPage />} />
+            <Route path="estructura-frontal" element={<EstructuraFrontalPage />} />
+            <Route path="estructura-frontal/:groupId" element={<EstructuraFrontalPage />} />
             <Route path="grupo-frontal-pastoral" element={<CapabilityRoute allowed={canViewPastoralFrontGroup}><GrupoFrontalPastoralPage /></CapabilityRoute>} />
             <Route path="mis-estadisticas" element={<MisEstadisticasPage />} />
             

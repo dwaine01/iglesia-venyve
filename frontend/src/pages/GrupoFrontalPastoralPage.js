@@ -133,6 +133,7 @@ export default function GrupoFrontalPastoralPage() {
         {group && (editingList
           ? <GroupRosterEditor groupId={group.front_group_id} initialEntries={rosterToEntries(view.roster)} excludedIds={[group.leader?.person_id, group.co_leader?.person_id].filter(Boolean)} onSave={saveRoster} onCancel={() => setEditingList(false)} />
           : <>
+            <Link to={`/estructura-frontal/${group.front_group_id}`} className="inline-flex min-h-11 w-full items-center justify-center rounded-md border border-[#D9CFB4] bg-white text-sm font-semibold text-[#7A5F22]" data-testid="pastoral-ver-estructura">Ver estructura completa por niveles</Link>
             {canEdit && <button type="button" onClick={() => setEditingList(true)} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-md bg-[#101D36] text-sm font-semibold text-white" data-testid="pastoral-group-edit-list"><Pencil className="h-4 w-4" />Agregar u organizar personas y parejas</button>}
             <GroupRosterView groupId={group.front_group_id} roster={view.roster} canManage={canEdit} onChanged={load} onShowActivity={setActivityPerson} />
           </>)}

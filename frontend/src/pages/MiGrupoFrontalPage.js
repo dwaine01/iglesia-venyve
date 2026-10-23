@@ -99,6 +99,7 @@ function ManageMyGroup({ detail, onChanged }) {
       {roster && (editing
         ? <GroupRosterEditor groupId={detail.front_group_id} initialEntries={rosterToEntries(roster)} excludedIds={[detail.primary_leader_person_id, detail.co_leader_person_id].filter(Boolean)} onSave={saveRoster} onCancel={() => setEditing(false)} />
         : <>
+          <Link to={`/estructura-frontal/${detail.front_group_id}`} className="inline-flex min-h-11 w-full items-center justify-center rounded-md bg-[#101D36] text-sm font-semibold text-white" data-testid="mi-grupo-explorar-rama">Explorar mi rama</Link>
           {canManage && <button type="button" onClick={() => setEditing(true)} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-md border border-[#D9CFB4] bg-white text-sm font-semibold text-[#7A5F22]" data-testid="mi-grupo-editar-lista"><Pencil className="h-4 w-4" />Editar lista (personas y parejas)</button>}
           <GroupRosterView groupId={detail.front_group_id} roster={roster} canManage={canManage} onChanged={loadRoster} />
         </>)}

@@ -177,3 +177,57 @@ async def test_pastoral_group_roster_privacy_and_leader_privilege():
         assert (await leader2.post(f"/api/front-groups/{child_id}/co-leader", json={"person_id": leader2_id, "reason": "Mismo"})).status_code == 422
     finally:
         await fx.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_structure_levels_permissions_and_distinct_totals():
+    """5C-2: pastora → líder → grupo del líder → otro líder → su grupo."""
+    await server.db.front_groups.update_many({"pastoral_main": True}, {"$unset": {"pastoral_main": ""}})
+    fx = Fixture()
+    try:
+        pastora = await fx.account(await fx.person("PastoraE"), "pastora")
+        coordinator = await fx.account(await fx.person("CoordE"), "lider", access_level="coordinador_general")
+        luis_id, marta_id, pedro_id = await fx.person("LuisE"), await fx.person("MartaE"), await fx.person("PedroE")
+        rosa_id, juan_id, nina_id = await fx.person("RosaE"), await fx.person("JuanE"), await fx.person("NinaE")
+        luis = await fx.account(luis_id, "lider", capabilities=[], permissions_mode="manual")
+        rosa = await fx.account(rosa_id, "persona")
+        nina = await fx.account(nina_id, "persona")
+
+        main_id = (await pastora.put("/api/pastoral-front-group", json={"name": "Grupo PastoraE"})).json()["group"]["front_group_id"]
+        await pastora.put(f"/api/front-groups/{main_id}/roster", json={"entries": [{"person_ids": [luis_id, marta_id]}, {"person_ids": [pedro_id]}]})
+        child_id = (await pastora.post(f"/api/front-groups/{main_id}/leader-privilege", json={"person_id": luis_id, "co_leader_person_id": marta_id})).json()["front_group_id"]
+        await luis.put(f"/api/front-groups/{child_id}/conform", json={"name": "Grupo LuisE"})
+        await luis.put(f"/api/front-groups/{child_id}/roster", json={"entries": [{"person_ids": [rosa_id, juan_id]}, {"person_ids": [pedro_id]}]})
+        grandchild = await luis.post(f"/api/front-groups/{child_id}/leader-privilege", json={"person_id": rosa_id})
+        assert grandchild.status_code == 201, grandchild.text
+        grandchild_id = grandchild.json()["front_group_id"]
+        await rosa.put(f"/api/front-groups/{grandchild_id}/conform", json={"name": "Grupo RosaE"})
+        await rosa.put(f"/api/front-groups/{grandchild_id}/roster", json={"entries": [{"person_ids": [nina_id]}]})
+
+        start = (await pastora.get("/api/front-group-structure/start")).json()
+        assert start["scope"] == "global" and [item["front_group_id"] for item in start["groups"]] == [main_id]
+        node = (await pastora.get(f"/api/front-group-structure/groups/{main_id}")).json()
+        assert node["group"]["direct"] == {"people": 3, "pairs": 1, "individuals": 1}
+        # Rama: pastora, Luis, Marta, Pedro, Rosa, Juan, Nina = 7 personas distintas
+        # (Luis/Marta/Rosa son integrantes de un grupo y líderes de otro; Pedro está en dos grupos).
+        assert node["group"]["branch"] == {"groups": 3, "people": 7, "pairs": 2, "leaders": 4}
+        assert [child["front_group_id"] for child in node["children"]] == [child_id]
+        assert node["children"][0]["leader"]["person_id"] == luis_id
+        assert (await coordinator.get(f"/api/front-group-structure/groups/{grandchild_id}")).status_code == 200
+
+        # El líder explora solo su rama y vuelve por niveles hasta su grupo.
+        luis_start = (await luis.get("/api/front-group-structure/start")).json()
+        assert luis_start["scope"] == "branch" and [item["front_group_id"] for item in luis_start["groups"]] == [child_id]
+        assert (await luis.get(f"/api/front-group-structure/groups/{main_id}")).status_code == 403
+        luis_child = (await luis.get(f"/api/front-group-structure/groups/{child_id}")).json()
+        assert luis_child["parent"]["name"] == "Grupo PastoraE" and luis_child["parent"]["explorable"] is False
+        deep = (await luis.get(f"/api/front-group-structure/groups/{grandchild_id}")).json()
+        assert [item["front_group_id"] for item in deep["breadcrumbs"]] == [child_id]
+        assert deep["roster"]["totals"]["people"] == 1
+        # Rosa (líder del nivel más bajo) no sube a la rama de Luis.
+        assert (await rosa.get(f"/api/front-group-structure/groups/{child_id}")).status_code == 403
+        # Un integrante final no explora estructura.
+        assert (await nina.get("/api/front-group-structure/start")).json()["groups"] == []
+        assert (await nina.get(f"/api/front-group-structure/groups/{grandchild_id}")).status_code == 403
+    finally:
+        await fx.cleanup()

@@ -521,6 +521,11 @@ from pastoral_front_group import router as pastoral_front_group_router
 
 app.include_router(pastoral_front_group_router)
 
+# --- ETAPA 5C-2: estructura por niveles y exploración de la rama ---
+from front_group_structure import router as front_group_structure_router
+
+app.include_router(front_group_structure_router)
+
 
 # --- Invitaciones de acceso (C5): establecer contraseña sobre una cuenta creada sin temporal ---
 from access_invitations import router as access_invitations_router, ensure_indexes as access_invitations_ensure
