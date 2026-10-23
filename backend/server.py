@@ -502,6 +502,11 @@ from core_governance import router as core_governance_router, ensure_indexes as 
 
 app.include_router(core_governance_router)
 
+# --- Invitaciones de acceso (C5): establecer contraseña sobre una cuenta creada sin temporal ---
+from access_invitations import router as access_invitations_router, ensure_indexes as access_invitations_ensure
+
+app.include_router(access_invitations_router)
+
 # --- Mega-Bloque B: motor operativo de procesos ---
 from process_catalog import seed_process_catalog
 from process_engine import ensure_process_indexes, evaluate_alerts, migrate_legacy_processes
@@ -668,6 +673,7 @@ async def startup():
     await ensure_formation_indexes(db)
     await ensure_document_indexes()
     await ensure_front_group_indexes()
+    await access_invitations_ensure()
     await ensure_front_group_work_indexes()
     await ensure_front_group_routing_indexes()
     await ensure_front_group_report_indexes()

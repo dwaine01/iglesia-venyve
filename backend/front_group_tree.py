@@ -58,8 +58,8 @@ async def readable_group_ids(db, current_user: dict) -> set[str] | None:
         return None
     assignments = await direct_assignments(db, current_user.get("person_id"))
     readable = {item["front_group_id"] for item in assignments}
-    leader_roots = {item["front_group_id"] for item in assignments if item.get("role") == "leader"}
-    for root_id in leader_roots:
+    expanding_roots = {item["front_group_id"] for item in assignments if item.get("role") in {"leader", "co_leader"}}
+    for root_id in expanding_roots:
         readable.update(await descendant_group_ids(db, root_id))
     return readable
 
@@ -75,16 +75,43 @@ async def led_subtree_group_ids(db, current_user: dict) -> set[str] | None:
     return led
 
 
+async def co_led_subtree_group_ids(db, current_user: dict) -> set[str] | None:
+    """Ramas donde la persona es Colíder: lee y registra (soporte), nunca
+    estructura (eso sigue siendo exclusivo del Líder o una autoridad superior)."""
+    if is_global_pastoral_authority(current_user):
+        return None
+    assignments = await direct_assignments(db, current_user.get("person_id"))
+    led: set[str] = set()
+    for assignment in assignments:
+        if assignment.get("role") == "co_leader":
+            led.update(await descendant_group_ids(db, assignment["front_group_id"]))
+    return led
+
+
+async def support_group_ids(db, current_user: dict) -> set[str] | None:
+    """Unión de lo que la persona puede LIDERAR o CO-LIDERAR: alcance de
+    'soporte' (leer + registrar integrantes/seguimiento), no estructural."""
+    if is_global_pastoral_authority(current_user):
+        return None
+    led = await led_subtree_group_ids(db, current_user) or set()
+    co_led = await co_led_subtree_group_ids(db, current_user) or set()
+    return led | co_led
+
+
 async def manageable_group_ids(db, current_user: dict) -> set[str] | None:
     if is_global_pastoral_authority(current_user):
         return None
-    if not has_capability(current_user, FRONT_GROUPS_MANAGE):
-        return set()
     return await led_subtree_group_ids(db, current_user)
 
 
-async def group_in_scope(db, group_id: str, current_user: dict, leader_required: bool = False) -> bool:
-    allowed = await (led_subtree_group_ids(db, current_user) if leader_required else readable_group_ids(db, current_user))
+async def group_in_scope(db, group_id: str, current_user: dict, leader_required: bool = False, level: str | None = None) -> bool:
+    resolved_level = level or ("lead" if leader_required else "read")
+    if resolved_level == "lead":
+        allowed = await led_subtree_group_ids(db, current_user)
+    elif resolved_level == "support":
+        allowed = await support_group_ids(db, current_user)
+    else:
+        allowed = await readable_group_ids(db, current_user)
     return allowed is None or group_id in allowed
 
 

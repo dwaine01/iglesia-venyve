@@ -86,6 +86,9 @@ const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
     if (isActiveMentor) {
       personaItems.push({ to: '/procesos/consolidacion/mi-panel', icon: ClipboardCheck, label: 'Mi Panel de Mentor', testId: 'nav-mentor-panel' });
     }
+    if (canViewFrontGroups(user)) {
+      personaItems.push({ to: '/grupos-frontales', icon: Network, label: 'Grupos Frontales', testId: 'nav-front-groups' });
+    }
     return personaItems;
   }
   

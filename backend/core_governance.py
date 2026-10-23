@@ -107,6 +107,7 @@ class UserAccessItem(BaseModel):
     privilege_groups: list[str] = []
     onboarding_required: bool = False
     onboarding_completed_at: Optional[str] = None
+    invitation_token: Optional[str] = None
 
 
 class UserAccessList(BaseModel):
@@ -124,12 +125,34 @@ class AccessUpdate(BaseModel):
 class UserAccessCreate(BaseModel):
     person_id: str
     email: EmailStr
-    temporary_password: str = Field(min_length=10, max_length=128)
+    temporary_password: Optional[str] = Field(default=None, max_length=128)
     access_level: Literal["pastor", "coordinador_general", "director", "secretario", "tesorero", "equipo", "lider", "persona"]
     access_title: Optional[str] = Field(default=None, max_length=120)
     organization_scope: Optional[dict] = None
     privilege_groups: list[Literal["membership", "board", "finance", "care"]] = []
     mentor_access: bool = False
+
+
+def resolve_temp_password(explicit: Optional[str]) -> tuple[str, bool]:
+    """Si no se da contraseña temporal, genera una aleatoria no recuperable
+    (nunca se devuelve ni se registra) y se emite una invitación en su lugar."""
+    if explicit:
+        if len(explicit) < 10:
+            raise HTTPException(status_code=422, detail="La contraseña temporal debe tener al menos 10 caracteres")
+        return explicit, False
+    import secrets
+    return secrets.token_urlsafe(9), True
+
+
+async def grant_front_group_capability_if_leader(person_id: str, user_doc: dict) -> None:
+    """Aditivo: si la Persona ya es Líder/Colíder de un Grupo Frontal, su
+    cuenta nueva/reactivada ve el menú de Grupos Frontales de inmediato."""
+    from access_control import FRONT_GROUPS_VIEW
+    if await db.front_group_assignments.find_one({"person_id": person_id, "role": {"$in": ["leader", "co_leader"]}, "active": True}, {"_id": 1}):
+        user_doc.setdefault("capabilities", [])
+        if FRONT_GROUPS_VIEW not in user_doc["capabilities"]:
+            user_doc["capabilities"].append(FRONT_GROUPS_VIEW)
+        await db.users.update_one({"_id": user_doc["_id"]}, {"$addToSet": {"capabilities": FRONT_GROUPS_VIEW}})
 
 
 def require_governance(current_user: dict = Depends(get_current_user)) -> dict:
@@ -378,7 +401,10 @@ async def create_user_access_core(payload: UserAccessCreate, current_user: dict)
     person = await db.persons.find_one({"_id": ObjectId(payload.person_id)})
     if not person:
         raise HTTPException(status_code=404, detail="Perfil 360 no encontrado")
-    if person.get("auth_user_id") or await db.users.find_one({"person_id": payload.person_id}):
+    existing_user = await db.users.find_one({"person_id": payload.person_id})
+    if person.get("auth_user_id") or existing_user:
+        if existing_user and existing_user.get("is_active") is False:
+            return await _reactivate_user_access(existing_user, payload, current_user)
         raise HTTPException(status_code=409, detail="Este Perfil 360 ya tiene acceso")
     email = str(payload.email).strip().lower()
     if await db.users.find_one({"email": email}):
@@ -388,10 +414,11 @@ async def create_user_access_core(payload: UserAccessCreate, current_user: dict)
         defaults["capabilities"] = sorted(set([*defaults["capabilities"], *PERSON_SELF_CAPABILITIES, MENTORSHIP_OUTREACH_REPORT, PROCESSES_PARTICIPATE, LIBRARY_DELIVER]))
     now = datetime.now(timezone.utc)
     surname = person.get("apellidos") or person.get("apellido") or ""
+    temp_password, password_generated = resolve_temp_password(payload.temporary_password)
     user_doc = {
         "nombre": " ".join(part for part in [person.get("nombre", ""), surname] if part).strip(),
         "email": email,
-        "password": bcrypt.hashpw(payload.temporary_password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8"),
+        "password": bcrypt.hashpw(temp_password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8"),
         "person_id": payload.person_id,
         "is_active": True,
         "must_change_password": True,
@@ -415,7 +442,38 @@ async def create_user_access_core(payload: UserAccessCreate, current_user: dict)
     if not linked.modified_count:
         await db.users.delete_one({"_id": result.inserted_id})
         raise HTTPException(status_code=409, detail="El Perfil 360 fue vinculado por otra operación")
-    return serialize_user(user_doc)
+    user_doc["_id"] = result.inserted_id
+    await grant_front_group_capability_if_leader(payload.person_id, user_doc)
+    response = serialize_user(user_doc)
+    if password_generated:
+        from access_invitations import issue_invitation
+        response["invitation_token"] = await issue_invitation(db, user_id, payload.person_id, current_user["user_id"])
+    return response
+
+
+async def _reactivate_user_access(existing_user: dict, payload: UserAccessCreate, current_user: dict) -> dict:
+    """C5.5: una Persona inactiva se reactiva y reenvía invitación en vez de
+    crear una segunda cuenta (una cuenta por Persona)."""
+    defaults = access_defaults(payload.access_level, payload.privilege_groups)
+    if payload.mentor_access:
+        defaults["capabilities"] = sorted(set([*defaults["capabilities"], *PERSON_SELF_CAPABILITIES, MENTORSHIP_OUTREACH_REPORT, PROCESSES_PARTICIPATE, LIBRARY_DELIVER]))
+    now = datetime.now(timezone.utc)
+    temp_password, password_generated = resolve_temp_password(payload.temporary_password)
+    update = {
+        "is_active": True, "must_change_password": True, "deactivated_at": None, "deactivation_reason": None,
+        "access_level": payload.access_level, "access_title": payload.access_title, "organization_scope": payload.organization_scope,
+        "password": bcrypt.hashpw(temp_password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8"),
+        "access_policy_version": ACCESS_POLICY_VERSION, "token_version": existing_user.get("token_version", 1) + 1,
+        "updated_at": now, **defaults,
+    }
+    await db.users.update_one({"_id": existing_user["_id"]}, {"$set": update})
+    user_doc = {**existing_user, **update}
+    await grant_front_group_capability_if_leader(payload.person_id, user_doc)
+    response = serialize_user(user_doc)
+    if password_generated:
+        from access_invitations import issue_invitation
+        response["invitation_token"] = await issue_invitation(db, str(existing_user["_id"]), payload.person_id, current_user["user_id"])
+    return response
 
 
 @router.put("/users/{user_id}/access", response_model=UserAccessItem)
