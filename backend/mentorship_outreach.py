@@ -124,6 +124,21 @@ class HouseholdInput(BaseModel):
     sector: Optional[str] = Field(default=None, max_length=200)
     note: Optional[str] = Field(default=None, max_length=1000)
     is_draft: bool = False
+    available: bool = False
+
+
+class HouseholdImportEntry(BaseModel):
+    address_line1: Optional[str] = Field(default=None, max_length=220)
+    sector: Optional[str] = Field(default=None, max_length=200)
+    note: Optional[str] = Field(default=None, max_length=1000)
+
+
+class HouseholdImportInput(BaseModel):
+    entries: list[HouseholdImportEntry] = Field(min_length=1, max_length=300)
+
+
+class HouseholdAssignInput(BaseModel):
+    mentor_person_id: str
 
 
 class HouseholdUpdateInput(BaseModel):
@@ -1220,9 +1235,19 @@ async def load_household(household_id: str) -> dict:
     return household
 
 
-def can_view_household(household: dict, current_user: dict, supervised_ids: set) -> bool:
+async def campaign_roster(campaign_id: Optional[str]) -> list:
+    if not campaign_id:
+        return []
+    campaign = await db.outreach_campaigns.find_one({"campaign_id": campaign_id}, {"_id": 0, "assigned_mentor_ids": 1})
+    return (campaign or {}).get("assigned_mentor_ids") or []
+
+
+async def can_view_household(household: dict, current_user: dict, supervised_ids: set) -> bool:
     if is_outreach_leader(current_user) or household.get("mentor_person_id") == current_user.get("person_id"):
         return True
+    if household.get("status") == "available":
+        roster = await campaign_roster(household.get("campaign_id"))
+        return current_user.get("person_id") in roster
     return household.get("mentor_person_id") in supervised_ids
 
 
@@ -1230,32 +1255,71 @@ def can_view_household(household: dict, current_user: dict, supervised_ids: set)
 async def create_household(payload: HouseholdInput, current_user: dict = Depends(get_current_user)):
     if not await can_use_outreach(current_user):
         raise HTTPException(status_code=403, detail="Sin permiso para registrar hogares")
-    mentor_person_id = payload.mentor_person_id or current_user.get("person_id")
-    if not mentor_person_id:
-        raise HTTPException(status_code=422, detail="No se pudo determinar el mentor responsable")
-    if mentor_person_id != current_user.get("person_id") and not is_outreach_leader(current_user):
-        raise HTTPException(status_code=403, detail="Solo un líder puede asignar el hogar a otro mentor")
-    if not await is_active_mentor(mentor_person_id):
-        raise HTTPException(status_code=409, detail="El mentor responsable necesita insignia de Mentor activa")
     if not (payload.address_line1 or "").strip() and not (payload.sector or "").strip():
         raise HTTPException(status_code=422, detail="Indique al menos la dirección o el sector del hogar")
     if payload.campaign_id and not await db.outreach_campaigns.find_one({"campaign_id": payload.campaign_id}, {"_id": 1}):
         raise HTTPException(status_code=404, detail="Campaña no encontrada")
+    if payload.available:
+        if not is_outreach_leader(current_user) and not can_manage_outreach_campaigns(current_user):
+            raise HTTPException(status_code=403, detail="Solo un líder autorizado puede cargar casas disponibles")
+        if not payload.campaign_id:
+            raise HTTPException(status_code=422, detail="Indique la invasión a la que pertenece la casa disponible")
+        mentor_person_id = None
+    else:
+        mentor_person_id = payload.mentor_person_id or current_user.get("person_id")
+        if not mentor_person_id:
+            raise HTTPException(status_code=422, detail="No se pudo determinar el mentor responsable")
+        if mentor_person_id != current_user.get("person_id") and not is_outreach_leader(current_user):
+            raise HTTPException(status_code=403, detail="Solo un líder puede asignar el hogar a otro mentor")
+        if not await is_active_mentor(mentor_person_id):
+            raise HTTPException(status_code=409, detail="El mentor responsable necesita insignia de Mentor activa")
     snapshot = await supervision_snapshot(mentor_person_id)
     now = now_utc()
     household_id = str(uuid4())
     doc = {
         "_id": household_id, "household_id": household_id, "campaign_id": payload.campaign_id,
-        "mentor_person_id": mentor_person_id, "address_line1": payload.address_line1, "address_line2": payload.address_line2,
+        "mentor_person_id": mentor_person_id, "status": "available" if mentor_person_id is None else "assigned",
+        "address_line1": payload.address_line1, "address_line2": payload.address_line2,
         "address_city": payload.address_city, "address_state": payload.address_state, "address_zip": payload.address_zip,
         "sector": payload.sector, "note": payload.note, "is_draft": payload.is_draft,
         "front_group_id": snapshot["front_group_id"], "front_group_ancestor_ids": snapshot["front_group_ancestor_ids"],
         "archived": False, "created_by_user_id": current_user["user_id"], "created_at": now, "updated_at": now,
     }
     await db.outreach_households.insert_one(doc)
-    if payload.campaign_id:
+    if payload.campaign_id and mentor_person_id:
         await mark_participation_active(payload.campaign_id, mentor_person_id)
     return serialize(doc)
+
+
+@router.post("/campaigns/{campaign_id}/households/import", response_model=dict, status_code=201)
+async def import_available_households(campaign_id: str, payload: HouseholdImportInput, current_user: dict = Depends(get_current_user)):
+    """Carga masiva de casas DISPONIBLES (sin mentor todavía) para que los
+    mentores de esta invasión las tomen desde el mapa — reservado a quien
+    puede administrar la invasión (pedido del dueño: 'pastoral/coordinador/
+    líder autorizado carga o importa casas')."""
+    if not is_outreach_leader(current_user) and not can_manage_outreach_campaigns(current_user):
+        raise HTTPException(status_code=403, detail="Solo un líder autorizado puede importar casas disponibles")
+    if not await db.outreach_campaigns.find_one({"campaign_id": campaign_id}, {"_id": 1}):
+        raise HTTPException(status_code=404, detail="Invasión no encontrada")
+    now = now_utc()
+    docs = []
+    skipped = 0
+    for entry in payload.entries:
+        if not (entry.address_line1 or "").strip() and not (entry.sector or "").strip():
+            skipped += 1
+            continue
+        household_id = str(uuid4())
+        docs.append({
+            "_id": household_id, "household_id": household_id, "campaign_id": campaign_id,
+            "mentor_person_id": None, "status": "available",
+            "address_line1": entry.address_line1, "address_line2": None, "address_city": None, "address_state": None, "address_zip": None,
+            "sector": entry.sector, "note": entry.note, "is_draft": False,
+            "front_group_id": None, "front_group_ancestor_ids": [],
+            "archived": False, "created_by_user_id": current_user["user_id"], "created_at": now, "updated_at": now,
+        })
+    if docs:
+        await db.outreach_households.insert_many(docs)
+    return {"created": len(docs), "skipped": skipped}
 
 
 async def enrich_households(households: list[dict]) -> list[dict]:
@@ -1299,13 +1363,115 @@ async def list_households(mentor_person_id: Optional[str] = None, campaign_id: O
     return {"items": serialize(households), "total": len(households)}
 
 
+@router.get("/campaigns/{campaign_id}/households/available", response_model=dict)
+async def list_available_households(campaign_id: str, current_user: dict = Depends(get_current_user)):
+    """Casas DISPONIBLES de esta invasión: visibles para cualquier mentor en
+    el roster (pool compartido para tomar) y para el líder — nunca para quien
+    no participa en esta invasión."""
+    if not await can_use_outreach(current_user):
+        raise HTTPException(status_code=403, detail="Sin permiso para consultar hogares")
+    roster = await campaign_roster(campaign_id)
+    if not is_outreach_leader(current_user) and current_user.get("person_id") not in roster:
+        raise HTTPException(status_code=403, detail="No participa en esta invasión")
+    households = await db.outreach_households.find(
+        {"campaign_id": campaign_id, "mentor_person_id": None, "archived": {"$ne": True}}, {"_id": 0},
+    ).sort("created_at", 1).to_list(500)
+    households = await enrich_households(households)
+    return {"items": serialize(households), "total": len(households)}
+
+
+@router.post("/households/{household_id}/claim", response_model=dict)
+async def claim_household(household_id: str, current_user: dict = Depends(get_current_user)):
+    """El mentor TOMA una casa disponible para sí mismo: operación atómica e
+    idempotente (el filtro exige `mentor_person_id: None`), así nunca dos
+    mentores terminan con la misma casa aunque la toquen al mismo tiempo."""
+    mentor_person_id = current_user.get("person_id")
+    if not mentor_person_id:
+        raise HTTPException(status_code=403, detail="Esta cuenta no está vinculada a un Perfil 360")
+    if not await is_active_mentor(mentor_person_id):
+        raise HTTPException(status_code=409, detail="Necesita insignia de Mentor activa para tomar una casa")
+    household = await load_household(household_id)
+    if household.get("mentor_person_id") == mentor_person_id:
+        return serialize(household)
+    roster = await campaign_roster(household.get("campaign_id"))
+    if mentor_person_id not in roster:
+        raise HTTPException(status_code=403, detail="No está en el roster de mentores de esta invasión")
+    snapshot = await supervision_snapshot(mentor_person_id)
+    now = now_utc()
+    updated = await db.outreach_households.find_one_and_update(
+        {"household_id": household_id, "mentor_person_id": None, "archived": {"$ne": True}},
+        {"$set": {
+            "mentor_person_id": mentor_person_id, "status": "assigned", "claimed_at": now, "updated_at": now,
+            "front_group_id": snapshot["front_group_id"], "front_group_ancestor_ids": snapshot["front_group_ancestor_ids"],
+        }},
+        return_document=True, projection={"_id": 0},
+    )
+    if not updated:
+        raise HTTPException(status_code=409, detail="Esta casa ya fue tomada por otro mentor")
+    if household.get("campaign_id"):
+        await mark_participation_active(household["campaign_id"], mentor_person_id)
+    return serialize(updated)
+
+
+@router.post("/households/{household_id}/release", response_model=dict)
+async def release_household(household_id: str, current_user: dict = Depends(get_current_user)):
+    """Devuelve una casa tomada al pool de disponibles (el propio mentor que
+    la tiene, o un líder). No borra el historial de intentos/visitas ya
+    registrados en ella."""
+    household = await load_household(household_id)
+    mentor_person_id = household.get("mentor_person_id")
+    if not mentor_person_id:
+        raise HTTPException(status_code=409, detail="Esta casa ya está disponible")
+    if mentor_person_id != current_user.get("person_id") and not is_outreach_leader(current_user):
+        raise HTTPException(status_code=403, detail="Solo el mentor responsable o un líder puede devolver esta casa")
+    now = now_utc()
+    updated = await db.outreach_households.find_one_and_update(
+        {"household_id": household_id, "mentor_person_id": mentor_person_id, "archived": {"$ne": True}},
+        {"$set": {"mentor_person_id": None, "status": "available", "claimed_at": None, "updated_at": now}},
+        return_document=True, projection={"_id": 0},
+    )
+    if not updated:
+        raise HTTPException(status_code=409, detail="Esta casa ya fue modificada por otro usuario, actualice e intente de nuevo")
+    return serialize(updated)
+
+
+@router.post("/households/{household_id}/assign", response_model=dict)
+async def assign_household(household_id: str, payload: HouseholdAssignInput, current_user: dict = Depends(get_current_user)):
+    """Asignación DIRECTA de un responsable autorizado (líder de invasión) a
+    un mentor puntual — solo sobre una casa hoy disponible, atómica/idempotente
+    igual que `claim`, para no quitarle en silencio una casa a otro mentor."""
+    if not is_outreach_leader(current_user):
+        raise HTTPException(status_code=403, detail="Solo un responsable autorizado puede asignar casas directamente")
+    if not await is_active_mentor(payload.mentor_person_id):
+        raise HTTPException(status_code=409, detail="El mentor seleccionado necesita insignia de Mentor activa")
+    household = await load_household(household_id)
+    if household.get("mentor_person_id") == payload.mentor_person_id:
+        return serialize(household)
+    snapshot = await supervision_snapshot(payload.mentor_person_id)
+    now = now_utc()
+    updated = await db.outreach_households.find_one_and_update(
+        {"household_id": household_id, "mentor_person_id": None, "archived": {"$ne": True}},
+        {"$set": {
+            "mentor_person_id": payload.mentor_person_id, "status": "assigned", "claimed_at": now, "updated_at": now,
+            "front_group_id": snapshot["front_group_id"], "front_group_ancestor_ids": snapshot["front_group_ancestor_ids"],
+        }},
+        return_document=True, projection={"_id": 0},
+    )
+    if not updated:
+        raise HTTPException(status_code=409, detail="Esta casa ya tiene un mentor asignado; devuélvala primero para reasignarla")
+    if household.get("campaign_id"):
+        await ensure_participation(household["campaign_id"], payload.mentor_person_id)
+        await mark_participation_active(household["campaign_id"], payload.mentor_person_id)
+    return serialize(updated)
+
+
 @router.get("/households/{household_id}", response_model=dict)
 async def get_household(household_id: str, current_user: dict = Depends(get_current_user)):
     if not await can_use_outreach(current_user):
         raise HTTPException(status_code=403, detail="Sin permiso para consultar hogares")
     household = await load_household(household_id)
     supervised_ids = await supervised_mentor_person_ids(current_user)
-    if not can_view_household(household, current_user, supervised_ids):
+    if not await can_view_household(household, current_user, supervised_ids):
         raise HTTPException(status_code=403, detail="No puede consultar este hogar")
     events = await db.outreach_visit_events.find({"household_id": household_id}, {"_id": 0}).sort("occurred_at", -1).to_list(200)
     visits = await db.outreach_visits.find({"household_id": household_id, "archived": {"$ne": True}}, {"_id": 0}).to_list(200)

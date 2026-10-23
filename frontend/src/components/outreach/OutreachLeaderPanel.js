@@ -9,6 +9,7 @@ import { canCreateOutreachCampaign } from '../../lib/accessControl';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { AddVisitDialog } from './AddVisitDialog';
+import { AvailableHouseholdsPanel } from './AvailableHouseholdsPanel';
 import { CampaignBooksDialog } from './CampaignBooksDialog';
 import { CampaignReportDialog } from './CampaignReportDialog';
 import { CampaignRosterDialog } from './CampaignRosterDialog';
@@ -37,6 +38,7 @@ export const OutreachLeaderPanel = ({ campaigns, onCampaignsChanged }) => {
   const [booksCampaign, setBooksCampaign] = useState(null);
   const [reportCampaign, setReportCampaign] = useState(null);
   const [rosterCampaignId, setRosterCampaignId] = useState(null);
+  const [housesCampaignId, setHousesCampaignId] = useState(null);
 
   const loadDashboard = useCallback(async () => {
     setLoading(true);
@@ -97,6 +99,7 @@ export const OutreachLeaderPanel = ({ campaigns, onCampaignsChanged }) => {
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {canCreateOutreachCampaign(user) && <Button size="sm" variant="outline" onClick={() => setRosterCampaignId(campaign.campaign_id)} data-testid={`outreach-campaign-mentors-button-${campaign.campaign_id}`}>Mentores</Button>}
+                  <Button size="sm" variant="outline" onClick={() => setHousesCampaignId((prev) => (prev === campaign.campaign_id ? null : campaign.campaign_id))} data-testid={`outreach-campaign-houses-button-${campaign.campaign_id}`}>Casas</Button>
                   <Button size="sm" variant="outline" onClick={() => setBooksCampaign(campaign)} data-testid={`outreach-campaign-books-button-${campaign.campaign_id}`}>Libros</Button>
                   <Button size="sm" variant="outline" onClick={() => setReportCampaign(campaign)} data-testid={`outreach-campaign-report-button-${campaign.campaign_id}`}>Informe</Button>
                   {canCreateOutreachCampaign(user) && <DeleteCampaignDialog campaignId={campaign.campaign_id} campaignName={campaign.name} onDeleted={onCampaignsChanged} />}
@@ -108,6 +111,15 @@ export const OutreachLeaderPanel = ({ campaigns, onCampaignsChanged }) => {
           <p className="mt-3 text-sm text-slate-400" data-testid="outreach-no-campaigns">Todavía no hay invasiones creadas.</p>
         )}
       </div>
+
+      {housesCampaignId && (
+        <AvailableHouseholdsPanel
+          campaign={campaigns.find((item) => item.campaign_id === housesCampaignId)}
+          isLeader
+          mentorOptions={mentors}
+          onChanged={loadDashboard}
+        />
+      )}
 
       {dashboard && (
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
