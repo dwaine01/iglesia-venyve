@@ -16,12 +16,26 @@ const RESULT_LABELS = {
   contacted: 'Contacto logrado',
 };
 
-export const HouseholdCard = ({ household, readOnly, onLogAttempt, onChanged }) => {
+export const HouseholdCard = ({ household, readOnly, canRelease, onLogAttempt, onChanged }) => {
   const { API, getAuthHeaders } = useAuth();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [detail, setDetail] = useState(null);
+  const [releasing, setReleasing] = useState(false);
   const fetchedAttemptsRef = useRef(null);
+
+  const release = async () => {
+    setReleasing(true);
+    try {
+      await axios.post(`${API}/api/mentorship/outreach/households/${household.household_id}/release`, {}, getAuthHeaders());
+      toast.success('Casa devuelta al pool de disponibles');
+      if (onChanged) onChanged();
+    } catch (error) {
+      toast.error(errorDetailText(error, 'No se pudo devolver esta casa'));
+    } finally {
+      setReleasing(false);
+    }
+  };
 
   const fetchDetail = async () => {
     setLoading(true);
@@ -70,6 +84,11 @@ export const HouseholdCard = ({ household, readOnly, onLogAttempt, onChanged }) 
           {!readOnly && (
             <Button size="sm" variant="outline" onClick={() => onLogAttempt(household)} data-testid={`outreach-household-log-attempt-${household.household_id}`}>
               <Plus className="h-4 w-4" /> Registrar intento
+            </Button>
+          )}
+          {canRelease && (
+            <Button size="sm" variant="outline" disabled={releasing} onClick={release} className="border-amber-300 text-amber-700 hover:bg-amber-50" data-testid={`outreach-household-release-${household.household_id}`}>
+              {releasing ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Devolver casa
             </Button>
           )}
           <button type="button" onClick={toggle} data-testid={`outreach-household-expand-${household.household_id}`}>
