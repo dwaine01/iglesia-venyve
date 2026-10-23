@@ -7,7 +7,7 @@ import {
   LayoutDashboard, BookOpen, Map, Calendar, Users, BarChart3, LogOut, Menu, ChevronRight,
   Crown, Star, Trophy, Presentation, NotebookPen, KeyRound, IdCard, Church, Search, DatabaseZap,
   Activity, Award, BookHeart, Compass, GraduationCap, HeartHandshake, Network, RadioTower, DoorOpen, Gavel, Landmark, MapPinned,
-  PanelLeftClose, PanelLeftOpen, ShieldCheck, Droplets, Baby, Bus, Footprints, ClipboardCheck
+  PanelLeftClose, PanelLeftOpen, ShieldCheck, Droplets, Baby, Bus, Footprints, ClipboardCheck, Trash2, DatabaseBackup
 } from 'lucide-react';
 
 import { LOGO_IGLESIA } from '../data/presentationData';
@@ -16,7 +16,7 @@ import { ContextGuideButton } from './guides/ContextGuideButton';
 import { FloatingLibraryScanButton } from './library/FloatingLibraryScanButton';
 import { resolveRouteGuide } from './guides/guideRouteMap';
 import { BRAND } from '../config/brand';
-import { canManageBaptismEvents, canManageDedicationEvents, canViewCare, canViewFinanceModule, canViewFormation, canViewFrontGroups, canViewGeo, canViewLeadership, canViewLibraryModule, canViewOperations, canAccessCampaignOperator, canAccessOutreach, hasAnyCapability, isPastoralAuthority } from '../lib/accessControl';
+import { canManageBaptismEvents, canManageDedicationEvents, canViewCare, canViewFinanceModule, canViewFormation, canViewFrontGroups, canViewGeo, canViewLeadership, canViewLibraryModule, canViewOperations, canAccessCampaignOperator, canAccessOutreach, canCreateOutreachCampaign, hasAnyCapability, isPastoralAuthority } from '../lib/accessControl';
 import { useBoardAccess } from '../hooks/useBoardAccess';
 import { useMentorAccess } from '../hooks/useMentorAccess';
 const LOGO_URL = LOGO_IGLESIA;
@@ -39,6 +39,7 @@ const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
       { to: '/libreria', icon: BookOpen, label: 'Librería 360', testId: 'nav-library' },
       { to: '/campanas/ven-y-come/control', icon: Bus, label: 'Campaña Ven y Come', testId: 'nav-campaign-venycome' },
       { to: '/mentoria/visitas', icon: Footprints, label: 'Visitas e Invasiones', testId: 'nav-outreach' },
+      { to: '/mentoria/supervision', icon: BarChart3, label: 'Supervisión de Invasiones', testId: 'nav-supervision' },
       { to: '/grupos-frontales', icon: Network, label: 'Grupos Frontales', testId: 'nav-front-groups' },
       { to: '/liderazgo', icon: Award, label: 'Liderazgo', testId: 'nav-leadership' },
       { to: '/mapas', icon: MapPinned, label: 'Mapa 360', testId: 'nav-geo-maps' },
@@ -58,6 +59,8 @@ const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
       { to: '/presentacion', icon: Presentation, label: 'Manual de 7 Semanas' },
       { type: 'separator', label: 'Administración' },
       { to: '/estadisticas', icon: BarChart3, label: 'Estadísticas Globales' },
+      { to: '/admin/historial-borrados', icon: Trash2, label: 'Historial de Borrados', testId: 'nav-admin-deletions' },
+      { to: '/admin/migracion-c11', icon: DatabaseBackup, label: 'Migración de Datos (C11)', testId: 'nav-migration-c11' },
     ];
     if (isActiveMentor) {
       personItems.push({ to: '/procesos/consolidacion/mi-panel', icon: ClipboardCheck, label: 'Mi Panel de Mentor', testId: 'nav-mentor-panel' });
@@ -82,12 +85,16 @@ const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
     }
     if (canAccessOutreach(user, isActiveMentor)) {
       personaItems.push({ to: '/mentoria/visitas', icon: Footprints, label: 'Mis Visitas', testId: 'nav-outreach' });
+      personaItems.push({ to: '/mentoria/supervision', icon: BarChart3, label: 'Mi Progreso en Invasión', testId: 'nav-supervision' });
     }
     if (isActiveMentor) {
       personaItems.push({ to: '/procesos/consolidacion/mi-panel', icon: ClipboardCheck, label: 'Mi Panel de Mentor', testId: 'nav-mentor-panel' });
     }
     if (canViewFrontGroups(user)) {
       personaItems.push({ to: '/grupos-frontales', icon: Network, label: 'Grupos Frontales', testId: 'nav-front-groups' });
+      if (!canAccessOutreach(user, isActiveMentor)) {
+        personaItems.push({ to: '/mentoria/supervision', icon: BarChart3, label: 'Supervisión de mi Rama', testId: 'nav-supervision' });
+      }
     }
     return personaItems;
   }
@@ -104,6 +111,7 @@ const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
     { to: '/libreria', icon: BookOpen, label: 'Librería 360', testId: 'nav-library' },
     { to: '/campanas/ven-y-come/control', icon: Bus, label: 'Campaña Ven y Come', testId: 'nav-campaign-venycome' },
     { to: '/mentoria/visitas', icon: Footprints, label: 'Visitas e Invasiones', testId: 'nav-outreach' },
+    { to: '/mentoria/supervision', icon: BarChart3, label: 'Supervisión de Invasiones', testId: 'nav-supervision' },
     { to: '/grupos-frontales', icon: Network, label: 'Grupos Frontales', testId: 'nav-front-groups' },
     { to: '/liderazgo', icon: Award, label: 'Liderazgo', testId: 'nav-leadership' },
     { to: '/mapas', icon: MapPinned, label: 'Mapa 360', testId: 'nav-geo-maps' },
@@ -132,6 +140,10 @@ const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
   if (isActiveMentor) {
     items.push({ to: '/procesos/consolidacion/mi-panel', icon: ClipboardCheck, label: 'Mi Panel de Mentor', testId: 'nav-mentor-panel' });
   }
+  if (canCreateOutreachCampaign(user)) {
+    items.push({ to: '/admin/historial-borrados', icon: Trash2, label: 'Historial de Borrados', testId: 'nav-admin-deletions' });
+    items.push({ to: '/admin/migracion-c11', icon: DatabaseBackup, label: 'Migración de Datos (C11)', testId: 'nav-migration-c11' });
+  }
   return items.filter((item) => (
     item.to !== '/grupos-frontales' || canViewFrontGroups(user)
   ) && (
@@ -156,6 +168,8 @@ const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
     item.to !== '/campanas/ven-y-come/control' || canAccessCampaignOperator(user)
   ) && (
     item.to !== '/mentoria/visitas' || canAccessOutreach(user, isActiveMentor)
+  ) && (
+    item.to !== '/mentoria/supervision' || canAccessOutreach(user, isActiveMentor) || canViewFrontGroups(user)
   ));
 };
 

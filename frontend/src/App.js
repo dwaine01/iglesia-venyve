@@ -72,6 +72,9 @@ import SevenWeeksDetailPage from './pages/processes/SevenWeeksDetailPage';
 import ConsolidationPage from './pages/processes/ConsolidationPage';
 import ConsolidationDetailPage from './pages/processes/ConsolidationDetailPage';
 import MentorPanelPage from './pages/processes/MentorPanelPage';
+import SupervisionPage from './pages/mentoria/SupervisionPage';
+import AdminDeletionsPage from './pages/admin/AdminDeletionsPage';
+import MigrationC11Page from './pages/admin/MigrationC11Page';
 import DiscipleshipPage from './pages/processes/DiscipleshipPage';
 import FrontGroupsPage from './pages/FrontGroupsPage';
 import LeadershipPage from './pages/LeadershipPage';
@@ -95,7 +98,7 @@ import BoardMeetingsPage from './pages/board/BoardMeetingsPage';
 import BoardMeetingDetailPage from './pages/board/BoardMeetingDetailPage';
 import BoardMinutesPage from './pages/board/BoardMinutesPage';
 import AppLayout from './components/AppLayout';
-import { canManageDirectMembership, canManageBaptismEvents, canManageDedicationEvents, canViewCare, canViewFinanceModule, canViewFormation, canViewFrontGroups, canViewGeo, canViewLeadership, canViewLibraryModule, canManageLibraryInventory, canViewLibraryPurchaseOrders, canViewLibraryReports, canViewOperations, canAccessCampaignOperator, canAccessOutreach, hasAnyCapability, isPastoralAuthority } from './lib/accessControl';
+import { canManageDirectMembership, canManageBaptismEvents, canManageDedicationEvents, canViewCare, canViewFinanceModule, canViewFormation, canViewFrontGroups, canViewGeo, canViewLeadership, canViewLibraryModule, canManageLibraryInventory, canViewLibraryPurchaseOrders, canViewLibraryReports, canViewOperations, canAccessCampaignOperator, canAccessOutreach, canCreateOutreachCampaign, hasAnyCapability, isPastoralAuthority } from './lib/accessControl';
 import { useBoardAccess } from './hooks/useBoardAccess';
 import { useMentorAccess } from './hooks/useMentorAccess';
 import './App.css';
@@ -174,6 +177,14 @@ function OutreachAccessRoute({ children }) {
   const mentorAccess = useMentorAccess();
   if (!user || mentorAccess.loading) return <div className="flex min-h-screen items-center justify-center" data-testid="outreach-access-loading">Cargando…</div>;
   if (!canAccessOutreach(user, mentorAccess.isActiveMentor)) return <Navigate to="/" replace />;
+  return children;
+}
+
+function SupervisionAccessRoute({ children }) {
+  const { user } = useAuth();
+  const mentorAccess = useMentorAccess();
+  if (!user || mentorAccess.loading) return <div className="flex min-h-screen items-center justify-center" data-testid="supervision-access-loading">Cargando…</div>;
+  if (!canAccessOutreach(user, mentorAccess.isActiveMentor) && !canViewFrontGroups(user)) return <Navigate to="/" replace />;
   return children;
 }
 
@@ -275,6 +286,9 @@ function App() {
             <Route path="libreria/etiquetas" element={<CapabilityRoute allowed={canManageLibraryInventory}><LibraryLabelsPage /></CapabilityRoute>} />
             <Route path="campanas/ven-y-come/control" element={<CapabilityRoute allowed={canAccessCampaignOperator}><CampaignControlPage /></CapabilityRoute>} />
             <Route path="mentoria/visitas" element={<OutreachAccessRoute><OutreachPage /></OutreachAccessRoute>} />
+            <Route path="mentoria/supervision" element={<SupervisionAccessRoute><SupervisionPage /></SupervisionAccessRoute>} />
+            <Route path="admin/historial-borrados" element={<CapabilityRoute allowed={canCreateOutreachCampaign}><AdminDeletionsPage /></CapabilityRoute>} />
+            <Route path="admin/migracion-c11" element={<CapabilityRoute allowed={canCreateOutreachCampaign}><MigrationC11Page /></CapabilityRoute>} />
             <Route path="operaciones" element={<CapabilityRoute allowed={canViewOperations}><OperationsDashboardPage /></CapabilityRoute>} />
             <Route path="operaciones/eventos" element={<CapabilityRoute allowed={canViewOperations}><OperationsEventsPage /></CapabilityRoute>} />
             <Route path="operaciones/eventos/:eventId" element={<CapabilityRoute allowed={canViewOperations}><OperationEventDetailPage /></CapabilityRoute>} />

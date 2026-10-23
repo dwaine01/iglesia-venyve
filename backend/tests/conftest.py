@@ -53,6 +53,8 @@ QA_ACCOUNTS = [
     ("coreqa.leader@example.com", "CoreQA2026!Leader", "Core QA Leader", "lider"),
     ("coreqa.member@example.com", "CoreQA2026!Member", "Core QA Member", "persona"),
     ("access01.ui@example.com", "Access01UiTest!", "ACCESS-01 UI Leader", "lider"),
+    ("qa.baptismui53.pastor@example.com", "QaBaptismUI53!", "QA Baptism Pastor", "pastor"),
+    ("qa.baptismui53.lider@example.com", "QaBaptismUI53!", "QA Baptism Lider", "lider"),
 ]
 
 

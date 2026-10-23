@@ -417,8 +417,9 @@ async def deliver_from_mentor_to_person(
     return movement["movement_id"]
 
 
-@router.get("/dashboard", response_model=dict)
-async def library_dashboard(current_user: dict = Depends(participant)):
+async def compute_library_totals(db) -> dict:
+    """Totales de Librería 360 reusados por el dashboard propio y por
+    Supervisión (Etapa 4): mismos registros, un solo cómputo."""
     books = await db.library_books.find({"is_active": True}, {"_id": 0}).to_list(2000)
     holdings = await db.library_holdings.find({}, {"_id": 0}).to_list(5000)
     by_book: dict[str, list] = {}
@@ -443,6 +444,19 @@ async def library_dashboard(current_user: dict = Depends(participant)):
             critical.append(book["name"])
         elif on_hand <= book.get("min_stock", 0):
             low.append(book["name"])
+    returned_agg = await db.library_movements.aggregate([
+        {"$match": {"movement_type": "RETURN"}}, {"$group": {"_id": None, "total": {"$sum": "$quantity"}}},
+    ]).to_list(1)
+    total_returned = returned_agg[0]["total"] if returned_agg else 0
+    return {
+        "registered": total_registered, "available": total_available, "with_leaders": total_with_leaders,
+        "delivered": total_delivered, "returned": total_returned, "critical": critical, "low": low,
+    }
+
+
+@router.get("/dashboard", response_model=dict)
+async def library_dashboard(current_user: dict = Depends(participant)):
+    totals = await compute_library_totals(db)
     pending_requests = await db.library_requests.count_documents({"status": "pending"}) if is_library_manager(current_user) else 0
     overdue_pos = 0
     if is_library_manager(current_user):
@@ -456,8 +470,8 @@ async def library_dashboard(current_user: dict = Depends(participant)):
                 if expected_date < today:
                     overdue_pos += 1
     return {
-        "totals": {"registered": total_registered, "available": total_available, "with_leaders": total_with_leaders, "delivered": total_delivered},
-        "alerts": {"critical": critical, "low": low, "pending_requests": pending_requests, "overdue_purchase_orders": overdue_pos},
+        "totals": {"registered": totals["registered"], "available": totals["available"], "with_leaders": totals["with_leaders"], "delivered": totals["delivered"]},
+        "alerts": {"critical": totals["critical"], "low": totals["low"], "pending_requests": pending_requests, "overdue_purchase_orders": overdue_pos},
     }
 
 

@@ -463,6 +463,12 @@ from front_group_routing import router as front_group_routing_router, ensure_fro
 app.include_router(front_group_routing_router)
 from front_group_reports import router as front_group_reports_router, ensure_front_group_report_indexes
 app.include_router(front_group_reports_router)
+from supervision_analytics import router as supervision_analytics_router, ensure_supervision_indexes
+app.include_router(supervision_analytics_router)
+from migration_c11 import router as migration_c11_router
+app.include_router(migration_c11_router)
+from admin_audit import router as admin_audit_router
+app.include_router(admin_audit_router)
 from consolidation_activities import router as consolidation_activities_router, seed_activity_catalog
 app.include_router(consolidation_activities_router)
 from consolidation_v2 import router as consolidation_v2_router, ensure_indexes as consolidation_v2_ensure_indexes
@@ -677,6 +683,7 @@ async def startup():
     await ensure_front_group_work_indexes()
     await ensure_front_group_routing_indexes()
     await ensure_front_group_report_indexes()
+    await ensure_supervision_indexes()
     await consolidation_v2_ensure_indexes()
     await seed_activity_catalog()
     await ensure_leadership_indexes_and_seed()

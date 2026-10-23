@@ -224,7 +224,30 @@ arranque del backend):
 
 ---
 
-## 10. Estructura de archivos de deploy
+## 11. Migración de datos C11 (diagnóstico/aplicación)
+
+La migración C11 (`backend/migration_c11.py`, endpoints `GET /api/admin/migrations/c11?mode=diagnose|apply`) es **idempotente y no destructiva**. Solo la pastora/pastor general o un coordinador general pueden ejecutarla (desde `/admin/migracion-c11` en el panel).
+
+### Qué hace
+- **Modo `diagnose`** (solo lectura, seguro en cualquier ambiente): reporta Personas con más de una cuenta, cuentas sin Persona asociada, Grupos Frontales con líder sin cuenta o con más de un líder activo, y expedientes de invasión (`process_enrollments` con `source="mentorship_outreach"`) sin `front_group_id`. Para estos últimos, propone un `front_group_id` **solo** cuando el mentor tiene una única rama de supervisión activa (sin ambigüedad).
+- **Modo `apply`**: corrige **únicamente** los expedientes con propuesta clara (mentor con una sola rama). El resto de hallazgos (cuentas duplicadas, cuentas huérfanas, líderes duplicados) se reportan pero **nunca se tocan automáticamente** — requieren revisión pastoral manual caso por caso. Cada corrida de `apply` queda registrada en `migration_runs` (quién, cuándo, cuántos expedientes).
+
+### Procedimiento recomendado
+1. **Nunca ejecutes `apply` directamente en producción sin antes correr `diagnose` ahí mismo y revisar el reporte con la pastora/coordinador.**
+2. Corre primero `diagnose` en producción (es de solo lectura, no cambia nada) y exporta/lee el resumen.
+3. Si el número de "expedientes auto-corregibles" es razonable y se entiende el criterio (mentor con una única rama), corre `apply` desde el panel (`/admin/migracion-c11` → botón "Aplicar corrección segura").
+4. Vuelve a correr `diagnose`: debe mostrar `enrollments_auto_fixable: 0` para los casos ya corregidos (comportamiento idempotente — correrlo de nuevo no cambia nada más).
+5. Los hallazgos que **no** se auto-corrigen (duplicados, huérfanos, líderes múltiples) deben resolverse manualmente desde los paneles correspondientes (Persona 360, Grupos Frontales) — la migración solo los señala.
+
+---
+
+## 12. Historial de borrados administrativos
+
+`/admin/historial-borrados` (solo pastoral/coordinador general) lista cada borrado **total y permanente** de una Invasión o un Grupo Frontal (colección `admin_deletions`): quién lo hizo, cuándo y el motivo escrito. No hay forma de deshacer un borrado total — por eso los diálogos de borrado en el panel siempre muestran primero un conteo ("se borrarán X hogares, Y visitas…") antes de confirmar.
+
+---
+
+## 13. Estructura de archivos de deploy
 
 ```
 iglesia-venyve/
