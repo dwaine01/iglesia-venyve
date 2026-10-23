@@ -6,6 +6,7 @@ import { useAuth } from '../../context/AuthContext';
 import { ConsolidationIntakeDialog } from '../../components/processes/ConsolidationIntakeDialog';
 import { ConsolidationJourneyCard } from '../../components/processes/ConsolidationJourneyCard';
 import { ConsolidationAssignmentDesk } from '../../components/processes/ConsolidationAssignmentDesk';
+import { InvasionHeaderActions, InvasionHub } from '../../components/invasions/InvasionHub';
 import { ProcessError, ProcessLoading, ProcessShell } from '../../components/processes/ProcessShell';
 import { toast } from 'sonner';
 import { hasCapability, isPastoralAuthority, mentorAccessSuffix, mentorAccessDisabled } from '../../lib/accessControl';
@@ -45,7 +46,8 @@ export default function ConsolidationPage() {
   useEffect(() => { load(); }, [load]);
   const visible = useMemo(() => filter === 'all' ? data.items : data.items.filter((item) => item.entry_mode === filter), [data.items, filter]);
   const canAssign = isPastoralAuthority(user) || hasCapability(user, 'consolidation.assign');
-  return <ProcessShell title="Consolidación" eyebrow="Ruta oficial" description="Cuatro puertas de entrada, un solo recorrido y un historial permanente hasta Membresía, Retiro y Discipulado." actions={<ConsolidationIntakeDialog groups={data.groups} assignees={data.assignees} onCreated={load} canAssign={canAssign} routing={data.routing} />}>
+  return <ProcessShell title="Consolidación" eyebrow="Ruta oficial" description="Cuatro puertas de entrada, un solo recorrido y un historial permanente hasta Membresía, Retiro y Discipulado." actions={<div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center"><InvasionHeaderActions onDark /><ConsolidationIntakeDialog groups={data.groups} assignees={data.assignees} onCreated={load} canAssign={canAssign} routing={data.routing} /></div>}>
+    <InvasionHub showAction={user?.rol === 'persona'} />
     {loading ? <ProcessLoading /> : error ? <ProcessError message={error} /> : <>
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" data-testid="consolidation-metrics">{metrics.map(([key, label, Icon]) => <article key={key} className="border border-slate-200 bg-white p-4"><Icon className="h-5 w-5 text-amber-600" /><strong className="mt-5 block font-['Spectral'] text-3xl text-slate-950" data-testid={`consolidation-metric-${key}`}>{data.dashboard[key] || 0}</strong><span className="text-xs text-slate-500">{label}</span></article>)}</section>
       {canAssign && <ConsolidationAssignmentDesk routing={data.routing} groups={data.groups} onAssigned={load} canConfigure={isPastoralAuthority(user) || hasCapability(user, 'front_groups.rotation.manage')} />}

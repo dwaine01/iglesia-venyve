@@ -541,6 +541,15 @@ from front_group_stats import router as front_group_stats_router
 
 app.include_router(front_group_stats_router)
 
+# --- FASE 6A: notificaciones del portal y planificación/solicitud de invasiones ---
+from portal_notifications import router as portal_notifications_router, ensure_indexes as portal_notifications_ensure_indexes
+from invasion_planning import router as invasion_planning_router, ensure_indexes as invasion_planning_ensure_indexes
+from invasion_participants import router as invasion_participants_router, ensure_indexes as invasion_participants_ensure_indexes
+
+app.include_router(portal_notifications_router)
+app.include_router(invasion_participants_router)
+app.include_router(invasion_planning_router)
+
 
 # --- Invitaciones de acceso (C5): establecer contraseña sobre una cuenta creada sin temporal ---
 from access_invitations import router as access_invitations_router, ensure_indexes as access_invitations_ensure
@@ -738,6 +747,9 @@ async def startup():
     await library_po_ensure_indexes()
     await library_reservations_ensure_indexes()
     await library_notifications_ensure_indexes()
+    await portal_notifications_ensure_indexes()
+    await invasion_planning_ensure_indexes()
+    await invasion_participants_ensure_indexes()
     await campaign_venycome_ensure_indexes()
     await ensure_mentorship_indexes()
     await ensure_outreach_indexes()
