@@ -1,13 +1,15 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
+import { Link } from 'react-router-dom';
 import { Loader2, Plus, UserRoundSearch } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { useAuth } from '../../context/AuthContext';
+import { canCreateOutreachCampaign } from '../../lib/accessControl';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
-import { Input } from '../ui/input';
 import { AddVisitDialog } from './AddVisitDialog';
+import { CreateCampaignDialog } from './CreateCampaignDialog';
 import { TransferVisitDialog } from './TransferVisitDialog';
 import { VisitCard } from './VisitCard';
 
@@ -19,12 +21,10 @@ const TOTAL_CARDS = [
 ];
 
 export const OutreachLeaderPanel = ({ campaigns, onCampaignsChanged }) => {
-  const { API, getAuthHeaders } = useAuth();
+  const { API, getAuthHeaders, user } = useAuth();
   const [dashboard, setDashboard] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [campaignName, setCampaignName] = useState('');
-  const [zoneNotes, setZoneNotes] = useState('');
-  const [creatingCampaign, setCreatingCampaign] = useState(false);
+  const [createCampaignOpen, setCreateCampaignOpen] = useState(false);
   const [mentors, setMentors] = useState([]);
   const [drillMentorId, setDrillMentorId] = useState(null);
   const [drillVisits, setDrillVisits] = useState([]);
@@ -58,21 +58,6 @@ export const OutreachLeaderPanel = ({ campaigns, onCampaignsChanged }) => {
     setDrillVisits(response.data.items || []);
   };
 
-  const createCampaign = async () => {
-    if (!campaignName.trim()) { toast.error('Escriba el nombre de la campaña'); return; }
-    setCreatingCampaign(true);
-    try {
-      await axios.post(`${API}/api/mentorship/outreach/campaigns`, { name: campaignName.trim(), zone_notes: zoneNotes || null }, getAuthHeaders());
-      toast.success('Campaña creada');
-      setCampaignName(''); setZoneNotes('');
-      if (onCampaignsChanged) onCampaignsChanged();
-    } catch (error) {
-      toast.error(error?.response?.data?.detail || 'No se pudo crear la campaña');
-    } finally {
-      setCreatingCampaign(false);
-    }
-  };
-
   const refreshDrill = () => { if (drillMentorId) loadDrill(drillMentorId); loadDashboard(); };
 
   if (loading) return <Loader2 className="h-6 w-6 animate-spin text-slate-400" data-testid="outreach-leader-loading" />;
@@ -80,20 +65,25 @@ export const OutreachLeaderPanel = ({ campaigns, onCampaignsChanged }) => {
   return (
     <div className="space-y-6" data-testid="outreach-leader-panel">
       <div className="rounded-xl border border-[#E8E5DE] bg-white p-4">
-        <h3 className="font-['Spectral'] text-lg font-semibold text-[#101D36]">Nueva campaña de invasión</h3>
-        <div className="mt-3 grid gap-3 sm:grid-cols-[2fr_3fr_auto]">
-          <Input value={campaignName} onChange={(event) => setCampaignName(event.target.value)} placeholder="Nombre" data-testid="outreach-campaign-name-input" />
-          <Input value={zoneNotes} onChange={(event) => setZoneNotes(event.target.value)} placeholder="Zona / notas" data-testid="outreach-campaign-zone-input" />
-          <Button disabled={creatingCampaign} onClick={createCampaign} className="bg-[#132443]" data-testid="outreach-campaign-create-button"><Plus className="h-4 w-4" /> Crear</Button>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h3 className="font-['Spectral'] text-lg font-semibold text-[#101D36]">Invasiones</h3>
+          {canCreateOutreachCampaign(user) && (
+            <Button onClick={() => setCreateCampaignOpen(true)} className="bg-[#132443]" data-testid="create-campaign-open-button">
+              <Plus className="h-4 w-4" /> Crear invasión
+            </Button>
+          )}
         </div>
-        {campaigns?.length > 0 && (
+        {campaigns?.length > 0 ? (
           <div className="mt-3 flex flex-wrap gap-2">
             {campaigns.map((campaign) => (
               <Badge key={campaign.campaign_id} variant="outline" data-testid={`outreach-campaign-badge-${campaign.campaign_id}`}>
-                {campaign.name} · {campaign.status === 'active' ? 'Activa' : 'Cerrada'}
+                {campaign.name} · {campaign.location} · {campaign.start_date} · {campaign.status === 'active' ? 'Activa' : 'Cerrada'}
+                {campaign.assigned_mentor_ids?.length > 0 && ` · ${campaign.assigned_mentor_ids.length} mentor(es)`}
               </Badge>
             ))}
           </div>
+        ) : (
+          <p className="mt-3 text-sm text-slate-400" data-testid="outreach-no-campaigns">Todavía no hay invasiones creadas.</p>
         )}
       </div>
 
@@ -123,7 +113,7 @@ export const OutreachLeaderPanel = ({ campaigns, onCampaignsChanged }) => {
             <tbody>
               {(dashboard?.by_mentor || []).map((row) => (
                 <tr key={row.mentor_person_id} className="border-t border-slate-100" data-testid={`outreach-mentor-row-${row.mentor_person_id}`}>
-                  <td className="py-2 font-medium">{row.mentor_name}</td>
+                  <td className="py-2 font-medium"><Link to={`/personas/${row.mentor_person_id}`} className="underline decoration-dotted hover:text-[#132443]" data-testid={`outreach-mentor-profile-link-${row.mentor_person_id}`}>{row.mentor_name}</Link></td>
                   <td>{row.total}</td><td>{row.assigned}</td><td>{row.visited}</td><td>{row.wants_followup}</td><td>{row.received_mcd}</td><td>{row.received_npt}</td><td>{row.lbs_pending}</td><td>{row.seven_weeks_started}</td>
                   <td><Button size="sm" variant="ghost" onClick={() => loadDrill(row.mentor_person_id)} data-testid={`outreach-mentor-drill-button-${row.mentor_person_id}`}>Ver lista</Button></td>
                 </tr>
@@ -146,6 +136,7 @@ export const OutreachLeaderPanel = ({ campaigns, onCampaignsChanged }) => {
         </div>
       )}
 
+      <CreateCampaignDialog open={createCampaignOpen} onOpenChange={setCreateCampaignOpen} mentorOptions={mentors} onCreated={() => { if (onCampaignsChanged) onCampaignsChanged(); }} />
       <AddVisitDialog
         open={addOpen}
         onOpenChange={setAddOpen}

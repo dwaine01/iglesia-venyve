@@ -17,6 +17,7 @@ from access_control import (
     PROCESSES_READ,
     PROCESSES_WRITE,
     has_capability,
+    is_general_coordinator,
     is_global_pastoral_authority,
 )
 from consolidation_service import (
@@ -307,6 +308,30 @@ async def intake_candidates(search: str = "", limit: int = 20, current_user: dic
         "current_stage_key": (journey_by_person.get(str(person["_id"])) or {}).get("current_stage_key"),
     } for person in people if str(person["_id"]) not in excluded_ids][:limit]
     return {"items": items, "total": len(items)}
+
+
+@router.get("/by-mentor/{mentor_person_id}", response_model=dict)
+async def consolidation_by_mentor(mentor_person_id: str, current_user: dict = Depends(get_current_user)):
+    """Discípulos (Ley de las 7 Semanas) de UN mentor en particular. El propio
+    mentor ve solo los suyos; pastora/pastor y coordinadores generales pueden
+    ver a cualquier mentor por separado (pedido del dueño)."""
+    is_self = bool(current_user.get("person_id")) and current_user.get("person_id") == mentor_person_id
+    is_leader = is_global_pastoral_authority(current_user) or is_general_coordinator(current_user) or has_capability(current_user, CONSOLIDATION_ASSIGN)
+    if not is_self and not is_leader:
+        raise HTTPException(status_code=403, detail="Solo el propio mentor o un líder puede ver a sus discípulos")
+    if is_self and not await db.mentor_badges.find_one({"person_id": mentor_person_id, "active": True}, {"_id": 1}):
+        raise HTTPException(status_code=403, detail="Requiere insignia de Mentor activa")
+    mentor_person = await db.persons.find_one({"_id": ObjectId(mentor_person_id)}, {"_id": 0, "nombre": 1, "apellido": 1}) if ObjectId.is_valid(mentor_person_id) else None
+    enrollments = await db.process_enrollments.find(
+        {"process_key": "consolidation", "definition_version": 2, "mentor_person_id": mentor_person_id}, {"_id": 0},
+    ).sort("updated_at", -1).to_list(500)
+    items = [await enrollment_detail(db, item) for item in enrollments]
+    return {
+        "mentor_person_id": mentor_person_id,
+        "mentor_name": " ".join(part for part in [(mentor_person or {}).get("nombre"), (mentor_person or {}).get("apellido")] if part) or None,
+        "viewer_is_mentor": is_self,
+        "items": items, "total": len(items),
+    }
 
 
 @router.get("/{enrollment_id}", response_model=dict)

@@ -420,7 +420,7 @@ async def update_enrollment(enrollment_id: str, payload: EnrollmentUpdate, curre
 async def update_stage(enrollment_id: str, stage_key: str, payload: StageUpdate, current_user: dict = Depends(require_participate)):
     enrollment = await load_enrollment(enrollment_id, current_user)
     reject_legacy_discipleship_write(enrollment)
-    if current_user.get("rol") == "persona" and enrollment["person_id"] != current_user.get("person_id"):
+    if current_user.get("rol") == "persona" and current_user.get("person_id") not in {enrollment["person_id"], enrollment.get("mentor_person_id")}:
         raise HTTPException(status_code=403, detail="Solo puede actualizar su propio proceso")
     stage_doc = await db.process_stage_progress.find_one({"enrollment_id": enrollment_id, "stage_key": stage_key})
     if not stage_doc: raise HTTPException(status_code=404, detail="Etapa no encontrada")

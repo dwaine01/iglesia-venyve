@@ -19,10 +19,17 @@ export const hasPrivilegeGroup = (user, group) => (
 );
 
 export const mentorAccessDisabled = (item) => item?.has_account === false || item?.account_active === false;
-
 export const mentorAccessSuffix = (item) => (mentorAccessDisabled(item) ? ' (sin acceso)' : '');
 
 export const mentorAccessHint = 'Crea su acceso en su perfil 360 → pestaña Mentor';
+
+const COORDINATOR_ACCESS_LEVELS = new Set(['coordinador_general', 'general_coordinator']);
+
+export const isGeneralCoordinator = (user) => COORDINATOR_ACCESS_LEVELS.has(String(user?.access_level || '').trim().toLowerCase());
+
+export const canCreateOutreachCampaign = (user) => isPastoralAuthority(user) || isGeneralCoordinator(user);
+
+export const canViewOtherMentorDisciples = (user) => isPastoralAuthority(user) || isGeneralCoordinator(user) || hasCapability(user, 'consolidation.assign');
 
 export const canViewFinanceModule = (user) => (
   isPastoralAuthority(user)

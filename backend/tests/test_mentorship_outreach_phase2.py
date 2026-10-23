@@ -370,10 +370,13 @@ async def test_only_leader_capability_can_create_campaigns_assign_others_and_vie
     await activate_badge(leader_pid)
     _, mentor_email = await create_user("Mentor Under Leader", "persona", mentor_pid)
     _, leader_email = await create_user("Leader Outreach", "lider", leader_pid, capabilities=["mentorship.outreach.assign"])
+    _, pastor_email = await create_user("Pastor Campaign Owner", "pastor")
     mentor_client, mentor_headers = await auth_client(mentor_email)
     leader_client, leader_headers = await auth_client(leader_email)
+    pastor_client, pastor_headers = await auth_client(pastor_email)
+    campaign_payload = {"name": "Invasion Autorizada", "location": "Barrio Las Flores", "start_date": "2026-03-01"}
     try:
-        rejected_campaign = await mentor_client.post("/api/mentorship/outreach/campaigns", json={"name": "Invasion Sin Permiso"}, headers=mentor_headers)
+        rejected_campaign = await mentor_client.post("/api/mentorship/outreach/campaigns", json=campaign_payload, headers=mentor_headers)
         assert rejected_campaign.status_code == 403
 
         rejected_assign = await mentor_client.post(
@@ -385,8 +388,14 @@ async def test_only_leader_capability_can_create_campaigns_assign_others_and_vie
         rejected_dashboard = await mentor_client.get("/api/mentorship/outreach/dashboard", headers=mentor_headers)
         assert rejected_dashboard.status_code == 403
 
-        campaign = await leader_client.post("/api/mentorship/outreach/campaigns", json={"name": "Invasion Autorizada"}, headers=leader_headers)
+        # Un líder con mentorship.outreach.assign puede asignar visitas, pero YA NO puede
+        # crear la invasión (eso quedó reservado a pastora/pastor y coordinador general).
+        rejected_leader_campaign = await leader_client.post("/api/mentorship/outreach/campaigns", json=campaign_payload, headers=leader_headers)
+        assert rejected_leader_campaign.status_code == 403
+
+        campaign = await pastor_client.post("/api/mentorship/outreach/campaigns", json=campaign_payload, headers=pastor_headers)
         assert campaign.status_code == 201, campaign.text
+        assert campaign.json()["location"] == "Barrio Las Flores"
 
         assign_to_mentor = await leader_client.post(
             "/api/mentorship/outreach/visits",
@@ -402,6 +411,7 @@ async def test_only_leader_capability_can_create_campaigns_assign_others_and_vie
     finally:
         await mentor_client.aclose()
         await leader_client.aclose()
+        await pastor_client.aclose()
         await cleanup()
 
 

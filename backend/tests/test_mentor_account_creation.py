@@ -6,17 +6,19 @@ credenciales, que las crea el coordinador o el pastor general".
 Reutiliza el flujo EXISTENTE `POST /api/core/governance/users`
 (core_governance.py) sin duplicar lógica: se le agregó un campo opcional
 `mentor_access: bool` que, combinado con `access_level="persona"`, agrega
-`mentorship.outreach.report` a los defaults de esa cuenta (y nada más). La
-contraseña temporal y el `must_change_password=True` del primer ingreso ya
-existían en ese mismo endpoint.
+`mentorship.outreach.report` + las capacidades de perfil propio
+(`PERSON_SELF_CAPABILITIES`, para que el mentor vea su Perfil 360 e insignia)
+a los defaults de esa cuenta. La contraseña temporal y el
+`must_change_password=True` del primer ingreso ya existían en ese mismo
+endpoint.
 
 Cubre:
 - Pastor y coordinador_general pueden crear la cuenta de un mentor.
 - Un mentor/persona NO puede crear cuentas (ni la suya propia ni de otros).
 - `mentor_access=True` exige `access_level="persona"` (400 en cualquier otro
   nivel).
-- La cuenta nueva tiene EXACTAMENTE los defaults de persona + outreach.report
-  (nada de badge.manage/outreach.assign).
+- La cuenta nueva tiene los defaults de persona + sus capacidades de perfil
+  propio + outreach.report (nada de badge.manage/outreach.assign).
 - `GET /api/mentorship/badge/{person_id}` ahora informa `has_account`,
   `account_email` y `can_create_account` (solo true para pastor/coordinador).
 - El mentor recién creado, al entrar, solo ve sus propias visitas y no puede
@@ -31,7 +33,7 @@ from bson import ObjectId
 from httpx import ASGITransport, AsyncClient
 
 import server
-from access_control import access_defaults_for_role
+from access_control import access_defaults_for_role, PERSON_SELF_CAPABILITIES
 from core_governance import access_defaults
 from qa_demo_cleanup import delete_qa_artifacts, qa_preview
 
@@ -104,12 +106,28 @@ async def test_pastor_can_create_mentor_account_with_outreach_report_only():
         )
         assert response.status_code == 201, response.text
         caps = set(response.json()["capabilities"])
-        expected = set(access_defaults("persona")["capabilities"]) | {"mentorship.outreach.report"}
-        assert caps == expected, f"debe ser exactamente persona + outreach.report, obtuvo {caps}"
+        expected = set(access_defaults("persona")["capabilities"]) | set(PERSON_SELF_CAPABILITIES) | {"mentorship.outreach.report"}
+        assert caps == expected, f"debe ser persona + sus capacidades de perfil propio + outreach.report, obtuvo {caps}"
 
         login = await client.post("/api/auth/login", json={"email": email, "password": "MentorTempPass123!"})
         assert login.status_code == 200
         assert login.json()["user"]["must_change_password"] is True, "debe forzar cambio de clave en el primer ingreso"
+
+        mentor_client, mentor_headers = await auth_client(email, "MentorTempPass123!")
+        try:
+            change = await mentor_client.post(
+                "/api/auth/change-password",
+                json={"current_password": "MentorTempPass123!", "new_password": "MentorNewPass456!"},
+                headers=mentor_headers,
+            )
+            assert change.status_code == 200, change.text
+            mentor_headers = {"Authorization": f"Bearer {change.json()['token']}"}
+            own_profile = await mentor_client.get(f"/api/core/persons/{target_person_id}/profile", headers=mentor_headers)
+            assert own_profile.status_code == 200, f"el mentor debe poder ver su propio Perfil 360: {own_profile.text}"
+            own_badge = await mentor_client.get(f"/api/mentorship/badge/{target_person_id}", headers=mentor_headers)
+            assert own_badge.status_code == 200, f"el mentor debe poder ver su propia insignia: {own_badge.text}"
+        finally:
+            await mentor_client.aclose()
     finally:
         await client.aclose()
         await cleanup()
@@ -256,7 +274,7 @@ async def test_new_mentor_sees_only_own_visits_and_no_admin_capability():
             dashboard = await mentor_client.get("/api/mentorship/outreach/dashboard", headers=mentor_headers)
             assert dashboard.status_code == 403
 
-            campaign = await mentor_client.post("/api/mentorship/outreach/campaigns", json={"name": "No deberia poder"}, headers=mentor_headers)
+            campaign = await mentor_client.post("/api/mentorship/outreach/campaigns", json={"name": "No deberia poder", "location": "Zona QA", "start_date": "2026-03-01"}, headers=mentor_headers)
             assert campaign.status_code == 403
         finally:
             await mentor_client.aclose()
