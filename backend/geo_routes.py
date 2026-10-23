@@ -1,4 +1,5 @@
 """Mapa 360: endpoints agregados, precisos y de verificación manual."""
+import asyncio
 from datetime import datetime, timedelta, timezone
 from typing import Literal, Optional
 from uuid import uuid4
@@ -272,10 +273,11 @@ async def geo_catalog(current_user: dict = Depends(require_any_geo)):
 
 @router.get("/summary", response_model=GeoSummaryResponse)
 async def geo_summary(current_user: dict = Depends(require_any_geo)):
-    summary = await geographic_summary(db, current_user)
     if is_global_pastoral_authority(current_user) or has_capability(current_user, GEO_MANAGE_LOCATIONS):
-        summary["unlocated_total"] = len(await unlocated_person_items(db, current_user))
-    return summary
+        summary, unlocated = await asyncio.gather(geographic_summary(db, current_user), unlocated_person_items(db, current_user))
+        summary["unlocated_total"] = len(unlocated)
+        return summary
+    return await geographic_summary(db, current_user)
 
 
 @router.get("/unlocated-persons", response_model=UnlocatedPeopleResponse)

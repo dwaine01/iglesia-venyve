@@ -6,6 +6,7 @@ ven todo; líder/colíder ven su rama (grupo + descendientes); el mentor ve lo
 suyo. Todo con count_documents/distinct/aggregate — nunca un to_list masivo.
 Recorrido: Iglesia -> grupo/líder -> mentor -> discípulo -> etapa -> actividad.
 """
+import asyncio
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
@@ -261,11 +262,9 @@ async def my_scope(current_user: dict = Depends(get_current_user)):
 
 @router.get("/overview", response_model=dict)
 async def overview(ctx: dict = Depends(build_filters)):
-    invasion = await invasion_metrics(ctx)
-    consolidation = await consolidation_metrics(ctx)
-    library_totals = await compute_library_totals(db)
-    custody = await mentor_custody_summary(ctx)
-    thresholds = await load_thresholds()
+    invasion, consolidation, library_totals, custody, thresholds = await asyncio.gather(
+        invasion_metrics(ctx), consolidation_metrics(ctx), compute_library_totals(db), mentor_custody_summary(ctx), load_thresholds(),
+    )
     semaphore = compute_semaphore(consolidation["activities_total"], consolidation["activities_overdue"], thresholds)
     weaknesses = await weakness_summary(ctx, thresholds)
     return {
@@ -316,19 +315,19 @@ async def drilldown_groups(parent_group_id: Optional[str] = Query(default=None),
     groups = await db.front_groups.find(query, {"_id": 0, "front_group_id": 1, "name": 1, "primary_leader_person_id": 1, "co_leader_person_id": 1}).sort("name", 1).to_list(500)
     thresholds = await load_thresholds()
     excluded = set(ctx.get("excluded_ids") or [])
-    result = []
-    for group in groups:
+    async def group_row(group: dict) -> dict:
         branch_ids = await descendant_group_ids(db, group["front_group_id"])
         mentor_ids = without(await db.front_group_assignments.distinct("person_id", {"front_group_id": {"$in": branch_ids}, "active": True}), excluded)
         enrollment_ids = await db.process_enrollments.distinct("enrollment_id", {"mentor_person_id": {"$in": mentor_ids}, "process_key": CONSOLIDATION_KEY}) if mentor_ids else []
         today_iso = date.today().isoformat()
         overdue = await db.consolidation_activities.count_documents({"enrollment_id": {"$in": enrollment_ids}, "status": "pending", "scheduled_date": {"$lt": today_iso}}) if enrollment_ids else 0
         total_activities = await db.consolidation_activities.count_documents({"enrollment_id": {"$in": enrollment_ids}}) if enrollment_ids else 0
-        result.append({
+        return {
             **group, "direct_members": len(without(await db.front_group_assignments.distinct("person_id", {"front_group_id": group["front_group_id"], "active": True}), excluded)),
             "total_members": len(mentor_ids), "activities_overdue": overdue, "activities_total": total_activities,
             "semaphore": compute_semaphore(total_activities, overdue, thresholds),
-        })
+        }
+    result = list(await asyncio.gather(*(group_row(group) for group in groups)))
     return {"groups": serialize(result)}
 
 
@@ -347,8 +346,7 @@ async def drilldown_mentors(ctx: dict = Depends(build_filters)):
     names = await person_names(mentor_ids)
     cutoff_inactive = now_utc() - timedelta(days=thresholds["mentor_inactivity_days"]["value"])
     today_iso = date.today().isoformat()
-    result = []
-    for mentor_id in mentor_ids:
+    async def mentor_row(mentor_id: str) -> dict:
         visits = await db.outreach_visits.count_documents({"mentor_person_id": mentor_id, **campaign_query(ctx)})
         last_visit = await db.outreach_visits.find_one({"mentor_person_id": mentor_id}, {"_id": 0, "created_at": 1}, sort=[("created_at", -1)])
         enrollment_ids = await db.process_enrollments.distinct("enrollment_id", {"mentor_person_id": mentor_id, "process_key": CONSOLIDATION_KEY})
@@ -358,11 +356,14 @@ async def drilldown_mentors(ctx: dict = Depends(build_filters)):
         if last_at and last_at.tzinfo is None:  # Mongo devuelve fechas sin zona horaria (UTC)
             last_at = last_at.replace(tzinfo=timezone.utc)
         has_recent_activity = bool(last_at and last_at >= cutoff_inactive)
-        result.append({
+        return {
             "mentor_person_id": mentor_id, "mentor_name": names.get(mentor_id, "Mentor"), "visits": visits,
             "disciples": len(enrollment_ids), "activities_overdue": overdue, "activities_total": total_activities,
             "inactive": not has_recent_activity, "semaphore": "red" if not has_recent_activity and visits > 0 else compute_semaphore(total_activities, overdue, thresholds),
-        })
+        }
+    result = []
+    for start in range(0, len(mentor_ids), 25):
+        result.extend(await asyncio.gather(*(mentor_row(mentor_id) for mentor_id in mentor_ids[start:start + 25])))
     return {"mentors": serialize(result)}
 
 

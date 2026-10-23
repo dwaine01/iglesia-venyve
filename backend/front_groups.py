@@ -1,5 +1,6 @@
 """Grupos Frontales: árbol recursivo, membresías canónicas y scope jerárquico."""
 import re
+import asyncio
 from datetime import datetime, timezone
 from typing import Literal, Optional
 from uuid import uuid4
@@ -219,15 +220,34 @@ async def person_name(person_id: Optional[str]) -> Optional[str]:
     return " ".join(part for part in [(person or {}).get("nombre"), (person or {}).get("apellido")] if part) or None
 
 
-async def group_summary(group: dict, current_user: dict) -> dict:
+async def person_names(person_ids) -> dict[str, Optional[str]]:
+    """`person_name` para varias personas con una sola consulta."""
+    oids = [ObjectId(item) for item in {item for item in person_ids if item} if ObjectId.is_valid(item)]
+    if not oids: return {}
+    names = {}
+    async for person in db.persons.find({"_id": {"$in": oids}}, {"nombre": 1, "apellido": 1}):
+        names[str(person["_id"])] = " ".join(part for part in [person.get("nombre"), person.get("apellido")] if part) or None
+    return names
+
+
+_UNSET = object()
+
+
+async def group_summary(group: dict, current_user: dict, manageable=_UNSET, supportable=_UNSET) -> dict:
+    """Resumen de un grupo. `manageable`/`supportable` se pueden pasar ya
+    calculados cuando se resumen muchos grupos para la misma cuenta."""
     item = serialize(group)
-    item["primary_leader_name"] = await person_name(group.get("primary_leader_person_id"))
-    item["co_leader_name"] = await person_name(group.get("co_leader_person_id"))
+    if manageable is _UNSET:
+        manageable = await manageable_group_ids(db, current_user)
+    if supportable is _UNSET:
+        supportable = await support_group_ids(db, current_user)
+    item["primary_leader_name"], item["co_leader_name"], item["team_count"], item["active_process_count"] = await asyncio.gather(
+        person_name(group.get("primary_leader_person_id")),
+        person_name(group.get("co_leader_person_id")),
+        db.front_group_assignments.count_documents({"front_group_id": group["front_group_id"], "active": True}),
+        db.process_enrollments.count_documents({"front_group_id": group["front_group_id"], "process_key": "consolidation", "status": {"$in": ["planned", "active", "paused"]}}),
+    )
     item["display_name"] = item.get("name") or (f"Equipo de {item['primary_leader_name']}" if item["primary_leader_name"] else "Equipo sin líder")
-    item["team_count"] = await db.front_group_assignments.count_documents({"front_group_id": group["front_group_id"], "active": True})
-    item["active_process_count"] = await db.process_enrollments.count_documents({"front_group_id": group["front_group_id"], "process_key": "consolidation", "status": {"$in": ["planned", "active", "paused"]}})
-    manageable = await manageable_group_ids(db, current_user)
-    supportable = await support_group_ids(db, current_user)
     item["permissions"] = {
         "manage": manageable is None or group["front_group_id"] in manageable,
         "support": supportable is None or group["front_group_id"] in supportable,
@@ -259,14 +279,18 @@ async def visible_group_items(query: dict, current_user: dict) -> list[dict]:
         member_only = await member_group_ids(db, current_user.get("person_id")) - allowed
         query = {**query, "front_group_id": {"$in": [*allowed, *member_only]}}
     groups = await db.front_groups.find(query, {"_id": 0}).sort([("depth", 1), ("rotation_order", 1), ("name", 1)]).to_list(10000)
-    items = []
-    for group in groups:
+    manageable, supportable = await asyncio.gather(manageable_group_ids(db, current_user), support_group_ids(db, current_user))
+
+    async def group_item(group: dict) -> dict:
         if group["front_group_id"] in member_only:
             item = await member_view(group)
             item.update({"parent_group_id": group.get("parent_group_id"), "depth": group.get("depth", 0), "rotation_order": group.get("rotation_order", 0), "permissions": {"manage": False, "support": False}})
-            items.append(item)
-        else:
-            items.append(await group_summary(group, current_user))
+            return item
+        return await group_summary(group, current_user, manageable, supportable)
+
+    items = []
+    for start in range(0, len(groups), 25):
+        items.extend(await asyncio.gather(*(group_item(group) for group in groups[start:start + 25])))
     return items
 
 
@@ -520,17 +544,45 @@ async def leader_privilege_for(group_id: str, person_id: str) -> Optional[dict]:
     }
 
 
+async def leader_privileges_for(group_id: str, person_ids: list[str]) -> dict[str, dict]:
+    """`leader_privilege_for` para todo el roster: una consulta de grupos hijos
+    (el más antiguo por persona, igual que la versión individual)."""
+    wanted = set(person_ids)
+    if not wanted: return {}
+    children = await db.front_groups.find(
+        {"parent_group_id": group_id, "status": {"$ne": "archived"}, "$or": [{"primary_leader_person_id": {"$in": list(wanted)}}, {"co_leader_person_id": {"$in": list(wanted)}}]},
+        {"_id": 0},
+    ).sort("created_at", 1).to_list(2000)
+    first_child: dict[str, dict] = {}
+    for child in children:
+        for person_id in (child.get("primary_leader_person_id"), child.get("co_leader_person_id")):
+            if person_id in wanted: first_child.setdefault(person_id, child)
+    result = {}
+    for person_id, child in first_child.items():
+        result[person_id] = {
+            "front_group_id": child["front_group_id"], "name": child.get("name"), "status": child.get("status"),
+            "as": "leader" if child.get("primary_leader_person_id") == person_id else "co_leader",
+            "assigned_by_name": await user_name(child.get("designated_by_user_id") or child.get("created_by_user_id")),
+            "assigned_at": serialize(child.get("designated_at") or child.get("created_at")),
+        }
+    return result
+
+
 async def roster_view(group: dict) -> dict:
     """Integrantes del grupo organizados en individuos y equipos."""
     group_id = group["front_group_id"]
     assignments = await db.front_group_assignments.find({"front_group_id": group_id, "role": "member", "active": True}, {"_id": 0}).to_list(2000)
     # Orden en que se registró la lista (roster_order); los anteriores, por fecha de alta.
     assignments.sort(key=lambda item: (item.get("roster_order") is None, item.get("roster_order") or 0, item.get("started_at") or now_utc()))
+    person_ids = [item["person_id"] for item in assignments]
+    names = await person_names(person_ids)
+    with_account = set(await db.users.distinct("person_id", {"person_id": {"$in": person_ids}, "is_active": {"$ne": False}})) if person_ids else set()
+    privileges = await leader_privileges_for(group_id, person_ids)
     entries, by_pair = [], {}
     for item in assignments:
-        card = {"person_id": item["person_id"], "name": await person_name(item["person_id"]),
-                "has_account": bool(await db.users.find_one({"person_id": item["person_id"], "is_active": {"$ne": False}}, {"_id": 1})),
-                "leader_privilege": await leader_privilege_for(group_id, item["person_id"])}
+        card = {"person_id": item["person_id"], "name": names.get(item["person_id"]),
+                "has_account": item["person_id"] in with_account,
+                "leader_privilege": privileges.get(item["person_id"])}
         pair_id = item.get("pair_id")
         if pair_id and pair_id in by_pair:
             by_pair[pair_id]["people"].append(card)

@@ -1,4 +1,5 @@
 """APIs operativas de las 9 Puertas y la Junta Directiva."""
+import asyncio
 from datetime import date, datetime, timezone
 from typing import Literal, Optional
 from uuid import uuid4
@@ -183,16 +184,22 @@ async def doors_catalog(current_user: dict = Depends(require_staff)):
 async def doors_dashboard(current_user: dict = Depends(require_staff)):
     scope = await door_scope(db, current_user); keys = scope["door_keys"]
     doors = await db.door_catalog.find({"door_key": {"$in": keys}, "active": True}, {"_id": 0}).sort("number", 1).to_list(20)
-    items = []
-    for door in doors:
+    async def door_item(door: dict) -> dict:
         item = serialize(door)
-        item["team_count"] = await db.door_assignments.count_documents({"door_key": door["door_key"], "active": True})
-        item["open_cases"] = await db.door_cases.count_documents({"door_key": door["door_key"], "status": {"$nin": ["resolved", "closed"]}})
-        item["urgent_cases"] = await db.door_cases.count_documents({"door_key": door["door_key"], "status": {"$nin": ["resolved", "closed"]}, "priority": "urgent"})
-        items.append(item)
-    board_access = True
-    try: await ensure_board_access(db, current_user, "board.read")
-    except HTTPException: board_access = False
+        item["team_count"], item["open_cases"], item["urgent_cases"] = await asyncio.gather(
+            db.door_assignments.count_documents({"door_key": door["door_key"], "active": True}),
+            db.door_cases.count_documents({"door_key": door["door_key"], "status": {"$nin": ["resolved", "closed"]}}),
+            db.door_cases.count_documents({"door_key": door["door_key"], "status": {"$nin": ["resolved", "closed"]}, "priority": "urgent"}),
+        )
+        return item
+
+    async def has_board_access() -> bool:
+        try: await ensure_board_access(db, current_user, "board.read")
+        except HTTPException: return False
+        return True
+
+    *items, board_access = await asyncio.gather(*(door_item(door) for door in doors), has_board_access())
+    items = list(items)
     return {"doors": items, "metrics": {"doors": len(items), "open_cases": sum(item["open_cases"] for item in items), "urgent_cases": sum(item["urgent_cases"] for item in items), "active_servers": sum(item["team_count"] for item in items)}, "board_access": board_access}
 
 
@@ -200,7 +207,8 @@ async def doors_dashboard(current_user: dict = Depends(require_staff)):
 async def door_detail(door_key: str, current_user: dict = Depends(require_staff)):
     door = await ensure_door_access(db, current_user, door_key)
     assignments = await db.door_assignments.find({"door_key": door_key}, {"_id": 0}).sort("started_at", -1).to_list(1000)
-    team = [{**serialize(item), "person": await person_summary(db, item["person_id"])} for item in assignments]
+    summaries = await asyncio.gather(*(person_summary(db, item["person_id"]) for item in assignments))
+    team = [{**serialize(item), "person": summary} for item, summary in zip(assignments, summaries)]
     cases = await db.door_cases.find({"door_key": door_key}, {"_id": 0}).sort("created_at", -1).limit(500).to_list(500)
     return {**serialize(door), "team": team, "cases": serialize(cases)}
 

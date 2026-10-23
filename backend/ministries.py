@@ -139,16 +139,22 @@ async def list_ministries(
         raise HTTPException(status_code=403, detail="Ministerios restringidos")
     query = {} if include_archived else {"activo": True}
     docs = await db.ministry_catalog.find(query).sort("nombre", 1).to_list(500)
+    # Dos consultas en total (antes: dos por ministerio).
+    role_ids_by_ministry: dict = {}
+    async for item in db.ministry_assignments.find(
+        {"ministry_id": {"$in": [doc["_id"] for doc in docs]}, "activo": True}, {"ministry_id": 1, "role_id": 1}
+    ):
+        role_ids = role_ids_by_ministry.setdefault(item["ministry_id"], [])
+        if len(role_ids) < 1000:
+            role_ids.append(item.get("role_id"))
+    all_role_ids = list({role_id for role_ids in role_ids_by_ministry.values() for role_id in role_ids})
+    leadership_role_ids = set(await db.ministry_roles.distinct("_id", {
+        "_id": {"$in": all_role_ids}, "normalized_name": {"$in": list(LEADERSHIP_NAMES)}
+    })) if all_role_ids else set()
     items = []
     for doc in docs:
-        assignments = await db.ministry_assignments.find(
-            {"ministry_id": doc["_id"], "activo": True}
-        ).to_list(1000)
-        role_ids = [item["role_id"] for item in assignments]
-        leadership = await db.ministry_roles.count_documents({
-            "_id": {"$in": role_ids}, "normalized_name": {"$in": list(LEADERSHIP_NAMES)}
-        })
-        items.append(serialize_ministry(doc, len(assignments), bool(leadership)))
+        role_ids = role_ids_by_ministry.get(doc["_id"], [])
+        items.append(serialize_ministry(doc, len(role_ids), any(role_id in leadership_role_ids for role_id in role_ids)))
     return {"items": items}
 
 

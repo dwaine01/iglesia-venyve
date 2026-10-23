@@ -1,4 +1,5 @@
 """Consultas geográficas autorizadas y serializadores sin ObjectId."""
+import asyncio
 import math
 import re
 import hashlib
@@ -383,12 +384,16 @@ async def enrich_coverage(db, features: list[dict]) -> list[dict]:
 
 
 async def geographic_summary(db, current_user: dict) -> dict:
-    people = await person_features(db, current_user, {})
-    cells = await cell_features(db, current_user, {})
-    groups = await front_group_centroid_features(db, current_user, {})
+    people, cells, groups, review_total, pending_total = await asyncio.gather(
+        person_features(db, current_user, {}),
+        cell_features(db, current_user, {}),
+        front_group_centroid_features(db, current_user, {}),
+        db.geo_review_queue.count_documents({"status": "open"}),
+        db.geo_jobs.count_documents({"status": {"$in": ["pending", "processing", "retry"]}}),
+    )
     return {
         "people_total": len(people), "cells_total": len(cells), "front_groups_total": len(groups),
         "zones": {zone: {"people": sum(item["properties"]["zone"] == zone for item in people), "cells": sum(item["properties"]["zone"] == zone for item in cells)} for zone in ["north", "east", "south", "west"]},
-        "review_total": await db.geo_review_queue.count_documents({"status": "open"}),
-        "pending_total": await db.geo_jobs.count_documents({"status": {"$in": ["pending", "processing", "retry"]}}),
+        "review_total": review_total,
+        "pending_total": pending_total,
     }

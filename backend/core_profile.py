@@ -6,6 +6,7 @@ Ley7, etc.). Cada dominio sigue siendo su propia fuente de verdad; este
 modulo unicamente los presenta cuando existen y estan autorizados.
 No modifica people/contacts/checklists/progress/Ley7.
 """
+import asyncio
 from bson import ObjectId
 from bson.errors import InvalidId
 from fastapi import APIRouter, HTTPException, Depends
@@ -226,8 +227,6 @@ async def get_person_profile(person_id: str, current_user: dict = Depends(requir
     can_read_addresses = in_scope and has_capability(current_user, PERSON_ADDRESSES_READ)
     can_read_profile = in_scope and has_capability(current_user, PERSON_PROFILE_SENSITIVE_READ)
     can_write_profile = in_scope and has_capability(current_user, PERSON_PROFILE_WRITE)
-    contacts = await contact_items(person_id) if can_read_contacts else []
-    addresses = await address_items(person_id) if can_read_addresses else []
     domain_read_capabilities = (
         PERSON_PROFILE_SENSITIVE_READ,
         PERSON_HOUSEHOLD_READ,
@@ -242,8 +241,13 @@ async def get_person_profile(person_id: str, current_user: dict = Depends(requir
     can_read_any_domain = in_scope and any(
         has_capability(current_user, capability) for capability in domain_read_capabilities
     )
-    snapshot = (
-        await profile_domain_snapshot(person_id, current_user) if can_read_any_domain else None
+    async def nothing(value=None):
+        return value
+
+    contacts, addresses, snapshot = await asyncio.gather(
+        contact_items(person_id) if can_read_contacts else nothing([]),
+        address_items(person_id) if can_read_addresses else nothing([]),
+        profile_domain_snapshot(person_id, current_user) if can_read_any_domain else nothing(),
     )
     header = build_header(person, current_user, contacts, addresses)
     if snapshot:
@@ -256,8 +260,10 @@ async def get_person_profile(person_id: str, current_user: dict = Depends(requir
             header["habilidades"] = snapshot["talentos"].get("habilidades", [])
 
     if in_scope:
-        mentor_badge = await db.mentor_badges.find_one({"person_id": person_id}, {"_id": 0})
-        lbs_qualification = await mentor_qualification(db, person_id, None)
+        mentor_badge, lbs_qualification = await asyncio.gather(
+            db.mentor_badges.find_one({"person_id": person_id}, {"_id": 0}),
+            mentor_qualification(db, person_id, None),
+        )
         header["mentor_badge"] = {
             "active": bool(mentor_badge and mentor_badge.get("active")),
             "since": mentor_badge.get("since") if mentor_badge else None,

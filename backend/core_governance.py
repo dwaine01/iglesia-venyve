@@ -398,16 +398,21 @@ async def list_access_candidates(current_user: dict = Depends(require_access_man
         {"$or": [{"auth_user_id": {"$exists": False}}, {"auth_user_id": None}]},
         {"nombre": 1, "apellido": 1, "apellidos": 1, "person_number": 1},
     ).sort([("nombre", 1), ("apellido", 1)]).to_list(1000)
+    emails: dict[str, str] = {}
+    async for contact in db.person_contacts.find(
+        {"person_id": {"$in": [str(person["_id"]) for person in people]}, "tipo": "email"},
+        {"_id": 0, "person_id": 1, "valor": 1},
+    ).sort([("_id", 1)]):
+        emails.setdefault(contact["person_id"], contact.get("valor", ""))
     items = []
     for person in people:
         person_id = str(person["_id"])
-        contact = await db.person_contacts.find_one({"person_id": person_id, "tipo": "email"}, {"_id": 0, "valor": 1})
         surname = person.get("apellidos") or person.get("apellido") or ""
         items.append({
             "person_id": person_id,
             "name": " ".join(part for part in [person.get("nombre", ""), surname] if part).strip(),
             "person_number": person.get("person_number"),
-            "email": (contact or {}).get("valor", ""),
+            "email": emails.get(person_id, ""),
         })
     return {"items": items, "total": len(items)}
 

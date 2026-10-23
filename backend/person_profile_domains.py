@@ -3,6 +3,7 @@
 Household, family, arrival, attendance, notes, activity and photo data remain
 outside the persons collection. The profile read-model aggregates them.
 """
+import asyncio
 from datetime import datetime, timedelta, timezone
 from typing import Literal, Optional
 from uuid import uuid4
@@ -438,56 +439,38 @@ async def profile_domain_snapshot(person_id: str, current_user: dict) -> dict:
             "write": False,
         },
     }
-    household = (
-        await household_snapshot(person_id)
-        if permissions["household"]["read"]
-        else None
-    )
-    arrival_doc = (
-        await db.person_arrivals.find_one({"person_id": person_id})
-        if permissions["procesos"]["read"]
-        else None
-    )
-    family = (
-        await relationship_items(person_id)
-        if permissions["familia"]["read"]
-        else []
-    )
-    attendance_docs = (
-        await db.person_attendance.find({"person_id": person_id}).sort("fecha", -1).to_list(100)
-        if permissions["asistencia"]["read"]
-        else []
-    )
+    async def nothing(value=None):
+        return value
+
+    async def cell_memberships_for() -> list:
+        membership_docs = await db.cell_memberships.find({"person_id": person_id}, {"_id": 0}).sort("joined_at", -1).to_list(100)
+        cells = await asyncio.gather(*(
+            db.cells.find_one({"cell_id": membership["cell_id"]}, {"_id": 0, "name": 1, "code": 1, "network_id": 1, "status": 1})
+            for membership in membership_docs
+        ))
+        return [{**membership, "cell": cell, "route": f"/celulas/{membership['cell_id']}"} for membership, cell in zip(membership_docs, cells)]
+
     note_filter = {"person_id": person_id}
     if not permissions["notas"]["pastoral"]:
         note_filter["categoria"] = {"$ne": "pastoral"}
-    note_docs = (
-        await db.person_notes.find(note_filter).sort("created_at", -1).to_list(100)
-        if permissions["notas"]["read"]
-        else []
-    )
-    activity_docs = (
-        await db.person_activity.find({"person_id": person_id}).sort("created_at", -1).to_list(100)
-        if permissions["historial"]["read"]
-        else []
-    )
-    photo = (
-        await db.person_photos.find_one({"person_id": person_id}, {"_id": 1})
-        if has_capability(current_user, PERSON_PROFILE_SENSITIVE_READ)
-        else None
-    )
-    process_docs = (
-        await db.process_enrollments.find(
+    # Lecturas independientes en paralelo (mismo contenido que en serie).
+    (household, arrival_doc, family, attendance_docs, note_docs, activity_docs, photo,
+     process_docs, baptism, cell_memberships, talents, ministries) = await asyncio.gather(
+        household_snapshot(person_id) if permissions["household"]["read"] else nothing(),
+        db.person_arrivals.find_one({"person_id": person_id}) if permissions["procesos"]["read"] else nothing(),
+        relationship_items(person_id) if permissions["familia"]["read"] else nothing([]),
+        db.person_attendance.find({"person_id": person_id}).sort("fecha", -1).to_list(100) if permissions["asistencia"]["read"] else nothing([]),
+        db.person_notes.find(note_filter).sort("created_at", -1).to_list(100) if permissions["notas"]["read"] else nothing([]),
+        db.person_activity.find({"person_id": person_id}).sort("created_at", -1).to_list(100) if permissions["historial"]["read"] else nothing([]),
+        db.person_photos.find_one({"person_id": person_id}, {"_id": 1}) if has_capability(current_user, PERSON_PROFILE_SENSITIVE_READ) else nothing(),
+        db.process_enrollments.find(
             {"person_id": person_id},
             {"_id": 0, "enrollment_id": 1, "process_key": 1, "definition_version": 1, "status": 1, "current_stage_key": 1, "progress_pct": 1, "next_action": 1, "next_action_at": 1, "responsible_person_id": 1, "ready_for_cellular": 1, "updated_at": 1},
-        ).sort("updated_at", -1).to_list(100)
-        if permissions["procesos"]["read"]
-        else []
-    )
-    baptism = (
-        await db.person_baptisms.find_one({"person_id": person_id}, {"_id": 0})
-        if permissions["procesos"]["read"]
-        else None
+        ).sort("updated_at", -1).to_list(100) if permissions["procesos"]["read"] else nothing([]),
+        db.person_baptisms.find_one({"person_id": person_id}, {"_id": 0}) if permissions["procesos"]["read"] else nothing(),
+        cell_memberships_for() if permissions["celula"]["read"] else nothing([]),
+        talent_snapshot(person_id),
+        assignment_items(person_id) if permissions["ministerios"]["read"] else nothing([]),
     )
     process_names = {
         "seven_weeks": "Ley de las 7 Semanas",
@@ -502,21 +485,13 @@ async def profile_domain_snapshot(person_id: str, current_user: dict) -> dict:
         "completed": "Completado",
         "cancelled": "Cancelado",
     }
-    cell_memberships = []
-    if permissions["celula"]["read"]:
-        membership_docs = await db.cell_memberships.find({"person_id": person_id}, {"_id": 0}).sort("joined_at", -1).to_list(100)
-        for membership in membership_docs:
-            cell = await db.cells.find_one({"cell_id": membership["cell_id"]}, {"_id": 0, "name": 1, "code": 1, "network_id": 1, "status": 1})
-            cell_memberships.append({**membership, "cell": cell, "route": f"/celulas/{membership['cell_id']}"})
     return {
         "permissions": permissions,
         "photo_available": bool(photo),
         "household": household,
         "familia": family,
-        "talentos": await talent_snapshot(person_id),
-        "ministerios": (
-            await assignment_items(person_id) if permissions["ministerios"]["read"] else []
-        ),
+        "talentos": talents,
+        "ministerios": ministries,
         "llegada_origen": serialize_arrival(arrival_doc),
         "asistencia": [serialize_attendance(item) for item in attendance_docs],
         "notas": [serialize_note(item) for item in note_docs],

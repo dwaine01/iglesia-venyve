@@ -1,4 +1,5 @@
 """Scopes, métricas, salud, genealogía y migración del Sistema Celular."""
+import asyncio
 from datetime import date, datetime, timezone
 from uuid import uuid4
 
@@ -53,6 +54,23 @@ async def person_summary(db, person_id: str | None) -> dict | None:
     }
 
 
+async def person_summaries(db, person_ids: list[str]) -> list[dict]:
+    """`person_summary` para muchas personas con una consulta, mismo orden
+    y omitiendo las que no existen."""
+    oids = [ObjectId(item) for item in dict.fromkeys(person_ids) if item and ObjectId.is_valid(item)]
+    found = {}
+    for start in range(0, len(oids), 1000):
+        async for person in db.persons.find({"_id": {"$in": oids[start:start + 1000]}}, {"nombre": 1, "apellido": 1, "person_number": 1}):
+            person_id = str(person["_id"])
+            found[person_id] = {
+                "person_id": person_id,
+                "name": f"{person.get('nombre', '')} {person.get('apellido', '')}".strip(),
+                "person_number": person.get("person_number"),
+                "profile_path": f"/personas/{person_id}",
+            }
+    return [found[item] for item in person_ids if item in found]
+
+
 async def cellular_scope(db, current_user: dict) -> dict:
     person_id = current_user.get("person_id")
     if is_global_pastoral_authority(current_user):
@@ -103,8 +121,14 @@ async def record_cell_event(db, cell_id: str, actor_user_id: str, event_type: st
 
 
 async def current_cell_metrics(db, cell_id: str) -> dict:
-    active_members = await db.cell_memberships.count_documents({"cell_id": cell_id, "active": True, "membership_type": "primary"})
-    meetings = await db.cell_meetings.find({"cell_id": cell_id, "status": "completed"}, {"_id": 0}).sort("scheduled_at", -1).limit(12).to_list(12)
+    active_members, meetings, leader_in_training, host, open_followups, open_needs = await asyncio.gather(
+        db.cell_memberships.count_documents({"cell_id": cell_id, "active": True, "membership_type": "primary"}),
+        db.cell_meetings.find({"cell_id": cell_id, "status": "completed"}, {"_id": 0}).sort("scheduled_at", -1).limit(12).to_list(12),
+        db.cell_role_assignments.find_one({"cell_id": cell_id, "role": "assistant", "active": True}, {"_id": 1}),
+        db.cell_role_assignments.find_one({"cell_id": cell_id, "role": "host", "active": True}, {"_id": 1}),
+        db.cell_followups.count_documents({"cell_id": cell_id, "status": {"$in": ["open", "in_progress"]}}),
+        db.cell_needs.count_documents({"cell_id": cell_id, "status": {"$in": ["open", "assigned", "in_progress"]}}),
+    )
     meeting_ids = [item["meeting_id"] for item in meetings]
     attendance = await db.cell_meeting_attendance.find({"meeting_id": {"$in": meeting_ids}}, {"_id": 0}).to_list(5000) if meeting_ids else []
     present = sum(1 for item in attendance if item.get("status") == "present")
@@ -119,10 +143,10 @@ async def current_cell_metrics(db, cell_id: str) -> dict:
         "visitors": visitors,
         "conversions": conversions,
         "retention": round((active_members / max(1, visitors + active_members)) * 100, 1),
-        "has_leader_in_training": bool(await db.cell_role_assignments.find_one({"cell_id": cell_id, "role": "assistant", "active": True})),
-        "has_host": bool(await db.cell_role_assignments.find_one({"cell_id": cell_id, "role": "host", "active": True})),
-        "open_followups": await db.cell_followups.count_documents({"cell_id": cell_id, "status": {"$in": ["open", "in_progress"]}}),
-        "open_needs": await db.cell_needs.count_documents({"cell_id": cell_id, "status": {"$in": ["open", "assigned", "in_progress"]}}),
+        "has_leader_in_training": bool(leader_in_training),
+        "has_host": bool(host),
+        "open_followups": open_followups,
+        "open_needs": open_needs,
     }
 
 
