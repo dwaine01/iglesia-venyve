@@ -296,3 +296,68 @@ async def test_group_stats_semaphore_ranking_and_no_double_count():
         for collection in ("outreach_visit_events", "outreach_visits", "outreach_households", "outreach_campaigns"):
             await server.db[collection].delete_many({"campaign_id": campaign_id})
         await fx.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_activity_panel_teams_classes_and_member_activity():
+    """Panel dinámico: un recuadro por equipo (pareja/individuo + liderazgo),
+    clase A/B/C = semáforo configurable, % de avance relativo, asistencia y
+    apoyo desde Persona 360/Operaciones, datos inexistentes declarados."""
+    await server.db.front_groups.update_many({"pastoral_main": True}, {"$unset": {"pastoral_main": ""}})
+    fx = Fixture()
+    tag = uuid.uuid4().hex
+    try:
+        pastora_id = await fx.person("PastoraP")
+        pastora = await fx.account(pastora_id, "pastora")
+        luis_id, marta_id, pedro_id, rosa_id = [await fx.person(name) for name in ("LuisP", "MartaP", "PedroP", "RosaP")]
+        luis = await fx.account(luis_id, "lider", capabilities=[], permissions_mode="manual")
+        rosa = await fx.account(rosa_id, "persona")
+        main_id = (await pastora.put("/api/pastoral-front-group", json={"name": "Grupo PastoraP"})).json()["group"]["front_group_id"]
+        await pastora.put(f"/api/front-groups/{main_id}/roster", json={"entries": [{"person_ids": [luis_id, marta_id]}, {"person_ids": [pedro_id]}]})
+        child_id = (await pastora.post(f"/api/front-groups/{main_id}/leader-privilege", json={"person_id": luis_id})).json()["front_group_id"]
+        await luis.put(f"/api/front-groups/{child_id}/conform", json={"name": "Grupo LuisP"})
+        await luis.put(f"/api/front-groups/{child_id}/roster", json={"entries": [{"person_ids": [rosa_id]}]})
+        now = datetime.now(timezone.utc)
+        await server.db.outreach_visit_events.insert_many([{"_id": f"{tag}-e{i}", "visit_event_id": f"{tag}-e{i}", "household_id": f"{tag}-h", "mentor_person_id": luis_id, "result": "no_answer", "occurred_at": now, "created_at": now} for i in range(3)])
+        await server.db.outreach_visits.insert_one({"_id": f"{tag}-v", "visit_id": f"{tag}-v", "mentor_person_id": luis_id, "status": "assigned", "archived": False, "created_at": now})
+        await server.db.person_attendance.insert_many([
+            {"_id": f"{tag}-a1", "person_id": marta_id, "fecha": now.date().isoformat(), "actividad": "Culto", "estado": "presente"},
+            {"_id": f"{tag}-a2", "person_id": marta_id, "fecha": now.isoformat(), "actividad": "Evento", "estado": "presente"},
+            {"_id": f"{tag}-a3", "person_id": pedro_id, "fecha": now.date().isoformat(), "actividad": "Culto", "estado": "ausente"},
+        ])
+        await server.db.operation_volunteer_assignments.insert_one({"_id": f"{tag}-s", "assignment_id": f"{tag}-s", "person_id": pedro_id, "shift_id": f"{tag}-shift", "status": "confirmed", "assigned_at": now})
+        await server.db.mentor_badges.insert_one({"_id": f"{tag}-b", "person_id": marta_id, "active": True})
+
+        panel = await pastora.get(f"/api/front-group-structure/groups/{main_id}/panel", params={"period": "week"})
+        assert panel.status_code == 200, panel.text
+        body = panel.json()
+        assert [team["type"] for team in body["teams"]] == ["leadership", "pair", "individual"]
+        pair = body["teams"][1]
+        members = {member["person_id"]: member for member in pair["members"]}
+        assert "Líder de su grupo" in members[luis_id]["functions"] and members[luis_id]["led_group"]["front_group_id"] == child_id
+        assert "Mentor" in members[marta_id]["functions"]
+        assert members[marta_id]["metrics"]["attendance"] == 2 and members[luis_id]["metrics"]["attempts"] == 3
+        assert pair["summary"]["participants"] == 1 and pair["summary"]["participation_ratio"] == 0.5
+        assert pair["summary"]["class"] == "B" and pair["summary"]["progress_pct"] == 100 and pair["summary"]["rank"] == 1
+        solo = body["teams"][2]
+        assert solo["summary"]["support_shifts"] == 1 and solo["summary"]["attendance"] == 0
+        assert solo["summary"]["class"] == "C" and solo["summary"]["progress_pct"] == 0
+        assert body["group"]["people"] == 4 and body["group"]["teams"] == 3
+        assert {item["key"] for item in body["unavailable"]} == {"group_meetings", "brought_to_church"}
+        assert "participation_ratio_green" in body["criteria"]["participation"]
+
+        # Actividad individual: la pastora ve a todos; el líder solo a su rama; un integrante a nadie.
+        activity = await pastora.get(f"/api/front-group-structure/people/{luis_id}/activity", params={"period": "week"})
+        assert activity.status_code == 200 and activity.json()["in_period"]["attempts"] == 3
+        assert {"as_person", "as_mentor", "as_leader"} <= set(activity.json())
+        assert (await luis.get(f"/api/front-group-structure/people/{rosa_id}/activity")).status_code == 200
+        assert (await luis.get(f"/api/front-group-structure/people/{pastora_id}/activity")).status_code == 403
+        assert (await luis.get(f"/api/front-group-structure/groups/{main_id}/panel")).status_code == 403
+        assert (await rosa.get(f"/api/front-group-structure/people/{luis_id}/activity")).status_code == 403
+    finally:
+        await server.db.outreach_visit_events.delete_many({"_id": {"$regex": f"^{tag}"}})
+        await server.db.outreach_visits.delete_many({"_id": f"{tag}-v"})
+        await server.db.person_attendance.delete_many({"_id": {"$regex": f"^{tag}"}})
+        await server.db.operation_volunteer_assignments.delete_many({"_id": f"{tag}-s"})
+        await server.db.mentor_badges.delete_many({"_id": f"{tag}-b"})
+        await fx.cleanup()

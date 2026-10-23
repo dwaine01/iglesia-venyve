@@ -1,12 +1,12 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, ChevronRight, GitBranch, Loader2, Network, TriangleAlert } from 'lucide-react';
+import { ArrowLeft, BarChart3, ChevronDown, ChevronRight, GitBranch, Loader2, Network, TriangleAlert } from 'lucide-react';
 
 import { useAuth } from '../context/AuthContext';
 import { apiErrorMessage } from '../lib/apiErrors';
-import { GroupRosterView } from '../components/front-groups/GroupRosterView';
 import { GroupStatsPanel } from '../components/front-groups/GroupStatsPanel';
+import { GroupActivityPanel } from '../components/front-groups/GroupActivityPanel';
 
 export const plural = (count, one, many) => `${count ?? 0} ${count === 1 ? one : many}`;
 
@@ -40,11 +40,12 @@ export default function EstructuraFrontalPage() {
   const [start, setStart] = useState(null);
   const [node, setNode] = useState(null);
   const [error, setError] = useState('');
+  const [moreStats, setMoreStats] = useState(false);
 
   const open = useCallback((id) => navigate(`/estructura-frontal/${id}`), [navigate]);
 
   useEffect(() => {
-    setError(''); setNode(null); setStart(null);
+    setError(''); setNode(null); setStart(null); setMoreStats(false);
     if (!groupId) {
       axios.get(`${API}/api/front-group-structure/start`, getAuthHeaders())
         .then((response) => {
@@ -82,10 +83,13 @@ export default function EstructuraFrontalPage() {
         {node && <>
           <nav className="space-y-2" aria-label="Niveles">
             {backTarget
-              ? <Link to={backTarget} className="flex min-h-12 items-center gap-2 rounded-xl border border-[#E8E5DE] bg-white px-4 text-sm font-semibold text-[#101D36] shadow-sm" data-testid="estructura-volver"><ArrowLeft className="h-4 w-4" />Volver a {node.parent.name || 'nivel anterior'}</Link>
-              : node.parent && <p className="flex items-center gap-1.5 text-xs text-[#7A5F22]" data-testid="estructura-proviene"><GitBranch className="h-3.5 w-3.5" />Proviene de: {node.parent.name}{node.parent.pastoral_main ? ' (grupo de la pastora)' : ''}</p>}
+              ? <Link to={backTarget} className="flex min-h-12 items-center gap-2 rounded-xl border border-[#E8E5DE] bg-white px-4 text-sm font-semibold text-[#101D36] shadow-sm" data-testid="estructura-volver"><ArrowLeft className="h-4 w-4" />Atrás · {node.parent.name || 'nivel anterior'}</Link>
+              : <button type="button" onClick={() => navigate(-1)} className="flex min-h-12 w-full items-center gap-2 rounded-xl border border-[#E8E5DE] bg-white px-4 text-sm font-semibold text-[#101D36] shadow-sm" data-testid="estructura-atras"><ArrowLeft className="h-4 w-4" />Atrás</button>}
+            {!backTarget && node.parent && <p className="flex items-center gap-1.5 text-xs text-[#7A5F22]" data-testid="estructura-proviene"><GitBranch className="h-3.5 w-3.5" />Proviene de: {node.parent.name}{node.parent.pastoral_main ? ' (grupo de la pastora)' : ''}</p>}
             {node.breadcrumbs.length > 0 && <ol className="flex gap-1 overflow-x-auto pb-1 text-xs" data-testid="estructura-migas">{node.breadcrumbs.map((crumb) => <li key={crumb.front_group_id} className="flex shrink-0 items-center gap-1"><Link to={`/estructura-frontal/${crumb.front_group_id}`} className="inline-flex min-h-9 items-center rounded-full bg-white px-3 text-[#101D36] shadow-sm">{crumb.name}</Link><ChevronRight className="h-3.5 w-3.5 text-slate-400" /></li>)}<li className="inline-flex min-h-9 shrink-0 items-center rounded-full bg-[#101D36] px-3 text-white">{group.name}</li></ol>}
           </nav>
+
+          <GroupActivityPanel key={`panel-${group.front_group_id}`} groupId={group.front_group_id} onOpenGroup={open} />
 
           <section className="rounded-xl border border-[#E8E5DE] bg-[#FBFAF7] p-3" data-testid="estructura-totales">
             <h2 className="text-xs font-semibold uppercase text-slate-500">Este grupo</h2>
@@ -94,14 +98,15 @@ export default function EstructuraFrontalPage() {
             <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4"><Tile label="Grupos" value={group.branch.groups} /><Tile label="Personas" value={group.branch.people} testId="tot-rama-personas" /><Tile label="Parejas" value={group.branch.pairs} /><Tile label="Líderes y colíderes" value={group.branch.leaders} /></div>
           </section>
 
-          <GroupStatsPanel key={group.front_group_id} groupId={group.front_group_id} onOpenGroup={open} />
-
           <section className="space-y-2" data-testid="estructura-hijos">
             <h2 className="flex items-center gap-2 font-semibold text-[#101D36]"><GitBranch className="h-4 w-4 text-[#9A7A2F]" />Grupos de sus líderes ({node.children.length})</h2>
             {node.children.length ? node.children.map((child) => <GroupCardButton key={child.front_group_id} group={child} onOpen={open} />) : <p className="text-sm text-slate-400">Ningún líder de este grupo ha formado su grupo todavía.</p>}
           </section>
 
-          <GroupRosterView groupId={group.front_group_id} roster={node.roster} canManage={false} onChanged={() => {}} onOpenGroup={open} />
+          <section className="rounded-xl border border-[#E8E5DE] bg-white shadow-sm" data-testid="estructura-mas-estadisticas">
+            <button type="button" onClick={() => setMoreStats((value) => !value)} aria-expanded={moreStats} className="flex min-h-12 w-full items-center justify-between gap-2 px-4 text-sm font-semibold text-[#101D36]"><span className="flex items-center gap-2"><BarChart3 className="h-4 w-4 text-[#9A7A2F]" />Más estadísticas de toda la rama</span><ChevronDown className={`h-4 w-4 transition ${moreStats ? 'rotate-180' : ''}`} /></button>
+            {moreStats && <div className="border-t border-[#E8E5DE] p-3"><GroupStatsPanel key={group.front_group_id} groupId={group.front_group_id} onOpenGroup={open} /></div>}
+          </section>
         </>}
       </div>
     </div>

@@ -5,11 +5,12 @@ import { Bar, BarChart, CartesianGrid, Cell, Legend, ResponsiveContainer, Toolti
 
 import { useAuth } from '../../context/AuthContext';
 import { apiErrorMessage } from '../../lib/apiErrors';
+import { PeriodSelector, periodParams } from './PeriodSelector';
 
 // Paleta validada (scripts/validate_palette.js): categórica en orden fijo y
 // estados reservados para el semáforo (siempre con ícono + texto).
-const SERIES = { blue: '#2a78d6', orange: '#eb6834', aqua: '#1baf7a', yellow: '#eda100' };
-const STATUS = {
+export const SERIES = { blue: '#2a78d6', orange: '#eb6834', aqua: '#1baf7a', yellow: '#eda100' };
+export const STATUS = {
   green: { color: '#0ca30c', label: 'Avanza', icon: CheckCircle2 },
   yellow: { color: '#fab219', label: 'Atención', icon: AlertTriangle },
   red: { color: '#d03b3b', label: 'Necesita seguimiento', icon: OctagonAlert },
@@ -19,10 +20,6 @@ const RESULTS = [
   { key: 'no_answer', label: 'Sin respuesta', color: SERIES.orange },
   { key: 'not_home', label: 'No estaba', color: SERIES.aqua },
   { key: 'refused', label: 'Rechazó', color: SERIES.yellow },
-];
-const PERIODS = [
-  { key: 'week', label: 'Semanal' }, { key: 'month', label: 'Mensual' },
-  { key: 'invasion', label: 'Por invasión' }, { key: 'all', label: 'Todo' },
 ];
 const ROLE = { leader: 'Líder', co_leader: 'Colíder' };
 const plural = (count, one, many) => `${count ?? 0} ${count === 1 ? one : many}`;
@@ -111,19 +108,14 @@ export function GroupStatsPanel({ groupId, onOpenGroup }) {
   const { API, getAuthHeaders } = useAuth();
   const [period, setPeriod] = useState('month');
   const [campaignId, setCampaignId] = useState('');
-  const [campaigns, setCampaigns] = useState([]);
   const [stats, setStats] = useState(null);
   const [error, setError] = useState('');
   const [rankingScope, setRankingScope] = useState('group');
   const [showCriteria, setShowCriteria] = useState(false);
 
   useEffect(() => {
-    axios.get(`${API}/api/front-group-structure/campaigns`, getAuthHeaders()).then((response) => setCampaigns(response.data.items || [])).catch(() => setCampaigns([]));
-  }, [API, getAuthHeaders]);
-
-  useEffect(() => {
     setStats(null); setError('');
-    const params = { period, ...(period === 'invasion' && campaignId ? { campaign_id: campaignId } : {}) };
+    const params = periodParams(period, campaignId);
     axios.get(`${API}/api/front-group-structure/groups/${groupId}/stats`, { ...getAuthHeaders(), params })
       .then((response) => setStats(response.data))
       .catch((requestError) => setError(apiErrorMessage(requestError, 'No se pudieron cargar las estadísticas.')));
@@ -138,15 +130,7 @@ export function GroupStatsPanel({ groupId, onOpenGroup }) {
   return (
     <section className="space-y-3" data-testid="group-stats-panel">
       <h2 className="font-semibold text-[#101D36]">Estadísticas del grupo y su rama</h2>
-      <div className="grid grid-cols-4 gap-1 rounded-xl bg-[#EEECE6] p-1" role="tablist" aria-label="Período">
-        {PERIODS.map((item) => <button key={item.key} type="button" role="tab" aria-selected={period === item.key} onClick={() => setPeriod(item.key)} className={`min-h-11 rounded-lg px-1 text-xs font-semibold ${period === item.key ? 'bg-white text-[#101D36] shadow-sm' : 'text-slate-600'}`} data-testid={`period-${item.key}`}>{item.label}</button>)}
-      </div>
-      {period === 'invasion' && (
-        <select value={campaignId} onChange={(event) => setCampaignId(event.target.value)} className="h-11 w-full rounded-md border border-[#E8E5DE] bg-white px-3 text-sm" aria-label="Invasión" data-testid="period-campaign-select">
-          <option value="">Última invasión</option>
-          {campaigns.map((campaign) => <option key={campaign.campaign_id} value={campaign.campaign_id}>{campaign.name}</option>)}
-        </select>
-      )}
+      <PeriodSelector period={period} campaignId={campaignId} onChange={(nextPeriod, nextCampaign) => { setPeriod(nextPeriod); setCampaignId(nextCampaign || ''); }} />
       {error && <p className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p>}
       {!stats && !error && <div className="flex justify-center py-10"><Loader2 className="h-6 w-6 animate-spin text-[#9A7A2F]" /></div>}
       {stats && <>
