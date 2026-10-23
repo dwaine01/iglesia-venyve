@@ -204,7 +204,10 @@ async def list_active_mentors(search: str = "", limit: int = 1000, current_user:
         raise HTTPException(status_code=403, detail="Sin permiso para consultar mentores")
     limit = max(1, min(limit, 2000))
     badges = await db.mentor_badges.find({"active": True}, {"_id": 0, "person_id": 1}).to_list(2000)
-    person_ids = [item["person_id"] for item in badges if ObjectId.is_valid(item["person_id"])]
+    from participation_scope import principal_authority_person_ids
+    authorities = await principal_authority_person_ids(db)
+    # La autoridad pastoral principal no participa como mentora.
+    person_ids = [item["person_id"] for item in badges if ObjectId.is_valid(item["person_id"]) and item["person_id"] not in authorities]
     if not person_ids:
         return {"items": [], "total": 0}
     query = {"_id": {"$in": [ObjectId(pid) for pid in person_ids]}, "is_archived": {"$ne": True}}

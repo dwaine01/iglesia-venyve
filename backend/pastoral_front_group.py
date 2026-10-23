@@ -2,7 +2,7 @@
 
 Reutiliza `front_groups` y `front_group_assignments` (no crea colecciones ni
 duplica personas): el grupo principal es un Grupo Frontal raíz marcado con
-`pastoral_main`, liderado por la pastora. Su lista (individuos y parejas) y
+`pastoral_main`, liderado por la pastora. Su lista (individuos y equipos) y
 la asignación de líderes usan los mismos endpoints genéricos de cualquier
 grupo (`/api/front-groups/{id}/roster` y `/leader-privilege`).
 

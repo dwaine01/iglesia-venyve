@@ -18,7 +18,7 @@ const LEVELS = {
   C: { status: 'red', label: 'Se queda atrás' },
 };
 const NO_DATA = '#94a3b8';
-const TYPE_LABEL = { pair: 'Pareja', individual: 'Individual', leadership: 'Liderazgo del grupo' };
+const TYPE_LABEL = { pair: 'Equipo', individual: 'Integrante individual', leadership: 'Liderazgo del grupo' };
 const PROCESS_LABELS = { consolidation: 'Consolidación', seven_weeks: 'Ley de las 7 Semanas', discipleship: 'Discipulado', mentorship: 'Mentoría', cap: 'CAP', outreach_invasion: 'Invasión' };
 const GOAL_LABELS = {
   goal_attendance_ratio: 'Meta de asistencia', goal_activity_ratio: 'Meta de participación en actividades', goal_outreach_ratio: 'Meta de impacto en invasiones',
@@ -428,7 +428,7 @@ export function GroupActivityPanel({ groupId, onOpenGroup }) {
           {data.teams.length > 0 && <Card title="Comparación de equipos" subtitle="Avance de cada equipo hacia las metas · toca una barra para ver el equipo" testId="panel-grafica-equipos"><TeamsChart data={data} onOpenTeam={openTeam} /></Card>}
         </div>
 
-        <h3 className="pt-1 text-base font-semibold text-[#101D36]">Equipos ({data.teams.length})</h3>
+        <h3 className="pt-1 text-base font-semibold text-[#101D36]">Equipos de servicio ({data.teams.length})</h3>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 [&>*]:min-w-0" data-testid="panel-equipos">
           {data.teams.map((item) => {
             const level = item.summary.class;

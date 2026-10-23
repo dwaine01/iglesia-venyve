@@ -15,6 +15,10 @@ import { PersonQuickPicker } from './PersonQuickPicker';
 
 const ROLE_LABELS = { leader: 'Líder', co_leader: 'Colíder', member: 'Miembro', mentor: 'Mentoría', team: 'Miembro' };
 
+
+// Notas guardadas antes del cambio de nombre: se muestran con el término actual
+// («equipo de liderazgo») sin modificar el dato almacenado.
+const legacyTeamText = (text) => (text ? text.replace(/pareja de liderazgo/gi, 'equipo de liderazgo') : text);
 export const FrontGroupTeamPanel = ({ group, assignments, groups = [], canManage, canSupport = false, onChanged }) => {
   const { API, getAuthHeaders, user } = useAuth();
   const canAssign = canManage || canSupport;
@@ -62,7 +66,7 @@ export const FrontGroupTeamPanel = ({ group, assignments, groups = [], canManage
       {assignments.length ? <div className="divide-y divide-slate-200">{assignments.map((item) => <div key={item.assignment_id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-4" data-testid={`front-group-assignment-${item.assignment_id}`}>
         <div className="min-w-0">
           <b>{item.person_name || item.person_id}</b>
-          <span className="block text-xs text-slate-500">{ROLE_LABELS[item.role] || item.role} · {item.notes || 'Sin nota'}</span>
+          <span className="block text-xs text-slate-500">{ROLE_LABELS[item.role] || item.role} · {legacyTeamText(item.notes) || 'Sin nota'}</span>
           {item.active && !item.has_account && ['leader', 'co_leader'].includes(item.role) && isPastoralAuthority(user) && <div className="mt-1.5"><CreateAccessInviteDialog personId={item.person_id} personName={item.person_name || 'esta persona'} /></div>}
         </div>
         <div className="flex items-center gap-2">

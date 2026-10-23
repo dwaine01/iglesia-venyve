@@ -411,7 +411,7 @@ async def assign_primary_leader(group_id: str, payload: LeaderAssignment, curren
 
 @router.post("/{group_id}/co-leader", response_model=dict)
 async def assign_co_leader(group_id: str, payload: CoLeaderAssignment, current_user: dict = Depends(require_manage)):
-    """Colíder de la pareja de liderazgo: ve y registra en el grupo y sus
+    """Colíder del equipo de liderazgo: ve y registra en el grupo y sus
     ramas (soporte), pero nunca gestiona estructura (eso sigue siendo del
     Líder o una autoridad superior)."""
     await assert_group_scope(group_id, current_user, leader_required=True); await load_person(payload.person_id)
@@ -435,7 +435,7 @@ async def replace_co_leader(group_id: str, person_id: str, reason: str, current_
 
 @router.post("/{parent_id}/designations", response_model=dict, status_code=201)
 async def create_designation(parent_id: str, payload: DesignationCreate, current_user: dict = Depends(require_manage)):
-    """A3/A4: designa una pareja Líder+Colíder para un grupo dependiente de
+    """A3/A4: designa un equipo de liderazgo Líder+Colíder para un grupo dependiente de
     `parent_id`. Crea el grupo dependiente en el acto (status=pending_formation);
     'Conformar mi grupo' reutiliza ese MISMO grupo, nunca crea otro."""
     await assert_group_scope(parent_id, current_user, leader_required=True)
@@ -453,7 +453,7 @@ async def create_designation(parent_id: str, payload: DesignationCreate, current
         found = await db.front_group_assignments.find_one({"front_group_id": parent_id, "person_id": person_id, "active": True}, {"_id": 0})
         if found: return found["assignment_id"]
         assignment_id = str(uuid4())
-        await db.front_group_assignments.insert_one({"_id": assignment_id, "assignment_id": assignment_id, "front_group_id": parent_id, "person_id": person_id, "role": "member", "active": True, "started_at": now, "ended_at": None, "notes": "Agregado al designar pareja de liderazgo", "assigned_by_user_id": current_user["user_id"], "created_at": now})
+        await db.front_group_assignments.insert_one({"_id": assignment_id, "assignment_id": assignment_id, "front_group_id": parent_id, "person_id": person_id, "role": "member", "active": True, "started_at": now, "ended_at": None, "notes": "Agregado al designar equipo de liderazgo", "assigned_by_user_id": current_user["user_id"], "created_at": now})
         return assignment_id
 
     origin_assignment_id = await ensure_parent_member(payload.leader_person_id)
@@ -472,10 +472,10 @@ async def create_designation(parent_id: str, payload: DesignationCreate, current
     }
     await db.front_groups.insert_one(document)
     leader_assignment_id = str(uuid4())
-    await db.front_group_assignments.insert_one({"_id": leader_assignment_id, "assignment_id": leader_assignment_id, "front_group_id": group_id, "person_id": payload.leader_person_id, "role": "leader", "active": True, "started_at": now, "ended_at": None, "notes": payload.reason or "Designación de pareja de liderazgo", "assigned_by_user_id": current_user["user_id"], "created_at": now})
+    await db.front_group_assignments.insert_one({"_id": leader_assignment_id, "assignment_id": leader_assignment_id, "front_group_id": group_id, "person_id": payload.leader_person_id, "role": "leader", "active": True, "started_at": now, "ended_at": None, "notes": payload.reason or "Designación de equipo de liderazgo", "assigned_by_user_id": current_user["user_id"], "created_at": now})
     if payload.co_leader_person_id:
         co_assignment_id = str(uuid4())
-        await db.front_group_assignments.insert_one({"_id": co_assignment_id, "assignment_id": co_assignment_id, "front_group_id": group_id, "person_id": payload.co_leader_person_id, "role": "co_leader", "active": True, "started_at": now, "ended_at": None, "notes": payload.reason or "Designación de pareja de liderazgo", "assigned_by_user_id": current_user["user_id"], "created_at": now})
+        await db.front_group_assignments.insert_one({"_id": co_assignment_id, "assignment_id": co_assignment_id, "front_group_id": group_id, "person_id": payload.co_leader_person_id, "role": "co_leader", "active": True, "started_at": now, "ended_at": None, "notes": payload.reason or "Designación de equipo de liderazgo", "assigned_by_user_id": current_user["user_id"], "created_at": now})
     await ensure_front_group_capability(payload.leader_person_id)
     await ensure_front_group_capability(payload.co_leader_person_id)
     await audit(group_id, current_user, "group_designated", {"parent_group_id": parent_id, "leader_person_id": payload.leader_person_id, "co_leader_person_id": payload.co_leader_person_id, "reason": payload.reason})
@@ -484,7 +484,7 @@ async def create_designation(parent_id: str, payload: DesignationCreate, current
 
 
 class RosterEntry(BaseModel):
-    """Una persona sola (individuo) o dos personas (pareja)."""
+    """Una persona sola (individuo) o dos personas (equipo)."""
     person_ids: list[str] = Field(min_length=1, max_length=2)
 
 
@@ -521,7 +521,7 @@ async def leader_privilege_for(group_id: str, person_id: str) -> Optional[dict]:
 
 
 async def roster_view(group: dict) -> dict:
-    """Integrantes del grupo organizados en individuos y parejas."""
+    """Integrantes del grupo organizados en individuos y equipos."""
     group_id = group["front_group_id"]
     assignments = await db.front_group_assignments.find({"front_group_id": group_id, "role": "member", "active": True}, {"_id": 0}).to_list(2000)
     # Orden en que se registró la lista (roster_order); los anteriores, por fecha de alta.
@@ -538,7 +538,7 @@ async def roster_view(group: dict) -> dict:
         entry = {"type": "pair" if pair_id else "individual", "pair_id": pair_id, "people": [card]}
         if pair_id: by_pair[pair_id] = entry
         entries.append(entry)
-    for entry in entries:  # una 'pareja' huérfana (su compañero salió) se muestra como individuo
+    for entry in entries:  # un equipo con un solo integrante activo (el otro salió) se muestra como individuo
         if entry["type"] == "pair" and len(entry["people"]) < 2: entry["type"] = "individual"
     pairs = sum(1 for entry in entries if entry["type"] == "pair")
     return {
@@ -555,7 +555,7 @@ async def get_roster(group_id: str, current_user: dict = Depends(require_read)):
 
 @router.put("/{group_id}/roster", response_model=dict)
 async def save_roster(group_id: str, payload: RosterSave, current_user: dict = Depends(require_manage)):
-    """Guarda la lista confirmada (individuos y parejas). Quien no esté en la
+    """Guarda la lista confirmada (individuos y equipos). Quien no esté en la
     lista deja de ser integrante (con historial); nunca duplica personas."""
     group = await assert_group_scope(group_id, current_user, leader_required=True)
     return await apply_roster(group, payload, current_user)
@@ -567,7 +567,7 @@ async def apply_roster(group: dict, payload: RosterSave, current_user: dict) -> 
     desired: dict[str, Optional[tuple]] = {}
     for entry in payload.entries:
         if len(set(entry.person_ids)) != len(entry.person_ids):
-            raise HTTPException(status_code=422, detail="Una pareja debe tener dos personas distintas")
+            raise HTTPException(status_code=422, detail="Un equipo debe tener dos personas distintas")
         for person_id in entry.person_ids:
             if person_id in desired:
                 raise HTTPException(status_code=422, detail="Una misma persona aparece dos veces en la lista")
@@ -604,7 +604,7 @@ async def apply_roster(group: dict, payload: RosterSave, current_user: dict) -> 
 async def grant_leader_privilege(group_id: str, payload: LeaderPrivilege, current_user: dict = Depends(require_manage)):
     """Privilegio 'Líder de Grupo Frontal' desde la lista del grupo. Reutiliza
     la designación: crea el grupo dependiente pendiente → la persona ve en su
-    portal 'Crear mi grupo frontal'. En una pareja se puede elegir a uno como
+    portal 'Crear mi grupo frontal'. En un equipo se puede elegir a uno como
     líder o a ambos (uno líder y el otro colíder del nuevo grupo)."""
     await assert_group_scope(group_id, current_user, leader_required=True)
     for person_id in [payload.person_id, *([payload.co_leader_person_id] if payload.co_leader_person_id else [])]:

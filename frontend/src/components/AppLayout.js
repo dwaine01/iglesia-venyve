@@ -47,7 +47,6 @@ const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
       { to: '/campanas/ven-y-come/control', icon: Bus, label: 'Campaña Ven y Come', testId: 'nav-campaign-venycome' },
       { to: '/mentoria/visitas', icon: Footprints, label: 'Visitas e Invasiones', testId: 'nav-outreach' },
       { to: '/mentoria/supervision', icon: BarChart3, label: 'Supervisión de Invasiones', testId: 'nav-supervision' },
-      { to: '/grupos-frontales', icon: Network, label: 'Grupos Frontales', testId: 'nav-front-groups' },
       { to: '/liderazgo', icon: Award, label: 'Liderazgo', testId: 'nav-leadership' },
       { to: '/mapas', icon: MapPinned, label: 'Mapa 360', testId: 'nav-geo-maps' },
       { to: '/operaciones', icon: Calendar, label: 'Operaciones', testId: 'nav-operations' },
@@ -102,7 +101,7 @@ const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
       personaItems.push({ to: '/procesos/consolidacion/mi-panel', icon: ClipboardCheck, label: 'Mi Panel de Mentor', testId: 'nav-mentor-panel' });
     }
     if (canViewFrontGroups(user)) {
-      personaItems.push({ to: '/grupos-frontales', icon: Network, label: 'Grupos Frontales', testId: 'nav-front-groups' });
+      personaItems.push({ to: '/estructura-frontal', icon: Network, label: 'Estructura de mi rama', testId: 'nav-front-group-structure' });
       if (!canAccessOutreach(user, isActiveMentor)) {
         personaItems.push({ to: '/mentoria/supervision', icon: BarChart3, label: 'Supervisión de mi Rama', testId: 'nav-supervision' });
       }
@@ -125,7 +124,7 @@ const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
     { to: '/campanas/ven-y-come/control', icon: Bus, label: 'Campaña Ven y Come', testId: 'nav-campaign-venycome' },
     { to: '/mentoria/visitas', icon: Footprints, label: 'Visitas e Invasiones', testId: 'nav-outreach' },
     { to: '/mentoria/supervision', icon: BarChart3, label: 'Supervisión de Invasiones', testId: 'nav-supervision' },
-    { to: '/grupos-frontales', icon: Network, label: 'Grupos Frontales', testId: 'nav-front-groups' },
+    ...(canViewPastoralFrontGroup(user) ? [] : [{ to: '/estructura-frontal', icon: Network, label: 'Estructura de mi rama', testId: 'nav-front-group-structure' }]),
     { to: '/liderazgo', icon: Award, label: 'Liderazgo', testId: 'nav-leadership' },
     { to: '/mapas', icon: MapPinned, label: 'Mapa 360', testId: 'nav-geo-maps' },
     { to: '/operaciones', icon: Calendar, label: 'Operaciones', testId: 'nav-operations' },
@@ -158,7 +157,7 @@ const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
     items.push({ to: '/admin/migracion-c11', icon: DatabaseBackup, label: 'Migración de Datos (C11)', testId: 'nav-migration-c11' });
   }
   return items.filter((item) => (
-    item.to !== '/grupos-frontales' || canViewFrontGroups(user)
+    (item.to !== '/estructura-frontal' || item.testId !== 'nav-front-group-structure' || canViewFrontGroups(user) || canViewPastoralFrontGroup(user))
   ) && (
     item.to !== '/libreria' || canViewLibraryModule(user)
   ) && (

@@ -1,7 +1,7 @@
 """ETAPA 5C-2 — Estructura por niveles y exploración de la rama.
 
 Lee los mismos `front_groups` y `front_group_assignments` (sin copias): cada
-nivel muestra su líder/colíder, sus personas y parejas, los grupos de los
+nivel muestra su líder/colíder, sus personas y equipos, los grupos de los
 líderes que salieron de él y los totales del grupo y de toda su rama.
 Una persona que es integrante de un grupo y líder de otro se cuenta UNA sola
 vez en los totales de la rama (conteo por person_id distinto).
@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from access_control import is_general_coordinator, is_global_pastoral_authority
 from front_group_tree import descendant_group_ids, load_group, readable_group_ids
 from front_groups import person_name, roster_view
+from participation_scope import principal_authority_person_ids, without
 from server import db, get_current_user
 
 router = APIRouter(prefix="/api/front-group-structure", tags=["front-group-structure"])
@@ -39,9 +40,11 @@ async def assert_explorable(group_id: str, current_user: dict) -> dict:
 async def branch_totals(group_id: str) -> dict:
     """Totales de la rama completa sin contar dos veces a nadie."""
     branch_ids = await descendant_group_ids(db, group_id)
-    people = await db.front_group_assignments.distinct("person_id", {"front_group_id": {"$in": branch_ids}, "active": True})
+    authorities = await principal_authority_person_ids(db)
+    # La autoridad pastoral principal supervisa: no cuenta como integrante ni líder operativo.
+    people = without(await db.front_group_assignments.distinct("person_id", {"front_group_id": {"$in": branch_ids}, "active": True}), authorities)
     pairs = await db.front_group_assignments.distinct("pair_id", {"front_group_id": {"$in": branch_ids}, "active": True, "role": "member", "pair_id": {"$ne": None}})
-    leaders = await db.front_group_assignments.distinct("person_id", {"front_group_id": {"$in": branch_ids}, "active": True, "role": {"$in": ["leader", "co_leader"]}})
+    leaders = without(await db.front_group_assignments.distinct("person_id", {"front_group_id": {"$in": branch_ids}, "active": True, "role": {"$in": ["leader", "co_leader"]}}), authorities)
     complete_pairs = 0
     for pair_id in pairs:
         if await db.front_group_assignments.count_documents({"pair_id": pair_id, "active": True}) >= 2:
@@ -93,7 +96,7 @@ async def structure_start(current_user: dict = Depends(get_current_user)):
 
 @router.get("/groups/{group_id}", response_model=dict)
 async def structure_node(group_id: str, current_user: dict = Depends(get_current_user)):
-    """Un nivel de la estructura: el grupo, sus personas/parejas, los grupos
+    """Un nivel de la estructura: el grupo, sus personas/equipos, los grupos
     hijos (de los líderes que salieron de él) y el camino para volver."""
     group = await assert_explorable(group_id, current_user)
     allowed = await explorable_ids(current_user)

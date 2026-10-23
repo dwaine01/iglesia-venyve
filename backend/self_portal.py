@@ -138,7 +138,8 @@ async def person_activity(person_id: str | None) -> dict:
         all_branch_ids: set[str] = set()
         for group_id in led_group_ids:
             all_branch_ids.update(await descendant_group_ids(db, group_id))
-        branch_mentor_ids = await db.front_group_assignments.distinct("person_id", {"front_group_id": {"$in": sorted(all_branch_ids)}, "active": True})
+        from participation_scope import participants_only
+        branch_mentor_ids = await participants_only(db, await db.front_group_assignments.distinct("person_id", {"front_group_id": {"$in": sorted(all_branch_ids)}, "active": True}))
         branch_ctx = {"scope": {"level": "branch", "group_ids": sorted(all_branch_ids), "self_person_id": person_id}, "filters": Filters(), "mentor_ids": branch_mentor_ids or None}
         as_leader = await supervision_overview(ctx=branch_ctx)
         as_leader["led_group_count"] = len(led_group_ids)

@@ -1,5 +1,5 @@
 import React, { lazy, Suspense } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, useParams } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useParams, useSearchParams } from 'react-router-dom';
 import { Toaster } from './components/ui/sonner';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import LoginPage from './pages/LoginPage';
@@ -76,7 +76,6 @@ import SupervisionPage from './pages/mentoria/SupervisionPage';
 import AdminDeletionsPage from './pages/admin/AdminDeletionsPage';
 import MigrationC11Page from './pages/admin/MigrationC11Page';
 import DiscipleshipPage from './pages/processes/DiscipleshipPage';
-import FrontGroupsPage from './pages/FrontGroupsPage';
 import LeadershipPage from './pages/LeadershipPage';
 import MentorshipPage from './pages/processes/MentorshipPage';
 import OutreachPage from './pages/OutreachPage';
@@ -216,6 +215,14 @@ function PersonProfileRoute({ children }) {
   return children;
 }
 
+// El módulo anterior de Grupos Frontales se integró en la Estructura por niveles:
+// la ruta vieja (y sus enlaces ?group=…) redirige al panel nuevo.
+function LegacyFrontGroupsRedirect() {
+  const [searchParams] = useSearchParams();
+  const groupId = searchParams.get('group');
+  return <Navigate to={groupId ? `/estructura-frontal/${groupId}` : '/estructura-frontal'} replace />;
+}
+
 function App() {
   return (
     <AuthProvider>
@@ -250,7 +257,7 @@ function App() {
             <Route path="procesos/discipulado" element={<CapabilityRoute allowed={canViewProcesses}><DiscipleshipPage /></CapabilityRoute>} />
             <Route path="formacion" element={<FormationRoute><FormationAdminPage /></FormationRoute>} />
             <Route path="formacion/cohortes/:cohortId" element={<FormationRoute><FormationCohortPage /></FormationRoute>} />
-            <Route path="grupos-frontales" element={<CapabilityRoute allowed={canViewFrontGroups}><FrontGroupsPage /></CapabilityRoute>} />
+            <Route path="grupos-frontales" element={<LegacyFrontGroupsRedirect />} />
             <Route path="liderazgo" element={<CapabilityRoute allowed={canViewLeadership}><LeadershipPage /></CapabilityRoute>} />
             <Route path="mapas" element={<CapabilityRoute allowed={canViewGeo}><Suspense fallback={<div className="flex min-h-[60vh] items-center justify-center" data-testid="geo-page-loading">Cargando Mapa 360…</div>}><GeoMapsPage /></Suspense></CapabilityRoute>} />
             <Route path="procesos/mentoria" element={<CapabilityRoute allowed={canViewProcesses}><MentorshipPage /></CapabilityRoute>} />

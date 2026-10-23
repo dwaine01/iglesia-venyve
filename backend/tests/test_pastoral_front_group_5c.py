@@ -208,9 +208,10 @@ async def test_structure_levels_permissions_and_distinct_totals():
         assert start["scope"] == "global" and [item["front_group_id"] for item in start["groups"]] == [main_id]
         node = (await pastora.get(f"/api/front-group-structure/groups/{main_id}")).json()
         assert node["group"]["direct"] == {"people": 3, "pairs": 1, "individuals": 1}
-        # Rama: pastora, Luis, Marta, Pedro, Rosa, Juan, Nina = 7 personas distintas
-        # (Luis/Marta/Rosa son integrantes de un grupo y líderes de otro; Pedro está en dos grupos).
-        assert node["group"]["branch"] == {"groups": 3, "people": 7, "pairs": 2, "leaders": 4}
+        # Rama: Luis, Marta, Pedro, Rosa, Juan, Nina = 6 personas distintas (Luis/Marta/Rosa son
+        # integrantes de un grupo y líderes de otro; Pedro está en dos grupos). La pastora supervisa:
+        # no cuenta como integrante ni como líder operativo.
+        assert node["group"]["branch"] == {"groups": 3, "people": 6, "pairs": 2, "leaders": 3}
         assert [child["front_group_id"] for child in node["children"]] == [child_id]
         assert node["children"][0]["leader"]["person_id"] == luis_id
         assert (await coordinator.get(f"/api/front-group-structure/groups/{grandchild_id}")).status_code == 200
@@ -241,7 +242,8 @@ async def test_group_stats_semaphore_ranking_and_no_double_count():
     fx = Fixture()
     campaign_id = f"camp-5c3-{uuid.uuid4().hex}"
     try:
-        pastora = await fx.account(await fx.person("PastoraS"), "pastora")
+        pastora_id_s = await fx.person("PastoraS")
+        pastora = await fx.account(pastora_id_s, "pastora")
         luis_id, marta_id, pedro_id, rosa_id, juan_id = [await fx.person(name) for name in ("LuisS", "MartaS", "PedroS", "RosaS", "JuanS")]
         luis = await fx.account(luis_id, "lider", capabilities=[], permissions_mode="manual")
         rosa = await fx.account(rosa_id, "persona")
@@ -262,8 +264,9 @@ async def test_group_stats_semaphore_ranking_and_no_double_count():
         assert stats.status_code == 200, stats.text
         body = stats.json()
         branch = body["branch"]
-        # 6 personas distintas (Pedro está en dos grupos; Luis/Marta son integrantes y líderes).
-        assert branch["people"] == 6 and branch["leaders"] == 3
+        # 5 personas distintas (Pedro está en dos grupos; Luis/Marta son integrantes y líderes);
+        # la pastora no cuenta como participante.
+        assert branch["people"] == 5 and branch["leaders"] == 2
         assert branch["attempts"] == 5 and branch["attempts_by_result"]["no_answer"] == 3
         assert branch["persons_reached"] == 1 and branch["followups"] == 1 and branch["households"] == 1
         assert branch["participants"] == 2 and branch["semaphore_reasons"]["participation"] == "yellow"
@@ -274,7 +277,8 @@ async def test_group_stats_semaphore_ranking_and_no_double_count():
         assert body["ranking_group"][0]["person_id"] == luis_id and group_rank[luis_id]["highlight"] == "top"
         assert group_rank[luis_id]["score"] == 3 * 1 + 2
         assert group_rank[pedro_id]["highlight"] == "needs_support"
-        assert len(body["ranking_branch"]) == 6
+        assert len(body["ranking_branch"]) == 5
+        assert pastora_id_s not in {row["person_id"] for row in body["ranking_branch"] + body["ranking_group"]}
         assert {row["person_id"] for row in body["ranking_branch"] if row["highlight"] == "top"} == {luis_id, rosa_id}
         assert sum(point["attempts"] for point in body["timeline"]) == 5
         assert "personas alcanzadas×3" in body["criteria"]["score"]
@@ -331,8 +335,10 @@ async def test_activity_panel_teams_classes_and_member_activity():
         panel = await pastora.get(f"/api/front-group-structure/groups/{main_id}/panel", params={"period": "week"})
         assert panel.status_code == 200, panel.text
         body = panel.json()
-        assert [team["type"] for team in body["teams"]] == ["leadership", "pair", "individual"]
-        pair = body["teams"][1]
+        # La pastora (único integrante del liderazgo de su grupo) no aparece: no hay recuadro de liderazgo.
+        assert [team["type"] for team in body["teams"]] == ["pair", "individual"]
+        assert pastora_id not in {member["person_id"] for team in body["teams"] for member in team["members"]}
+        pair = body["teams"][0]
         members = {member["person_id"]: member for member in pair["members"]}
         assert "Líder de su grupo" in members[luis_id]["functions"] and members[luis_id]["led_group"]["front_group_id"] == child_id
         assert "Mentor" in members[marta_id]["functions"]
@@ -346,15 +352,14 @@ async def test_activity_panel_teams_classes_and_member_activity():
         assert goals["attendance"]["goal_status"] == "propuesta"
         assert pair["summary"]["overall_progress"] == 0.653 and pair["summary"]["class"] == "B" and pair["summary"]["rank"] == 1
         assert pair["summary"]["relative_pct"] == 100
-        solo = body["teams"][2]
+        solo = body["teams"][1]
         assert solo["summary"]["support_shifts"] == 1 and solo["summary"]["attendance"] == 0
         solo_goals = {item["key"]: item for item in solo["goals"]}
         assert solo_goals["attendance"]["has_data"] is True and solo_goals["attendance"]["progress"] == 0  # registro 'ausente': 0% real
         assert solo_goals["outreach"]["has_data"] is False and solo["summary"]["overall_progress"] == 0.5 and solo["summary"]["class"] == "B"
-        leadership = body["teams"][0]
-        assert leadership["summary"]["overall_progress"] is None and leadership["summary"]["class"] is None and leadership["summary"]["rank"] == 3
-        assert body["group"]["people"] == 4 and body["group"]["teams"] == 3
-        assert body["group"]["class"] == "C" and body["group"]["overall_progress"] == 0.37
+        assert solo["summary"]["rank"] == 2
+        assert body["group"]["people"] == 3 and body["group"]["teams"] == 2
+        assert body["group"]["class"] == "C" and body["group"]["overall_progress"] == 0.492
         assert body["can_edit_goals"] is True and "goal_progress_green" in body["criteria"]["goals"]
         member_goals = {item["key"]: item for item in members[marta_id]["goals"]["indicators"]}
         assert member_goals["attendance"]["value"] == 1
