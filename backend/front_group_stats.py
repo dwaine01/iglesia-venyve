@@ -20,6 +20,7 @@ from front_group_structure import assert_explorable, explorable_ids
 from front_group_tree import descendant_group_ids, load_group
 from front_groups import person_name, roster_view
 from self_portal import person_activity
+from participation_scope import participants_only, principal_authority_person_ids, without
 from server import db, get_current_user
 from access_control import is_general_coordinator, is_global_pastoral_authority
 from supervision_analytics import ACCEPTED_OR_LATER, CONSOLIDATION_KEY, compute_semaphore, load_thresholds
@@ -202,8 +203,9 @@ def member_semaphore(metrics: dict, thresholds: dict) -> str:
 
 
 async def group_people(group_id: str, branch: bool) -> list[str]:
+    """Participantes del grupo/rama (sin la autoridad pastoral principal)."""
     group_ids = await descendant_group_ids(db, group_id) if branch else [group_id]
-    return await db.front_group_assignments.distinct("person_id", {"front_group_id": {"$in": group_ids}, "active": True})
+    return await participants_only(db, await db.front_group_assignments.distinct("person_id", {"front_group_id": {"$in": group_ids}, "active": True}))
 
 
 async def ranking(person_ids: list[str], metrics: dict, thresholds: dict, roles: dict[str, str]) -> list[dict]:
@@ -259,12 +261,13 @@ async def group_stats(
     thresholds = await load_thresholds()
     branch_people = await group_people(group_id, branch=True)
     metrics = await person_metrics(branch_people, resolved)
-    direct_assignments = await db.front_group_assignments.find({"front_group_id": group_id, "active": True}, {"_id": 0, "person_id": 1, "role": 1}).to_list(5000)
+    authorities = await principal_authority_person_ids(db)
+    direct_assignments = [item for item in await db.front_group_assignments.find({"front_group_id": group_id, "active": True}, {"_id": 0, "person_id": 1, "role": 1}).to_list(5000) if item["person_id"] not in authorities]
     direct_roles: dict[str, str] = {}
     for item in direct_assignments:
         if item["person_id"] not in direct_roles or item["role"] in {"leader", "co_leader"}:
             direct_roles[item["person_id"]] = item["role"]
-    branch_leaders = set(await db.front_group_assignments.distinct("person_id", {"front_group_id": {"$in": await descendant_group_ids(db, group_id)}, "active": True, "role": {"$in": ["leader", "co_leader"]}}))
+    branch_leaders = set(without(await db.front_group_assignments.distinct("person_id", {"front_group_id": {"$in": await descendant_group_ids(db, group_id)}, "active": True, "role": {"$in": ["leader", "co_leader"]}}), authorities))
     children = await db.front_groups.find({"parent_group_id": group_id, "status": {"$ne": "archived"}}, {"_id": 0}).sort("name", 1).to_list(500)
     comparison = []
     for child in children:
@@ -367,7 +370,7 @@ def goal_indicators(person_ids: list[str], metrics: dict, thresholds: dict, peri
 
 
 # ---------------------------------------------------------------------------
-# Panel dinámico de "Mi Grupo Frontal": equipos (parejas/individuos) en tarjetas
+# Panel dinámico de "Mi Grupo Frontal": equipos (de dos integrantes o individuos) en tarjetas
 # ---------------------------------------------------------------------------
 UNAVAILABLE_DATA = [
     {"key": "group_meetings", "label": "Asistencia a reuniones del Grupo Frontal", "reason": "Aún no existe un registro de reuniones propias del Grupo Frontal. La asistencia que se muestra es la registrada en Persona 360 (cultos, células y eventos de Operaciones)."},
@@ -431,7 +434,7 @@ async def group_panel(
     campaign_id: Optional[str] = Query(None),
     current_user: dict = Depends(get_current_user),
 ):
-    """Panel de actividad del grupo: un recuadro por equipo (pareja o
+    """Panel de actividad del grupo: un recuadro por equipo (de dos integrantes o
     individuo según la lista registrada, más el liderazgo del grupo)."""
     await assert_explorable(group_id, current_user)
     group = await load_group(db, group_id)
@@ -439,12 +442,16 @@ async def group_panel(
     thresholds = await load_thresholds()
     roster = await roster_view(group)
     roles = {person_id: role for role, person_id in (("leader", group.get("primary_leader_person_id")), ("co_leader", group.get("co_leader_person_id"))) if person_id}
+    # La autoridad pastoral principal supervisa: no aparece en equipos, conteos ni rankings.
+    authorities = await principal_authority_person_ids(db)
     team_defs = []
-    if roles:
-        team_defs.append({"team_id": "leadership", "type": "leadership", "person_ids": list(roles)})
+    leadership_ids = without(list(roles), authorities)
+    if leadership_ids:
+        team_defs.append({"team_id": "leadership", "type": "leadership", "person_ids": leadership_ids})
     for entry in roster["entries"]:
-        ids = [person["person_id"] for person in entry["people"]]
-        team_defs.append({"team_id": entry.get("pair_id") or ids[0], "type": entry["type"], "person_ids": ids})
+        ids = without([person["person_id"] for person in entry["people"]], authorities)
+        if ids:
+            team_defs.append({"team_id": entry.get("pair_id") or ids[0], "type": entry["type"] if len(ids) > 1 else "individual", "person_ids": ids})
     everyone = sorted({person_id for team in team_defs for person_id in team["person_ids"]})
     metrics = await person_metrics(everyone, resolved)
     teams = []

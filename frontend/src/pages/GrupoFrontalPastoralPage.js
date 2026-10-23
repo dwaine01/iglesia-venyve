@@ -67,7 +67,7 @@ export default function GrupoFrontalPastoralPage() {
         {view && !group && (canEdit ? (
           <section className="space-y-3 rounded-xl border border-[#E8E5DE] bg-white p-4 shadow-sm" data-testid="crear-grupo-pastoral">
             <h2 className="font-semibold text-[#101D36]">Crear mi grupo frontal</h2>
-            <p className="text-sm text-slate-600">Tú quedas como líder. Después agregas personas desde Persona 360, como individuos o parejas.</p>
+            <p className="text-sm text-slate-600">Tú quedas como líder. Después agregas personas desde Persona 360, como individuos o en equipos de servicio.</p>
             <Label htmlFor="pastoral-group-name">Nombre del grupo</Label>
             <Input id="pastoral-group-name" value={name} onChange={(event) => setName(event.target.value)} className="h-11" data-testid="pastoral-group-name-input" />
             <Button className="h-11 w-full bg-amber-700 text-white hover:bg-amber-800" onClick={() => saveGroup(null)} disabled={saving} data-testid="pastoral-group-create">{saving && <Loader2 className="h-4 w-4 animate-spin" />}Crear mi grupo frontal</Button>
@@ -77,7 +77,7 @@ export default function GrupoFrontalPastoralPage() {
         {group && <Link to={`/estructura-frontal/${group.front_group_id}`} className="inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-[#101D36] text-sm font-semibold text-white" data-testid="pastoral-ver-estructura">Explorar la estructura hacia abajo</Link>}
         {group && (
           <section className="rounded-xl border border-[#E8E5DE] bg-white shadow-sm" data-testid="pastoral-group-admin">
-            <button type="button" onClick={() => setAdminOpen((value) => !value)} aria-expanded={adminOpen} className="flex min-h-12 w-full items-center justify-between gap-2 px-4 text-sm font-semibold text-[#101D36]" data-testid="pastoral-group-admin-toggle"><span className="flex items-center gap-2"><Settings2 className="h-4 w-4 text-[#9A7A2F]" />Administrar el grupo (equipos, parejas y líderes)</span><ChevronDown className={`h-4 w-4 transition ${adminOpen ? 'rotate-180' : ''}`} /></button>
+            <button type="button" onClick={() => setAdminOpen((value) => !value)} aria-expanded={adminOpen} className="flex min-h-12 w-full items-center justify-between gap-2 px-4 text-sm font-semibold text-[#101D36]" data-testid="pastoral-group-admin-toggle"><span className="flex items-center gap-2"><Settings2 className="h-4 w-4 text-[#9A7A2F]" />Administrar el grupo (equipos de servicio y líderes)</span><ChevronDown className={`h-4 w-4 transition ${adminOpen ? 'rotate-180' : ''}`} /></button>
             {adminOpen && <div className="space-y-3 border-t border-[#E8E5DE] p-3">
               {canEdit && <div className="space-y-3" data-testid="pastoral-group-settings">
                 <Label htmlFor="pastoral-group-rename">Nombre del grupo</Label>
@@ -89,7 +89,7 @@ export default function GrupoFrontalPastoralPage() {
               {editingList
                 ? <GroupRosterEditor groupId={group.front_group_id} initialEntries={rosterToEntries(view.roster)} excludedIds={[group.leader?.person_id, group.co_leader?.person_id].filter(Boolean)} onSave={saveRoster} onCancel={() => setEditingList(false)} />
                 : <>
-                  {canEdit && <button type="button" onClick={() => setEditingList(true)} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-md bg-[#101D36] text-sm font-semibold text-white" data-testid="pastoral-group-edit-list"><Pencil className="h-4 w-4" />Agregar u organizar personas y parejas</button>}
+                  {canEdit && <button type="button" onClick={() => setEditingList(true)} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-md bg-[#101D36] text-sm font-semibold text-white" data-testid="pastoral-group-edit-list"><Pencil className="h-4 w-4" />Agregar personas o crear equipos</button>}
                   <GroupRosterView groupId={group.front_group_id} roster={view.roster} canManage={canEdit} onChanged={async () => { await load(); setPanelKey((value) => value + 1); }} title="Equipos registrados y líderes" />
                 </>}
             </div>}

@@ -16,6 +16,7 @@ from access_control import is_general_coordinator, is_global_pastoral_authority
 from front_group_tree import descendant_group_ids, support_group_ids
 from library_module import compute_library_totals
 from process_engine import get_definition, now_utc, serialize
+from participation_scope import principal_authority_person_ids, without
 from server import db, get_current_user
 
 router = APIRouter(prefix="/api/supervision", tags=["supervision"])
@@ -97,11 +98,18 @@ async def build_filters(
         if allowed_mentor_ids is not None and filters.mentor_person_id not in allowed_mentor_ids:
             raise HTTPException(status_code=403, detail="Ese mentor no está en su alcance de supervisión")
         allowed_mentor_ids = [filters.mentor_person_id]
-    return {"scope": scope, "filters": filters, "mentor_ids": allowed_mentor_ids}
+    # La autoridad pastoral principal supervisa: nunca cuenta como participante.
+    excluded = await principal_authority_person_ids(db)
+    if allowed_mentor_ids is not None:
+        allowed_mentor_ids = without(allowed_mentor_ids, excluded)
+    return {"scope": scope, "filters": filters, "mentor_ids": allowed_mentor_ids, "excluded_ids": sorted(excluded)}
 
 
 def mentor_query(ctx: dict, field: str = "mentor_person_id") -> dict:
-    return {} if ctx["mentor_ids"] is None else {field: {"$in": ctx["mentor_ids"]}}
+    if ctx["mentor_ids"] is None:
+        excluded = ctx.get("excluded_ids") or []
+        return {field: {"$nin": excluded}} if excluded else {}
+    return {field: {"$in": without(ctx["mentor_ids"], set(ctx.get("excluded_ids") or []))}}
 
 
 def date_query(ctx: dict, field: str) -> dict:
@@ -269,7 +277,7 @@ async def overview(ctx: dict = Depends(build_filters)):
 async def weakness_summary(ctx: dict, thresholds: dict) -> dict:
     mentor_ids = ctx["mentor_ids"]
     if mentor_ids is None:
-        mentor_candidates = await db.outreach_participations.distinct("mentor_person_id", campaign_query(ctx))
+        mentor_candidates = without(await db.outreach_participations.distinct("mentor_person_id", campaign_query(ctx)), set(ctx.get("excluded_ids") or []))
     else:
         mentor_candidates = await db.outreach_participations.distinct("mentor_person_id", {**campaign_query(ctx), "mentor_person_id": {"$in": mentor_ids}})
     cutoff_inactive = now_utc() - timedelta(days=thresholds["mentor_inactivity_days"]["value"])
@@ -307,16 +315,17 @@ async def drilldown_groups(parent_group_id: Optional[str] = Query(default=None),
         return {"groups": []}
     groups = await db.front_groups.find(query, {"_id": 0, "front_group_id": 1, "name": 1, "primary_leader_person_id": 1, "co_leader_person_id": 1}).sort("name", 1).to_list(500)
     thresholds = await load_thresholds()
+    excluded = set(ctx.get("excluded_ids") or [])
     result = []
     for group in groups:
         branch_ids = await descendant_group_ids(db, group["front_group_id"])
-        mentor_ids = await db.front_group_assignments.distinct("person_id", {"front_group_id": {"$in": branch_ids}, "active": True})
+        mentor_ids = without(await db.front_group_assignments.distinct("person_id", {"front_group_id": {"$in": branch_ids}, "active": True}), excluded)
         enrollment_ids = await db.process_enrollments.distinct("enrollment_id", {"mentor_person_id": {"$in": mentor_ids}, "process_key": CONSOLIDATION_KEY}) if mentor_ids else []
         today_iso = date.today().isoformat()
         overdue = await db.consolidation_activities.count_documents({"enrollment_id": {"$in": enrollment_ids}, "status": "pending", "scheduled_date": {"$lt": today_iso}}) if enrollment_ids else 0
         total_activities = await db.consolidation_activities.count_documents({"enrollment_id": {"$in": enrollment_ids}}) if enrollment_ids else 0
         result.append({
-            **group, "direct_members": len(await db.front_group_assignments.distinct("person_id", {"front_group_id": group["front_group_id"], "active": True})),
+            **group, "direct_members": len(without(await db.front_group_assignments.distinct("person_id", {"front_group_id": group["front_group_id"], "active": True}), excluded)),
             "total_members": len(mentor_ids), "activities_overdue": overdue, "activities_total": total_activities,
             "semaphore": compute_semaphore(total_activities, overdue, thresholds),
         })
@@ -331,6 +340,7 @@ async def drilldown_mentors(ctx: dict = Depends(build_filters)):
         mentor_ids = await db.outreach_participations.distinct("mentor_person_id", campaign_query(ctx))
     else:
         mentor_ids = ctx["mentor_ids"]
+    mentor_ids = without(mentor_ids, set(ctx.get("excluded_ids") or []))
     if not mentor_ids:
         return {"mentors": []}
     thresholds = await load_thresholds()
@@ -344,7 +354,10 @@ async def drilldown_mentors(ctx: dict = Depends(build_filters)):
         enrollment_ids = await db.process_enrollments.distinct("enrollment_id", {"mentor_person_id": mentor_id, "process_key": CONSOLIDATION_KEY})
         overdue = await db.consolidation_activities.count_documents({"enrollment_id": {"$in": enrollment_ids}, "status": "pending", "scheduled_date": {"$lt": today_iso}}) if enrollment_ids else 0
         total_activities = await db.consolidation_activities.count_documents({"enrollment_id": {"$in": enrollment_ids}}) if enrollment_ids else 0
-        has_recent_activity = bool(last_visit and last_visit.get("created_at") and last_visit["created_at"] >= cutoff_inactive)
+        last_at = (last_visit or {}).get("created_at")
+        if last_at and last_at.tzinfo is None:  # Mongo devuelve fechas sin zona horaria (UTC)
+            last_at = last_at.replace(tzinfo=timezone.utc)
+        has_recent_activity = bool(last_at and last_at >= cutoff_inactive)
         result.append({
             "mentor_person_id": mentor_id, "mentor_name": names.get(mentor_id, "Mentor"), "visits": visits,
             "disciples": len(enrollment_ids), "activities_overdue": overdue, "activities_total": total_activities,
@@ -391,6 +404,7 @@ async def indicator_detail(indicator_key: str, ctx: dict = Depends(build_filters
         mentor_ids = ctx["mentor_ids"] if ctx["mentor_ids"] is not None else await db.outreach_participations.distinct("mentor_person_id", campaign_query(ctx))
         if ctx["mentor_ids"] is not None:
             mentor_ids = await db.outreach_participations.distinct("mentor_person_id", {**campaign_query(ctx), "mentor_person_id": {"$in": mentor_ids}})
+        mentor_ids = without(mentor_ids, set(ctx.get("excluded_ids") or []))
         cutoff = now_utc() - timedelta(days=thresholds["mentor_inactivity_days"]["value"])
         active_recent = set(await db.outreach_visits.distinct("mentor_person_id", {"mentor_person_id": {"$in": mentor_ids}, "created_at": {"$gte": cutoff}})) if mentor_ids else set()
         inactive_ids = [m for m in mentor_ids if m not in active_recent]

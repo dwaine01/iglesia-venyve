@@ -24,7 +24,7 @@ function CoLeaderPicker({ groupId, value, onChange }) {
 }
 
 // ETAPA 5C: "Crear mi grupo frontal" — el líder autorizado nombra su grupo,
-// elige colíder y arma su lista (individuos o parejas) con revisión previa.
+// elige colíder y arma su lista (individuos o equipos) con revisión previa.
 function CreateMyGroup({ detail, onDone }) {
   const { API, getAuthHeaders } = useAuth();
   const [name, setName] = useState('');
@@ -108,7 +108,7 @@ function ManageMyGroup({ detail, onChanged }) {
           {roster && (editing
             ? <GroupRosterEditor groupId={detail.front_group_id} initialEntries={rosterToEntries(roster)} excludedIds={[detail.primary_leader_person_id, detail.co_leader_person_id].filter(Boolean)} onSave={saveRoster} onCancel={() => setEditing(false)} />
             : <>
-              {canManage && <button type="button" onClick={() => setEditing(true)} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-md border border-[#D9CFB4] bg-white text-sm font-semibold text-[#7A5F22]" data-testid="mi-grupo-editar-lista"><Pencil className="h-4 w-4" />Editar lista (personas y parejas)</button>}
+              {canManage && <button type="button" onClick={() => setEditing(true)} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-md border border-[#D9CFB4] bg-white text-sm font-semibold text-[#7A5F22]" data-testid="mi-grupo-editar-lista"><Pencil className="h-4 w-4" />Editar lista (personas y equipos)</button>}
               <GroupRosterView groupId={detail.front_group_id} roster={roster} canManage={canManage} onChanged={async () => { await loadRoster(); setPanelKey((value) => value + 1); }} title="Equipos registrados y líderes" />
             </>)}
         </div>}

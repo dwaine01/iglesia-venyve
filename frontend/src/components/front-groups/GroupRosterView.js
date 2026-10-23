@@ -20,8 +20,8 @@ function PrivilegeBadge({ privilege }) {
   );
 }
 
-// ETAPA 5C: todas las personas y parejas del grupo; quien administra puede
-// asignar el privilegio "Líder de Grupo Frontal" (en pareja: a uno o a ambos).
+// ETAPA 5C: todas las personas y equipos del grupo; quien administra puede
+// asignar el privilegio "Líder de Grupo Frontal" (en un equipo: a uno o a ambos integrantes).
 export function GroupRosterView({ groupId, roster, canManage, onChanged, onShowActivity, onOpenGroup, title = 'Integrantes' }) {
   const { API, getAuthHeaders, user } = useAuth();
   const [busy, setBusy] = useState('');
@@ -57,7 +57,7 @@ export function GroupRosterView({ groupId, roster, canManage, onChanged, onShowA
     <section className="space-y-3 rounded-xl border border-[#E8E5DE] bg-white p-4 shadow-sm" data-testid="group-roster-view">
       <div className="flex items-center justify-between gap-2">
         <h3 className="flex items-center gap-2 font-semibold text-[#101D36]"><Users className="h-4 w-4 text-[#9A7A2F]" />{title}</h3>
-        <p className="text-xs text-slate-500" data-testid="group-roster-totals">{totals.people} {totals.people === 1 ? 'persona' : 'personas'} · {totals.pairs} {totals.pairs === 1 ? 'pareja' : 'parejas'} · {totals.individuals} {totals.individuals === 1 ? 'individual' : 'individuales'}</p>
+        <p className="text-xs text-slate-500" data-testid="group-roster-totals">{totals.people} {totals.people === 1 ? 'persona' : 'personas'} · {totals.pairs} {totals.pairs === 1 ? 'equipo' : 'equipos'} · {totals.individuals} {totals.individuals === 1 ? 'individual' : 'individuales'}</p>
       </div>
       {entries.length ? (
         <ul className="space-y-2">
@@ -66,7 +66,7 @@ export function GroupRosterView({ groupId, roster, canManage, onChanged, onShowA
             const isPair = entry.type === 'pair' && second;
             return (
               <li key={entry.pair_id || first.person_id} className={`rounded-lg border p-3 ${isPair ? 'border-[#D9CFB4] bg-[#FBF6EA]' : 'border-[#EEECE6]'}`} data-testid="group-roster-entry">
-                {isPair && <p className="mb-1 text-[10px] font-semibold uppercase text-[#7A5F22]">Pareja</p>}
+                {isPair && <p className="mb-1 text-[10px] font-semibold uppercase text-[#7A5F22]">Equipo</p>}
                 <div className="space-y-2">{entry.people.map((person) => <PersonRow key={person.person_id} person={person} />)}</div>
                 {canManage && (isPair ? (
                   !first.leader_privilege && !second.leader_privilege && (

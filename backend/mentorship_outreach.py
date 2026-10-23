@@ -35,6 +35,7 @@ from geo_service import enqueue_geo_job, pending_geo_fields, process_geo_job
 from library_module import CENTRAL_HOLDER, HolderInput, MovementInput, apply_movement, deliver_from_mentor_to_person
 from person_matching import PersonQuickCreate, quick_create_person
 from process_engine import create_enrollment, now_utc, serialize
+from participation_scope import principal_authority_person_ids, without
 from server import db, get_current_user
 
 
@@ -589,7 +590,8 @@ async def sync_visit_address_to_person(visit: dict, person_id: str, current_user
 async def create_campaign(payload: CampaignInput, current_user: dict = Depends(get_current_user)):
     if not can_manage_outreach_campaigns(current_user):
         raise HTTPException(status_code=403, detail="Solo la pastora/pastor o un coordinador general puede crear invasiones")
-    roster = list({entry.person_id: entry for entry in payload.assigned_mentors if entry.person_id}.values())
+    authorities = await principal_authority_person_ids(db)
+    roster = [entry for entry in {entry.person_id: entry for entry in payload.assigned_mentors if entry.person_id}.values() if entry.person_id not in authorities]
     accounts_created = await ensure_mentor_roster_accounts(roster, current_user)
     now = now_utc()
     campaign_id = str(uuid4())
@@ -652,6 +654,8 @@ async def list_campaigns(current_user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=403, detail="Sin permiso para consultar invasiones")
     items = await db.outreach_campaigns.find({}, {"_id": 0}).sort("created_at", -1).to_list(500)
     mentor_person_id = current_user.get("person_id")
+    if is_global_pastoral_authority(current_user):
+        mentor_person_id = None  # supervisa: nunca se le pide confirmar participación
     if mentor_person_id:
         participations = await db.outreach_participations.find(
             {"mentor_person_id": mentor_person_id}, {"_id": 0, "campaign_id": 1, "status": 1},
@@ -721,6 +725,8 @@ async def participate_in_campaign(campaign_id: str, current_user: dict = Depends
     campaign = await db.outreach_campaigns.find_one({"campaign_id": campaign_id}, {"_id": 0, "assigned_mentor_ids": 1})
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaña no encontrada")
+    if is_global_pastoral_authority(current_user):
+        raise HTTPException(status_code=409, detail="La autoridad pastoral principal supervisa la invasión; no confirma participación")
     if mentor_person_id not in (campaign.get("assigned_mentor_ids") or []):
         raise HTTPException(status_code=403, detail="No está en el roster de mentores de esta invasión")
     await ensure_participation(campaign_id, mentor_person_id)
@@ -748,7 +754,8 @@ async def update_campaign(campaign_id: str, payload: CampaignUpdateInput, curren
         fields["sectors"] = [s.strip() for s in (fields["sectors"] or []) if s and s.strip()]
     accounts_created = []
     if "assigned_mentors" in fields:
-        roster = list({entry.person_id: entry for entry in (payload.assigned_mentors or []) if entry.person_id}.values())
+        authorities = await principal_authority_person_ids(db)
+        roster = [entry for entry in {entry.person_id: entry for entry in (payload.assigned_mentors or []) if entry.person_id}.values() if entry.person_id not in authorities]
         accounts_created = await ensure_mentor_roster_accounts(roster, current_user)
         fields["assigned_mentor_ids"] = [entry.person_id for entry in roster]
         del fields["assigned_mentors"]
@@ -797,6 +804,11 @@ async def add_campaign_mentors(campaign_id: str, payload: AddMentorsInput, curre
     candidate_ids += sorted(group_candidate_ids - existing_ids - set(explicit_ids))
 
     added, rejected, accounts_created = [], [], []
+    authorities = await principal_authority_person_ids(db)
+    for person_id in [pid for pid in candidate_ids if pid in authorities]:
+        if person_id in explicit_ids:
+            rejected.append({"person_id": person_id, "name": await person_display_name(person_id) or "Autoridad pastoral", "reason": "Supervisa la invasión como autoridad pastoral principal; no se agrega como participante"})
+    candidate_ids = without(candidate_ids, authorities)
     for person_id in candidate_ids:
         user_doc = await db.users.find_one({"person_id": person_id}, {"_id": 1})
         if not user_doc:
@@ -1010,8 +1022,9 @@ async def campaign_report(campaign_id: str, current_user: dict = Depends(get_cur
     campaign = await db.outreach_campaigns.find_one({"campaign_id": campaign_id}, {"_id": 0})
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaña no encontrada")
-    mentor_ids = campaign.get("assigned_mentor_ids") or []
-    visits = await db.outreach_visits.find({"campaign_id": campaign_id, "archived": {"$ne": True}}, {"_id": 0}).to_list(5000)
+    authorities = await principal_authority_person_ids(db)
+    mentor_ids = without(campaign.get("assigned_mentor_ids") or [], authorities)
+    visits = [visit for visit in await db.outreach_visits.find({"campaign_id": campaign_id, "archived": {"$ne": True}}, {"_id": 0}).to_list(5000) if visit.get("mentor_person_id") not in authorities]
     book_rows = (await list_campaign_books(campaign_id, current_user))["items"]
     valid_oids = [ObjectId(pid) for pid in mentor_ids if ObjectId.is_valid(pid)]
     people = await db.persons.find({"_id": {"$in": valid_oids}}, {"_id": 1, "nombre": 1, "apellido": 1}).to_list(len(valid_oids)) if valid_oids else []
@@ -1545,7 +1558,7 @@ async def mentor_ids_in_group_branch(front_group_id: str) -> list:
         return []
     valid_oids = [ObjectId(pid) for pid in mentor_ids if ObjectId.is_valid(pid)]
     archived_ids = {str(p["_id"]) for p in await db.persons.find({"_id": {"$in": valid_oids}, "is_archived": True}, {"_id": 1}).to_list(len(valid_oids))}
-    return [pid for pid in mentor_ids if pid not in archived_ids]
+    return without([pid for pid in mentor_ids if pid not in archived_ids], await principal_authority_person_ids(db))
 
 
 @router.get("/mentors-by-group/{front_group_id}", response_model=dict)
@@ -1653,7 +1666,9 @@ async def my_branch_library(current_user: dict = Depends(get_current_user)):
 async def outreach_dashboard(current_user: dict = Depends(get_current_user)):
     if not is_outreach_leader(current_user):
         raise HTTPException(status_code=403, detail="Sin permiso para consultar el panel de invasiones")
-    visits = await db.outreach_visits.find({"archived": {"$ne": True}}, {"_id": 0}).to_list(20000)
+    authorities = await principal_authority_person_ids(db)
+    # La actividad registrada por la autoridad pastoral principal no cuenta como participación.
+    visits = [v for v in await db.outreach_visits.find({"archived": {"$ne": True}}, {"_id": 0}).to_list(20000) if v.get("mentor_person_id") not in authorities]
     mentor_ids = sorted({v["mentor_person_id"] for v in visits if v.get("mentor_person_id")})
     valid_oids = [ObjectId(pid) for pid in mentor_ids if ObjectId.is_valid(pid)]
     people = await db.persons.find({"_id": {"$in": valid_oids}}, {"_id": 1, "nombre": 1, "apellido": 1}).to_list(len(valid_oids)) if valid_oids else []
