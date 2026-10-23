@@ -36,6 +36,7 @@ export default function OutreachPage() {
   const [households, setHouseholds] = useState([]);
   const [mentorOptions, setMentorOptions] = useState([]);
   const [availableByCampaign, setAvailableByCampaign] = useState({});
+  const [poolVersion, setPoolVersion] = useState(0);
   const [statusFilter, setStatusFilter] = useState('all');
   const [loading, setLoading] = useState(true);
   const [addOpen, setAddOpen] = useState(false);
@@ -82,6 +83,7 @@ export default function OutreachPage() {
     try {
       const response = await axios.get(`${API}/api/mentorship/outreach/campaigns/${campaignId}/households/available`, getAuthHeaders());
       setAvailableByCampaign((prev) => ({ ...prev, [campaignId]: response.data.items || [] }));
+      setPoolVersion((v) => v + 1);
     } catch (error) {
       setAvailableByCampaign((prev) => ({ ...prev, [campaignId]: [] }));
     }
@@ -158,6 +160,7 @@ export default function OutreachPage() {
               campaign={campaign}
               isLeader={isLeader}
               mentorOptions={mentorOptions}
+              refreshKey={poolVersion}
               onChanged={() => { loadHouseholds(); loadAvailableFor(campaign.campaign_id); }}
             />
           ))}

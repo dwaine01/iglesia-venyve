@@ -1371,7 +1371,7 @@ async def list_available_households(campaign_id: str, current_user: dict = Depen
     if not await can_use_outreach(current_user):
         raise HTTPException(status_code=403, detail="Sin permiso para consultar hogares")
     roster = await campaign_roster(campaign_id)
-    if not is_outreach_leader(current_user) and current_user.get("person_id") not in roster:
+    if not is_outreach_leader(current_user) and not can_manage_outreach_campaigns(current_user) and current_user.get("person_id") not in roster:
         raise HTTPException(status_code=403, detail="No participa en esta invasión")
     households = await db.outreach_households.find(
         {"campaign_id": campaign_id, "mentor_person_id": None, "archived": {"$ne": True}}, {"_id": 0},
@@ -1422,7 +1422,7 @@ async def release_household(household_id: str, current_user: dict = Depends(get_
     mentor_person_id = household.get("mentor_person_id")
     if not mentor_person_id:
         raise HTTPException(status_code=409, detail="Esta casa ya está disponible")
-    if mentor_person_id != current_user.get("person_id") and not is_outreach_leader(current_user):
+    if mentor_person_id != current_user.get("person_id") and not is_outreach_leader(current_user) and not can_manage_outreach_campaigns(current_user):
         raise HTTPException(status_code=403, detail="Solo el mentor responsable o un líder puede devolver esta casa")
     now = now_utc()
     updated = await db.outreach_households.find_one_and_update(
@@ -1440,11 +1440,14 @@ async def assign_household(household_id: str, payload: HouseholdAssignInput, cur
     """Asignación DIRECTA de un responsable autorizado (líder de invasión) a
     un mentor puntual — solo sobre una casa hoy disponible, atómica/idempotente
     igual que `claim`, para no quitarle en silencio una casa a otro mentor."""
-    if not is_outreach_leader(current_user):
+    if not is_outreach_leader(current_user) and not can_manage_outreach_campaigns(current_user):
         raise HTTPException(status_code=403, detail="Solo un responsable autorizado puede asignar casas directamente")
     if not await is_active_mentor(payload.mentor_person_id):
         raise HTTPException(status_code=409, detail="El mentor seleccionado necesita insignia de Mentor activa")
     household = await load_household(household_id)
+    roster = await campaign_roster(household.get("campaign_id"))
+    if payload.mentor_person_id not in roster:
+        raise HTTPException(status_code=409, detail="El mentor seleccionado no está en el roster de esta invasión")
     if household.get("mentor_person_id") == payload.mentor_person_id:
         return serialize(household)
     snapshot = await supervision_snapshot(payload.mentor_person_id)
