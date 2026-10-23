@@ -58,6 +58,21 @@ elif cmd == "state":
 elif cmd == "deactivate":
     st = json.load(open(STATE))
     print(db.users.update_one({"email": st["pastor"]}, {"$set": {"is_active": False}}).modified_count)
+elif cmd in ("lock", "attempts"):
+    # lock: inserta bloqueo por fuerza bruta (5 fallos, locked_until +15min) para la cuenta pastor QA
+    # attempts: muestra el documento login_attempts de la cuenta pastor QA
+    import hashlib
+    from datetime import timedelta
+    st = json.load(open(STATE))
+    email = st["pastor"].strip().lower()
+    ident = hashlib.sha256(email.encode("utf-8")).hexdigest()
+    if cmd == "lock":
+        now = datetime.now(timezone.utc)
+        db.login_attempts.update_one({"identifier": ident}, {"$set": {
+            "failed_attempts": 5, "last_attempt_at": now, "expires_at": now + timedelta(hours=1),
+            "locked_until": now + timedelta(minutes=15), "created_at": now}}, upsert=True)
+    d = db.login_attempts.find_one({"identifier": ident}, {"_id": 0})
+    print(json.dumps({"email": email, "attempt_doc": d}, default=str))
 elif cmd == "cleanup":
     st = json.load(open(STATE))
     emails = list(st.values())

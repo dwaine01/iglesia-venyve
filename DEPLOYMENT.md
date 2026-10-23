@@ -216,6 +216,12 @@ arranque del backend):
 > contraseña no cumple el mínimo, el backend no hace nada (ni crea, ni
 > cambia roles) — solo deja un warning en los logs de Railway.
 
+> **Nota**: si la cuenta vuelve a bloquearse por fuerza bruta DESPUÉS de un
+> rescate ya aplicado, reiniciar con las mismas dos variables no la vuelve a
+> desbloquear (la huella de esa contraseña ya quedó registrada). En ese caso,
+> usa una contraseña de rescate distinta a la anterior para forzar un nuevo
+> rescate.
+
 ---
 
 ## 10. Estructura de archivos de deploy
