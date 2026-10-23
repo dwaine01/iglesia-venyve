@@ -523,7 +523,9 @@ async def leader_privilege_for(group_id: str, person_id: str) -> Optional[dict]:
 async def roster_view(group: dict) -> dict:
     """Integrantes del grupo organizados en individuos y parejas."""
     group_id = group["front_group_id"]
-    assignments = await db.front_group_assignments.find({"front_group_id": group_id, "role": "member", "active": True}, {"_id": 0}).sort("started_at", 1).to_list(2000)
+    assignments = await db.front_group_assignments.find({"front_group_id": group_id, "role": "member", "active": True}, {"_id": 0}).to_list(2000)
+    # Orden en que se registró la lista (roster_order); los anteriores, por fecha de alta.
+    assignments.sort(key=lambda item: (item.get("roster_order") is None, item.get("roster_order") or 0, item.get("started_at") or now_utc()))
     entries, by_pair = [], {}
     for item in assignments:
         card = {"person_id": item["person_id"], "name": await person_name(item["person_id"]),
@@ -584,15 +586,15 @@ async def apply_roster(group: dict, payload: RosterSave, current_user: dict) -> 
         existing = [current_by_person.get(person_id, {}).get("pair_id") for person_id in members]
         pair_ids[members] = existing[0] if existing[0] and existing[0] == existing[1] else str(uuid4())
     added = 0
-    for person_id, members in desired.items():
+    for order, (person_id, members) in enumerate(desired.items()):
         pair_id = pair_ids.get(members) if members else None
         existing = current_by_person.get(person_id)
         if existing:
-            if existing.get("pair_id") != pair_id:
-                await db.front_group_assignments.update_one({"assignment_id": existing["assignment_id"]}, {"$set": {"pair_id": pair_id, "updated_at": now}})
+            if existing.get("pair_id") != pair_id or existing.get("roster_order") != order:
+                await db.front_group_assignments.update_one({"assignment_id": existing["assignment_id"]}, {"$set": {"pair_id": pair_id, "roster_order": order, "updated_at": now}})
             continue
         assignment_id = str(uuid4())
-        await db.front_group_assignments.insert_one({"_id": assignment_id, "assignment_id": assignment_id, "front_group_id": group_id, "person_id": person_id, "role": "member", "pair_id": pair_id, "active": True, "started_at": now, "ended_at": None, "notes": "Agregado a la lista del grupo", "assigned_by_user_id": current_user["user_id"], "created_at": now})
+        await db.front_group_assignments.insert_one({"_id": assignment_id, "assignment_id": assignment_id, "front_group_id": group_id, "person_id": person_id, "role": "member", "pair_id": pair_id, "roster_order": order, "active": True, "started_at": now, "ended_at": None, "notes": "Agregado a la lista del grupo", "assigned_by_user_id": current_user["user_id"], "created_at": now})
         added += 1
     await audit(group_id, current_user, "roster_saved", {"people": len(desired), "pairs": len(pair_ids), "added": added, "removed": len([item for item in current if item["person_id"] not in desired])})
     return await roster_view(group)

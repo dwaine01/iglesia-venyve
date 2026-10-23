@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
-import { Link, useParams } from 'react-router-dom';
-import { ArrowLeft, GitBranch, Loader2, Pencil, TriangleAlert } from 'lucide-react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { ArrowLeft, ChevronDown, GitBranch, Loader2, Pencil, Settings2, TriangleAlert } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { useAuth } from '../context/AuthContext';
@@ -11,6 +11,7 @@ import { Label } from '../components/ui/label';
 import { PersonQuickPicker } from '../components/front-groups/PersonQuickPicker';
 import { GroupRosterEditor, rosterToEntries } from '../components/front-groups/GroupRosterEditor';
 import { GroupRosterView } from '../components/front-groups/GroupRosterView';
+import { GroupActivityPanel } from '../components/front-groups/GroupActivityPanel';
 
 const fullName = (person) => person?.name || [person?.nombre, person?.apellido].filter(Boolean).join(' ') || 'Persona';
 
@@ -62,6 +63,9 @@ function ManageMyGroup({ detail, onChanged }) {
   const [roster, setRoster] = useState(null);
   const [editing, setEditing] = useState(false);
   const [changingCoLeader, setChangingCoLeader] = useState(false);
+  const [adminOpen, setAdminOpen] = useState(false);
+  const [panelKey, setPanelKey] = useState(0);
+  const navigate = useNavigate();
 
   const loadRoster = useCallback(async () => {
     const response = await axios.get(`${API}/api/front-groups/${detail.front_group_id}/roster`, getAuthHeaders());
@@ -72,14 +76,14 @@ function ManageMyGroup({ detail, onChanged }) {
   const saveRoster = async (entries) => {
     try {
       const response = await axios.put(`${API}/api/front-groups/${detail.front_group_id}/roster`, { entries }, getAuthHeaders());
-      setRoster(response.data); setEditing(false); toast.success('Lista guardada');
+      setRoster(response.data); setEditing(false); setPanelKey((value) => value + 1); toast.success('Lista guardada');
     } catch (error) { toast.error(apiErrorMessage(error, 'No se pudo guardar la lista')); }
   };
   const setCoLeader = async (person) => {
     if (!person) return;
     try {
       await axios.post(`${API}/api/front-groups/${detail.front_group_id}/co-leader`, { person_id: person.person_id, reason: 'Elegido por el líder del grupo' }, getAuthHeaders());
-      setChangingCoLeader(false); toast.success('Colíder actualizado'); await onChanged(); await loadRoster();
+      setChangingCoLeader(false); toast.success('Colíder actualizado'); await onChanged(); await loadRoster(); setPanelKey((value) => value + 1);
     } catch (error) { toast.error(apiErrorMessage(error, 'No se pudo cambiar el colíder')); }
   };
 
@@ -91,18 +95,24 @@ function ManageMyGroup({ detail, onChanged }) {
           <div><dt className="inline font-medium">Líder: </dt><dd className="inline">{detail.primary_leader_name || 'Por definir'}</dd></div>
           <div><dt className="inline font-medium">Colíder: </dt><dd className="inline" data-testid="mi-grupo-colider-actual">{detail.co_leader_name || 'Por definir'}</dd></div>
         </dl>
-        {canManage && (changingCoLeader
+      </Card>
+      <GroupActivityPanel key={panelKey} groupId={detail.front_group_id} onOpenGroup={(id) => navigate(`/estructura-frontal/${id}`)} />
+      <Link to={`/estructura-frontal/${detail.front_group_id}`} className="inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-[#101D36] text-sm font-semibold text-white" data-testid="mi-grupo-explorar-rama">Explorar mi rama hacia abajo</Link>
+      <section className="rounded-xl border border-[#E8E5DE] bg-white shadow-sm" data-testid="mi-grupo-admin">
+        <button type="button" onClick={() => setAdminOpen((value) => !value)} aria-expanded={adminOpen} className="flex min-h-12 w-full items-center justify-between gap-2 px-4 text-sm font-semibold text-[#101D36]" data-testid="mi-grupo-admin-toggle"><span className="flex items-center gap-2"><Settings2 className="h-4 w-4 text-[#9A7A2F]" />Administrar mi grupo</span><ChevronDown className={`h-4 w-4 transition ${adminOpen ? 'rotate-180' : ''}`} /></button>
+        {adminOpen && <div className="space-y-3 border-t border-[#E8E5DE] p-3">
+          {canManage && (changingCoLeader
           ? <CoLeaderPicker groupId={detail.front_group_id} value={null} onChange={setCoLeader} />
           : <button type="button" onClick={() => setChangingCoLeader(true)} className="mt-2 min-h-10 text-sm font-semibold text-[#7A5F22] underline" data-testid="mi-grupo-cambiar-colider">{detail.co_leader_name ? 'Cambiar colíder' : 'Elegir colíder'}</button>)}
-      </Card>
-      {!roster && <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-[#9A7A2F]" /></div>}
-      {roster && (editing
-        ? <GroupRosterEditor groupId={detail.front_group_id} initialEntries={rosterToEntries(roster)} excludedIds={[detail.primary_leader_person_id, detail.co_leader_person_id].filter(Boolean)} onSave={saveRoster} onCancel={() => setEditing(false)} />
-        : <>
-          <Link to={`/estructura-frontal/${detail.front_group_id}`} className="inline-flex min-h-11 w-full items-center justify-center rounded-md bg-[#101D36] text-sm font-semibold text-white" data-testid="mi-grupo-explorar-rama">Explorar mi rama</Link>
-          {canManage && <button type="button" onClick={() => setEditing(true)} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-md border border-[#D9CFB4] bg-white text-sm font-semibold text-[#7A5F22]" data-testid="mi-grupo-editar-lista"><Pencil className="h-4 w-4" />Editar lista (personas y parejas)</button>}
-          <GroupRosterView groupId={detail.front_group_id} roster={roster} canManage={canManage} onChanged={loadRoster} />
-        </>)}
+          {!roster && <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-[#9A7A2F]" /></div>}
+          {roster && (editing
+            ? <GroupRosterEditor groupId={detail.front_group_id} initialEntries={rosterToEntries(roster)} excludedIds={[detail.primary_leader_person_id, detail.co_leader_person_id].filter(Boolean)} onSave={saveRoster} onCancel={() => setEditing(false)} />
+            : <>
+              {canManage && <button type="button" onClick={() => setEditing(true)} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-md border border-[#D9CFB4] bg-white text-sm font-semibold text-[#7A5F22]" data-testid="mi-grupo-editar-lista"><Pencil className="h-4 w-4" />Editar lista (personas y parejas)</button>}
+              <GroupRosterView groupId={detail.front_group_id} roster={roster} canManage={canManage} onChanged={async () => { await loadRoster(); setPanelKey((value) => value + 1); }} title="Equipos registrados y líderes" />
+            </>)}
+        </div>}
+      </section>
     </div>
   );
 }
