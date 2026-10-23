@@ -548,9 +548,11 @@ async def campaign_book_deliveries(campaign_id: str, book_id: str, mentor_person
         raise HTTPException(status_code=403, detail="Sin permiso para consultar las entregas de este libro")
     query = {"campaign_id": campaign_id, "book_id": book_id, "movement_type": "DELIVERY"}
     if mentor_person_id:
-        mentor_user_id = await mentor_user_id_for(mentor_person_id)
+        mentor_user = await db.users.find_one({"person_id": mentor_person_id}, {"_id": 1})
+        if not mentor_user:
+            return {"items": []}
         query["from_holder.type"] = "user"
-        query["from_holder.id"] = mentor_user_id
+        query["from_holder.id"] = str(mentor_user["_id"])
     movements = await db.library_movements.find(query, {"_id": 0}).sort("occurred_at", -1).to_list(500)
     person_ids = {m["person_id"] for m in movements if m.get("person_id")}
     valid_oids = [ObjectId(pid) for pid in person_ids if ObjectId.is_valid(pid)]

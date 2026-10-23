@@ -555,7 +555,45 @@ async def test_leader_opens_book_and_sees_delivery_recipients():
 
 
 @pytest.mark.asyncio
-async def test_only_pastor_or_coordinador_can_assign_campaign_books():
+async def test_persona_mentor_sees_own_mentee_enrollment_in_list_not_just_dashboard():
+    """Regresión (testing_agent iteración 40): un mentor con cuenta de rol
+    'persona' veía el conteo correcto en el dashboard de Consolidación pero
+    la lista GET /api/processes/enrollments?process_key=consolidation le
+    salía vacía (access_person_ids cortaba antes de sumar sus asignaciones
+    de mentor). Debe ver su propio disciplo en ambos lados."""
+    await cleanup()
+    pastor_pid = await create_person("Pastor EntregaA ListaMentor")
+    _, pastor_email = await create_user("Pastor EntregaA ListaMentor", "pastor", pastor_pid)
+    mentor_pid = await create_person("Mentor Ve Su Lista")
+    await activate_badge(mentor_pid)
+    mentor_email = f"qa.entregaa.velista.{uuid.uuid4().hex[:6]}@example.com"
+    await create_user("Mentor Ve Su Lista", "persona", mentor_pid, capabilities=["mentorship.outreach.report", "library.deliver", "processes.participate"])
+    await server.db.users.update_one({"person_id": mentor_pid}, {"$set": {"email": mentor_email}})
+
+    mentor_client, mentor_headers = await auth_client(mentor_email)
+    try:
+        visit = await mentor_client.post(
+            "/api/mentorship/outreach/visits",
+            json={"contact_type": "new", "contact_name": "Casa Ve Su Lista", "contact_phone": "8095551111", "mentor_person_id": mentor_pid},
+            headers=mentor_headers,
+        )
+        visit_id = visit.json()["visit_id"]
+        await mentor_client.put(f"/api/mentorship/outreach/visits/{visit_id}/report", json={"status": "wants_followup"}, headers=mentor_headers)
+        started = await mentor_client.post(f"/api/mentorship/outreach/visits/{visit_id}/start-seven-weeks", headers=mentor_headers)
+        assert started.status_code == 200, started.text
+        enrollment_id = started.json()["enrollment_id"]
+
+        dashboard = await mentor_client.get("/api/processes/consolidation/dashboard", headers=mentor_headers)
+        assert dashboard.status_code == 200
+        assert dashboard.json()["total"] >= 1
+
+        listing = await mentor_client.get("/api/processes/enrollments?process_key=consolidation", headers=mentor_headers)
+        assert listing.status_code == 200, listing.text
+        ids_in_list = {item["enrollment_id"] for item in listing.json()["items"]}
+        assert enrollment_id in ids_in_list, "el mentor debe ver su propio disciplo en la lista, no solo en el conteo del dashboard"
+    finally:
+        await mentor_client.aclose()
+        await cleanup()
     await cleanup()
     pastor_pid = await create_person("Pastor EntregaA Permiso Libros")
     _, pastor_email = await create_user("Pastor EntregaA Permiso Libros", "pastor", pastor_pid)
