@@ -526,6 +526,11 @@ from front_group_structure import router as front_group_structure_router
 
 app.include_router(front_group_structure_router)
 
+# --- ETAPA 5C-3: estadísticas, semáforo y ranking de Grupos Frontales ---
+from front_group_stats import router as front_group_stats_router
+
+app.include_router(front_group_stats_router)
+
 
 # --- Invitaciones de acceso (C5): establecer contraseña sobre una cuenta creada sin temporal ---
 from access_invitations import router as access_invitations_router, ensure_indexes as access_invitations_ensure
