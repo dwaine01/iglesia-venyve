@@ -99,6 +99,12 @@ async def qa_cleanup_plan(db) -> dict:
         ("outreach_visit_history", {"visit_id": {"$in": outreach_visit_ids}}),
         ("outreach_campaigns", {"created_by_user_id": {"$in": user_ids}}),
     ]
+    qa_recovery_records = await db.system_recovery.find(
+        {"email": {"$regex": QA_EMAIL_PATTERN, "$options": "i"}}, {"_id": 1}
+    ).to_list(10000)
+    recovery_queries = [
+        ("system_recovery", {"_id": {"$in": [item["_id"] for item in qa_recovery_records]}}),
+    ]
     qa_groups = await db.front_groups.find(
         {"created_by_user_id": {"$in": user_ids}}, {"_id": 1, "front_group_id": 1}
     ).to_list(10000)
@@ -172,7 +178,7 @@ async def qa_cleanup_plan(db) -> dict:
     ]
     collection_ids = {}
     upload_ids = []
-    for collection_name, query in [*care_queries, *front_group_queries, *formation_queries, *outreach_queries, *_queries(user_oids, user_ids, person_oids, person_ids)]:
+    for collection_name, query in [*care_queries, *front_group_queries, *formation_queries, *outreach_queries, *recovery_queries, *_queries(user_oids, user_ids, person_oids, person_ids)]:
         docs = await db[collection_name].find(query, {"_id": 1}).to_list(100000)
         ids = [item["_id"] for item in docs]
         if collection_name == "person_photo_uploads":

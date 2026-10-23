@@ -540,6 +540,7 @@ from campaign_venycome import router as campaign_venycome_router, ensure_indexes
 from campaign_messaging import router as campaign_messaging_router
 from mentorship import router as mentorship_router, ensure_mentorship_indexes
 from mentorship_outreach import router as mentorship_outreach_router, ensure_outreach_indexes
+from admin_recovery import apply_admin_recovery, ensure_system_recovery_indexes
 
 app.include_router(cellular_router)
 app.include_router(geo_router)
@@ -690,6 +691,8 @@ async def startup():
     await campaign_venycome_ensure_indexes()
     await ensure_mentorship_indexes()
     await ensure_outreach_indexes()
+    await ensure_system_recovery_indexes(db)
+    await apply_admin_recovery(db)
     print("Core Person (P-001) indexes created")
 
 
