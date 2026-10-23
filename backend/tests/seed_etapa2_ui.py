@@ -26,11 +26,7 @@ async def main():
     mentor_out_pid = await create_person("UIMentorFuera")
     for pid in (mentor_root_pid, mentor_sub_pid, mentor_out_pid):
         await activate_badge(pid)
-    root_group = await make_front_group("QA Rama Etapa2 UI", leader_pid)
-    sub_group = await make_front_group("QA SubRama Etapa2 UI", sub_leader_pid, parent_id=root_group)
-    await add_member(root_group, mentor_root_pid, "mentor")
-    await add_member(sub_group, mentor_sub_pid, "mentor")
-    out = {"password": PASSWORD, "root_group": root_group, "sub_group": sub_group}
+    users = {}
     for key, label, role, pid in (
         ("leader", "UILiderRama", "lider", leader_pid),
         ("sub_leader", "UISubLider", "lider", sub_leader_pid),
@@ -38,8 +34,15 @@ async def main():
         ("mentor_sub", "UIMentorSub", "persona", mentor_sub_pid),
         ("mentor_out", "UIMentorFuera", "persona", mentor_out_pid),
     ):
-        _, email = await create_user(label, role, pid)
-        out[key] = {"email": email, "person_id": pid}
+        user_id, email = await create_user(label, role, pid)
+        users[key] = (user_id, email, pid)
+    root_group = await make_front_group("QA Rama Etapa2 UI", leader_pid, users["leader"][0])
+    sub_group = await make_front_group("QA SubRama Etapa2 UI", sub_leader_pid, users["sub_leader"][0], parent_id=root_group)
+    await add_member(root_group, mentor_root_pid, "mentor")
+    await add_member(sub_group, mentor_sub_pid, "mentor")
+    out = {"password": PASSWORD, "root_group": root_group, "sub_group": sub_group}
+    for key, (user_id, email, pid) in users.items():
+        out[key] = {"email": email, "person_id": pid, "user_id": user_id}
     with open("/tmp/etapa2_seed.json", "w") as fh:
         json.dump(out, fh, indent=2)
     print(json.dumps(out, indent=2))
