@@ -1,6 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { Suspense, useEffect, useState } from 'react';
 import { Outlet, NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { prefetchPages } from '../lib/lazyPage';
+import PageSkeleton from './PageSkeleton';
 import { Button } from './ui/button';
 import { Separator } from './ui/separator';
 import {
@@ -366,6 +368,8 @@ export default function AppLayout() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [mapSidebarOpen, setMapSidebarOpen] = useState(false);
   const location = useLocation();
+  // Con la sesión abierta, precarga en segundo plano el código de los módulos.
+  useEffect(() => { if (user) prefetchPages(); }, [user]);
   const isMapRoute = location.pathname === '/mapas';
   const routeGuideKey = resolveRouteGuide(location.pathname, user?.rol);
 
@@ -455,7 +459,7 @@ export default function AppLayout() {
         </div>
 
         <div className={`min-h-0 flex-1 ${isMapRoute ? 'overflow-hidden' : 'overflow-y-auto'}`} data-testid="app-page-scroll-container">
-          <Outlet />
+          <Suspense fallback={<PageSkeleton />}><Outlet /></Suspense>
         </div>
         <FloatingLibraryScanButton />
       </main>

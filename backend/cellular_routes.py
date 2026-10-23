@@ -1,4 +1,5 @@
 """API completa del Mega-Bloque C — Sistema Celular."""
+import asyncio
 from datetime import date, datetime, timezone
 from typing import Literal, Optional
 from uuid import uuid4
@@ -24,6 +25,7 @@ from cellular_engine import (
     evaluate_multiplication,
     migrate_cellular,
     now_utc,
+    person_summaries,
     person_summary,
     ready_inbox,
     record_cell_event,
@@ -273,18 +275,27 @@ async def ensure_network_access(network_id: str, current_user: dict) -> dict:
 
 
 async def enrich_cell(cell: dict, include_sensitive_metrics: bool = True) -> dict:
-    metrics = await current_cell_metrics(db, cell["cell_id"])
+    metrics, roles, network = await asyncio.gather(
+        current_cell_metrics(db, cell["cell_id"]),
+        db.cell_role_assignments.find({"cell_id": cell["cell_id"], "active": True}, {"_id": 0}).to_list(20),
+        db.cell_networks.find_one({"network_id": cell["network_id"]}, {"_id": 0, "name": 1}),
+    )
     if not include_sensitive_metrics:
         metrics = {key: value for key, value in metrics.items() if key not in SENSITIVE_HEALTH_FIELDS}
-    roles = await db.cell_role_assignments.find({"cell_id": cell["cell_id"], "active": True}, {"_id": 0}).to_list(20)
-    role_items = []
-    for item in roles:
-        role_items.append({**serialize(item), "person": await person_summary(db, item["person_id"])})
-    network = await db.cell_networks.find_one({"network_id": cell["network_id"]}, {"_id": 0, "name": 1})
+    summaries = await asyncio.gather(*(person_summary(db, item["person_id"]) for item in roles))
+    role_items = [{**serialize(item), "person": summary} for item, summary in zip(roles, summaries)]
     safe_cell = serialize(cell)
     for field in ["location", "latitude", "longitude", "census_matched_address"]:
         safe_cell.pop(field, None)
     return {**safe_cell, "network_name": network.get("name") if network else None, "metrics": metrics, "roles": role_items}
+
+
+async def enrich_cells(cells: list[dict], include_sensitive_metrics: bool = True) -> list[dict]:
+    """`enrich_cell` en paralelo, en lotes para no saturar el pool de Mongo."""
+    items = []
+    for start in range(0, len(cells), 25):
+        items.extend(await asyncio.gather(*(enrich_cell(cell, include_sensitive_metrics) for cell in cells[start:start + 25])))
+    return items
 
 
 @router.get("/catalog", response_model=dict)
@@ -302,10 +313,7 @@ async def cellular_catalog(current_user: dict = Depends(require_read)):
     else:
         from process_engine import access_person_ids
         person_ids = sorted(await access_person_ids(db, current_user) or set())
-    people = []
-    for person_id in person_ids[:5000]:
-        summary = await person_summary(db, person_id)
-        if summary: people.append(summary)
+    people = await person_summaries(db, person_ids[:5000])
     staff_query = {"is_active": {"$ne": False}, "rol": {"$in": ["pastor", "lider"]}, "person_id": {"$in": person_ids}}
     staff_docs = await db.users.find(staff_query, {"_id": 0, "person_id": 1, "nombre": 1, "rol": 1}).sort("nombre", 1).to_list(1000)
     staff = [{"person_id": item["person_id"], "name": item["nombre"], "role": item["rol"], "profile_path": f"/personas/{item['person_id']}"} for item in staff_docs]
@@ -320,14 +328,17 @@ async def list_networks(current_user: dict = Depends(require_read)):
         cell_networks = await db.cells.distinct("network_id", {"cell_id": {"$in": scope["cell_ids"]}})
         query = {"network_id": {"$in": cell_networks}}
     docs = await db.cell_networks.find(query, {"_id": 0}).sort("name", 1).to_list(1000)
-    items = []
-    for doc in docs:
+    async def network_item(doc: dict) -> dict:
         item = serialize(doc)
-        item["cell_count"] = await db.cells.count_documents({"network_id": doc["network_id"], "status": {"$ne": "closed"}})
-        item["member_count"] = await db.cell_memberships.count_documents({"network_id": doc["network_id"], "active": True, "membership_type": "primary"})
-        assignments = await db.cell_network_assignments.find({"network_id": doc["network_id"], "active": True}, {"_id": 0}).to_list(100)
-        item["assignments"] = [{**serialize(assignment), "person": await person_summary(db, assignment["person_id"])} for assignment in assignments]
-        items.append(item)
+        item["cell_count"], item["member_count"], assignments = await asyncio.gather(
+            db.cells.count_documents({"network_id": doc["network_id"], "status": {"$ne": "closed"}}),
+            db.cell_memberships.count_documents({"network_id": doc["network_id"], "active": True, "membership_type": "primary"}),
+            db.cell_network_assignments.find({"network_id": doc["network_id"], "active": True}, {"_id": 0}).to_list(100),
+        )
+        summaries = await asyncio.gather(*(person_summary(db, assignment["person_id"]) for assignment in assignments))
+        item["assignments"] = [{**serialize(assignment), "person": summary} for assignment, summary in zip(assignments, summaries)]
+        return item
+    items = list(await asyncio.gather(*(network_item(doc) for doc in docs)))
     return {"items": items, "total": len(items)}
 
 
@@ -367,7 +378,7 @@ async def list_cells(network_id: Optional[str] = None, status_filter: Optional[s
     if status_filter: query["status"] = status_filter
     docs = await db.cells.find(query, {"_id": 0}).sort("name", 1).to_list(10000)
     include_sensitive = has_capability(current_user, CELLULAR_SENSITIVE_READ)
-    return {"items": [await enrich_cell(doc, include_sensitive) for doc in docs], "total": len(docs)}
+    return {"items": await enrich_cells(docs, include_sensitive), "total": len(docs)}
 
 
 async def create_cell_record(payload: CellCreate, current_user: dict) -> tuple[dict, str]:
@@ -399,7 +410,8 @@ async def get_cell(cell_id: str, current_user: dict = Depends(require_read)):
     if not can_read_sensitive:
         membership_query["person_id"] = current_user.get("person_id")
     memberships = await db.cell_memberships.find(membership_query, {"_id": 0}).sort("joined_at", -1).to_list(1000)
-    result["memberships"] = [{**serialize(item), "person": await person_summary(db, item["person_id"])} for item in memberships]
+    summaries = await asyncio.gather(*(person_summary(db, item["person_id"]) for item in memberships))
+    result["memberships"] = [{**serialize(item), "person": summary} for item, summary in zip(memberships, summaries)]
     meetings = await db.cell_meetings.find({"cell_id": cell_id}, {"_id": 0}).sort("scheduled_at", -1).limit(50).to_list(50)
     result["meetings"] = [sanitize_meeting(item, can_read_sensitive) for item in meetings]
     result["needs"] = serialize(await db.cell_needs.find({"cell_id": cell_id}, {"_id": 0}).sort("reported_at", -1).limit(100).to_list(100)) if can_read_sensitive else []
@@ -763,7 +775,6 @@ async def genealogy(current_user: dict = Depends(require_read)):
 async def dashboard(current_user: dict = Depends(require_read)):
     scope = await cellular_scope(db, current_user); query = {} if scope["global"] else {"cell_id": {"$in": scope["cell_ids"]}}
     cells = await db.cells.find(query, {"_id": 0}).to_list(10000); cell_ids = [item["cell_id"] for item in cells]
-    memberships = await db.cell_memberships.find({"cell_id": {"$in": cell_ids}, "active": True}, {"_id": 0}).to_list(50000) if cell_ids else []
     meetings = await db.cell_meetings.find({"cell_id": {"$in": cell_ids}, "status": "completed"}, {"_id": 0}).to_list(50000) if cell_ids else []
     meeting_ids = [item["meeting_id"] for item in meetings]
     attendance = await db.cell_meeting_attendance.find({"meeting_id": {"$in": meeting_ids}}, {"_id": 0}).to_list(100000) if meeting_ids else []
@@ -798,7 +809,7 @@ async def dashboard(current_user: dict = Depends(require_read)):
             "open_needs": len(needs),
             "pending_followups": len(followups),
         })
-    return {"metrics": metrics, "cells": [await enrich_cell(item, can_read_sensitive) for item in cells], "ready": ready, "needs": serialize(needs), "followups": serialize(followups), "scope": scope}
+    return {"metrics": metrics, "cells": await enrich_cells(cells, can_read_sensitive), "ready": ready, "needs": serialize(needs), "followups": serialize(followups), "scope": scope}
 
 
 @router.post("/migrate", response_model=dict)

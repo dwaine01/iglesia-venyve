@@ -242,8 +242,30 @@ async def evaluate_alerts(db, force: bool = False) -> dict:
     rules = await db.process_alert_rules.find({"enabled": True}, {"_id": 0}).to_list(100)
     enrollments = await db.process_enrollments.find({"status": {"$in": ["active", "planned", "completed"]}}, {"_id": 0}).to_list(10000)
     created = resolved = 0
+    # Rendimiento: todo lo que antes se consultaba por expediente y por regla se
+    # precarga en lote (mismos filtros y mismo orden), sin cambiar el resultado.
+    enrollment_ids = [item["enrollment_id"] for item in enrollments]
+    person_ids = list({item["person_id"] for item in enrollments})
+    stages_by_enrollment: dict = {}
+    if enrollment_ids:
+        async for stage in db.process_stage_progress.find({"enrollment_id": {"$in": enrollment_ids}}, {"_id": 0}).sort("stage_order", 1):
+            stages_by_enrollment.setdefault(stage["enrollment_id"], []).append(stage)
+    open_alerts: dict = {}
+    if enrollment_ids:
+        async for alert in db.process_alerts.find({"enrollment_id": {"$in": enrollment_ids}, "status": {"$in": ["open", "acknowledged"]}}):
+            open_alerts.setdefault((alert["rule_key"], alert["enrollment_id"]), alert)
+    conditions = {rule["condition"] for rule in rules}
+    in_cell = set(await db.cell_memberships.distinct("person_id", {"person_id": {"$in": person_ids}, "active": True})) if "completed_no_cell" in conditions and person_ids else set()
+    with_door = set(await db.cap_assessments.distinct("person_id", {"person_id": {"$in": person_ids}, "selected_door_key": {"$nin": [None, ""]}})) if "formation_no_door" in conditions and person_ids else set()
+    signed = set(await db.person_memberships.distinct("person_id", {"person_id": {"$in": person_ids}, "acceptance_signed_at": {"$exists": True}})) if "welcome_membership_pending" in conditions and person_ids else set()
+    membership_by_person: dict = {}
+    if "retreat_delivery_pending" in conditions and person_ids:
+        async for membership in db.person_memberships.find({"person_id": {"$in": person_ids}}, {"_id": 0, "person_id": 1, "certificate_delivery_status": 1}):
+            membership_by_person.setdefault(membership["person_id"], membership)
+    new_alerts: list = []
+    resolved_ids: list = []
     for enrollment in enrollments:
-        stages = await db.process_stage_progress.find({"enrollment_id": enrollment["enrollment_id"]}, {"_id": 0}).sort("stage_order", 1).to_list(100)
+        stages = stages_by_enrollment.get(enrollment["enrollment_id"], [])
         current = next((item for item in stages if item["stage_key"] == enrollment.get("current_stage_key")), stages[0] if stages else {})
         for rule in rules:
             if rule.get("process_key") and rule["process_key"] != enrollment["process_key"]:
@@ -284,26 +306,25 @@ async def evaluate_alerts(db, force: bool = False) -> dict:
                 if last and now - last >= timedelta(hours=threshold):
                     fact = "No hay encuentro o contacto reciente del mentor."
             elif condition == "completed_no_cell" and enrollment.get("status") == "completed":
-                if not await db.cell_memberships.find_one({"person_id": enrollment["person_id"], "active": True}):
+                if enrollment["person_id"] not in in_cell:
                     fact = "Proceso completado sin conexión celular registrada."
             elif condition == "formation_no_door" and enrollment.get("status") == "completed" and enrollment["process_key"] in {"seven_weeks", "consolidation"}:
-                if not await db.cap_assessments.find_one({"person_id": enrollment["person_id"], "selected_door_key": {"$nin": [None, ""]}}):
+                if enrollment["person_id"] not in with_door:
                     fact = "Formación completada sin puerta seleccionada."
             elif condition == "welcome_membership_pending" and enrollment.get("current_stage_key") == "welcome_party":
                 opened = _as_utc(current.get("opened_at"))
-                membership = await db.person_memberships.find_one({"person_id": enrollment["person_id"], "acceptance_signed_at": {"$exists": True}}, {"_id": 1})
+                membership = enrollment["person_id"] in signed
                 if not membership and opened and now - opened >= timedelta(hours=threshold):
                     fact = "Fiesta de Bienvenida sin Carta de Membresía registrada."
             elif condition == "mentor_lbs_unqualified" and enrollment.get("mentor_transfer_required") is True:
                 fact = "El mentor actual no está autorizado para impartir LBS."
             elif condition == "retreat_delivery_pending" and enrollment.get("current_stage_key") == "retreat":
-                membership = await db.person_memberships.find_one({"person_id": enrollment["person_id"]}, {"_id": 0, "certificate_delivery_status": 1})
+                membership = membership_by_person.get(enrollment["person_id"])
                 if membership and membership.get("certificate_delivery_status") != "delivered":
                     fact = "La entrega del certificado continúa pendiente en Retiro."
             elif condition == "discipleship_handoff_missing" and enrollment.get("retreat_completed_at") and not enrollment.get("discipleship_enrollment_id"):
                 fact = "Retiro completado sin expediente de Educación / Discipulado."
-            alert_query = {"rule_key": rule["rule_key"], "enrollment_id": enrollment["enrollment_id"], "status": {"$in": ["open", "acknowledged"]}}
-            open_alert = await db.process_alerts.find_one(alert_query)
+            open_alert = open_alerts.get((rule["rule_key"], enrollment["enrollment_id"]))
             if fact and not open_alert:
                 alert = {
                     "_id": str(uuid4()), "alert_id": None, "rule_key": rule["rule_key"], "rule_name": rule["name"],
@@ -312,9 +333,13 @@ async def evaluate_alerts(db, force: bool = False) -> dict:
                     "severity": rule["severity"], "fact": fact, "status": "open", "detected_at": now, "updated_at": now,
                 }
                 alert["alert_id"] = alert["_id"]
-                await db.process_alerts.insert_one(alert); created += 1
+                new_alerts.append(alert); open_alerts[(rule["rule_key"], enrollment["enrollment_id"])] = alert; created += 1
             elif not fact and open_alert:
-                await db.process_alerts.update_one({"_id": open_alert["_id"]}, {"$set": {"status": "resolved", "resolved_at": now, "resolution": "Hecho operativo ya no presente", "updated_at": now}}); resolved += 1
+                resolved_ids.append(open_alert["_id"]); open_alerts.pop((rule["rule_key"], enrollment["enrollment_id"]), None); resolved += 1
+    if new_alerts:
+        await db.process_alerts.insert_many(new_alerts)
+    if resolved_ids:
+        await db.process_alerts.update_many({"_id": {"$in": resolved_ids}}, {"$set": {"status": "resolved", "resolved_at": now, "resolution": "Hecho operativo ya no presente", "updated_at": now}})
     return {"created": created, "resolved": resolved}
 
 

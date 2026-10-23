@@ -11,6 +11,7 @@ de otro cuenta una sola vez en la rama.
 Semáforo con criterios visibles y configurables (umbrales de Supervisión):
 participación (integrantes con actividad / integrantes) y actividades de
 consolidación vencidas. Permisos iguales a la exploración por niveles."""
+import asyncio
 from datetime import date, datetime, timedelta, timezone
 from typing import Literal, Optional
 
@@ -18,7 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from front_group_structure import assert_explorable, explorable_ids
 from front_group_tree import descendant_group_ids, load_group
-from front_groups import person_name, roster_view
+from front_groups import person_name, person_names, roster_view
 from self_portal import person_activity
 from participation_scope import participants_only, principal_authority_person_ids, without
 from server import db, get_current_user
@@ -91,36 +92,9 @@ async def person_metrics(person_ids: list[str], period: dict) -> dict[str, dict]
     if not person_ids:
         return {}
     mentors = {"mentor_person_id": {"$in": person_ids}}
-    households = await _count_by_mentor("outreach_households", {**mentors, "archived": {"$ne": True}, **period_match(period, "created_at")})
-    attempts_rows = await db.outreach_visit_events.aggregate([
-        {"$match": {**mentors, **period_match(period, "occurred_at")}},
-        {"$group": {"_id": {"mentor": "$mentor_person_id", "result": "$result"}, "total": {"$sum": 1}}},
-    ]).to_list(10000)
-    reached = await _count_by_mentor("outreach_visits", {**mentors, "archived": {"$ne": True}, **period_match(period, "created_at")})
-    followups = await _count_by_mentor("outreach_visits", {**mentors, "archived": {"$ne": True}, "status": "wants_followup", **period_match(period, "created_at")})
     enrollment_match = {**mentors, "process_key": CONSOLIDATION_KEY}
     if period["date_from"]:
         enrollment_match["created_at"] = {"$gte": period["date_from"], "$lte": period["date_to"]}
-    accepted = await _count_by_mentor("process_enrollments", {**enrollment_match, "decision_status": {"$in": ACCEPTED_OR_LATER}})
-    enrollments = await db.process_enrollments.find({**mentors, "process_key": CONSOLIDATION_KEY}, {"_id": 0, "enrollment_id": 1, "mentor_person_id": 1}).to_list(20000)
-    mentor_by_enrollment = {item["enrollment_id"]: item["mentor_person_id"] for item in enrollments}
-    activities_done: dict[str, int] = {}
-    activities_overdue: dict[str, int] = {}
-    activities_total: dict[str, int] = {}
-    if mentor_by_enrollment:
-        done_match = {"enrollment_id": {"$in": list(mentor_by_enrollment)}, "status": "done"}
-        if period["date_from"]:
-            done_match["completed_at"] = {"$gte": period["date_from"], "$lte": period["date_to"]}
-        today_iso = date.today().isoformat()
-        for target, match in (
-            (activities_done, done_match),
-            (activities_overdue, {"enrollment_id": {"$in": list(mentor_by_enrollment)}, "status": "pending", "scheduled_date": {"$lt": today_iso}}),
-            (activities_total, {"enrollment_id": {"$in": list(mentor_by_enrollment)}}),
-        ):
-            rows = await db.consolidation_activities.aggregate([{"$match": match}, {"$group": {"_id": "$enrollment_id", "total": {"$sum": 1}}}]).to_list(20000)
-            for row in rows:
-                mentor = mentor_by_enrollment.get(row["_id"])
-                target[mentor] = target.get(mentor, 0) + row["total"]
     # Asistencia (Persona 360: person_attendance, incluye check-ins de Operaciones
     # y células) y apoyo (turnos de servicio confirmados o con check-in). No
     # dependen de una invasión: en 'por invasión' se usan sus fechas.
@@ -130,22 +104,59 @@ async def person_metrics(person_ids: list[str], period: dict) -> dict[str, dict]
         # `fecha` es texto ISO ('YYYY-MM-DD' o con hora): el orden de texto sirve.
         next_day = (date.fromisoformat(day_to[:10]) + timedelta(days=1)).isoformat()
         attendance_match["fecha"] = {"$gte": day_from, "$lt": next_day}
-    attendance_rows = await db.person_attendance.aggregate([{"$match": attendance_match}, {"$group": {"_id": "$person_id", "total": {"$sum": 1}}}]).to_list(10000)
-    attendance = {row["_id"]: row["total"] for row in attendance_rows}
     support_match = {"person_id": {"$in": person_ids}, "status": {"$in": ["confirmed", "checked_in"]}}
     if day_from:
         support_match["assigned_at"] = {"$gte": datetime.fromisoformat(day_from[:10]).replace(tzinfo=timezone.utc), "$lt": datetime.fromisoformat(next_day).replace(tzinfo=timezone.utc)}
-    support_rows = await db.operation_volunteer_assignments.aggregate([{"$match": support_match}, {"$group": {"_id": "$person_id", "total": {"$sum": 1}}}]).to_list(10000)
-    support = {row["_id"]: row["total"] for row in support_rows}
     # ¿Existe algún registro (aunque sea 'ausente', 'invitado' o una invasión
     # asignada sin actividad)? Distingue "sin datos" de un 0 real.
     any_attendance_match = {key: value for key, value in attendance_match.items() if key != "estado"}
-    attendance_records = {row["_id"]: row["total"] for row in await db.person_attendance.aggregate([{"$match": any_attendance_match}, {"$group": {"_id": "$person_id", "total": {"$sum": 1}}}]).to_list(10000)}
     any_support_match = {key: value for key, value in support_match.items() if key != "status"}
-    support_records = {row["_id"]: row["total"] for row in await db.operation_volunteer_assignments.aggregate([{"$match": any_support_match}, {"$group": {"_id": "$person_id", "total": {"$sum": 1}}}]).to_list(10000)}
-    campaign_ids = await campaigns_in_period(period, day_from, day_to)
-    participation_query = {**mentors, **({"campaign_id": {"$in": campaign_ids}} if campaign_ids is not None else {})}
-    assigned_outreach = set(await db.outreach_participations.distinct("mentor_person_id", participation_query)) if campaign_ids is None or campaign_ids else set()
+
+    async def count_by_person(collection: str, match: dict) -> dict:
+        rows = await db[collection].aggregate([{"$match": match}, {"$group": {"_id": "$person_id", "total": {"$sum": 1}}}]).to_list(10000)
+        return {row["_id"]: row["total"] for row in rows}
+
+    async def assigned_outreach_ids() -> set:
+        campaign_ids = await campaigns_in_period(period, day_from, day_to)
+        participation_query = {**mentors, **({"campaign_id": {"$in": campaign_ids}} if campaign_ids is not None else {})}
+        return set(await db.outreach_participations.distinct("mentor_person_id", participation_query)) if campaign_ids is None or campaign_ids else set()
+
+    (households, attempts_rows, reached, followups, accepted, enrollments,
+     attendance, support, attendance_records, support_records, assigned_outreach) = await asyncio.gather(
+        _count_by_mentor("outreach_households", {**mentors, "archived": {"$ne": True}, **period_match(period, "created_at")}),
+        db.outreach_visit_events.aggregate([
+            {"$match": {**mentors, **period_match(period, "occurred_at")}},
+            {"$group": {"_id": {"mentor": "$mentor_person_id", "result": "$result"}, "total": {"$sum": 1}}},
+        ]).to_list(10000),
+        _count_by_mentor("outreach_visits", {**mentors, "archived": {"$ne": True}, **period_match(period, "created_at")}),
+        _count_by_mentor("outreach_visits", {**mentors, "archived": {"$ne": True}, "status": "wants_followup", **period_match(period, "created_at")}),
+        _count_by_mentor("process_enrollments", {**enrollment_match, "decision_status": {"$in": ACCEPTED_OR_LATER}}),
+        db.process_enrollments.find({**mentors, "process_key": CONSOLIDATION_KEY}, {"_id": 0, "enrollment_id": 1, "mentor_person_id": 1}).to_list(20000),
+        count_by_person("person_attendance", attendance_match),
+        count_by_person("operation_volunteer_assignments", support_match),
+        count_by_person("person_attendance", any_attendance_match),
+        count_by_person("operation_volunteer_assignments", any_support_match),
+        assigned_outreach_ids(),
+    )
+    mentor_by_enrollment = {item["enrollment_id"]: item["mentor_person_id"] for item in enrollments}
+    activities_done: dict[str, int] = {}
+    activities_overdue: dict[str, int] = {}
+    activities_total: dict[str, int] = {}
+    if mentor_by_enrollment:
+        done_match = {"enrollment_id": {"$in": list(mentor_by_enrollment)}, "status": "done"}
+        if period["date_from"]:
+            done_match["completed_at"] = {"$gte": period["date_from"], "$lte": period["date_to"]}
+        today_iso = date.today().isoformat()
+        targets = (
+            (activities_done, done_match),
+            (activities_overdue, {"enrollment_id": {"$in": list(mentor_by_enrollment)}, "status": "pending", "scheduled_date": {"$lt": today_iso}}),
+            (activities_total, {"enrollment_id": {"$in": list(mentor_by_enrollment)}}),
+        )
+        all_rows = await asyncio.gather(*(db.consolidation_activities.aggregate([{"$match": match}, {"$group": {"_id": "$enrollment_id", "total": {"$sum": 1}}}]).to_list(20000) for _, match in targets))
+        for (target, _), rows in zip(targets, all_rows):
+            for row in rows:
+                mentor = mentor_by_enrollment.get(row["_id"])
+                target[mentor] = target.get(mentor, 0) + row["total"]
     result = {}
     for person_id in person_ids:
         by_result = {key: 0 for key in ATTEMPT_RESULTS}
@@ -404,12 +415,17 @@ def panel_criteria(thresholds: dict) -> dict:
 
 async def member_cards(group_id: str, person_ids: list[str], metrics: dict, thresholds: dict, roles: dict[str, str], period: dict) -> list[dict]:
     mentors = set(await db.mentor_badges.distinct("person_id", {"person_id": {"$in": person_ids}, "active": True}))
+    names = await person_names(person_ids)
+    led_by_person: dict[str, dict] = {}
+    async for child in db.front_groups.find(
+        {"parent_group_id": group_id, "status": {"$ne": "archived"}, "$or": [{"primary_leader_person_id": {"$in": person_ids}}, {"co_leader_person_id": {"$in": person_ids}}]},
+        {"_id": 0, "front_group_id": 1, "name": 1, "status": 1, "primary_leader_person_id": 1, "co_leader_person_id": 1},
+    ):
+        for person_id in (child.get("primary_leader_person_id"), child.get("co_leader_person_id")):
+            if person_id in person_ids: led_by_person.setdefault(person_id, child)
     cards = []
     for person_id in person_ids:
-        led = await db.front_groups.find_one(
-            {"parent_group_id": group_id, "status": {"$ne": "archived"}, "$or": [{"primary_leader_person_id": person_id}, {"co_leader_person_id": person_id}]},
-            {"_id": 0, "front_group_id": 1, "name": 1, "status": 1, "primary_leader_person_id": 1},
-        )
+        led = led_by_person.get(person_id)
         functions = []
         if roles.get(person_id) == "leader": functions.append("Líder del grupo")
         if roles.get(person_id) == "co_leader": functions.append("Colíder del grupo")
@@ -417,7 +433,7 @@ async def member_cards(group_id: str, person_ids: list[str], metrics: dict, thre
         if person_id in mentors: functions.append("Mentor")
         item = metrics.get(person_id) or {}
         cards.append({
-            "person_id": person_id, "name": await person_name(person_id) or "Persona", "functions": functions,
+            "person_id": person_id, "name": names.get(person_id) or "Persona", "functions": functions,
             "led_group": {key: led.get(key) for key in ("front_group_id", "name", "status")} if led else None,
             "metrics": {key: item.get(key, 0) for key in ("score", "persons_reached", "households", "attempts", "followups", "accepted", "activities_done", "activities_overdue", "attendance", "support_shifts")},
             "attempts_by_result": item.get("attempts_by_result", {}), "active": item.get("active", False),
@@ -436,14 +452,13 @@ async def group_panel(
 ):
     """Panel de actividad del grupo: un recuadro por equipo (de dos integrantes o
     individuo según la lista registrada, más el liderazgo del grupo)."""
-    await assert_explorable(group_id, current_user)
-    group = await load_group(db, group_id)
-    resolved = await resolve_period(period, campaign_id)
-    thresholds = await load_thresholds()
-    roster = await roster_view(group)
+    group = await assert_explorable(group_id, current_user)
+    resolved, thresholds, roster, authorities = await asyncio.gather(
+        resolve_period(period, campaign_id), load_thresholds(), roster_view(group),
+        # La autoridad pastoral principal supervisa: no aparece en equipos, conteos ni rankings.
+        principal_authority_person_ids(db),
+    )
     roles = {person_id: role for role, person_id in (("leader", group.get("primary_leader_person_id")), ("co_leader", group.get("co_leader_person_id"))) if person_id}
-    # La autoridad pastoral principal supervisa: no aparece en equipos, conteos ni rankings.
-    authorities = await principal_authority_person_ids(db)
     team_defs = []
     leadership_ids = without(list(roles), authorities)
     if leadership_ids:
@@ -454,13 +469,14 @@ async def group_panel(
             team_defs.append({"team_id": entry.get("pair_id") or ids[0], "type": entry["type"] if len(ids) > 1 else "individual", "person_ids": ids})
     everyone = sorted({person_id for team in team_defs for person_id in team["person_ids"]})
     metrics = await person_metrics(everyone, resolved)
+    team_members = await asyncio.gather(*(member_cards(group_id, team["person_ids"], metrics, thresholds, roles, resolved) for team in team_defs))
     teams = []
-    for team in team_defs:
+    for team, members in zip(team_defs, team_members):
         summary = aggregate(team["person_ids"], metrics, thresholds)
         goals = goal_indicators(team["person_ids"], metrics, thresholds, resolved)
         teams.append({
             "team_id": team["team_id"], "type": team["type"],
-            "members": await member_cards(group_id, team["person_ids"], metrics, thresholds, roles, resolved),
+            "members": members,
             "summary": {**summary, "class": goals["class"], "overall_progress": goals["overall_progress"]},
             "goals": goals["indicators"],
         })

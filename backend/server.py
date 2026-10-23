@@ -1,9 +1,12 @@
 from fastapi import FastAPI, HTTPException, Depends, status, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from pydantic import BaseModel, Field, EmailStr, field_validator
 from typing import Optional, List
 from datetime import datetime, timedelta, timezone
 import os
+import logging
+import time
 import hashlib
 import asyncio
 import ipaddress
@@ -61,12 +64,19 @@ async def restore_forwarded_cors_origin(request: Request, call_next):
     return response
 
 
+# Respuestas JSON comprimidas (listas grandes de personas, grupos, mapas).
+# Solo comprime si el navegador lo acepta y la respuesta supera 1 KB.
+app.add_middleware(GZipMiddleware, minimum_size=1024)
+
+
 # MongoDB
 MONGO_URL = os.environ.get("MONGO_URL")
 DB_NAME = os.environ.get("DB_NAME")
 if not MONGO_URL or not DB_NAME:
     raise RuntimeError("MONGO_URL and DB_NAME environment variables are required.")
-client = AsyncIOMotorClient(MONGO_URL)
+# minPoolSize mantiene conexiones abiertas a Mongo: la primera petición tras un
+# rato sin uso no paga el apretón TLS/autenticación de una conexión nueva.
+client = AsyncIOMotorClient(MONGO_URL, minPoolSize=4)
 db = client[DB_NAME]
 
 # JWT Config
@@ -734,6 +744,45 @@ async def startup():
     await ensure_system_recovery_indexes(db)
     await apply_admin_recovery(db)
     print("Core Person (P-001) indexes created")
+    # Precalentamiento en segundo plano: no retrasa el arranque.
+    app.state.warm_task = asyncio.create_task(keep_mongo_warm())
+
+
+# Colecciones que leen el menú y los paneles principales. Leerlas al arrancar
+# (y cada 10 minutos) mantiene sus datos e índices en la caché de MongoDB, para
+# que la primera visita de cada módulo no espere lecturas de disco.
+WARM_COLLECTIONS = (
+    "users", "persons", "person_contacts", "front_groups", "front_group_assignments",
+    "process_enrollments", "process_stage_progress", "process_alerts", "consolidation_activities",
+    "cells", "cell_memberships", "cell_role_assignments", "cell_meetings", "mentor_badges",
+    "outreach_campaigns", "outreach_participations", "outreach_visits", "outreach_visit_events",
+    "outreach_households", "ministry_catalog", "ministry_assignments", "door_catalog",
+    "supervision_thresholds", "person_attendance",
+)
+WARM_DOCS_PER_COLLECTION = 20000
+WARM_INTERVAL_SECONDS = 600
+
+
+async def warm_mongo_once() -> None:
+    for name in WARM_COLLECTIONS:
+        try:
+            async for _ in db[name].find({}).limit(WARM_DOCS_PER_COLLECTION).batch_size(500):
+                pass
+        except Exception as error:  # el precalentamiento nunca debe tumbar el servidor
+            logging.warning("warm-up %s: %s", name, error)
+
+
+async def keep_mongo_warm() -> None:
+    while True:
+        await warm_mongo_once()
+        await asyncio.sleep(WARM_INTERVAL_SECONDS)
+
+
+@app.on_event("shutdown")
+async def stop_mongo_warm():
+    task = getattr(app.state, "warm_task", None)
+    if task:
+        task.cancel()
 
 
 # --- Helpers para Estado Dinámico ---
@@ -772,6 +821,26 @@ async def calculate_person_progress_pct(person_id: str) -> float:
     if total == 0:
         return 0.0
     return (done / total) * 100.0
+
+
+async def calculate_people_progress_pct(person_ids: list[str]) -> dict[str, float]:
+    """`calculate_person_progress_pct` para muchas personas con una consulta
+    (mismo límite de 100 checklists por persona)."""
+    if not person_ids:
+        return {}
+    totals: dict[str, list[int]] = {}
+    seen: dict[str, int] = {}
+    async for cl in db.person_checklists.find({"person_id": {"$in": person_ids}}, {"person_id": 1, "tareas": 1}):
+        pid = cl["person_id"]
+        seen[pid] = seen.get(pid, 0) + 1
+        if seen[pid] > 100:
+            continue
+        counter = totals.setdefault(pid, [0, 0])
+        for t in cl.get("tareas", []):
+            counter[0] += 1
+            if t.get("completada"):
+                counter[1] += 1
+    return {pid: (done / total) * 100.0 if total else 0.0 for pid, (total, done) in totals.items()}
 
 
 def calculate_dynamic_status(created_at, actual_pct: float, days_override: Optional[int] = None):
@@ -852,9 +921,10 @@ async def compute_leader_aggregate_status(personas: list) -> dict:
     total_expected = 0.0
     total_days = 0
     count = 0
+    progress = await calculate_people_progress_pct([str(p["_id"]) for p in personas])
     for p in personas:
         pid = str(p["_id"])
-        actual = await calculate_person_progress_pct(pid)
+        actual = progress.get(pid, 0.0)
         start = p.get("fecha_primer_contacto") or p.get("created_at")
         created = _as_datetime(start)
         days = max(0, (datetime.utcnow() - created).days)
@@ -1738,6 +1808,30 @@ async def health():
     return {"status": "ok", "service": "Manual Ley 7 Semanas"}
 
 
+@app.get("/api/health/db")
+async def health_db(authorization: Optional[str] = Header(None)):
+    """Diagnóstico de infraestructura (solo autoridad pastoral): tiempo de ida y
+    vuelta a MongoDB. No expone la URL, el host ni datos. Con el backend y la
+    base en la misma región, el ping típico es de 1–5 ms; 20 ms o más indica
+    regiones distintas."""
+    payload = await get_current_user(authorization)
+    if not is_global_pastoral_authority(payload):
+        raise HTTPException(status_code=403, detail="Solo la autoridad pastoral")
+    samples = []
+    for _ in range(5):
+        started = time.perf_counter()
+        await db.command("ping")
+        samples.append(round((time.perf_counter() - started) * 1000, 1))
+    started = time.perf_counter()
+    await db.persons.find_one({}, {"_id": 1})
+    read_ms = round((time.perf_counter() - started) * 1000, 1)
+    ordered = sorted(samples)
+    return {
+        "ping_ms": samples, "ping_median_ms": ordered[len(ordered) // 2], "read_ms": read_ms,
+        "same_region_likely": ordered[len(ordered) // 2] < 10,
+    }
+
+
 # --- Image Proxy (same-origin workaround for PDF generation) ---
 # Evita errores CORS cuando html2canvas intenta embeber imágenes externas.
 # Solo permite dominios whitelisted para evitar abuso (SSRF mitigation).
@@ -2245,8 +2339,9 @@ async def get_dashboard_by_role(authorization: Optional[str] = Header(None), lea
         personas = await db.people.find({"leader_id": leader_id}).to_list(1000)
         personas_con_estado = []
         personas_meta_baja = []
+        progress = await calculate_people_progress_pct([str(p["_id"]) for p in personas])
         for p in personas:
-            estado_din = await compute_person_status(p)
+            estado_din = calculate_dynamic_status(p.get("fecha_primer_contacto") or p.get("created_at"), progress.get(str(p["_id"]), 0.0))
             p_ser = serialize_doc(p)
             p_ser["estado_dinamico"] = estado_din
             personas_con_estado.append(p_ser)
@@ -2272,29 +2367,27 @@ async def get_dashboard_by_role(authorization: Optional[str] = Header(None), lea
     if is_global_pastoral_authority(payload):
         # Dashboard General del Pastor - ve todos los líderes
         lideres = await db.users.find({"rol": "lider"}).to_list(1000)
-        lideres_data = []
-        
-        for lider in lideres:
+        async def lider_row(lider: dict) -> dict:
             lider_id = str(lider["_id"])
-            # Contar personas por líder
-            total_personas = await db.people.count_documents({"leader_id": lider_id})
-            activas = await db.people.count_documents({"leader_id": lider_id, "estado": "en_proceso"})
-            graduadas = await db.people.count_documents({"leader_id": lider_id, "estado": "graduado"})
-            
-            # Obtener todas las personas para calcular estado dinámico
-            personas_docs = await db.people.find({"leader_id": lider_id}).to_list(1000)
             # Promedio de semana actual
             pipeline = [
                 {"$match": {"leader_id": lider_id}},
                 {"$group": {"_id": None, "avg_semana": {"$avg": "$semana_actual"}}}
             ]
-            avg_result = await db.people.aggregate(pipeline).to_list(1)
+            # Contar personas por líder y obtener todas para calcular estado dinámico (en paralelo)
+            total_personas, activas, graduadas, personas_docs, avg_result = await asyncio.gather(
+                db.people.count_documents({"leader_id": lider_id}),
+                db.people.count_documents({"leader_id": lider_id, "estado": "en_proceso"}),
+                db.people.count_documents({"leader_id": lider_id, "estado": "graduado"}),
+                db.people.find({"leader_id": lider_id}).to_list(1000),
+                db.people.aggregate(pipeline).to_list(1),
+            )
             promedio_semana = round(avg_result[0]["avg_semana"], 1) if avg_result else 0
             
             # Estado dinámico agregado (promedio de sus personas)
             estado_dinamico = await compute_leader_aggregate_status(personas_docs)
             
-            lideres_data.append({
+            return {
                 "_id": lider_id,
                 "nombre": lider.get("nombre", ""),
                 "email": lider.get("email", ""),
@@ -2305,7 +2398,11 @@ async def get_dashboard_by_role(authorization: Optional[str] = Header(None), lea
                 "estado": estado_dinamico,
                 # Compat: flag legacy
                 "meta_baja": estado_dinamico["key"] == "meta_baja",
-            })
+            }
+
+        lideres_data = []
+        for start in range(0, len(lideres), 20):
+            lideres_data.extend(await asyncio.gather(*(lider_row(lider) for lider in lideres[start:start + 20])))
         
         return {
             "rol": "pastor",
@@ -2327,8 +2424,9 @@ async def get_dashboard_by_role(authorization: Optional[str] = Header(None), lea
         personas = await db.people.find({"leader_id": user_id}).to_list(1000)
         personas_con_estado = []
         personas_meta_baja = []
+        progress = await calculate_people_progress_pct([str(p["_id"]) for p in personas])
         for p in personas:
-            estado_din = await compute_person_status(p)
+            estado_din = calculate_dynamic_status(p.get("fecha_primer_contacto") or p.get("created_at"), progress.get(str(p["_id"]), 0.0))
             p_ser = serialize_doc(p)
             p_ser["estado_dinamico"] = estado_din
             personas_con_estado.append(p_ser)

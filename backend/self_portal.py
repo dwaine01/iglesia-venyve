@@ -6,6 +6,8 @@ endpoints solo exigen sesión válida: nunca exigen una capability, porque es
 información sobre uno mismo, no un módulo que se conceda. No duplica datos:
 lee directamente de las mismas colecciones que ya usan Persona 360, Grupos
 Frontales y Supervisión (sin reportes paralelos)."""
+import asyncio
+
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -130,19 +132,22 @@ async def person_activity(person_id: str | None) -> dict:
     if not person_id:
         return {"as_mentor": None, "as_leader": None, "has_any_activity": False}
     self_ctx = {"scope": {"level": "self", "group_ids": None, "self_person_id": person_id}, "filters": Filters(), "mentor_ids": [person_id]}
-    as_mentor = await supervision_overview(ctx=self_ctx)
-    led_group_ids = await db.front_group_assignments.distinct("front_group_id", {"person_id": person_id, "role": {"$in": ["leader", "co_leader"]}, "active": True})
-    as_leader = None
-    if led_group_ids:
+    async def leader_overview(led_group_ids: list[str]) -> dict | None:
+        if not led_group_ids:
+            return None
         from front_group_tree import descendant_group_ids
         all_branch_ids: set[str] = set()
-        for group_id in led_group_ids:
-            all_branch_ids.update(await descendant_group_ids(db, group_id))
+        for branch in await asyncio.gather(*(descendant_group_ids(db, group_id) for group_id in led_group_ids)):
+            all_branch_ids.update(branch)
         from participation_scope import participants_only
         branch_mentor_ids = await participants_only(db, await db.front_group_assignments.distinct("person_id", {"front_group_id": {"$in": sorted(all_branch_ids)}, "active": True}))
         branch_ctx = {"scope": {"level": "branch", "group_ids": sorted(all_branch_ids), "self_person_id": person_id}, "filters": Filters(), "mentor_ids": branch_mentor_ids or None}
-        as_leader = await supervision_overview(ctx=branch_ctx)
-        as_leader["led_group_count"] = len(led_group_ids)
+        result = await supervision_overview(ctx=branch_ctx)
+        result["led_group_count"] = len(led_group_ids)
+        return result
+
+    led_group_ids = await db.front_group_assignments.distinct("front_group_id", {"person_id": person_id, "role": {"$in": ["leader", "co_leader"]}, "active": True})
+    as_mentor, as_leader = await asyncio.gather(supervision_overview(ctx=self_ctx), leader_overview(led_group_ids))
     has_activity = bool(
         as_mentor["invasion"]["visits_total"] or as_mentor["consolidation"]["accepted"]
         or (as_leader and (as_leader["invasion"]["visits_total"] or as_leader["consolidation"]["accepted"]))

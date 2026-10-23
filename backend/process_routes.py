@@ -1,4 +1,5 @@
 """API operacional del Mega-Bloque B: procesos, SLA, Mentoría y CAP."""
+import asyncio
 from datetime import datetime, timezone
 from typing import Literal, Optional
 from uuid import uuid4
@@ -257,6 +258,38 @@ async def enrich_enrollment(item: dict) -> dict:
     return result
 
 
+def _summary_from(person_id: str, person: Optional[dict]) -> dict:
+    return {
+        "person_id": person_id,
+        "name": f"{person.get('nombre', '')} {person.get('apellido', '')}".strip() if person else "Persona no encontrada",
+        "person_number": person.get("person_number") if person else None,
+        "profile_path": f"/personas/{person_id}",
+    }
+
+
+async def enrich_enrollments_bulk(items: list[dict]) -> list[dict]:
+    """Mismo resultado que `enrich_enrollment` por expediente, con dos consultas
+    para toda la lista (etapas actuales y personas) en lugar de 2-3 por expediente."""
+    if not items:
+        return []
+    stages: dict = {}
+    async for stage in db.process_stage_progress.find({"enrollment_id": {"$in": [item["enrollment_id"] for item in items]}}, {"_id": 0}):
+        stages.setdefault((stage["enrollment_id"], stage.get("stage_key")), stage)
+    ids = {item["person_id"] for item in items} | {item["responsible_person_id"] for item in items if item.get("responsible_person_id")}
+    oids = [ObjectId(person_id) for person_id in ids if ObjectId.is_valid(person_id)]
+    people = {str(doc["_id"]): doc async for doc in db.persons.find({"_id": {"$in": oids}}, {"_id": 1, "nombre": 1, "apellido": 1, "person_number": 1})} if oids else {}
+    results = []
+    for item in items:
+        current_stage = stages.get((item["enrollment_id"], item.get("current_stage_key")))
+        result = serialize(item)
+        result["person"] = _summary_from(item["person_id"], people.get(item["person_id"]))
+        result["current_stage"] = serialize(current_stage) if current_stage else None
+        if item.get("responsible_person_id"):
+            result["responsible"] = _summary_from(item["responsible_person_id"], people.get(item["responsible_person_id"]))
+        results.append(result)
+    return results
+
+
 async def scoped_enrollment_query(current_user: dict, base: dict) -> dict:
     allowed = await access_person_ids(db, current_user)
     if allowed is not None:
@@ -349,7 +382,7 @@ async def list_enrollments(process_key: Optional[str] = None, cycle_id: Optional
     if status_filter: query["status"] = status_filter
     query = await scoped_enrollment_query(current_user, query)
     docs = await db.process_enrollments.find(query, {"_id": 0}).sort("updated_at", -1).to_list(10000)
-    return {"items": [await enrich_enrollment(item) for item in docs], "total": len(docs)}
+    return {"items": await enrich_enrollments_bulk(docs), "total": len(docs)}
 
 
 @router.post("/enrollments", status_code=status.HTTP_201_CREATED, response_model=dict)
@@ -670,13 +703,18 @@ async def dashboard(current_user: dict = Depends(require_read)):
     enrollments = await db.process_enrollments.find(query, {"_id": 0}).to_list(10000); now = now_utc()
     metrics = {"total": len({item["person_id"] for item in enrollments}), "on_sla": 0, "due_soon": 0, "overdue": 0, "without_responsible": 0, "without_next_action": 0, "completed": 0, "stalled": 0}
     by_stage = {}; progress_values = []
+    # Rendimiento: la etapa actual de cada expediente en una sola consulta.
+    current_stages: dict = {}
+    if enrollments:
+        async for stage in db.process_stage_progress.find({"enrollment_id": {"$in": [item["enrollment_id"] for item in enrollments]}}, {"_id": 0}):
+            current_stages.setdefault((stage["enrollment_id"], stage.get("stage_key")), stage)
     for item in enrollments:
         by_stage[f"{item['process_key']}:{item.get('current_stage_key')}"] = by_stage.get(f"{item['process_key']}:{item.get('current_stage_key')}", 0) + 1
         if not item.get("responsible_person_id") and item.get("status") != "completed": metrics["without_responsible"] += 1
         if not item.get("next_action") and item.get("status") != "completed": metrics["without_next_action"] += 1
         if item.get("status") == "completed": metrics["completed"] += 1
         progress_values.append(item.get("progress_pct", 0))
-        stage = await db.process_stage_progress.find_one({"enrollment_id": item["enrollment_id"], "stage_key": item.get("current_stage_key")}, {"_id": 0})
+        stage = current_stages.get((item["enrollment_id"], item.get("current_stage_key")))
         due = stage.get("due_at") if stage else item.get("next_action_at")
         if due:
             due = due.replace(tzinfo=timezone.utc) if due.tzinfo is None else due
@@ -692,9 +730,8 @@ async def dashboard(current_user: dict = Depends(require_read)):
     if allowed is not None: alert_query["person_id"] = {"$in": list(allowed)}
     alerts = await db.process_alerts.find(alert_query, {"_id": 0}).sort("detected_at", -1).limit(12).to_list(12)
     metrics["critical_alerts"] = sum(1 for item in alerts if item.get("severity") == "critical")
-    alert_items = []
-    for item in alerts:
-        enriched = serialize(item); enriched["person"] = await person_summary(item["person_id"]); alert_items.append(enriched)
+    people = await asyncio.gather(*(person_summary(item["person_id"]) for item in alerts))
+    alert_items = [{**serialize(item), "person": person} for item, person in zip(alerts, people)]
     definitions = await db.process_definitions.find({"active": True}, {"_id": 0, "process_key": 1, "name": 1, "stages": 1}).to_list(20)
     return {"metrics": metrics, "by_stage": by_stage, "alerts": alert_items, "definitions": serialize(definitions), "generated_at": iso_z(now), "scope": "global" if current_user.get("rol") == "pastor" else "assigned"}
 

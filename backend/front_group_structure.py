@@ -9,13 +9,14 @@ vez en los totales de la rama (conteo por person_id distinto).
 Permisos (backend): pastora/pastor y coordinador general ven todo; un
 líder/colíder ve su rama (su grupo y los descendientes); un integrante no
 explora (solo ve nombre, líder y colíder en su portal)."""
+import asyncio
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 
 from access_control import is_general_coordinator, is_global_pastoral_authority
 from front_group_tree import descendant_group_ids, load_group, readable_group_ids
-from front_groups import person_name, roster_view
+from front_groups import person_names, roster_view
 from participation_scope import principal_authority_person_ids, without
 from server import db, get_current_user
 
@@ -37,18 +38,27 @@ async def assert_explorable(group_id: str, current_user: dict) -> dict:
     return group
 
 
-async def branch_totals(group_id: str) -> dict:
+async def branch_totals(group_id: str, authorities: Optional[set[str]] = None) -> dict:
     """Totales de la rama completa sin contar dos veces a nadie."""
     branch_ids = await descendant_group_ids(db, group_id)
-    authorities = await principal_authority_person_ids(db)
+    if authorities is None:
+        authorities = await principal_authority_person_ids(db)
     # La autoridad pastoral principal supervisa: no cuenta como integrante ni líder operativo.
-    people = without(await db.front_group_assignments.distinct("person_id", {"front_group_id": {"$in": branch_ids}, "active": True}), authorities)
-    pairs = await db.front_group_assignments.distinct("pair_id", {"front_group_id": {"$in": branch_ids}, "active": True, "role": "member", "pair_id": {"$ne": None}})
-    leaders = without(await db.front_group_assignments.distinct("person_id", {"front_group_id": {"$in": branch_ids}, "active": True, "role": {"$in": ["leader", "co_leader"]}}), authorities)
+    active_in_branch = {"front_group_id": {"$in": branch_ids}, "active": True}
+    people, pairs, leaders = await asyncio.gather(
+        db.front_group_assignments.distinct("person_id", active_in_branch),
+        db.front_group_assignments.distinct("pair_id", {**active_in_branch, "role": "member", "pair_id": {"$ne": None}}),
+        db.front_group_assignments.distinct("person_id", {**active_in_branch, "role": {"$in": ["leader", "co_leader"]}}),
+    )
+    people, leaders = without(people, authorities), without(leaders, authorities)
     complete_pairs = 0
-    for pair_id in pairs:
-        if await db.front_group_assignments.count_documents({"pair_id": pair_id, "active": True}) >= 2:
-            complete_pairs += 1
+    if pairs:
+        # Un equipo está completo con 2+ asignaciones activas (en cualquier grupo, como antes).
+        sizes = await db.front_group_assignments.aggregate([
+            {"$match": {"pair_id": {"$in": pairs}, "active": True}},
+            {"$group": {"_id": "$pair_id", "count": {"$sum": 1}}},
+        ]).to_list(None)
+        complete_pairs = sum(1 for item in sizes if item["count"] >= 2)
     return {"groups": len(branch_ids), "people": len(people), "pairs": complete_pairs, "leaders": len(leaders)}
 
 
@@ -62,19 +72,33 @@ async def direct_totals(group_id: str) -> dict:
     return {"people": len(members), "pairs": pairs, "individuals": len(members) - pairs * 2}
 
 
-async def group_card(group: dict) -> dict:
+async def group_card(group: dict, authorities: Optional[set[str]] = None) -> dict:
+    if authorities is None:
+        authorities = await principal_authority_person_ids(db)
+    leader_id, co_leader_id = group.get("primary_leader_person_id"), group.get("co_leader_person_id")
+    names, direct, branch, children_count = await asyncio.gather(
+        person_names([leader_id, co_leader_id]),
+        direct_totals(group["front_group_id"]),
+        branch_totals(group["front_group_id"], authorities),
+        db.front_groups.count_documents({"parent_group_id": group["front_group_id"], "status": {"$ne": "archived"}}),
+    )
     return {
         "front_group_id": group["front_group_id"],
-        "name": group.get("name") or (f"Equipo de {await person_name(group.get('primary_leader_person_id'))}" if group.get("primary_leader_person_id") else "Grupo sin nombre"),
+        "name": group.get("name") or (f"Equipo de {names.get(leader_id)}" if leader_id else "Grupo sin nombre"),
         "status": group.get("status"),
         "pastoral_main": bool(group.get("pastoral_main")),
         "depth": group.get("depth", 0),
-        "leader": {"person_id": group.get("primary_leader_person_id"), "name": await person_name(group.get("primary_leader_person_id"))} if group.get("primary_leader_person_id") else None,
-        "co_leader": {"person_id": group.get("co_leader_person_id"), "name": await person_name(group.get("co_leader_person_id"))} if group.get("co_leader_person_id") else None,
-        "direct": await direct_totals(group["front_group_id"]),
-        "branch": await branch_totals(group["front_group_id"]),
-        "children_count": await db.front_groups.count_documents({"parent_group_id": group["front_group_id"], "status": {"$ne": "archived"}}),
+        "leader": {"person_id": leader_id, "name": names.get(leader_id)} if leader_id else None,
+        "co_leader": {"person_id": co_leader_id, "name": names.get(co_leader_id)} if co_leader_id else None,
+        "direct": direct,
+        "branch": branch,
+        "children_count": children_count,
     }
+
+
+async def group_cards(groups: list[dict]) -> list[dict]:
+    authorities = await principal_authority_person_ids(db)
+    return list(await asyncio.gather(*(group_card(group, authorities) for group in groups)))
 
 
 @router.get("/start", response_model=dict)
@@ -91,7 +115,7 @@ async def structure_start(current_user: dict = Depends(get_current_user)):
         top_ids = {item["front_group_id"] for item in roots}
         # Si lidera un grupo y también uno de sus descendientes, se entra por el más alto.
         roots = [item for item in roots if not set(item.get("ancestor_group_ids") or []) & top_ids]
-    return {"groups": [await group_card(group) for group in roots], "scope": "global" if allowed is None else "branch"}
+    return {"groups": await group_cards(roots), "scope": "global" if allowed is None else "branch"}
 
 
 @router.get("/groups/{group_id}", response_model=dict)
@@ -100,19 +124,16 @@ async def structure_node(group_id: str, current_user: dict = Depends(get_current
     hijos (de los líderes que salieron de él) y el camino para volver."""
     group = await assert_explorable(group_id, current_user)
     allowed = await explorable_ids(current_user)
-    breadcrumbs = []
-    for ancestor_id in group.get("ancestor_group_ids") or []:
-        if allowed is not None and ancestor_id not in allowed:
-            continue
-        ancestor = await db.front_groups.find_one({"front_group_id": ancestor_id}, {"_id": 0})
-        if ancestor:
-            breadcrumbs.append({"front_group_id": ancestor_id, "name": ancestor.get("name") or "Grupo sin nombre"})
+    visible_ancestors = [item for item in group.get("ancestor_group_ids") or [] if allowed is None or item in allowed]
+    ancestors = {item["front_group_id"]: item async for item in db.front_groups.find({"front_group_id": {"$in": visible_ancestors}}, {"_id": 0, "front_group_id": 1, "name": 1})}
+    breadcrumbs = [{"front_group_id": ancestor_id, "name": ancestors[ancestor_id].get("name") or "Grupo sin nombre"} for ancestor_id in visible_ancestors if ancestor_id in ancestors]
     parent = await db.front_groups.find_one({"front_group_id": group.get("parent_group_id")}, {"_id": 0, "front_group_id": 1, "name": 1, "pastoral_main": 1}) if group.get("parent_group_id") else None
     children = await db.front_groups.find({"parent_group_id": group_id, "status": {"$ne": "archived"}}, {"_id": 0}).sort([("rotation_order", 1), ("name", 1)]).to_list(500)
+    cards, roster = await asyncio.gather(group_cards([group, *children]), roster_view(group))
     return {
-        "group": await group_card(group),
+        "group": cards[0],
         "parent": {"front_group_id": parent["front_group_id"], "name": parent.get("name"), "pastoral_main": bool(parent.get("pastoral_main")), "explorable": allowed is None or parent["front_group_id"] in allowed} if parent else None,
         "breadcrumbs": breadcrumbs,
-        "roster": await roster_view(group),
-        "children": [await group_card(child) for child in children],
+        "roster": roster,
+        "children": cards[1:],
     }
