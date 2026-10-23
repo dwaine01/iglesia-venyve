@@ -100,8 +100,10 @@ import BoardMinutesPage from './pages/board/BoardMinutesPage';
 import AppLayout from './components/AppLayout';
 import AccessDeniedPage from './components/AccessDeniedPage';
 import MiPerfilPage from './pages/MiPerfilPage';
+import MiGrupoFrontalPage from './pages/MiGrupoFrontalPage';
+import GrupoFrontalPastoralPage from './pages/GrupoFrontalPastoralPage';
 import MisEstadisticasPage from './pages/MisEstadisticasPage';
-import { canManageDirectMembership, canManageBaptismEvents, canManageDedicationEvents, canViewCare, canViewFinanceModule, canViewFormation, canViewFrontGroups, canViewGeo, canViewLeadership, canViewLibraryModule, canManageLibraryInventory, canViewLibraryPurchaseOrders, canViewLibraryReports, canViewOperations, canAccessCampaignOperator, canAccessOutreach, canCreateOutreachCampaign, canViewProcesses, canViewCellular, canViewDoors, canViewDirectory, canManageInvitationCodes, canWriteEvangelismLog, canViewPresentationManual, hasAnyCapability, isPastoralAuthority } from './lib/accessControl';
+import { canManageDirectMembership, canManageBaptismEvents, canManageDedicationEvents, canViewCare, canViewFinanceModule, canViewFormation, canViewFrontGroups, canViewGeo, canViewLeadership, canViewLibraryModule, canManageLibraryInventory, canViewLibraryPurchaseOrders, canViewLibraryReports, canViewOperations, canAccessCampaignOperator, canAccessOutreach, canCreateOutreachCampaign, canViewPastoralFrontGroup, canViewProcesses, canViewCellular, canViewDoors, canViewDirectory, canManageInvitationCodes, canWriteEvangelismLog, canViewPresentationManual, hasAnyCapability, isPastoralAuthority } from './lib/accessControl';
 import { useBoardAccess } from './hooks/useBoardAccess';
 import { useMentorAccess } from './hooks/useMentorAccess';
 import './App.css';
@@ -325,6 +327,8 @@ function App() {
             <Route path="estadisticas" element={<CapabilityRoute allowed={canViewDirectory}><EstadisticasPage /></CapabilityRoute>} />
             <Route path="presentacion" element={<CapabilityRoute allowed={canViewPresentationManual}><PresentacionHomePage /></CapabilityRoute>} />
             <Route path="mi-perfil" element={<MiPerfilPage />} />
+            <Route path="mi-grupo-frontal/:groupId" element={<MiGrupoFrontalPage />} />
+            <Route path="grupo-frontal-pastoral" element={<CapabilityRoute allowed={canViewPastoralFrontGroup}><GrupoFrontalPastoralPage /></CapabilityRoute>} />
             <Route path="mis-estadisticas" element={<MisEstadisticasPage />} />
             
             {/* Persona routes */}

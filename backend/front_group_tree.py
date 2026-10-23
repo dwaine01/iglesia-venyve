@@ -54,14 +54,23 @@ async def direct_assignments(db, person_id: str | None) -> list[dict]:
 
 
 async def readable_group_ids(db, current_user: dict) -> set[str] | None:
+    """Grupos cuyo contenido (integrantes, historial, procesos) puede leer.
+    Pertenecer a un grupo NO da permisos: solo Líder/Colíder (y sus ramas)
+    o la autoridad pastoral. Un simple integrante solo recibe la vista mínima
+    de su grupo (nombre, líder y colíder) vía `member_group_ids`."""
     if is_global_pastoral_authority(current_user):
         return None
     assignments = await direct_assignments(db, current_user.get("person_id"))
-    readable = {item["front_group_id"] for item in assignments}
+    readable: set[str] = set()
     expanding_roots = {item["front_group_id"] for item in assignments if item.get("role") in {"leader", "co_leader"}}
     for root_id in expanding_roots:
         readable.update(await descendant_group_ids(db, root_id))
     return readable
+
+
+async def member_group_ids(db, person_id: str | None) -> set[str]:
+    """Grupos activos a los que la persona pertenece (cualquier rol)."""
+    return {item["front_group_id"] for item in await direct_assignments(db, person_id)}
 
 
 async def led_subtree_group_ids(db, current_user: dict) -> set[str] | None:

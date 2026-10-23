@@ -34,6 +34,9 @@ export const isGeneralCoordinator = (user) => COORDINATOR_ACCESS_LEVELS.has(Stri
 
 export const canCreateOutreachCampaign = (user) => isPastoralAuthority(user) || isGeneralCoordinator(user);
 
+// ETAPA 5C: solo pastora/pastor y coordinador general ven el grupo frontal principal completo (el backend lo vuelve a validar).
+export const canViewPastoralFrontGroup = (user) => isPastoralAuthority(user) || isGeneralCoordinator(user);
+
 export const canViewOtherMentorDisciples = (user) => isPastoralAuthority(user) || isGeneralCoordinator(user) || hasCapability(user, 'consolidation.assign');
 
 export const canViewFinanceModule = (user) => (
