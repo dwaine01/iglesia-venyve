@@ -12,6 +12,7 @@ import { PersonQuickPicker } from '../components/front-groups/PersonQuickPicker'
 import { GroupRosterEditor, rosterToEntries } from '../components/front-groups/GroupRosterEditor';
 import { GroupRosterView } from '../components/front-groups/GroupRosterView';
 import { GroupActivityPanel } from '../components/front-groups/GroupActivityPanel';
+import { InvasionHub } from '../components/invasions/InvasionHub';
 
 const fullName = (person) => person?.name || [person?.nombre, person?.apellido].filter(Boolean).join(' ') || 'Persona';
 
@@ -96,6 +97,7 @@ function ManageMyGroup({ detail, onChanged }) {
           <div><dt className="inline font-medium">Colíder: </dt><dd className="inline" data-testid="mi-grupo-colider-actual">{detail.co_leader_name || 'Por definir'}</dd></div>
         </dl>
       </Card>
+      <InvasionHub showAction />
       <GroupActivityPanel key={panelKey} groupId={detail.front_group_id} onOpenGroup={(id) => navigate(`/estructura-frontal/${id}`)} />
       <Link to={`/estructura-frontal/${detail.front_group_id}`} className="inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-[#101D36] text-sm font-semibold text-white" data-testid="mi-grupo-explorar-rama">Explorar mi rama hacia abajo</Link>
       <section className="rounded-xl border border-[#E8E5DE] bg-white shadow-sm" data-testid="mi-grupo-admin">
