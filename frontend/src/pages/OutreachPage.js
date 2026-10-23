@@ -1,14 +1,18 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
-import { Footprints, Loader2, Plus } from 'lucide-react';
+import { Footprints, Home, Loader2, Plus } from 'lucide-react';
 
 import { useAuth } from '../context/AuthContext';
 import { canLeadOutreach } from '../lib/accessControl';
 import { Button } from '../components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
+import { AddHouseholdDialog } from '../components/outreach/AddHouseholdDialog';
 import { AddVisitDialog } from '../components/outreach/AddVisitDialog';
+import { HouseholdCard } from '../components/outreach/HouseholdCard';
+import { LogVisitAttemptDialog } from '../components/outreach/LogVisitAttemptDialog';
 import { MyLibraryHoldingsCard } from '../components/outreach/MyLibraryHoldingsCard';
 import { OutreachLeaderPanel } from '../components/outreach/OutreachLeaderPanel';
+import { ParticipateCampaignCard } from '../components/outreach/ParticipateCampaignCard';
 import { TransferVisitDialog } from '../components/outreach/TransferVisitDialog';
 import { VisitCard } from '../components/outreach/VisitCard';
 
@@ -27,9 +31,12 @@ export default function OutreachPage() {
   const [activeTab, setActiveTab] = useState(isLeader ? 'panel' : 'mis-visitas');
   const [campaigns, setCampaigns] = useState([]);
   const [myVisits, setMyVisits] = useState([]);
+  const [households, setHouseholds] = useState([]);
   const [statusFilter, setStatusFilter] = useState('all');
   const [loading, setLoading] = useState(true);
   const [addOpen, setAddOpen] = useState(false);
+  const [addHouseholdOpen, setAddHouseholdOpen] = useState(false);
+  const [attemptHousehold, setAttemptHousehold] = useState(null);
   const [transferVisit, setTransferVisit] = useState(null);
 
   const loadCampaigns = useCallback(async () => {
@@ -43,12 +50,19 @@ export default function OutreachPage() {
     setMyVisits(response.data.items || []);
   }, [API, getAuthHeaders, user]);
 
+  const loadHouseholds = useCallback(async () => {
+    if (!user?.person_id) { setHouseholds([]); return; }
+    const response = await axios.get(`${API}/api/mentorship/outreach/households?mentor_person_id=${user.person_id}`, getAuthHeaders());
+    setHouseholds(response.data.items || []);
+  }, [API, getAuthHeaders, user]);
+
   useEffect(() => {
     setLoading(true);
-    Promise.all([loadCampaigns(), loadMyVisits()]).finally(() => setLoading(false));
-  }, [loadCampaigns, loadMyVisits]);
+    Promise.all([loadCampaigns(), loadMyVisits(), loadHouseholds()]).finally(() => setLoading(false));
+  }, [loadCampaigns, loadMyVisits, loadHouseholds]);
 
   const filteredVisits = statusFilter === 'all' ? myVisits : myVisits.filter((item) => item.status === statusFilter);
+  const myCampaigns = campaigns.filter((item) => item.my_participation_status);
 
   return (
     <div className="space-y-6 p-4 sm:p-6" data-testid="outreach-page">
@@ -63,11 +77,19 @@ export default function OutreachPage() {
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList data-testid="outreach-tabs">
           <TabsTrigger value="mis-visitas" data-testid="outreach-tab-my-visits">Mis Visitas</TabsTrigger>
+          <TabsTrigger value="hogares" data-testid="outreach-tab-households">Mis Hogares</TabsTrigger>
           {isLeader && <TabsTrigger value="panel" data-testid="outreach-tab-leader">Panel de líderes</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="mis-visitas" className="mt-4 space-y-4">
           <MyLibraryHoldingsCard />
+
+          {myCampaigns.length > 0 && (
+            <div className="space-y-3" data-testid="outreach-my-campaigns">
+              {myCampaigns.map((campaign) => <ParticipateCampaignCard key={campaign.campaign_id} campaign={campaign} onUpdated={loadCampaigns} />)}
+            </div>
+          )}
+
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap gap-2">
               {STATUS_FILTERS.map(([key, label]) => (
@@ -99,6 +121,23 @@ export default function OutreachPage() {
           )}
         </TabsContent>
 
+        <TabsContent value="hogares" className="mt-4 space-y-4">
+          <div className="flex items-center justify-end">
+            <Button onClick={() => setAddHouseholdOpen(true)} className="bg-[#132443]" data-testid="outreach-add-household-button"><Home className="h-4 w-4" /> Agregar hogar</Button>
+          </div>
+          {loading ? (
+            <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
+          ) : households.length === 0 ? (
+            <p className="rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500" data-testid="outreach-households-empty-state">Sin hogares registrados todavía.</p>
+          ) : (
+            <div className="space-y-3">
+              {households.map((household) => (
+                <HouseholdCard key={household.household_id} household={household} onLogAttempt={setAttemptHousehold} onChanged={loadHouseholds} />
+              ))}
+            </div>
+          )}
+        </TabsContent>
+
         {isLeader && (
           <TabsContent value="panel" className="mt-4">
             <OutreachLeaderPanel campaigns={campaigns} onCampaignsChanged={loadCampaigns} />
@@ -107,6 +146,8 @@ export default function OutreachPage() {
       </Tabs>
 
       <AddVisitDialog open={addOpen} onOpenChange={setAddOpen} campaigns={campaigns} forcedMentorId={user.person_id} onCreated={loadMyVisits} />
+      <AddHouseholdDialog open={addHouseholdOpen} onOpenChange={setAddHouseholdOpen} campaigns={campaigns} forcedMentorId={user.person_id} onCreated={loadHouseholds} />
+      <LogVisitAttemptDialog household={attemptHousehold} open={Boolean(attemptHousehold)} onOpenChange={(value) => { if (!value) setAttemptHousehold(null); }} onLogged={() => { loadHouseholds(); loadMyVisits(); }} />
       <TransferVisitDialog visit={transferVisit} onClose={() => setTransferVisit(null)} onTransferred={loadMyVisits} />
     </div>
   );

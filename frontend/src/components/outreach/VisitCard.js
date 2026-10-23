@@ -30,6 +30,15 @@ const STATUS_COLORS = {
   wants_followup: 'bg-emerald-100 text-emerald-800',
 };
 
+const DECISION_LABELS = {
+  pending: 'Pendiente de contacto',
+  no_response: 'Intento sin respuesta',
+  pending_decision: 'Pendiente de decisión',
+  desisted: 'Desistió',
+  accepted: 'Aceptó seguimiento',
+  start_scheduled: 'Inicio acordado',
+};
+
 const boolToTri = (value) => (value === true ? 'yes' : value === false ? 'no' : 'unspecified');
 const triToBool = (value) => (value === 'yes' ? true : value === 'no' ? false : null);
 
@@ -88,6 +97,7 @@ export const VisitCard = ({ visit, canManage, onUpdated, onTransfer }) => {
   };
 
   const needsTransfer = visit.lbs_decision === 'needs_lbs' && !visit.mentor_lbs_qualified;
+  const locked = Boolean(visit.read_only);
 
   return (
     <div className="rounded-xl border border-[#E8E5DE] bg-white p-4 shadow-sm" data-testid={`outreach-visit-card-${visit.visit_id}`}>
@@ -98,10 +108,15 @@ export const VisitCard = ({ visit, canManage, onUpdated, onTransfer }) => {
             {visit.contact_phone && <span className="inline-flex items-center gap-1"><Phone className="h-3 w-3" />{visit.contact_phone}</span>}
             {visit.contact_zone && <span className="inline-flex items-center gap-1"><MapPin className="h-3 w-3" />{visit.contact_zone}</span>}
             {visit.campaign_name && <span>· {visit.campaign_name}</span>}
+            {visit.household_id && <span data-testid={`outreach-visit-household-badge-${visit.visit_id}`}>· Hogar</span>}
             {canManage && visit.mentor_name && <span>· Mentor: {visit.mentor_name}</span>}
           </div>
         </div>
-        <Badge className={STATUS_COLORS[visit.status]} data-testid={`outreach-visit-status-badge-${visit.visit_id}`}>{STATUS_LABELS[visit.status]}</Badge>
+        <div className="flex flex-col items-end gap-1">
+          <Badge className={STATUS_COLORS[visit.status]} data-testid={`outreach-visit-status-badge-${visit.visit_id}`}>{STATUS_LABELS[visit.status]}</Badge>
+          {visit.decision_status && <Badge variant="outline" className="text-[10px]" data-testid={`outreach-visit-decision-badge-${visit.visit_id}`}>{DECISION_LABELS[visit.decision_status] || visit.decision_status}</Badge>}
+          {locked && <Badge variant="outline" className="border-slate-300 text-[10px] text-slate-500" data-testid={`outreach-visit-readonly-badge-${visit.visit_id}`}>Solo lectura · supervisión</Badge>}
+        </div>
       </div>
 
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -226,7 +241,7 @@ export const VisitCard = ({ visit, canManage, onUpdated, onTransfer }) => {
         </Select>
       </div>
 
-      {needsTransfer && (
+      {needsTransfer && !locked && (
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900" data-testid={`outreach-visit-transfer-warning-${visit.visit_id}`}>
           <span>Necesita LBS y este mentor no está capacitado.</span>
           <Button size="sm" variant="outline" onClick={() => onTransfer(visit)} data-testid={`outreach-visit-transfer-button-${visit.visit_id}`}>Transferir a mentor capacitado</Button>
@@ -242,15 +257,17 @@ export const VisitCard = ({ visit, canManage, onUpdated, onTransfer }) => {
       </div>
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
-        <Button size="sm" disabled={busy} onClick={save} className="bg-[#132443]" data-testid={`outreach-visit-save-button-${visit.visit_id}`}>
-          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Guardar informe
-        </Button>
-        {visit.status === 'wants_followup' && !visit.enrollment_id && (
+        {!locked && (
+          <Button size="sm" disabled={busy} onClick={save} className="bg-[#132443]" data-testid={`outreach-visit-save-button-${visit.visit_id}`}>
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Guardar informe
+          </Button>
+        )}
+        {!locked && visit.status === 'wants_followup' && !visit.enrollment_id && (
           <Button size="sm" variant="outline" disabled={busy} onClick={startSevenWeeks} data-testid={`outreach-visit-start-seven-weeks-button-${visit.visit_id}`}>
             <Sparkles className="h-4 w-4" /> Iniciar Ley de las 7 Semanas
           </Button>
         )}
-        {status === 'wants_followup' && visit.status !== 'wants_followup' && !visit.enrollment_id && (
+        {!locked && status === 'wants_followup' && visit.status !== 'wants_followup' && !visit.enrollment_id && (
           <p className="text-xs text-slate-500" data-testid={`outreach-visit-unsaved-status-hint-${visit.visit_id}`}>Guarde el informe para poder iniciar la Ley de las 7 Semanas.</p>
         )}
         {visit.enrollment_id && (

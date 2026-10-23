@@ -81,10 +81,17 @@ export const OutreachLeaderPanel = ({ campaigns, onCampaignsChanged }) => {
           <div className="mt-3 space-y-2" data-testid="outreach-campaign-list">
             {campaigns.map((campaign) => (
               <div key={campaign.campaign_id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[#E8E5DE] p-2" data-testid={`outreach-campaign-card-${campaign.campaign_id}`}>
-                <Badge variant="outline" data-testid={`outreach-campaign-badge-${campaign.campaign_id}`}>
-                  {campaign.name} · {campaign.location} · {campaign.start_date} a {campaign.end_date} · {campaign.status === 'active' ? 'Activa' : 'Cerrada'}
-                  {campaign.assigned_mentor_ids?.length > 0 && ` · ${campaign.assigned_mentor_ids.length} mentor(es)`}
-                </Badge>
+                <div>
+                  <Badge variant="outline" data-testid={`outreach-campaign-badge-${campaign.campaign_id}`}>
+                    {campaign.name} · {campaign.location} · {campaign.start_date} a {campaign.end_date} · {campaign.status === 'active' ? 'Activa' : 'Cerrada'}
+                    {campaign.assigned_mentor_ids?.length > 0 && ` · ${campaign.assigned_mentor_ids.length} mentor(es)`}
+                  </Badge>
+                  {(campaign.meeting_time || campaign.meeting_place) && (
+                    <p className="mt-1 text-xs text-slate-500" data-testid={`outreach-campaign-meeting-${campaign.campaign_id}`}>
+                      Encuentro: {campaign.meeting_time || ''} {campaign.meeting_place ? `· ${campaign.meeting_place}` : ''}
+                    </p>
+                  )}
+                </div>
                 <div className="flex gap-2">
                   <Button size="sm" variant="outline" onClick={() => setBooksCampaign(campaign)} data-testid={`outreach-campaign-books-button-${campaign.campaign_id}`}>Libros</Button>
                   <Button size="sm" variant="outline" onClick={() => setReportCampaign(campaign)} data-testid={`outreach-campaign-report-button-${campaign.campaign_id}`}>Informe</Button>

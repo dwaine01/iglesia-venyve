@@ -30,6 +30,7 @@ from access_control import (
 from consolidation_service import assert_mentor_eligible, assign_mentor, configure_entry_stages, load_person, mentor_qualification
 from core_governance import UserAccessCreate, create_user_access_core
 from core_person import _normalize as normalize_person_name, next_person_number
+from front_group_tree import descendant_group_ids, load_group as load_front_group, support_group_ids
 from geo_address import normalize_address_document
 from geo_service import enqueue_geo_job, pending_geo_fields, process_geo_job
 from library_module import CENTRAL_HOLDER, HolderInput, MovementInput, apply_movement, deliver_from_mentor_to_person
@@ -43,6 +44,13 @@ VISIT_STATUSES = ("assigned", "not_found", "visited", "rejected", "wants_followu
 LBS_DECISIONS = ("none", "accepted", "needs_lbs")
 CALL_SCHEDULES = ("morning", "midday", "night")
 OUTREACH_PROCESS_KEY = "outreach_invasion"
+# Etapa 2: "estados de decisión" del contacto, independientes de `status` (que sigue
+# describiendo el intento físico de visita). Se derivan de forma determinística de
+# `status`/`agreed_start_date` — ver `compute_decision_status` — así la migración es
+# idempotente y nunca inventa un dato que no estuviera ya en el registro.
+DECISION_STATUSES = ("pending", "no_response", "pending_decision", "desisted", "accepted", "start_scheduled")
+ATTEMPT_RESULTS = ("no_answer", "not_home", "refused", "contacted")
+PARTICIPATION_STATUSES = ("assigned", "confirmed", "active")
 
 
 class MentorRosterEntry(BaseModel):
@@ -70,6 +78,10 @@ class CampaignInput(BaseModel):
     start_date: date
     end_date: date
     zone_notes: Optional[str] = Field(default=None, max_length=1000)
+    meeting_time: Optional[str] = Field(default=None, max_length=40)
+    meeting_place: Optional[str] = Field(default=None, max_length=300)
+    sectors: list[str] = Field(default_factory=list, max_length=50)
+    instructions: Optional[str] = Field(default=None, max_length=2000)
     assigned_mentors: list[MentorRosterEntry] = Field(default_factory=list)
 
 
@@ -79,8 +91,52 @@ class CampaignUpdateInput(BaseModel):
     start_date: Optional[date] = None
     end_date: Optional[date] = None
     zone_notes: Optional[str] = Field(default=None, max_length=1000)
+    meeting_time: Optional[str] = Field(default=None, max_length=40)
+    meeting_place: Optional[str] = Field(default=None, max_length=300)
+    sectors: Optional[list[str]] = Field(default=None, max_length=50)
+    instructions: Optional[str] = Field(default=None, max_length=2000)
     assigned_mentors: Optional[list[MentorRosterEntry]] = None
     status: Optional[Literal["active", "closed"]] = None
+
+
+class HouseholdInput(BaseModel):
+    campaign_id: Optional[str] = None
+    mentor_person_id: Optional[str] = None
+    address_line1: Optional[str] = Field(default=None, max_length=220)
+    address_line2: Optional[str] = Field(default=None, max_length=220)
+    address_city: Optional[str] = Field(default=None, max_length=120)
+    address_state: Optional[str] = Field(default=None, max_length=120)
+    address_zip: Optional[str] = Field(default=None, max_length=30)
+    sector: Optional[str] = Field(default=None, max_length=200)
+    note: Optional[str] = Field(default=None, max_length=1000)
+    is_draft: bool = False
+
+
+class HouseholdUpdateInput(BaseModel):
+    address_line1: Optional[str] = Field(default=None, max_length=220)
+    address_line2: Optional[str] = Field(default=None, max_length=220)
+    address_city: Optional[str] = Field(default=None, max_length=120)
+    address_state: Optional[str] = Field(default=None, max_length=120)
+    address_zip: Optional[str] = Field(default=None, max_length=30)
+    sector: Optional[str] = Field(default=None, max_length=200)
+    note: Optional[str] = Field(default=None, max_length=1000)
+    is_draft: Optional[bool] = None
+
+
+class VisitEventPersonEntry(BaseModel):
+    contact_type: Literal["new", "existing"]
+    person_id: Optional[str] = None
+    contact_name: Optional[str] = Field(default=None, max_length=200)
+    contact_phone: Optional[str] = Field(default=None, max_length=40)
+
+
+class VisitEventInput(BaseModel):
+    """Intento de visita a un Hogar. Si `result` no es 'contacted', nunca debe
+    traer `persons` (no se inventan datos de un intento sin respuesta)."""
+    result: Literal["no_answer", "not_home", "refused", "contacted"]
+    note: Optional[str] = Field(default=None, max_length=1000)
+    is_draft: bool = False
+    persons: list[VisitEventPersonEntry] = Field(default_factory=list, max_length=20)
 
 
 class VisitCreateInput(BaseModel):
@@ -157,11 +213,100 @@ async def mentor_user_id_for(mentor_person_id: str) -> str:
 async def can_use_outreach(current_user: dict) -> bool:
     if is_outreach_leader(current_user) or has_capability(current_user, MENTORSHIP_OUTREACH_REPORT):
         return True
-    return await is_active_mentor(current_user.get("person_id"))
+    if await is_active_mentor(current_user.get("person_id")):
+        return True
+    # Líder/colíder de Grupo Frontal sin capacidad de invasiones: solo entra si
+    # efectivamente supervisa a algún mentor de su rama (lectura, ver `can_view_household`/`reveal_contact`).
+    branch_ids = await support_group_ids(db, current_user)
+    return bool(branch_ids)
 
 
-def reveal_contact(visit: dict, current_user: dict) -> bool:
-    return is_outreach_leader(current_user) or visit.get("mentor_person_id") == current_user.get("person_id")
+def reveal_contact(visit: dict, current_user: dict, supervised_ids: Optional[set] = None) -> bool:
+    if is_outreach_leader(current_user) or visit.get("mentor_person_id") == current_user.get("person_id"):
+        return True
+    return bool(supervised_ids) and visit.get("mentor_person_id") in supervised_ids
+
+
+def compute_decision_status(visit: dict) -> str:
+    """'Estados de decisión' (Etapa 2), derivados de forma determinística de
+    `status`/`agreed_start_date` — nunca se inventa un dato nuevo, solo se
+    traduce lo que ya existe a un vocabulario de decisión (igual idea que
+    `decision_status` en Consolidación v2)."""
+    status = visit.get("status")
+    if status == "wants_followup":
+        return "start_scheduled" if visit.get("agreed_start_date") else "accepted"
+    if status == "rejected":
+        return "desisted"
+    if status == "not_found":
+        return "no_response"
+    if status == "visited":
+        return "pending_decision"
+    return "pending"
+
+
+async def supervision_snapshot(mentor_person_id: Optional[str]) -> dict:
+    """Snapshot al momento de crear el hogar/visita: Grupo Frontal principal
+    del mentor + sus ancestros ('supervisión instantánea'). No se recalcula
+    después — si el mentor cambia de rama, el histórico ya registrado no se
+    reescribe, igual que otros patrones de auditoría de la app."""
+    if not mentor_person_id:
+        return {"front_group_id": None, "front_group_ancestor_ids": []}
+    assignments = await db.front_group_assignments.find(
+        {"person_id": mentor_person_id, "active": True}, {"_id": 0, "front_group_id": 1, "role": 1},
+    ).to_list(50)
+    if not assignments:
+        return {"front_group_id": None, "front_group_ancestor_ids": []}
+    priority = {"mentor": 0, "leader": 1, "co_leader": 2, "member": 3, "team": 3}
+    assignments.sort(key=lambda item: priority.get(item.get("role"), 9))
+    front_group_id = assignments[0]["front_group_id"]
+    group = await db.front_groups.find_one({"front_group_id": front_group_id}, {"_id": 0, "ancestor_group_ids": 1})
+    return {"front_group_id": front_group_id, "front_group_ancestor_ids": (group or {}).get("ancestor_group_ids") or []}
+
+
+async def supervised_mentor_person_ids(current_user: dict) -> set:
+    """Mentores visibles en modo LECTURA para el usuario actual: él mismo, y
+    cualquier mentor cuyo Grupo Frontal (snapshot) esté dentro de la rama que
+    lidera/colidera (requisito del dueño: 'líder y colíder de su rama y
+    ancestros ven, no editan'). `support_group_ids` ya expande hacia los
+    descendientes, por eso basta comparar contra ese conjunto."""
+    self_id = current_user.get("person_id")
+    allowed = {self_id} if self_id else set()
+    branch_ids = await support_group_ids(db, current_user)
+    if not branch_ids:
+        return allowed
+    member_ids = await db.front_group_assignments.distinct(
+        "person_id", {"front_group_id": {"$in": list(branch_ids)}, "active": True},
+    )
+    allowed.update(member_ids)
+    return allowed
+
+
+async def ensure_participation(campaign_id: str, mentor_person_id: str) -> None:
+    now = now_utc()
+    participation_id = str(uuid4())
+    await db.outreach_participations.update_one(
+        {"campaign_id": campaign_id, "mentor_person_id": mentor_person_id},
+        {"$setOnInsert": {
+            "_id": participation_id, "participation_id": participation_id, "campaign_id": campaign_id,
+            "mentor_person_id": mentor_person_id, "status": "assigned", "confirmed_at": None,
+            "first_activity_at": None, "created_at": now, "updated_at": now,
+        }},
+        upsert=True,
+    )
+
+
+async def mark_participation_active(campaign_id: Optional[str], mentor_person_id: str) -> None:
+    """Al registrar la primera actividad (hogar o visita) de ESTE mentor en
+    ESTA invasión, pasa directo a 'Con actividad' — sin importar si ya había
+    confirmado o no (requisito del dueño: 'el propio mentor confirma', pero la
+    actividad real siempre debe reflejarse)."""
+    if not campaign_id:
+        return
+    await ensure_participation(campaign_id, mentor_person_id)
+    await db.outreach_participations.update_one(
+        {"campaign_id": campaign_id, "mentor_person_id": mentor_person_id, "status": {"$ne": "active"}},
+        {"$set": {"status": "active", "first_activity_at": now_utc(), "updated_at": now_utc()}},
+    )
 
 
 async def person_display_name(person_id: Optional[str]) -> Optional[str]:
@@ -208,9 +353,10 @@ async def serialize_visits(visits: list[dict], current_user: dict) -> list[dict]
         {"_id": 0, "person_id": 1},
     ).to_list(len(mentor_id_list)) if mentor_id_list else []
     lbs_qualified_ids = {d["person_id"] for d in lbs_docs}
+    supervised_ids = await supervised_mentor_person_ids(current_user)
     results = []
     for visit in visits:
-        reveal = reveal_contact(visit, current_user)
+        reveal = reveal_contact(visit, current_user, supervised_ids)
         contact_name = names.get(visit.get("person_id")) if visit.get("contact_type") == "existing" else visit.get("contact_name")
         item = {
             "visit_id": visit["visit_id"],
@@ -222,7 +368,9 @@ async def serialize_visits(visits: list[dict], current_user: dict) -> list[dict]
             "mentor_lbs_qualified": visit.get("mentor_person_id") in lbs_qualified_ids,
             "campaign_id": visit.get("campaign_id"),
             "campaign_name": campaign_names.get(visit.get("campaign_id")),
+            "household_id": visit.get("household_id"),
             "status": visit.get("status"),
+            "decision_status": visit.get("decision_status") or compute_decision_status(visit),
             "visit_date": visit.get("visit_date"),
             "received_mcd": bool(visit.get("received_mcd")),
             "received_npt": bool(visit.get("received_npt")),
@@ -234,6 +382,7 @@ async def serialize_visits(visits: list[dict], current_user: dict) -> list[dict]
             "converted_person_id": visit.get("converted_person_id"),
             "created_at": serialize(visit.get("created_at")),
             "updated_at": serialize(visit.get("updated_at")),
+            "read_only": not (is_outreach_leader(current_user) or visit.get("mentor_person_id") == current_user.get("person_id")),
         }
         if reveal:
             item["contact_phone"] = visit.get("contact_phone")
@@ -289,6 +438,64 @@ async def find_or_create_person_for_visit(contact_name: Optional[str], contact_p
             "valor": contact_phone, "es_principal": True, "created_at": now,
         })
     return new_person_id, True
+
+
+async def resolve_and_insert_contact_visit(
+    contact_type: str, person_id: Optional[str], contact_name: Optional[str], contact_phone: Optional[str],
+    contact_zone: Optional[str], campaign_id: Optional[str], mentor_person_id: str, note: Optional[str],
+    current_user: dict, household_id: Optional[str] = None, visit_event_id: Optional[str] = None,
+) -> dict:
+    """Núcleo compartido de `POST /visits` y de un intento 'contacted' dentro
+    de un Hogar (Etapa 2) — misma deduplicación y mismas reglas, para que un
+    contacto registrado desde cualquiera de los dos caminos sea indistinguible."""
+    phone_digits = None
+    resolved_person_id = None
+    if contact_type == "existing":
+        if not person_id:
+            raise HTTPException(status_code=422, detail="Seleccione la persona existente")
+        await load_person(db, person_id)
+        duplicate = await db.outreach_visits.find_one(
+            {"$or": [{"person_id": person_id}, {"converted_person_id": person_id}], "archived": {"$ne": True}},
+            {"_id": 0, "mentor_person_id": 1},
+        )
+        if duplicate:
+            mentor_name = await person_display_name(duplicate.get("mentor_person_id"))
+            raise HTTPException(status_code=409, detail=f"Esta persona ya tiene una visita activa registrada (mentor: {mentor_name or 'desconocido'})")
+        resolved_person_id = person_id
+    else:
+        if not contact_name or not contact_name.strip():
+            raise HTTPException(status_code=422, detail="El nombre del contacto es obligatorio")
+        phone_digits = normalize_phone(contact_phone)
+        if phone_digits:
+            duplicate = await db.outreach_visits.find_one({"phone_normalized": phone_digits, "archived": {"$ne": True}}, {"_id": 0, "mentor_person_id": 1})
+            if duplicate:
+                mentor_name = await person_display_name(duplicate.get("mentor_person_id"))
+                raise HTTPException(status_code=409, detail=f"Ya existe una visita registrada con ese teléfono (mentor: {mentor_name or 'desconocido'})")
+    if campaign_id and not await db.outreach_campaigns.find_one({"campaign_id": campaign_id}, {"_id": 1}):
+        raise HTTPException(status_code=404, detail="Campaña no encontrada")
+    snapshot = await supervision_snapshot(mentor_person_id)
+    now = now_utc()
+    visit_id = str(uuid4())
+    doc = {
+        "_id": visit_id, "visit_id": visit_id, "campaign_id": campaign_id,
+        "mentor_person_id": mentor_person_id, "contact_type": contact_type,
+        "person_id": resolved_person_id, "contact_name": contact_name.strip() if contact_name else None,
+        "contact_phone": contact_phone, "contact_zone": contact_zone,
+        "phone_normalized": phone_digits, "status": "assigned", "visit_date": None,
+        "received_mcd": False, "received_npt": False, "mcd_delivery_movement_id": None, "npt_delivery_movement_id": None,
+        "lbs_decision": "none", "contact_birth_date": None, "spiritual_status": None, "attends_church": None, "is_backslidden": None,
+        "address_line1": None, "address_line2": None, "address_city": None, "address_state": None, "address_zip": None,
+        "agreed_start_date": None, "call_schedule": None, "decision_status": "pending",
+        "household_id": household_id, "visit_event_id": visit_event_id,
+        "front_group_id": snapshot["front_group_id"], "front_group_ancestor_ids": snapshot["front_group_ancestor_ids"],
+        "note": note, "enrollment_id": None, "converted_person_id": None, "converted_at": None,
+        "archived": False, "created_by_user_id": current_user["user_id"], "created_at": now, "updated_at": now,
+    }
+    await db.outreach_visits.insert_one(doc)
+    await log_visit_history(visit_id, current_user, "visit_created", {"mentor_person_id": mentor_person_id, "contact_type": contact_type})
+    if campaign_id:
+        await mark_participation_active(campaign_id, mentor_person_id)
+    return doc
 
 
 async def resolve_or_create_target_person(visit: dict, current_user: dict) -> tuple:
@@ -356,10 +563,14 @@ async def create_campaign(payload: CampaignInput, current_user: dict = Depends(g
     doc = {
         "_id": campaign_id, "campaign_id": campaign_id, "name": payload.name.strip(), "location": payload.location.strip(),
         "start_date": payload.start_date.isoformat(), "end_date": payload.end_date.isoformat(),
-        "zone_notes": payload.zone_notes, "assigned_mentor_ids": [entry.person_id for entry in roster], "status": "active",
+        "zone_notes": payload.zone_notes, "meeting_time": payload.meeting_time, "meeting_place": payload.meeting_place,
+        "sectors": [s.strip() for s in (payload.sectors or []) if s and s.strip()], "instructions": payload.instructions,
+        "assigned_mentor_ids": [entry.person_id for entry in roster], "status": "active",
         "created_by_user_id": current_user["user_id"], "created_at": now, "updated_at": now,
     }
     await db.outreach_campaigns.insert_one(doc)
+    for entry in roster:
+        await ensure_participation(campaign_id, entry.person_id)
     result = serialize(doc)
     result["accounts_created"] = accounts_created
     return result
@@ -407,7 +618,37 @@ async def list_campaigns(current_user: dict = Depends(get_current_user)):
     if not await can_use_outreach(current_user):
         raise HTTPException(status_code=403, detail="Sin permiso para consultar invasiones")
     items = await db.outreach_campaigns.find({}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    mentor_person_id = current_user.get("person_id")
+    if mentor_person_id:
+        participations = await db.outreach_participations.find(
+            {"mentor_person_id": mentor_person_id}, {"_id": 0, "campaign_id": 1, "status": 1},
+        ).to_list(500)
+        status_by_campaign = {p["campaign_id"]: p["status"] for p in participations}
+        for item in items:
+            item["my_participation_status"] = status_by_campaign.get(item["campaign_id"]) if mentor_person_id in (item.get("assigned_mentor_ids") or []) else None
     return {"items": serialize(items)}
+
+
+@router.post("/campaigns/{campaign_id}/participate", response_model=dict)
+async def participate_in_campaign(campaign_id: str, current_user: dict = Depends(get_current_user)):
+    """El propio mentor confirma su participación (Asignado → Confirmado).
+    En cuanto registra su primer hogar/visita en esta invasión, el estado
+    sube solo a 'Con actividad' (ver `mark_participation_active`)."""
+    mentor_person_id = current_user.get("person_id")
+    if not mentor_person_id:
+        raise HTTPException(status_code=403, detail="Esta cuenta no está vinculada a un Perfil 360")
+    campaign = await db.outreach_campaigns.find_one({"campaign_id": campaign_id}, {"_id": 0, "assigned_mentor_ids": 1})
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaña no encontrada")
+    if mentor_person_id not in (campaign.get("assigned_mentor_ids") or []):
+        raise HTTPException(status_code=403, detail="No está en el roster de mentores de esta invasión")
+    await ensure_participation(campaign_id, mentor_person_id)
+    now = now_utc()
+    await db.outreach_participations.update_one(
+        {"campaign_id": campaign_id, "mentor_person_id": mentor_person_id, "status": "assigned"},
+        {"$set": {"status": "confirmed", "confirmed_at": now, "updated_at": now}},
+    )
+    return serialize(await db.outreach_participations.find_one({"campaign_id": campaign_id, "mentor_person_id": mentor_person_id}, {"_id": 0}))
 
 
 @router.put("/campaigns/{campaign_id}", response_model=dict)
@@ -422,12 +663,16 @@ async def update_campaign(campaign_id: str, payload: CampaignUpdateInput, curren
         fields["start_date"] = fields["start_date"].isoformat()
     if fields.get("end_date") is not None:
         fields["end_date"] = fields["end_date"].isoformat()
+    if "sectors" in fields:
+        fields["sectors"] = [s.strip() for s in (fields["sectors"] or []) if s and s.strip()]
     accounts_created = []
     if "assigned_mentors" in fields:
         roster = list({entry.person_id: entry for entry in (payload.assigned_mentors or []) if entry.person_id}.values())
         accounts_created = await ensure_mentor_roster_accounts(roster, current_user)
         fields["assigned_mentor_ids"] = [entry.person_id for entry in roster]
         del fields["assigned_mentors"]
+        for entry in roster:
+            await ensure_participation(campaign_id, entry.person_id)
     if fields.get("name") is not None:
         fields["name"] = fields["name"].strip()
     if fields.get("location") is not None:
@@ -565,11 +810,14 @@ async def campaign_report(campaign_id: str, current_user: dict = Depends(get_cur
     valid_oids = [ObjectId(pid) for pid in mentor_ids if ObjectId.is_valid(pid)]
     people = await db.persons.find({"_id": {"$in": valid_oids}}, {"_id": 1, "nombre": 1, "apellido": 1}).to_list(len(valid_oids)) if valid_oids else []
     names = {str(p["_id"]): f"{p.get('nombre', '')} {p.get('apellido', '')}".strip() for p in people}
+    participations = await db.outreach_participations.find({"campaign_id": campaign_id}, {"_id": 0, "mentor_person_id": 1, "status": 1}).to_list(len(mentor_ids) or 1)
+    participation_by_mentor = {p["mentor_person_id"]: p["status"] for p in participations}
     mentors = []
     for mentor_id in mentor_ids:
         mentor_visits = [v for v in visits if v.get("mentor_person_id") == mentor_id]
         mentors.append({
             "mentor_person_id": mentor_id, "mentor_name": names.get(mentor_id, "Mentor"),
+            "participation_status": participation_by_mentor.get(mentor_id, "assigned"),
             "contacts_total": len(mentor_visits),
             "accepted": sum(1 for v in mentor_visits if v.get("status") == "wants_followup"),
             "books": [row for row in book_rows if row["mentor_person_id"] == mentor_id],
@@ -605,50 +853,10 @@ async def create_visit(payload: VisitCreateInput, current_user: dict = Depends(g
         raise HTTPException(status_code=403, detail="Solo un líder puede asignar la visita a otro mentor")
     if not await is_active_mentor(mentor_person_id):
         raise HTTPException(status_code=409, detail="El mentor responsable necesita insignia de Mentor activa")
-    phone_digits = None
-    person_id = None
-    if payload.contact_type == "existing":
-        if not payload.person_id:
-            raise HTTPException(status_code=422, detail="Seleccione la persona existente")
-        await load_person(db, payload.person_id)
-        duplicate = await db.outreach_visits.find_one(
-            {"$or": [{"person_id": payload.person_id}, {"converted_person_id": payload.person_id}], "archived": {"$ne": True}},
-            {"_id": 0, "mentor_person_id": 1},
-        )
-        if duplicate:
-            mentor_name = await person_display_name(duplicate.get("mentor_person_id"))
-            raise HTTPException(status_code=409, detail=f"Esta persona ya tiene una visita activa registrada (mentor: {mentor_name or 'desconocido'})")
-        person_id = payload.person_id
-    else:
-        if not payload.contact_name or not payload.contact_name.strip():
-            raise HTTPException(status_code=422, detail="El nombre del contacto es obligatorio")
-        phone_digits = normalize_phone(payload.contact_phone)
-        if phone_digits:
-            duplicate = await db.outreach_visits.find_one({"phone_normalized": phone_digits, "archived": {"$ne": True}}, {"_id": 0, "mentor_person_id": 1})
-            if duplicate:
-                mentor_name = await person_display_name(duplicate.get("mentor_person_id"))
-                raise HTTPException(status_code=409, detail=f"Ya existe una visita registrada con ese teléfono (mentor: {mentor_name or 'desconocido'})")
-    if payload.campaign_id:
-        campaign = await db.outreach_campaigns.find_one({"campaign_id": payload.campaign_id}, {"_id": 1})
-        if not campaign:
-            raise HTTPException(status_code=404, detail="Campaña no encontrada")
-    now = now_utc()
-    visit_id = str(uuid4())
-    doc = {
-        "_id": visit_id, "visit_id": visit_id, "campaign_id": payload.campaign_id,
-        "mentor_person_id": mentor_person_id, "contact_type": payload.contact_type,
-        "person_id": person_id, "contact_name": payload.contact_name.strip() if payload.contact_name else None,
-        "contact_phone": payload.contact_phone, "contact_zone": payload.contact_zone,
-        "phone_normalized": phone_digits, "status": "assigned", "visit_date": None,
-        "received_mcd": False, "received_npt": False, "mcd_delivery_movement_id": None, "npt_delivery_movement_id": None,
-        "lbs_decision": "none", "contact_birth_date": None, "spiritual_status": None, "attends_church": None, "is_backslidden": None,
-        "address_line1": None, "address_line2": None, "address_city": None, "address_state": None, "address_zip": None,
-        "agreed_start_date": None, "call_schedule": None,
-        "note": payload.note, "enrollment_id": None, "converted_person_id": None, "converted_at": None,
-        "archived": False, "created_by_user_id": current_user["user_id"], "created_at": now, "updated_at": now,
-    }
-    await db.outreach_visits.insert_one(doc)
-    await log_visit_history(visit_id, current_user, "visit_created", {"mentor_person_id": mentor_person_id, "contact_type": payload.contact_type})
+    doc = await resolve_and_insert_contact_visit(
+        payload.contact_type, payload.person_id, payload.contact_name, payload.contact_phone, payload.contact_zone,
+        payload.campaign_id, mentor_person_id, payload.note, current_user,
+    )
     return (await serialize_visits([doc], current_user))[0]
 
 
@@ -658,7 +866,11 @@ async def list_visits(mentor_person_id: Optional[str] = None, campaign_id: Optio
         raise HTTPException(status_code=403, detail="Sin permiso para consultar visitas")
     query: dict = {"archived": {"$ne": True}}
     if not is_outreach_leader(current_user):
-        query["mentor_person_id"] = current_user.get("person_id")
+        allowed = await supervised_mentor_person_ids(current_user)
+        if mentor_person_id and mentor_person_id in allowed:
+            query["mentor_person_id"] = mentor_person_id
+        else:
+            query["mentor_person_id"] = {"$in": list(allowed)}
     elif mentor_person_id:
         query["mentor_person_id"] = mentor_person_id
     if campaign_id:
@@ -675,7 +887,9 @@ async def get_visit(visit_id: str, current_user: dict = Depends(get_current_user
         raise HTTPException(status_code=403, detail="Sin permiso para consultar visitas")
     visit = await load_visit(visit_id)
     if not is_outreach_leader(current_user) and visit.get("mentor_person_id") != current_user.get("person_id"):
-        raise HTTPException(status_code=403, detail="No puede consultar visitas de otro mentor")
+        allowed = await supervised_mentor_person_ids(current_user)
+        if visit.get("mentor_person_id") not in allowed:
+            raise HTTPException(status_code=403, detail="No puede consultar visitas de otro mentor")
     enriched = (await serialize_visits([visit], current_user))[0]
     history = await db.outreach_visit_history.find({"visit_id": visit_id}, {"_id": 0}).sort("occurred_at", -1).to_list(200)
     for item in history:
@@ -717,6 +931,7 @@ async def update_visit_report(visit_id: str, payload: VisitReportInput, current_
     if fields.get("agreed_start_date") is not None:
         fields["agreed_start_date"] = fields["agreed_start_date"].isoformat()
     fields["updated_at"] = now_utc()
+    fields["decision_status"] = compute_decision_status({**visit, **fields})
     await db.outreach_visits.update_one({"visit_id": visit_id}, {"$set": fields})
     await log_visit_history(visit_id, current_user, "report_updated", {k: v for k, v in fields.items() if k != "updated_at"})
     updated = await load_visit(visit_id)
@@ -793,6 +1008,191 @@ async def start_seven_weeks(visit_id: str, background_tasks: BackgroundTasks, cu
     return enriched
 
 
+async def load_household(household_id: str) -> dict:
+    household = await db.outreach_households.find_one({"household_id": household_id, "archived": {"$ne": True}}, {"_id": 0})
+    if not household:
+        raise HTTPException(status_code=404, detail="Hogar no encontrado")
+    return household
+
+
+def can_view_household(household: dict, current_user: dict, supervised_ids: set) -> bool:
+    if is_outreach_leader(current_user) or household.get("mentor_person_id") == current_user.get("person_id"):
+        return True
+    return household.get("mentor_person_id") in supervised_ids
+
+
+@router.post("/households", response_model=dict, status_code=201)
+async def create_household(payload: HouseholdInput, current_user: dict = Depends(get_current_user)):
+    if not await can_use_outreach(current_user):
+        raise HTTPException(status_code=403, detail="Sin permiso para registrar hogares")
+    mentor_person_id = payload.mentor_person_id or current_user.get("person_id")
+    if not mentor_person_id:
+        raise HTTPException(status_code=422, detail="No se pudo determinar el mentor responsable")
+    if mentor_person_id != current_user.get("person_id") and not is_outreach_leader(current_user):
+        raise HTTPException(status_code=403, detail="Solo un líder puede asignar el hogar a otro mentor")
+    if not await is_active_mentor(mentor_person_id):
+        raise HTTPException(status_code=409, detail="El mentor responsable necesita insignia de Mentor activa")
+    if not (payload.address_line1 or "").strip() and not (payload.sector or "").strip():
+        raise HTTPException(status_code=422, detail="Indique al menos la dirección o el sector del hogar")
+    if payload.campaign_id and not await db.outreach_campaigns.find_one({"campaign_id": payload.campaign_id}, {"_id": 1}):
+        raise HTTPException(status_code=404, detail="Campaña no encontrada")
+    snapshot = await supervision_snapshot(mentor_person_id)
+    now = now_utc()
+    household_id = str(uuid4())
+    doc = {
+        "_id": household_id, "household_id": household_id, "campaign_id": payload.campaign_id,
+        "mentor_person_id": mentor_person_id, "address_line1": payload.address_line1, "address_line2": payload.address_line2,
+        "address_city": payload.address_city, "address_state": payload.address_state, "address_zip": payload.address_zip,
+        "sector": payload.sector, "note": payload.note, "is_draft": payload.is_draft,
+        "front_group_id": snapshot["front_group_id"], "front_group_ancestor_ids": snapshot["front_group_ancestor_ids"],
+        "archived": False, "created_by_user_id": current_user["user_id"], "created_at": now, "updated_at": now,
+    }
+    await db.outreach_households.insert_one(doc)
+    if payload.campaign_id:
+        await mark_participation_active(payload.campaign_id, mentor_person_id)
+    return serialize(doc)
+
+
+@router.get("/households", response_model=dict)
+async def list_households(mentor_person_id: Optional[str] = None, campaign_id: Optional[str] = None, current_user: dict = Depends(get_current_user)):
+    if not await can_use_outreach(current_user):
+        raise HTTPException(status_code=403, detail="Sin permiso para consultar hogares")
+    query: dict = {"archived": {"$ne": True}}
+    if not is_outreach_leader(current_user):
+        allowed = await supervised_mentor_person_ids(current_user)
+        if mentor_person_id and mentor_person_id in allowed:
+            query["mentor_person_id"] = mentor_person_id
+        else:
+            query["mentor_person_id"] = {"$in": list(allowed)}
+    elif mentor_person_id:
+        query["mentor_person_id"] = mentor_person_id
+    if campaign_id:
+        query["campaign_id"] = campaign_id
+    households = await db.outreach_households.find(query, {"_id": 0}).sort("created_at", -1).to_list(500)
+    household_ids = [h["household_id"] for h in households]
+    event_stats: dict = {}
+    if household_ids:
+        async for item in db.outreach_visit_events.aggregate([
+            {"$match": {"household_id": {"$in": household_ids}}},
+            {"$group": {"_id": "$household_id", "count": {"$sum": 1}, "last_occurred_at": {"$max": "$occurred_at"}}},
+        ]):
+            event_stats[item["_id"]] = {"attempts": item["count"], "last_occurred_at": serialize(item["last_occurred_at"])}
+    for household in households:
+        household.update(event_stats.get(household["household_id"], {"attempts": 0, "last_occurred_at": None}))
+    return {"items": serialize(households), "total": len(households)}
+
+
+@router.get("/households/{household_id}", response_model=dict)
+async def get_household(household_id: str, current_user: dict = Depends(get_current_user)):
+    if not await can_use_outreach(current_user):
+        raise HTTPException(status_code=403, detail="Sin permiso para consultar hogares")
+    household = await load_household(household_id)
+    supervised_ids = await supervised_mentor_person_ids(current_user)
+    if not can_view_household(household, current_user, supervised_ids):
+        raise HTTPException(status_code=403, detail="No puede consultar este hogar")
+    events = await db.outreach_visit_events.find({"household_id": household_id}, {"_id": 0}).sort("occurred_at", -1).to_list(200)
+    visits = await db.outreach_visits.find({"household_id": household_id, "archived": {"$ne": True}}, {"_id": 0}).to_list(200)
+    return {"household": serialize(household), "events": serialize(events), "visits": await serialize_visits(visits, current_user)}
+
+
+@router.put("/households/{household_id}", response_model=dict)
+async def update_household(household_id: str, payload: HouseholdUpdateInput, current_user: dict = Depends(get_current_user)):
+    if not await can_use_outreach(current_user):
+        raise HTTPException(status_code=403, detail="Sin permiso para editar hogares")
+    household = await load_household(household_id)
+    if not is_outreach_leader(current_user) and household.get("mentor_person_id") != current_user.get("person_id"):
+        raise HTTPException(status_code=403, detail="Solo el mentor responsable o un líder puede editar este hogar")
+    fields = payload.dict(exclude_unset=True)
+    if not fields:
+        raise HTTPException(status_code=422, detail="Indique al menos un campo para actualizar")
+    fields["updated_at"] = now_utc()
+    await db.outreach_households.update_one({"household_id": household_id}, {"$set": fields})
+    return serialize(await load_household(household_id))
+
+
+@router.post("/households/{household_id}/events", response_model=dict, status_code=201)
+async def create_visit_event(household_id: str, payload: VisitEventInput, current_user: dict = Depends(get_current_user)):
+    """Intento de visita a un Hogar (Etapa 2): 'sin respuesta'/'no está en
+    casa'/'rechazó' NUNCA llevan personas (no se inventan datos); 'contacted'
+    puede traer 0 personas solo si se guarda como borrador (`is_draft`)."""
+    if not await can_use_outreach(current_user):
+        raise HTTPException(status_code=403, detail="Sin permiso para registrar intentos de visita")
+    household = await load_household(household_id)
+    if not is_outreach_leader(current_user) and household.get("mentor_person_id") != current_user.get("person_id"):
+        raise HTTPException(status_code=403, detail="Solo el mentor responsable o un líder puede registrar un intento en este hogar")
+    if payload.result != "contacted" and payload.persons:
+        raise HTTPException(status_code=422, detail="Un intento sin contacto no debe llevar personas registradas (no se inventan datos)")
+    if payload.result == "contacted" and not payload.persons and not payload.is_draft:
+        raise HTTPException(status_code=422, detail="Registre al menos un contacto, o guarde este intento como borrador")
+    now = now_utc()
+    event_id = str(uuid4())
+    event_doc = {
+        "_id": event_id, "visit_event_id": event_id, "household_id": household_id, "campaign_id": household.get("campaign_id"),
+        "mentor_person_id": household["mentor_person_id"], "result": payload.result, "note": payload.note,
+        "is_draft": payload.is_draft, "occurred_at": now, "created_by_user_id": current_user["user_id"], "created_at": now,
+    }
+    await db.outreach_visit_events.insert_one(event_doc)
+    created_visits = []
+    for entry in payload.persons:
+        visit_doc = await resolve_and_insert_contact_visit(
+            entry.contact_type, entry.person_id, entry.contact_name, entry.contact_phone, household.get("sector"),
+            household.get("campaign_id"), household["mentor_person_id"], None, current_user,
+            household_id=household_id, visit_event_id=event_id,
+        )
+        created_visits.append(visit_doc)
+    if household.get("campaign_id"):
+        await mark_participation_active(household["campaign_id"], household["mentor_person_id"])
+    return {"event": serialize(event_doc), "visits": await serialize_visits(created_visits, current_user)}
+
+
+@router.get("/mentors-by-group/{front_group_id}", response_model=dict)
+async def mentors_by_group(front_group_id: str, current_user: dict = Depends(get_current_user)):
+    """Para el roster de una invasión: todos los mentores (insignia activa)
+    que pertenecen a ese Grupo Frontal o a cualquiera de sus sub-grupos."""
+    if not can_manage_outreach_campaigns(current_user):
+        raise HTTPException(status_code=403, detail="Solo la pastora/pastor o un coordinador general puede armar el roster por grupo")
+    await load_front_group(db, front_group_id)
+    group_ids = await descendant_group_ids(db, front_group_id)
+    person_ids = await db.front_group_assignments.distinct("person_id", {"front_group_id": {"$in": group_ids}, "active": True})
+    if not person_ids:
+        return {"items": []}
+    badge_docs = await db.mentor_badges.find({"person_id": {"$in": person_ids}, "active": True}, {"_id": 0, "person_id": 1}).to_list(len(person_ids))
+    mentor_ids = [d["person_id"] for d in badge_docs]
+    if not mentor_ids:
+        return {"items": []}
+    valid_oids = [ObjectId(pid) for pid in mentor_ids if ObjectId.is_valid(pid)]
+    people = await db.persons.find({"_id": {"$in": valid_oids}, "is_archived": {"$ne": True}}, {"_id": 1, "nombre": 1, "apellido": 1}).to_list(len(valid_oids))
+    accounts = await db.users.find({"person_id": {"$in": mentor_ids}}, {"_id": 0, "person_id": 1, "is_active": 1}).to_list(len(mentor_ids))
+    account_status = {item["person_id"]: bool(item.get("is_active", True)) for item in accounts}
+    items = [{
+        "person_id": str(p["_id"]), "name": f"{p.get('nombre', '')} {p.get('apellido', '')}".strip(),
+        "has_account": str(p["_id"]) in account_status, "account_active": account_status.get(str(p["_id"]), False),
+    } for p in people]
+    return {"items": items}
+
+
+@router.get("/my-branch-overview", response_model=dict)
+async def my_branch_overview(current_user: dict = Depends(get_current_user)):
+    """'Supervisión instantánea': para un Líder/Colíder de Grupo Frontal que
+    NO es líder de invasiones ni mentor, ve en SOLO LECTURA los hogares y
+    visitas de los mentores de su rama (y sub-ramas). Si no supervisa a
+    nadie, `is_supervisor` queda en falso y el frontend no muestra nada."""
+    if is_outreach_leader(current_user):
+        return {"is_supervisor": False, "households": [], "visits": []}
+    branch_ids = await support_group_ids(db, current_user)
+    if not branch_ids:
+        return {"is_supervisor": False, "households": [], "visits": []}
+    self_id = current_user.get("person_id")
+    mentor_ids = [pid for pid in await db.front_group_assignments.distinct(
+        "person_id", {"front_group_id": {"$in": list(branch_ids)}, "active": True},
+    ) if pid != self_id]
+    if not mentor_ids:
+        return {"is_supervisor": False, "households": [], "visits": []}
+    households = await db.outreach_households.find({"mentor_person_id": {"$in": mentor_ids}, "archived": {"$ne": True}}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    visits = await db.outreach_visits.find({"mentor_person_id": {"$in": mentor_ids}, "archived": {"$ne": True}}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    return {"is_supervisor": True, "households": serialize(households), "visits": await serialize_visits(visits, current_user)}
+
+
 @router.get("/dashboard", response_model=dict)
 async def outreach_dashboard(current_user: dict = Depends(get_current_user)):
     if not is_outreach_leader(current_user):
@@ -833,6 +1233,15 @@ async def outreach_dashboard(current_user: dict = Depends(get_current_user)):
     return {"totals": summarize(visits), "by_mentor": by_mentor, "by_campaign": by_campaign}
 
 
+async def backfill_decision_status() -> None:
+    """Migración idempotente (Etapa 2): calcula `decision_status` para visitas
+    que todavía no lo tienen, a partir de `status`/`agreed_start_date` — nunca
+    inventa un dato, y nunca vuelve a tocar un documento ya migrado."""
+    cursor = db.outreach_visits.find({"decision_status": {"$exists": False}}, {"_id": 1, "status": 1, "agreed_start_date": 1})
+    async for item in cursor:
+        await db.outreach_visits.update_one({"_id": item["_id"]}, {"$set": {"decision_status": compute_decision_status(item)}})
+
+
 async def ensure_outreach_indexes() -> None:
     await db.outreach_campaigns.create_index("campaign_id", unique=True)
     await db.outreach_visits.create_index("visit_id", unique=True)
@@ -840,5 +1249,13 @@ async def ensure_outreach_indexes() -> None:
     await db.outreach_visits.create_index("campaign_id")
     await db.outreach_visits.create_index("phone_normalized")
     await db.outreach_visits.create_index("person_id")
+    await db.outreach_visits.create_index("household_id")
     await db.outreach_visit_history.create_index("history_id", unique=True)
     await db.outreach_visit_history.create_index([("visit_id", 1), ("occurred_at", -1)])
+    await db.outreach_households.create_index("household_id", unique=True)
+    await db.outreach_households.create_index("mentor_person_id")
+    await db.outreach_households.create_index("campaign_id")
+    await db.outreach_visit_events.create_index("visit_event_id", unique=True)
+    await db.outreach_visit_events.create_index([("household_id", 1), ("occurred_at", -1)])
+    await db.outreach_participations.create_index([("campaign_id", 1), ("mentor_person_id", 1)], unique=True)
+    await backfill_decision_status()

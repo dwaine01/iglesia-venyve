@@ -30,6 +30,13 @@ const BookDeliveries = ({ campaignId, bookId, mentorPersonId }) => {
   );
 };
 
+const PARTICIPATION_LABELS = { assigned: 'Asignado', confirmed: 'Confirmado', active: 'Con actividad' };
+const PARTICIPATION_COLORS = {
+  assigned: 'bg-slate-100 text-slate-700',
+  confirmed: 'bg-blue-100 text-blue-800',
+  active: 'bg-emerald-100 text-emerald-800',
+};
+
 export const CampaignReportDialog = ({ open, onOpenChange, campaign }) => {
   const { API, getAuthHeaders } = useAuth();
   const [report, setReport] = useState(null);
@@ -57,11 +64,16 @@ export const CampaignReportDialog = ({ open, onOpenChange, campaign }) => {
               <div key={mentor.mentor_person_id} className="rounded-lg border border-[#E8E5DE] p-3" data-testid={`campaign-report-mentor-${mentor.mentor_person_id}`}>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="font-medium text-[#101D36]">{mentor.mentor_name}</p>
-                  {mentor.has_activity ? (
-                    <Badge className="bg-emerald-100 text-emerald-800">{mentor.contacts_total} contactos · {mentor.accepted} aceptaron</Badge>
-                  ) : (
-                    <Badge className="bg-slate-100 text-slate-500" data-testid={`campaign-report-no-activity-${mentor.mentor_person_id}`}>Sin actividad</Badge>
-                  )}
+                  <div className="flex items-center gap-2">
+                    <Badge className={PARTICIPATION_COLORS[mentor.participation_status] || PARTICIPATION_COLORS.assigned} data-testid={`campaign-report-participation-${mentor.mentor_person_id}`}>
+                      {PARTICIPATION_LABELS[mentor.participation_status] || mentor.participation_status}
+                    </Badge>
+                    {mentor.has_activity ? (
+                      <Badge className="bg-emerald-100 text-emerald-800">{mentor.contacts_total} contactos · {mentor.accepted} aceptaron</Badge>
+                    ) : (
+                      <Badge className="bg-slate-100 text-slate-500" data-testid={`campaign-report-no-activity-${mentor.mentor_person_id}`}>Sin actividad</Badge>
+                    )}
+                  </div>
                 </div>
                 {mentor.books.length > 0 && (
                   <div className="mt-2 space-y-1">
