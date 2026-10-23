@@ -198,6 +198,29 @@ async def evaluate_current_mentor(db, enrollment: dict, actor_user_id: str) -> d
     return serialize(evaluation)
 
 
+async def build_outreach_origin(db, enrollment: dict) -> dict | None:
+    """Etapa 3 (punto 4 del dueño): procedencia hogar/invasión + historial de
+    intentos, visible en el expediente cuando nació de una visita de Invasión."""
+    if enrollment.get("source") != "mentorship_outreach" or not enrollment.get("source_id"):
+        return None
+    visit = await db.outreach_visits.find_one({"visit_id": enrollment["source_id"]}, {"_id": 0})
+    if not visit:
+        return None
+    household = await db.outreach_households.find_one({"household_id": visit.get("household_id")}, {"_id": 0}) if visit.get("household_id") else None
+    campaign = await db.outreach_campaigns.find_one({"campaign_id": visit.get("campaign_id")}, {"_id": 0, "name": 1, "location": 1}) if visit.get("campaign_id") else None
+    attempts = await db.outreach_visit_events.find({"household_id": visit.get("household_id")}, {"_id": 0}).sort("occurred_at", 1).to_list(100) if visit.get("household_id") else []
+    return {
+        "visit_id": visit["visit_id"],
+        "campaign_id": visit.get("campaign_id"), "campaign_name": (campaign or {}).get("name"), "campaign_location": (campaign or {}).get("location"),
+        "household_id": visit.get("household_id"),
+        "household_address": " · ".join(part for part in [(household or {}).get("address_line1"), (household or {}).get("sector")] if part) or None,
+        "attempts": serialize(attempts),
+        "materials_delivered": {"mcd": bool(visit.get("mcd_delivery_movement_id")), "npt": bool(visit.get("npt_delivery_movement_id"))},
+        "agreed_call_schedule": visit.get("call_schedule"),
+        "agreed_start_date": visit.get("agreed_start_date"),
+    }
+
+
 async def enrollment_detail(db, enrollment: dict) -> dict:
     stages = await db.process_stage_progress.find({"enrollment_id": enrollment["enrollment_id"]}, {"_id": 0}).sort("stage_order", 1).to_list(100)
     assignments = await db.mentor_assignments.find({"enrollment_id": enrollment["enrollment_id"]}, {"_id": 0}).sort("started_at", -1).to_list(200)
@@ -217,6 +240,7 @@ async def enrollment_detail(db, enrollment: dict) -> dict:
         "discipleship": serialize(discipleship),
         "formation_recommendation": serialize(formation_recommendation),
         "timeline": serialize(timeline),
+        "outreach_origin": await build_outreach_origin(db, enrollment),
     })
     return result
 

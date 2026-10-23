@@ -44,6 +44,19 @@ export const MyLibraryHoldingsCard = () => {
                 ))}
               </div>
             )}
+            {item.returned_quantity > 0 && <p className="mt-2 text-xs text-slate-500" data-testid={`my-library-holding-returned-${item.book.book_id}`}>Devueltos a Central: {item.returned_quantity}</p>}
+            {item.deliveries?.length > 0 && (
+              <details className="mt-2" data-testid={`my-library-holding-deliveries-${item.book.book_id}`}>
+                <summary className="cursor-pointer text-xs font-medium text-[#0879BE]">Ver entregas ({item.deliveries.length})</summary>
+                <div className="mt-1 space-y-1">
+                  {item.deliveries.map((delivery, index) => (
+                    <div key={index} className="flex items-center justify-between text-xs text-slate-500" data-testid={`my-library-delivery-${item.book.book_id}-${index}`}>
+                      <span>{delivery.person_name}</span><span>{delivery.occurred_at ? new Date(delivery.occurred_at).toLocaleDateString('es-US') : '—'}</span>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            )}
           </div>
         ))}
       </div>

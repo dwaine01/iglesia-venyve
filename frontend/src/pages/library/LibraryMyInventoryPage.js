@@ -12,6 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { ReceiveInventoryDialog } from '../../components/library/ReceiveInventoryDialog';
 import { TransferBookDialog } from '../../components/library/TransferBookDialog';
 import { ReportDamageLossDialog } from '../../components/library/ReportDamageLossDialog';
+import { AdjustInventoryDialog } from '../../components/library/AdjustInventoryDialog';
 import { RequestBookDialog } from '../../components/library/RequestBookDialog';
 import { BookThumbnail } from '../../components/library/BookThumbnail';
 
@@ -23,6 +24,7 @@ export default function LibraryMyInventoryPage() {
   const [holdings, setHoldings] = useState([]);
   const [requests, setRequests] = useState([]);
   const [returnQty, setReturnQty] = useState({});
+  const [returnReason, setReturnReason] = useState({});
   const [approveQty, setApproveQty] = useState({});
 
   const refresh = useCallback(async () => {
@@ -36,10 +38,11 @@ export default function LibraryMyInventoryPage() {
 
   const doReturn = async (bookId) => {
     const quantity = Number(returnQty[bookId] || 0);
-    if (!quantity) return;
+    const reason = (returnReason[bookId] || '').trim();
+    if (!quantity || !reason) { toast.error('Indique cantidad y motivo de la devolución'); return; }
     try {
-      await axios.post(`${API}/api/library/movements`, { book_id: bookId, movement_type: 'RETURN', quantity, from_holder: { type: 'user', id: user.id }, to_holder: { type: 'warehouse', id: 'central' }, notes: 'Devolución a Librería Central' }, getAuthHeaders());
-      toast.success('Material devuelto a Central'); await refresh();
+      await axios.post(`${API}/api/library/movements`, { book_id: bookId, movement_type: 'RETURN', quantity, from_holder: { type: 'user', id: user.id }, to_holder: { type: 'warehouse', id: 'central' }, notes: reason }, getAuthHeaders());
+      toast.success('Material devuelto a Central'); setReturnReason({ ...returnReason, [bookId]: '' }); setReturnQty({ ...returnQty, [bookId]: '' }); await refresh();
     } catch (error) { toast.error(error?.response?.data?.detail || 'No se pudo devolver'); }
   };
 
@@ -59,17 +62,20 @@ export default function LibraryMyInventoryPage() {
         {isManager && <ReceiveInventoryDialog onReceived={refresh} />}
         {isManager && <TransferBookDialog onTransferred={refresh} />}
         {isManager && <ReportDamageLossDialog onReported={refresh} />}
+        {isManager && <AdjustInventoryDialog onAdjusted={refresh} />}
       </div>
 
       <div className="rounded-2xl border border-slate-200 bg-white p-5" data-testid="my-holdings-panel">
         <h2 className="font-serif text-lg text-[#132443]">Lo que tengo en mi poder</h2>
         {holdings.length === 0 ? <p className="mt-3 text-sm text-slate-500">No tiene materiales asignados actualmente.</p> : <Table className="mt-3">
-          <TableHeader><TableRow><TableHead /><TableHead>Material</TableHead><TableHead>En mi poder</TableHead><TableHead>Devolver</TableHead></TableRow></TableHeader>
+          <TableHeader><TableRow><TableHead /><TableHead>Material</TableHead><TableHead>En mi poder</TableHead><TableHead>Devuelto</TableHead><TableHead>Devolver</TableHead></TableRow></TableHeader>
           <TableBody>{holdings.map((h) => <TableRow key={h.book.book_id} data-testid={`my-holding-row-${h.book.book_id}`}>
             <TableCell><BookThumbnail fileId={h.book.cover_file_id} size={28} /></TableCell>
             <TableCell>{h.book.name}</TableCell><TableCell>{h.on_hand}</TableCell>
-            <TableCell className="flex gap-2">
+            <TableCell data-testid={`my-holding-returned-${h.book.book_id}`}>{h.returned_quantity || 0}</TableCell>
+            <TableCell className="flex flex-wrap gap-2">
               <Input type="number" min="1" max={h.on_hand} className="w-20" value={returnQty[h.book.book_id] ?? ''} onChange={(e) => setReturnQty({ ...returnQty, [h.book.book_id]: e.target.value })} data-testid={`return-quantity-${h.book.book_id}`} />
+              <Input className="w-40" placeholder="Motivo" value={returnReason[h.book.book_id] ?? ''} onChange={(e) => setReturnReason({ ...returnReason, [h.book.book_id]: e.target.value })} data-testid={`return-reason-${h.book.book_id}`} />
               <Button size="sm" variant="outline" onClick={() => doReturn(h.book.book_id)} data-testid={`return-button-${h.book.book_id}`}>Devolver</Button>
             </TableCell>
           </TableRow>)}</TableBody>
