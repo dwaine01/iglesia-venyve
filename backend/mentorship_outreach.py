@@ -637,6 +637,23 @@ class DeleteReason(BaseModel):
     reason: str = Field(min_length=3, max_length=600)
 
 
+@router.get("/campaigns/{campaign_id}/delete-preview", response_model=dict)
+async def preview_delete_campaign(campaign_id: str, current_user: dict = Depends(get_current_user)):
+    """Conteo exacto de lo que se borraría, para confirmar ANTES de un
+    borrado total y permanente (nunca se borra a ciegas)."""
+    if not can_manage_outreach_campaigns(current_user):
+        raise HTTPException(status_code=403, detail="Solo la pastora/pastor o un coordinador general puede borrar invasiones")
+    campaign = await db.outreach_campaigns.find_one({"campaign_id": campaign_id}, {"_id": 0, "name": 1})
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Invasión no encontrada")
+    households = await db.outreach_households.count_documents({"campaign_id": campaign_id})
+    visits = await db.outreach_visits.count_documents({"campaign_id": campaign_id})
+    household_ids = await db.outreach_households.distinct("household_id", {"campaign_id": campaign_id})
+    attempts = await db.outreach_visit_events.count_documents({"household_id": {"$in": household_ids}}) if household_ids else 0
+    participations = await db.outreach_participations.count_documents({"campaign_id": campaign_id})
+    return {"campaign_name": campaign.get("name"), "households": households, "visits": visits, "attempts": attempts, "participations": participations}
+
+
 @router.delete("/campaigns/{campaign_id}", response_model=dict)
 async def delete_campaign(campaign_id: str, payload: DeleteReason, current_user: dict = Depends(get_current_user)):
     """Borrado TOTAL y permanente de la Invasión (decisión del dueño): borra

@@ -525,6 +525,20 @@ async def archive_front_group(group_id: str, payload: FrontGroupArchive, current
     return serialize(await load_group(db, group_id, include_archived=True))
 
 
+@router.get("/{group_id}/delete-preview", response_model=dict)
+async def preview_delete_front_group(group_id: str, current_user: dict = Depends(require_admin_delete)):
+    """Conteo exacto de lo que se borraría (y si hay algo que lo bloquea),
+    para confirmar ANTES de un borrado total y permanente."""
+    group = await load_group(db, group_id, include_archived=True)
+    dependents = await db.front_groups.count_documents({"parent_group_id": group_id, "status": {"$ne": "archived"}})
+    active_processes = await db.process_enrollments.count_documents({"front_group_id": group_id, "process_key": "consolidation", "status": {"$in": ["planned", "active", "paused"]}})
+    assignments = await db.front_group_assignments.count_documents({"front_group_id": group_id})
+    return {
+        "name": group.get("name"), "assignments": assignments, "dependent_group_count": dependents, "active_process_count": active_processes,
+        "blocked": bool(dependents or active_processes),
+    }
+
+
 @router.delete("/{group_id}", response_model=dict)
 async def delete_front_group(group_id: str, payload: DeleteReason, current_user: dict = Depends(require_admin_delete)):
     """Borrado TOTAL y permanente (decisión del dueño, a diferencia de

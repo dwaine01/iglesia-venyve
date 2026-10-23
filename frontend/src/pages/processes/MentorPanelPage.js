@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
-import { AlertTriangle, CalendarDays, Clock3, Sunrise, Users } from 'lucide-react';
+import { AlertTriangle, BarChart3, CalendarDays, Clock3, Footprints, Sunrise, Users } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 import { useAuth } from '../../context/AuthContext';
@@ -49,6 +49,16 @@ export default function MentorPanelPage() {
   return (
     <ProcessShell title="Mi Panel de Mentor" eyebrow="Invasiones · Consolidación" description="Solo tus discípulos: lo que te toca hoy, lo atrasado y lo próximo.">
       {!panel && !error ? <ProcessLoading /> : error ? <ProcessError message={error} /> : <div className="space-y-6" data-testid="mentor-panel-page">
+        <div className="grid gap-3 sm:grid-cols-2" data-testid="mentor-panel-quick-links">
+          <Link to="/mentoria/visitas" className="flex items-center gap-3 rounded-xl border border-[#E8E5DE] bg-white p-4 hover:border-[#132443]/40 hover:shadow-sm" data-testid="mentor-panel-link-outreach">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#132443]/10 text-[#132443]"><Footprints className="h-5 w-5" /></div>
+            <div><b className="block text-[#101D36]">Mi invasión</b><span className="text-xs text-slate-500">Registrar una visita o contacto nuevo</span></div>
+          </Link>
+          <Link to="/mentoria/supervision" className="flex items-center gap-3 rounded-xl border border-[#E8E5DE] bg-white p-4 hover:border-[#132443]/40 hover:shadow-sm" data-testid="mentor-panel-link-progress">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#132443]/10 text-[#132443]"><BarChart3 className="h-5 w-5" /></div>
+            <div><b className="block text-[#101D36]">Mi progreso</b><span className="text-xs text-slate-500">Mis números: visitas, aceptaciones, actividades</span></div>
+          </Link>
+        </div>
         <div className="grid gap-4 md:grid-cols-3">
           <ActivityBucketCard icon={Sunrise} title="Hoy" tone="text-amber-600" items={panel.today} testId="mentor-panel-bucket-today" />
           <ActivityBucketCard icon={AlertTriangle} title="Atrasado" tone="text-rose-600" items={panel.overdue} testId="mentor-panel-bucket-overdue" />
