@@ -38,10 +38,13 @@ from access_control import (
     PERSON_SELF_CAPABILITIES,
     PROCESSES_PARTICIPATE,
     access_defaults_for_role,
+    capability_catalog_keys,
     has_capability,
     is_global_pastoral_authority,
     normalized_capabilities,
     resolved_access_level,
+    CAPABILITY_CATALOG,
+    STAFF_TOOLS_CAPABILITIES,
 )
 from canonical_identity import IdentityConflictError, ensure_user_person_link, migrate_core_identity
 from server import db, get_current_user
@@ -108,6 +111,7 @@ class UserAccessItem(BaseModel):
     onboarding_required: bool = False
     onboarding_completed_at: Optional[str] = None
     invitation_token: Optional[str] = None
+    permissions_mode: str = "role_defaults"
 
 
 class UserAccessList(BaseModel):
@@ -131,6 +135,7 @@ class UserAccessCreate(BaseModel):
     organization_scope: Optional[dict] = None
     privilege_groups: list[Literal["membership", "board", "finance", "care"]] = []
     mentor_access: bool = False
+    capabilities: Optional[list[str]] = Field(default=None, max_length=150)
 
 
 def resolve_temp_password(explicit: Optional[str]) -> tuple[str, bool]:
@@ -142,6 +147,27 @@ def resolve_temp_password(explicit: Optional[str]) -> tuple[str, bool]:
         return explicit, False
     import secrets
     return secrets.token_urlsafe(9), True
+
+
+def manual_capabilities_for(payload: "UserAccessCreate", current_user: dict) -> list[str]:
+    """ETAPA 5A: pertenecer a un grupo, tener un cargo y recibir permisos son
+    independientes. Una cuenta nueva/reactivada SOLO recibe lo que el
+    administrador marque explícitamente en la matriz módulo×acción (más el
+    paquete de mentor si lo activa); el cargo/nivel ya no concede módulos
+    por sí solo."""
+    requested = payload.capabilities or []
+    if requested:
+        if not is_global_pastoral_authority(current_user):
+            raise HTTPException(status_code=403, detail="Solo el pastor puede personalizar capacidades")
+        invalid = sorted(set(requested) - capability_catalog_keys())
+        if invalid:
+            raise HTTPException(status_code=400, detail=f"Capacidades inválidas: {', '.join(invalid)}")
+    if payload.access_level == "persona":
+        # Códigos de invitación y Bitácora siguen exigiendo rol=lider/pastor
+        # en el servidor; nunca quedan activos para una cuenta persona.
+        requested = [item for item in requested if item not in STAFF_TOOLS_CAPABILITIES]
+    mentor_bundle = [*PERSON_SELF_CAPABILITIES, MENTORSHIP_OUTREACH_REPORT, PROCESSES_PARTICIPATE, LIBRARY_DELIVER] if payload.mentor_access else []
+    return sorted(set(requested) | set(mentor_bundle))
 
 
 async def grant_front_group_capability_if_leader(person_id: str, user_doc: dict) -> None:
@@ -249,6 +275,7 @@ def serialize_user(user: dict) -> dict:
         "privilege_groups": user.get("privilege_groups") or [],
         "onboarding_required": user.get("onboarding_required", False) is True,
         "onboarding_completed_at": user.get("onboarding_completed_at").isoformat().replace("+00:00", "Z") if isinstance(user.get("onboarding_completed_at"), datetime) else user.get("onboarding_completed_at"),
+        "permissions_mode": user.get("permissions_mode") or "role_defaults",
     }
 
 
@@ -358,6 +385,13 @@ async def list_users(current_user: dict = Depends(require_access_manager)):
     return {"items": [serialize_user(user) for user in users]}
 
 
+@router.get("/capability-catalog", response_model=dict)
+async def get_capability_catalog(current_user: dict = Depends(require_access_manager)):
+    """ETAPA 5A: catálogo módulo×acción consumido por la matriz de permisos
+    en alta y edición de cuentas. Única fuente real de capabilities."""
+    return {"modules": CAPABILITY_CATALOG}
+
+
 @router.get("/access-candidates", response_model=dict)
 async def list_access_candidates(current_user: dict = Depends(require_access_manager)):
     people = await db.persons.find(
@@ -410,8 +444,9 @@ async def create_user_access_core(payload: UserAccessCreate, current_user: dict)
     if await db.users.find_one({"email": email}):
         raise HTTPException(status_code=409, detail="Este correo ya tiene acceso")
     defaults = access_defaults(payload.access_level, payload.privilege_groups)
-    if payload.mentor_access:
-        defaults["capabilities"] = sorted(set([*defaults["capabilities"], *PERSON_SELF_CAPABILITIES, MENTORSHIP_OUTREACH_REPORT, PROCESSES_PARTICIPATE, LIBRARY_DELIVER]))
+    manual_mode = payload.access_level in {"lider", "persona"}
+    if manual_mode:
+        defaults["capabilities"] = manual_capabilities_for(payload, current_user)
     now = datetime.now(timezone.utc)
     surname = person.get("apellidos") or person.get("apellido") or ""
     temp_password, password_generated = resolve_temp_password(payload.temporary_password)
@@ -431,6 +466,7 @@ async def create_user_access_core(payload: UserAccessCreate, current_user: dict)
         "created_by_user_id": current_user["user_id"],
         "created_at": now,
         "updated_at": now,
+        "permissions_mode": "manual" if manual_mode else "role_defaults",
         **defaults,
     }
     result = await db.users.insert_one(user_doc)
@@ -455,8 +491,9 @@ async def _reactivate_user_access(existing_user: dict, payload: UserAccessCreate
     """C5.5: una Persona inactiva se reactiva y reenvía invitación en vez de
     crear una segunda cuenta (una cuenta por Persona)."""
     defaults = access_defaults(payload.access_level, payload.privilege_groups)
-    if payload.mentor_access:
-        defaults["capabilities"] = sorted(set([*defaults["capabilities"], *PERSON_SELF_CAPABILITIES, MENTORSHIP_OUTREACH_REPORT, PROCESSES_PARTICIPATE, LIBRARY_DELIVER]))
+    manual_mode = payload.access_level in {"lider", "persona"}
+    if manual_mode:
+        defaults["capabilities"] = manual_capabilities_for(payload, current_user)
     now = datetime.now(timezone.utc)
     temp_password, password_generated = resolve_temp_password(payload.temporary_password)
     update = {
@@ -464,6 +501,7 @@ async def _reactivate_user_access(existing_user: dict, payload: UserAccessCreate
         "access_level": payload.access_level, "access_title": payload.access_title, "organization_scope": payload.organization_scope,
         "password": bcrypt.hashpw(temp_password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8"),
         "access_policy_version": ACCESS_POLICY_VERSION, "token_version": existing_user.get("token_version", 1) + 1,
+        "permissions_mode": "manual" if manual_mode else "role_defaults",
         "updated_at": now, **defaults,
     }
     await db.users.update_one({"_id": existing_user["_id"]}, {"$set": update})
@@ -504,23 +542,46 @@ async def update_user_access(
         if active_pastors <= 1:
             raise HTTPException(status_code=400, detail="Debe existir al menos un pastor activo")
     defaults = access_defaults(requested_level, requested_groups)
-    allowed = set(PERSON_DOMAIN_CAPABILITIES + PROCESS_CAPABILITIES + CELLULAR_CAPABILITIES + DOOR_BOARD_CAPABILITIES + FINANCE_CAPABILITIES + JOURNEY_GOVERNANCE_CAPABILITIES + OPERATIONS_CAPABILITIES + CARE_CAPABILITIES + FORMATION_CAPABILITIES + CAMPAIGN_CAPABILITIES + MENTORSHIP_CAPABILITIES + [MEMBERSHIP_DOCUMENTS_MANAGE, MEMBERSHIP_DIRECT_IMPORT, BOARD_ACCESS, PERSON_PASTORAL_NOTES_READ, CORE_GOVERNANCE_MANAGE, CORE_ACCESS_MANAGE, "person.profile.read"])
+    catalog_keys = capability_catalog_keys()
+    allowed = set(PERSON_DOMAIN_CAPABILITIES + PROCESS_CAPABILITIES + CELLULAR_CAPABILITIES + DOOR_BOARD_CAPABILITIES + FINANCE_CAPABILITIES + JOURNEY_GOVERNANCE_CAPABILITIES + OPERATIONS_CAPABILITIES + CARE_CAPABILITIES + FORMATION_CAPABILITIES + CAMPAIGN_CAPABILITIES + MENTORSHIP_CAPABILITIES + [MEMBERSHIP_DOCUMENTS_MANAGE, MEMBERSHIP_DIRECT_IMPORT, BOARD_ACCESS, PERSON_PASTORAL_NOTES_READ, CORE_GOVERNANCE_MANAGE, CORE_ACCESS_MANAGE, "person.profile.read"]) | catalog_keys
     capabilities = defaults["capabilities"]
+    manual_level = requested_level in {"lider", "persona"}
+    if manual_level and payload.capabilities is None and (target.get("permissions_mode") or "role_defaults") == "manual":
+        # ETAPA 5A: una edición que no toca `capabilities` (ej. solo activar/
+        # desactivar) NUNCA debe revivir el paquete por cargo en una cuenta manual.
+        capabilities = target.get("capabilities") or []
     if payload.capabilities is not None:
         if not is_global_pastoral_authority(current_user):
             raise HTTPException(status_code=403, detail="Solo el pastor puede personalizar capacidades")
         existing_capabilities = set(target.get("capabilities") or [])
-        invalid = sorted(set(payload.capabilities) - allowed - existing_capabilities)
+        effective_allowed = catalog_keys if manual_level else allowed
+        invalid = sorted(set(payload.capabilities) - effective_allowed - existing_capabilities)
         if invalid:
             raise HTTPException(status_code=400, detail=f"Capabilities inválidas: {', '.join(invalid)}")
-        customizable = set(JOURNEY_GOVERNANCE_CAPABILITIES + OPERATIONS_CAPABILITIES + FORMATION_CAPABILITIES + CAMPAIGN_CAPABILITIES + MENTORSHIP_CAPABILITIES + [MEMBERSHIP_DOCUMENTS_MANAGE, MEMBERSHIP_DIRECT_IMPORT])
-        non_customizable = sorted(set(payload.capabilities) - set(defaults["capabilities"]) - customizable - existing_capabilities)
-        if non_customizable:
-            raise HTTPException(status_code=400, detail=f"Capabilities no personalizables para este nivel: {', '.join(non_customizable)}")
-        preserved_existing = set(payload.capabilities) & existing_capabilities
-        capabilities = sorted(set(defaults["capabilities"]) | preserved_existing | {item for item in payload.capabilities if item in customizable})
-        if requested_role == "pastor" and CORE_GOVERNANCE_MANAGE not in capabilities:
-            capabilities.append(CORE_GOVERNANCE_MANAGE)
+        privilege_gated = (
+            (set(FINANCE_CAPABILITIES) if "finance" not in requested_groups else set())
+            | ({BOARD_ACCESS, BOARD_CONFIDENTIAL_ACCESS} if "board" not in requested_groups else set())
+        )
+        blocked = sorted((set(payload.capabilities) & privilege_gated) - existing_capabilities)
+        if blocked:
+            raise HTTPException(status_code=400, detail=f"Capabilities no personalizables sin el grupo de privilegio correspondiente: {', '.join(blocked)}")
+        if manual_level:
+            # ETAPA 5A: líder/persona en modo manual — lo enviado ES la lista
+            # completa (permite RECORTAR, no solo agregar). Nunca via la
+            # matriz: core.governance.manage / core.access.manage (delegación
+            # estructural, no un módulo). Códigos/Bitácora siguen exigiendo
+            # rol=lider/pastor en el servidor: nunca quedan activos en persona.
+            effective_catalog = catalog_keys - set(STAFF_TOOLS_CAPABILITIES) if requested_level == "persona" else catalog_keys
+            capabilities = sorted(set(payload.capabilities) & effective_catalog)
+        else:
+            customizable = set(JOURNEY_GOVERNANCE_CAPABILITIES + OPERATIONS_CAPABILITIES + FORMATION_CAPABILITIES + CAMPAIGN_CAPABILITIES + MENTORSHIP_CAPABILITIES + [MEMBERSHIP_DOCUMENTS_MANAGE, MEMBERSHIP_DIRECT_IMPORT]) | catalog_keys
+            non_customizable = sorted(set(payload.capabilities) - set(defaults["capabilities"]) - customizable - existing_capabilities)
+            if non_customizable:
+                raise HTTPException(status_code=400, detail=f"Capabilities no personalizables para este nivel: {', '.join(non_customizable)}")
+            preserved_existing = set(payload.capabilities) & existing_capabilities
+            capabilities = sorted(set(defaults["capabilities"]) | preserved_existing | {item for item in payload.capabilities if item in customizable})
+            if requested_role == "pastor" and CORE_GOVERNANCE_MANAGE not in capabilities:
+                capabilities.append(CORE_GOVERNANCE_MANAGE)
     if "finance" not in requested_groups:
         capabilities = [item for item in capabilities if item not in FINANCE_CAPABILITIES]
     if "board" not in requested_groups:
@@ -543,6 +604,8 @@ async def update_user_access(
         "access_policy_version": ACCESS_POLICY_VERSION,
         "updated_at": datetime.now(timezone.utc),
     }
+    if manual_level and payload.capabilities is not None:
+        update["permissions_mode"] = "manual"
     if changed:
         update["token_version"] = target.get("token_version", 1) + 1
     await db.users.update_one({"_id": target["_id"]}, {"$set": update})

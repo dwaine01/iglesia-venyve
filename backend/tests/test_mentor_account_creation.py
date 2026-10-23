@@ -106,8 +106,11 @@ async def test_pastor_can_create_mentor_account_with_outreach_report_only():
         )
         assert response.status_code == 201, response.text
         caps = set(response.json()["capabilities"])
-        expected = set(access_defaults("persona")["capabilities"]) | set(PERSON_SELF_CAPABILITIES) | {"mentorship.outreach.report", "processes.participate", "library.deliver"}
-        assert caps == expected, f"debe ser persona + sus capacidades de perfil propio + outreach.report, obtuvo {caps}"
+        # ETAPA 5A: cargo/mentor_access ya no activa el paquete completo de
+        # "persona" (formation/baptism/dedication/operations); el pastor solo
+        # recibe el paquete mínimo de mentor + lo que marque explícitamente.
+        expected = set(PERSON_SELF_CAPABILITIES) | {"mentorship.outreach.report", "processes.participate", "library.deliver"}
+        assert caps == expected, f"debe ser solo el paquete mínimo de mentor (sin el paquete completo de persona), obtuvo {caps}"
 
         login = await client.post("/api/auth/login", json={"email": email, "password": "MentorTempPass123!"})
         assert login.status_code == 200

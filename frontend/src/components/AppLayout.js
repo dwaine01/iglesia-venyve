@@ -7,7 +7,7 @@ import {
   LayoutDashboard, BookOpen, Map, Calendar, Users, BarChart3, LogOut, Menu, ChevronRight,
   Crown, Star, Trophy, Presentation, NotebookPen, KeyRound, IdCard, Church, Search, DatabaseZap,
   Activity, Award, BookHeart, Compass, GraduationCap, HeartHandshake, Network, RadioTower, DoorOpen, Gavel, Landmark, MapPinned,
-  PanelLeftClose, PanelLeftOpen, ShieldCheck, Droplets, Baby, Bus, Footprints, ClipboardCheck, Trash2, DatabaseBackup
+  PanelLeftClose, PanelLeftOpen, ShieldCheck, Droplets, Baby, Bus, Footprints, ClipboardCheck, Trash2, DatabaseBackup, UserCircle
 } from 'lucide-react';
 
 import { LOGO_IGLESIA } from '../data/presentationData';
@@ -16,7 +16,7 @@ import { ContextGuideButton } from './guides/ContextGuideButton';
 import { FloatingLibraryScanButton } from './library/FloatingLibraryScanButton';
 import { resolveRouteGuide } from './guides/guideRouteMap';
 import { BRAND } from '../config/brand';
-import { canManageBaptismEvents, canManageDedicationEvents, canViewCare, canViewFinanceModule, canViewFormation, canViewFrontGroups, canViewGeo, canViewLeadership, canViewLibraryModule, canViewOperations, canAccessCampaignOperator, canAccessOutreach, canCreateOutreachCampaign, hasAnyCapability, isPastoralAuthority } from '../lib/accessControl';
+import { canManageBaptismEvents, canManageDedicationEvents, canViewCare, canViewFinanceModule, canViewFormation, canViewFrontGroups, canViewGeo, canViewLeadership, canViewLibraryModule, canViewOperations, canAccessCampaignOperator, canAccessOutreach, canCreateOutreachCampaign, canViewProcesses, canViewCellular, canViewDoors, canViewDirectory, canManageInvitationCodes, canWriteEvangelismLog, canViewPresentationManual, hasAnyCapability, isPastoralAuthority } from '../lib/accessControl';
 import { useBoardAccess } from '../hooks/useBoardAccess';
 import { useMentorAccess } from '../hooks/useMentorAccess';
 const LOGO_URL = LOGO_IGLESIA;
@@ -26,8 +26,13 @@ const consolidationDetailMatch = (pathname) => /^\/procesos\/consolidacion\/(?!m
 
 const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
   const rol = user?.rol;
+  const BASE_PORTAL_ITEMS = [
+    { to: '/mi-perfil', icon: UserCircle, label: 'Mi perfil', testId: 'nav-mi-perfil' },
+    { to: '/mis-estadisticas', icon: BarChart3, label: 'Mis estadísticas', testId: 'nav-mis-estadisticas' },
+  ];
   if (isPastoralAuthority(user)) {
     const personItems = [
+      ...BASE_PORTAL_ITEMS,
       { to: '/dashboard-general', icon: Crown, label: 'Panel General', end: true },
       { to: '/nucleo', icon: DatabaseZap, label: 'Gobierno del Núcleo', testId: 'nav-core-governance' },
       { to: '/procesos/dashboard', icon: Activity, label: 'Panel de Procesos', testId: 'nav-process-dashboard' },
@@ -69,17 +74,21 @@ const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
   }
   
   if (rol === 'persona') {
+    const processesVisible = canViewProcesses(user);
     const personaItems = [
-      { to: '/procesos/dashboard', icon: Trophy, label: 'Mi Progreso', end: true },
-      { to: '/procesos/consolidacion', icon: Activity, label: 'Mi Consolidación', end: true, extraActiveMatch: consolidationDetailMatch },
-      { to: '/procesos/discipulado', icon: BookHeart, label: 'Mi Discipulado' },
-      { to: '/formacion', icon: GraduationCap, label: 'Mi Formación', testId: 'nav-formation' },
-      { to: '/procesos/mentoria', icon: HeartHandshake, label: 'Mi Mentoría' },
-      { to: '/procesos/cap', icon: Compass, label: 'Mi lugar para servir' },
-      { to: '/celulas/dashboard', icon: RadioTower, label: 'Mi Célula', testId: 'nav-cellular' },
-      { to: '/mapas', icon: MapPinned, label: 'Casas por visitar', testId: 'nav-geo-maps' },
-      { to: '/operaciones', icon: Calendar, label: 'Eventos y turnos', testId: 'nav-operations' },
+      ...BASE_PORTAL_ITEMS,
+      ...(processesVisible ? [
+        { to: '/procesos/dashboard', icon: Trophy, label: 'Mi Progreso', end: true },
+        { to: '/procesos/consolidacion', icon: Activity, label: 'Mi Consolidación', end: true, extraActiveMatch: consolidationDetailMatch },
+        { to: '/procesos/discipulado', icon: BookHeart, label: 'Mi Discipulado' },
+        { to: '/procesos/mentoria', icon: HeartHandshake, label: 'Mi Mentoría' },
+        { to: '/procesos/cap', icon: Compass, label: 'Mi lugar para servir' },
+      ] : []),
     ];
+    if (canViewFormation(user)) personaItems.push({ to: '/formacion', icon: GraduationCap, label: 'Mi Formación', testId: 'nav-formation' });
+    if (canViewCellular(user)) personaItems.push({ to: '/celulas/dashboard', icon: RadioTower, label: 'Mi Célula', testId: 'nav-cellular' });
+    personaItems.push({ to: '/mapas', icon: MapPinned, label: 'Casas por visitar', testId: 'nav-geo-maps' });
+    if (canViewOperations(user)) personaItems.push({ to: '/operaciones', icon: Calendar, label: 'Eventos y turnos', testId: 'nav-operations' });
     if (canAccessCampaignOperator(user)) {
       personaItems.push({ to: '/campanas/ven-y-come/control', icon: Bus, label: 'Campaña Ven y Come', testId: 'nav-campaign-venycome' });
     }
@@ -101,6 +110,7 @@ const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
   
   // Default: lider
   const items = [
+    ...BASE_PORTAL_ITEMS,
     { to: '/', icon: LayoutDashboard, label: 'Panel principal', end: true },
     { to: '/procesos/dashboard', icon: Activity, label: 'Panel de Procesos', testId: 'nav-process-dashboard' },
     { to: '/procesos/consolidacion', icon: Activity, label: 'Consolidación', testId: 'nav-consolidation', end: true, extraActiveMatch: consolidationDetailMatch },
@@ -170,13 +180,33 @@ const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
     item.to !== '/mentoria/visitas' || canAccessOutreach(user, isActiveMentor)
   ) && (
     item.to !== '/mentoria/supervision' || canAccessOutreach(user, isActiveMentor) || canViewFrontGroups(user)
-  ));
+  ) && (
+    !['/procesos/dashboard', '/procesos/consolidacion', '/procesos/discipulado', '/procesos/mentoria', '/procesos/cap'].includes(item.to) || canViewProcesses(user)
+  ) && (
+    item.to !== '/celulas/dashboard' || canViewCellular(user)
+  ) && (
+    item.to !== '/puertas/dashboard' || canViewDoors(user)
+  ) && (
+    !['/personas', '/directorio', '/ministerios'].includes(item.to) || canViewDirectory(user)
+  ) && (
+    item.to !== '/codigos' || canManageInvitationCodes(user)
+  ) && (
+    item.to !== '/bitacora' || canWriteEvangelismLog(user)
+  ) && (
+    item.to !== '/presentacion' || canViewPresentationManual(user)
+  ) && (
+    item.to !== '/estadisticas' || canViewDirectory(user)
+  ) && (
+    item.to !== '/' || canViewProcesses(user)
+  )).filter((item, index, all) => item.type !== 'separator' || all.slice(index + 1).some((next) => next.type !== 'separator'));
 };
 
 const breadcrumbMap = {
   '/': 'Panel principal',
   '/dashboard': 'Panel principal',
   '/dashboard-general': 'Panel General',
+  '/mi-perfil': 'Mi perfil',
+  '/mis-estadisticas': 'Mis estadísticas',
   '/mi-progreso': 'Mi Progreso',
   '/presentacion': 'Manual de 7 Semanas',
   '/introduccion': 'Introducción del Manual',
@@ -234,7 +264,7 @@ function SidebarContent({ onClose, testIdPrefix = '', boardAllowed = false, isAc
   const getRolLabel = () => {
     if (isPastoralAuthority(user)) return 'Pastor (Acceso Maestro)';
     if (user?.access_level === 'coordinador_general') return 'Coordinador general';
-    if (user?.rol === 'persona') return 'Consolidado';
+    if (user?.rol === 'persona') return canViewProcesses(user) ? 'Consolidado' : 'Miembro';
     return 'Líder';
   };
 
