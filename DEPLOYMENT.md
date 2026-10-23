@@ -188,6 +188,10 @@ arranque del backend):
 - Fuerza el cambio de contraseña en el próximo ingreso
   (`must_change_password`) e invalida cualquier sesión vieja
   (`token_version`).
+- También borra el bloqueo por intentos fallidos de login
+  (`login_attempts`) de esa cuenta — así el rescate funciona incluso si la
+  cuenta quedó bloqueada por 5 intentos fallidos, que es el caso típico de
+  "cuenta bloqueada".
 
 ### Procedimiento paso a paso
 

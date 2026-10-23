@@ -7,6 +7,7 @@ existen ADMIN_RECOVERY_EMAIL y ADMIN_RECOVERY_PASSWORD en el entorno:
 - NO se aplica sobre lider/coordinador_general/persona (no crea cuentas, no cambia roles).
 - NO se aplica si la contraseña tiene menos de 12 caracteres.
 - Es idempotente: la misma huella (email+password) no vuelve a tocar la cuenta.
+- Borra el bloqueo por fuerza bruta (login_attempts) de esa cuenta al aplicar el rescate.
 - Nunca imprime la contraseña ni su hash en los logs (stdout).
 """
 import uuid
@@ -212,6 +213,34 @@ async def test_never_logs_the_password_or_its_hash(monkeypatch, capsys):
 
         stored = await server.db.users.find_one({"_id": ObjectId(user_id)})
         assert stored["password"] not in combined_output, "el hash bcrypt tampoco debe imprimirse"
+    finally:
+        await cleanup()
+
+
+@pytest.mark.asyncio
+async def test_clears_brute_force_lockout_on_recovery(monkeypatch):
+    """Caso central del pedido: la cuenta quedó bloqueada por intentos
+    fallidos de login; el rescate debe desbloquearla además de cambiar la
+    contraseña, o si no el pastor sigue sin poder entrar."""
+    import hashlib
+
+    await cleanup()
+    person_id = await create_person("Pastor Locked Out")
+    user_id, email = await create_user("Pastor Locked Out", "pastor", person_id)
+    try:
+        identifier = hashlib.sha256(email.encode("utf-8")).hexdigest()
+        locked_until = datetime.now(timezone.utc).replace(microsecond=0)
+        await server.db.login_attempts.insert_one({
+            "identifier": identifier, "failed_attempts": 5,
+            "locked_until": locked_until.replace(year=locked_until.year + 1),
+            "last_attempt_at": locked_until, "expires_at": locked_until.replace(year=locked_until.year + 1),
+        })
+
+        monkeypatch.setenv("ADMIN_RECOVERY_EMAIL", email)
+        monkeypatch.setenv("ADMIN_RECOVERY_PASSWORD", RECOVERY_PASSWORD)
+        await apply_admin_recovery(server.db)
+
+        assert await server.db.login_attempts.find_one({"identifier": identifier}) is None, "el rescate debe borrar el bloqueo por fuerza bruta"
     finally:
         await cleanup()
 

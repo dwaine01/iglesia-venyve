@@ -12,6 +12,10 @@ tocar la cuenta — así, una vez que el pastor cambia la contraseña, reinicios
 posteriores del backend no la pisan de nuevo mientras las variables sigan
 puestas en Railway.
 
+También borra el bloqueo por fuerza bruta (`login_attempts`) de esa cuenta,
+por si quedó bloqueada por intentos fallidos de login — ese es justo el
+escenario de "cuenta bloqueada" que motiva este rescate.
+
 Procedimiento completo para producción: ver DEPLOYMENT.md.
 """
 import hashlib
@@ -66,6 +70,10 @@ async def apply_admin_recovery(db) -> None:
             "updated_at": now,
         }},
     )
+    # Limpia el bloqueo por fuerza bruta (login_attempts) de esta cuenta: si
+    # quedó bloqueada por intentos fallidos, el rescate también debe desbloquearla.
+    login_attempt_identifier = hashlib.sha256(email.encode("utf-8")).hexdigest()
+    await db.login_attempts.delete_one({"identifier": login_attempt_identifier})
     await db.system_recovery.insert_one({
         "email": email,
         "fingerprint": fingerprint,
