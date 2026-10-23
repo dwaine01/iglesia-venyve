@@ -62,6 +62,20 @@ class MentorRosterEntry(BaseModel):
     temporary_password: Optional[str] = Field(default=None, min_length=10, max_length=128)
 
 
+class AddMentorsInput(BaseModel):
+    """Para AGREGAR mentores a una invasión ya creada (pedido explícito del
+    dueño): nunca reemplaza el roster. `emails` solo hace falta para quienes
+    aún no tienen cuenta — si no se da contraseña, se invita de forma segura
+    (igual que el alta normal de usuarios, sin pedirle clave al coordinador)."""
+    person_ids: list[str] = Field(default_factory=list, max_length=200)
+    front_group_ids: list[str] = Field(default_factory=list, max_length=50)
+    emails: dict[str, EmailStr] = Field(default_factory=dict)
+
+
+class RemoveMentorInput(BaseModel):
+    reason: str = Field(min_length=3, max_length=600)
+
+
 class BookAssignmentEntry(BaseModel):
     mentor_person_id: str
     book_id: str
@@ -734,6 +748,133 @@ async def update_campaign(campaign_id: str, payload: CampaignUpdateInput, curren
     result = serialize(await db.outreach_campaigns.find_one({"campaign_id": campaign_id}, {"_id": 0}))
     result["accounts_created"] = accounts_created
     return result
+
+
+@router.post("/campaigns/{campaign_id}/mentors", response_model=dict)
+async def add_campaign_mentors(campaign_id: str, payload: AddMentorsInput, current_user: dict = Depends(get_current_user)):
+    """ADITIVO (pedido explícito del dueño): a diferencia de PUT /campaigns/{id}
+    (que REEMPLAZA todo el roster), esto solo AGREGA — nunca toca a los
+    mentores ya asignados ni sus libros/visitas/participación. Idempotente:
+    repetir la misma llamada no duplica nada ni falla."""
+    if not can_manage_outreach_campaigns(current_user):
+        raise HTTPException(status_code=403, detail="Solo la pastora/pastor o un coordinador general puede agregar mentores a una invasión")
+    campaign = await db.outreach_campaigns.find_one({"campaign_id": campaign_id}, {"_id": 0, "name": 1, "assigned_mentor_ids": 1})
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Invasión no encontrada")
+    if not payload.person_ids and not payload.front_group_ids:
+        raise HTTPException(status_code=422, detail="Seleccione al menos un mentor o un Grupo Frontal")
+    existing_ids = set(campaign.get("assigned_mentor_ids") or [])
+
+    explicit_ids = list(dict.fromkeys(payload.person_ids))
+    for person_id in explicit_ids:
+        if person_id in existing_ids:
+            continue
+        if not await is_active_mentor(person_id):
+            name = await person_display_name(person_id) or "Uno de los mentores seleccionados"
+            raise HTTPException(status_code=409, detail=f"{name} no tiene insignia de Mentor activa")
+
+    group_candidate_ids: set = set()
+    for front_group_id in payload.front_group_ids:
+        branch_ids = await descendant_group_ids(db, front_group_id)
+        members = await db.front_group_assignments.distinct("person_id", {"front_group_id": {"$in": branch_ids}, "active": True})
+        if members:
+            badge_docs = await db.mentor_badges.find({"person_id": {"$in": members}, "active": True}, {"_id": 0, "person_id": 1}).to_list(len(members))
+            group_candidate_ids.update(doc["person_id"] for doc in badge_docs)
+
+    already_assigned = sorted((set(explicit_ids) | group_candidate_ids) & existing_ids)
+    candidate_ids = [pid for pid in explicit_ids if pid not in existing_ids]
+    candidate_ids += sorted(group_candidate_ids - existing_ids - set(explicit_ids))
+
+    added, rejected, accounts_created = [], [], []
+    for person_id in candidate_ids:
+        user_doc = await db.users.find_one({"person_id": person_id}, {"_id": 1})
+        if not user_doc:
+            email = payload.emails.get(person_id)
+            name = await person_display_name(person_id) or "Uno de los mentores seleccionados"
+            if not email:
+                rejected.append({"person_id": person_id, "name": name, "reason": "No tiene cuenta todavía; indique un correo para invitarlo"})
+                continue
+            email_key = str(email).strip().lower()
+            if await db.users.find_one({"email": email_key}, {"_id": 1}):
+                rejected.append({"person_id": person_id, "name": name, "reason": f"El correo {email} ya tiene acceso"})
+                continue
+            created = await create_user_access_core(
+                UserAccessCreate(person_id=person_id, email=email, temporary_password=None, access_level="persona", mentor_access=True),
+                current_user,
+            )
+            accounts_created.append({"person_id": person_id, "email": created["email"]})
+        await ensure_participation(campaign_id, person_id)
+        added.append(person_id)
+
+    if added:
+        await db.outreach_campaigns.update_one(
+            {"campaign_id": campaign_id},
+            {"$addToSet": {"assigned_mentor_ids": {"$each": added}}, "$set": {"updated_at": now_utc()}},
+        )
+    return {"added": added, "already_assigned": already_assigned, "rejected": rejected, "accounts_created": accounts_created}
+
+
+async def books_in_custody_for_campaign(campaign_id: str, mentor_person_id: str) -> int:
+    """Libros que este mentor todavía tiene consigo de ESTA invasión
+    (asignados - entregados - devueltos, filtrado por campaign_id en el
+    ledger de Librería). 0 si nunca tuvo cuenta."""
+    user_doc = await db.users.find_one({"person_id": mentor_person_id}, {"_id": 1})
+    if not user_doc:
+        return 0
+    mentor_user_id = str(user_doc["_id"])
+    rows = await db.library_movements.aggregate([
+        {"$match": {"campaign_id": campaign_id, "$or": [{"to_holder.id": mentor_user_id}, {"from_holder.id": mentor_user_id}]}},
+        {"$group": {"_id": "$movement_type", "total": {"$sum": "$quantity"}}},
+    ]).to_list(20)
+    totals = {row["_id"]: row["total"] for row in rows}
+    return max(totals.get("ASSIGNMENT", 0) - totals.get("DELIVERY", 0) - totals.get("RETURN", 0), 0)
+
+
+@router.get("/campaigns/{campaign_id}/mentors/{mentor_person_id}/remove-preview", response_model=dict)
+async def preview_remove_mentor(campaign_id: str, mentor_person_id: str, current_user: dict = Depends(get_current_user)):
+    if not can_manage_outreach_campaigns(current_user):
+        raise HTTPException(status_code=403, detail="Solo la pastora/pastor o un coordinador general puede quitar mentores")
+    campaign = await db.outreach_campaigns.find_one({"campaign_id": campaign_id}, {"_id": 0, "assigned_mentor_ids": 1})
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Invasión no encontrada")
+    if mentor_person_id not in (campaign.get("assigned_mentor_ids") or []):
+        raise HTTPException(status_code=404, detail="Ese mentor no está en el roster de esta invasión")
+    households = await db.outreach_households.count_documents({"campaign_id": campaign_id, "mentor_person_id": mentor_person_id})
+    visits = await db.outreach_visits.count_documents({"campaign_id": campaign_id, "mentor_person_id": mentor_person_id})
+    books_in_custody = await books_in_custody_for_campaign(campaign_id, mentor_person_id)
+    return {"households": households, "visits": visits, "books_in_custody": books_in_custody, "blocked": bool(households or visits or books_in_custody)}
+
+
+@router.delete("/campaigns/{campaign_id}/mentors/{mentor_person_id}", response_model=dict)
+async def remove_campaign_mentor(campaign_id: str, mentor_person_id: str, payload: RemoveMentorInput, current_user: dict = Depends(get_current_user)):
+    """Quitar es una acción aparte de PUT (nunca reemplaza la lista completa):
+    se bloquea si el mentor tiene hogares, visitas o libros en custodia de ESTA
+    invasión — primero hay que transferir los contactos y devolver los libros.
+    Queda auditado en `admin_deletions`."""
+    if not can_manage_outreach_campaigns(current_user):
+        raise HTTPException(status_code=403, detail="Solo la pastora/pastor o un coordinador general puede quitar mentores")
+    campaign = await db.outreach_campaigns.find_one({"campaign_id": campaign_id}, {"_id": 0, "name": 1, "assigned_mentor_ids": 1})
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Invasión no encontrada")
+    if mentor_person_id not in (campaign.get("assigned_mentor_ids") or []):
+        raise HTTPException(status_code=404, detail="Ese mentor no está en el roster de esta invasión")
+    households = await db.outreach_households.count_documents({"campaign_id": campaign_id, "mentor_person_id": mentor_person_id})
+    visits = await db.outreach_visits.count_documents({"campaign_id": campaign_id, "mentor_person_id": mentor_person_id})
+    books_in_custody = await books_in_custody_for_campaign(campaign_id, mentor_person_id)
+    if households or visits or books_in_custody:
+        name = await person_display_name(mentor_person_id) or "Este mentor"
+        raise HTTPException(
+            status_code=409,
+            detail=f"No se puede quitar a {name}: tiene {households} hogar(es), {visits} visita(s) y {books_in_custody} libro(s) en custodia de esta invasión. Primero transfiera los contactos y devuelva los libros.",
+        )
+    await db.outreach_campaigns.update_one({"campaign_id": campaign_id}, {"$pull": {"assigned_mentor_ids": mentor_person_id}, "$set": {"updated_at": now_utc()}})
+    await db.outreach_participations.delete_one({"campaign_id": campaign_id, "mentor_person_id": mentor_person_id})
+    await db.admin_deletions.insert_one({
+        "_id": str(uuid4()), "collection": "outreach_campaign_mentors", "target_id": f"{campaign_id}:{mentor_person_id}",
+        "reason": payload.reason, "detail": {"name": campaign.get("name"), "mentor_person_id": mentor_person_id},
+        "actor_user_id": current_user["user_id"], "actor_person_id": current_user.get("person_id"), "deleted_at": now_utc(),
+    })
+    return {"removed": True, "mentor_person_id": mentor_person_id}
 
 
 @router.post("/campaigns/{campaign_id}/books", response_model=dict, status_code=201)

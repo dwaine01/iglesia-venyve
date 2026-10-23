@@ -11,6 +11,7 @@ import { Button } from '../ui/button';
 import { AddVisitDialog } from './AddVisitDialog';
 import { CampaignBooksDialog } from './CampaignBooksDialog';
 import { CampaignReportDialog } from './CampaignReportDialog';
+import { CampaignRosterDialog } from './CampaignRosterDialog';
 import { CreateCampaignDialog } from './CreateCampaignDialog';
 import { DeleteCampaignDialog } from './DeleteCampaignDialog';
 import { TransferVisitDialog } from './TransferVisitDialog';
@@ -35,6 +36,7 @@ export const OutreachLeaderPanel = ({ campaigns, onCampaignsChanged }) => {
   const [transferVisit, setTransferVisit] = useState(null);
   const [booksCampaign, setBooksCampaign] = useState(null);
   const [reportCampaign, setReportCampaign] = useState(null);
+  const [rosterCampaignId, setRosterCampaignId] = useState(null);
 
   const loadDashboard = useCallback(async () => {
     setLoading(true);
@@ -94,6 +96,7 @@ export const OutreachLeaderPanel = ({ campaigns, onCampaignsChanged }) => {
                   )}
                 </div>
                 <div className="flex gap-2">
+                  {canCreateOutreachCampaign(user) && <Button size="sm" variant="outline" onClick={() => setRosterCampaignId(campaign.campaign_id)} data-testid={`outreach-campaign-mentors-button-${campaign.campaign_id}`}>Mentores</Button>}
                   <Button size="sm" variant="outline" onClick={() => setBooksCampaign(campaign)} data-testid={`outreach-campaign-books-button-${campaign.campaign_id}`}>Libros</Button>
                   <Button size="sm" variant="outline" onClick={() => setReportCampaign(campaign)} data-testid={`outreach-campaign-report-button-${campaign.campaign_id}`}>Informe</Button>
                   {canCreateOutreachCampaign(user) && <DeleteCampaignDialog campaignId={campaign.campaign_id} campaignName={campaign.name} onDeleted={onCampaignsChanged} />}
@@ -166,6 +169,13 @@ export const OutreachLeaderPanel = ({ campaigns, onCampaignsChanged }) => {
       <TransferVisitDialog visit={transferVisit} onClose={() => setTransferVisit(null)} onTransferred={refreshDrill} />
       <CampaignBooksDialog open={Boolean(booksCampaign)} onOpenChange={(value) => !value && setBooksCampaign(null)} campaign={booksCampaign} mentorOptions={mentors} />
       <CampaignReportDialog open={Boolean(reportCampaign)} onOpenChange={(value) => !value && setReportCampaign(null)} campaign={reportCampaign} />
+      <CampaignRosterDialog
+        open={Boolean(rosterCampaignId)}
+        onOpenChange={(value) => !value && setRosterCampaignId(null)}
+        campaign={campaigns?.find((item) => item.campaign_id === rosterCampaignId) || null}
+        mentorOptions={mentors}
+        onChanged={() => { loadMentors(); if (onCampaignsChanged) onCampaignsChanged(); }}
+      />
     </div>
   );
 };
