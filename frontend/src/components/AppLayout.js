@@ -7,7 +7,7 @@ import {
   LayoutDashboard, BookOpen, Map, Calendar, Users, BarChart3, LogOut, Menu, ChevronRight,
   Crown, Star, Trophy, Presentation, NotebookPen, KeyRound, IdCard, Church, Search, DatabaseZap,
   Activity, Award, BookHeart, Compass, GraduationCap, HeartHandshake, Network, RadioTower, DoorOpen, Gavel, Landmark, MapPinned,
-  PanelLeftClose, PanelLeftOpen, ShieldCheck, Droplets, Baby, Bus, Footprints
+  PanelLeftClose, PanelLeftOpen, ShieldCheck, Droplets, Baby, Bus, Footprints, ClipboardCheck
 } from 'lucide-react';
 
 import { LOGO_IGLESIA } from '../data/presentationData';
@@ -22,6 +22,8 @@ import { useMentorAccess } from '../hooks/useMentorAccess';
 const LOGO_URL = LOGO_IGLESIA;
 
 // Menu items by role
+const consolidationDetailMatch = (pathname) => /^\/procesos\/consolidacion\/(?!mi-panel$)[^/]+$/.test(pathname);
+
 const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
   const rol = user?.rol;
   if (isPastoralAuthority(user)) {
@@ -29,7 +31,7 @@ const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
       { to: '/dashboard-general', icon: Crown, label: 'Panel General', end: true },
       { to: '/nucleo', icon: DatabaseZap, label: 'Gobierno del Núcleo', testId: 'nav-core-governance' },
       { to: '/procesos/dashboard', icon: Activity, label: 'Panel de Procesos', testId: 'nav-process-dashboard' },
-      { to: '/procesos/consolidacion', icon: Activity, label: 'Consolidación', testId: 'nav-consolidation' },
+      { to: '/procesos/consolidacion', icon: Activity, label: 'Consolidación', testId: 'nav-consolidation', end: true, extraActiveMatch: consolidationDetailMatch },
       { to: '/procesos/discipulado', icon: BookHeart, label: 'Educación / Discipulado', testId: 'nav-discipleship' },
       { to: '/bautismos', icon: Droplets, label: 'Bautismos', testId: 'nav-baptism' },
       { to: '/presentaciones', icon: Baby, label: 'Presentación de Niños', testId: 'nav-dedication' },
@@ -57,13 +59,16 @@ const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
       { type: 'separator', label: 'Administración' },
       { to: '/estadisticas', icon: BarChart3, label: 'Estadísticas Globales' },
     ];
+    if (isActiveMentor) {
+      personItems.push({ to: '/procesos/consolidacion/mi-panel', icon: ClipboardCheck, label: 'Mi Panel de Mentor', testId: 'nav-mentor-panel' });
+    }
     return personItems;
   }
   
   if (rol === 'persona') {
     const personaItems = [
       { to: '/procesos/dashboard', icon: Trophy, label: 'Mi Progreso', end: true },
-      { to: '/procesos/consolidacion', icon: Activity, label: 'Mi Consolidación' },
+      { to: '/procesos/consolidacion', icon: Activity, label: 'Mi Consolidación', end: true, extraActiveMatch: consolidationDetailMatch },
       { to: '/procesos/discipulado', icon: BookHeart, label: 'Mi Discipulado' },
       { to: '/formacion', icon: GraduationCap, label: 'Mi Formación', testId: 'nav-formation' },
       { to: '/procesos/mentoria', icon: HeartHandshake, label: 'Mi Mentoría' },
@@ -78,6 +83,9 @@ const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
     if (canAccessOutreach(user, isActiveMentor)) {
       personaItems.push({ to: '/mentoria/visitas', icon: Footprints, label: 'Mis Visitas', testId: 'nav-outreach' });
     }
+    if (isActiveMentor) {
+      personaItems.push({ to: '/procesos/consolidacion/mi-panel', icon: ClipboardCheck, label: 'Mi Panel de Mentor', testId: 'nav-mentor-panel' });
+    }
     return personaItems;
   }
   
@@ -85,7 +93,7 @@ const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
   const items = [
     { to: '/', icon: LayoutDashboard, label: 'Panel principal', end: true },
     { to: '/procesos/dashboard', icon: Activity, label: 'Panel de Procesos', testId: 'nav-process-dashboard' },
-    { to: '/procesos/consolidacion', icon: Activity, label: 'Consolidación', testId: 'nav-consolidation' },
+    { to: '/procesos/consolidacion', icon: Activity, label: 'Consolidación', testId: 'nav-consolidation', end: true, extraActiveMatch: consolidationDetailMatch },
     { to: '/procesos/discipulado', icon: BookHeart, label: 'Educación / Discipulado', testId: 'nav-discipleship' },
     { to: '/bautismos', icon: Droplets, label: 'Bautismos', testId: 'nav-baptism' },
     { to: '/presentaciones', icon: Baby, label: 'Presentación de Niños', testId: 'nav-dedication' },
@@ -117,6 +125,9 @@ const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
   }
   if (canViewFinanceModule(user) && !items.some((item) => item.to === '/finanzas')) {
     items.splice(1, 0, { to: '/finanzas', icon: Landmark, label: 'Contabilidad y Finanzas', testId: 'nav-finance' });
+  }
+  if (isActiveMentor) {
+    items.push({ to: '/procesos/consolidacion/mi-panel', icon: ClipboardCheck, label: 'Mi Panel de Mentor', testId: 'nav-mentor-panel' });
   }
   return items.filter((item) => (
     item.to !== '/grupos-frontales' || canViewFrontGroups(user)
@@ -174,6 +185,7 @@ const breadcrumbMap = {
   '/procesos/dashboard': 'Panel de Procesos',
   '/procesos/7-semanas': 'Ley de las 7 Semanas',
   '/procesos/consolidacion': 'Consolidación',
+  '/procesos/consolidacion/mi-panel': 'Mi Panel de Mentor',
   '/procesos/discipulado': 'Educación / Discipulado',
   '/grupos-frontales': 'Grupos Frontales',
   '/liderazgo': 'Liderazgo',
@@ -199,6 +211,7 @@ const breadcrumbMap = {
 
 function SidebarContent({ onClose, testIdPrefix = '', boardAllowed = false, isActiveMentor = false }) {
   const { user, logout } = useAuth();
+  const location = useLocation();
   const navItems = getNavItems(user, boardAllowed, isActiveMentor);
 
   const getRolLabel = () => {
@@ -260,13 +273,14 @@ function SidebarContent({ onClose, testIdPrefix = '', boardAllowed = false, isAc
               end={item.end}
               onClick={onClose}
               data-testid={`${testIdPrefix}${item.testId || `nav-${item.to.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '')}`}`}
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
-                  isActive
+              className={({ isActive }) => {
+                const active = isActive || (item.extraActiveMatch && item.extraActiveMatch(location.pathname));
+                return `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                  active
                     ? 'bg-[#1B2A4A] text-white shadow-md'
                     : 'text-muted-foreground hover:bg-[#F5F0E8] hover:text-foreground'
-                }`
-              }
+                }`;
+              }}
             >
               <Icon className="w-4 h-4 shrink-0" />
               <span className="min-w-0 whitespace-normal leading-5">{item.label}</span>

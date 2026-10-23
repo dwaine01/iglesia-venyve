@@ -70,6 +70,7 @@ import SevenWeeksPage from './pages/processes/SevenWeeksPage';
 import SevenWeeksDetailPage from './pages/processes/SevenWeeksDetailPage';
 import ConsolidationPage from './pages/processes/ConsolidationPage';
 import ConsolidationDetailPage from './pages/processes/ConsolidationDetailPage';
+import MentorPanelPage from './pages/processes/MentorPanelPage';
 import DiscipleshipPage from './pages/processes/DiscipleshipPage';
 import FrontGroupsPage from './pages/FrontGroupsPage';
 import LeadershipPage from './pages/LeadershipPage';
@@ -211,6 +212,7 @@ function App() {
             <Route path="procesos/7-semanas" element={<SevenWeeksPage />} />
             <Route path="procesos/7-semanas/:enrollmentId" element={<SevenWeeksDetailPage />} />
             <Route path="procesos/consolidacion" element={<ConsolidationPage />} />
+            <Route path="procesos/consolidacion/mi-panel" element={<MentorPanelPage />} />
             <Route path="procesos/consolidacion/:enrollmentId" element={<ConsolidationDetailPage />} />
             <Route path="procesos/discipulado" element={<DiscipleshipPage />} />
             <Route path="formacion" element={<FormationRoute><FormationAdminPage /></FormationRoute>} />
