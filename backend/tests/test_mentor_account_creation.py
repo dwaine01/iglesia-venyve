@@ -256,7 +256,7 @@ async def test_new_mentor_sees_only_own_visits_and_no_admin_capability():
             dashboard = await mentor_client.get("/api/mentorship/outreach/dashboard", headers=mentor_headers)
             assert dashboard.status_code == 403
 
-            campaign = await mentor_client.post("/api/mentorship/outreach/campaigns", json={"name": "No deberia poder"}, headers=mentor_headers)
+            campaign = await mentor_client.post("/api/mentorship/outreach/campaigns", json={"name": "No deberia poder", "location": "Zona QA", "start_date": "2026-03-01"}, headers=mentor_headers)
             assert campaign.status_code == 403
         finally:
             await mentor_client.aclose()

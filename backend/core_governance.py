@@ -34,6 +34,7 @@ from access_control import (
     PROCESS_CAPABILITIES,
     PERSON_DOMAIN_CAPABILITIES,
     PERSON_PASTORAL_NOTES_READ,
+    PROCESSES_PARTICIPATE,
     access_defaults_for_role,
     has_capability,
     is_global_pastoral_authority,
@@ -375,7 +376,7 @@ async def create_user_access(payload: UserAccessCreate, current_user: dict = Dep
         raise HTTPException(status_code=409, detail="Este correo ya tiene acceso")
     defaults = access_defaults(payload.access_level, payload.privilege_groups)
     if payload.mentor_access:
-        defaults["capabilities"] = sorted(set([*defaults["capabilities"], MENTORSHIP_OUTREACH_REPORT]))
+        defaults["capabilities"] = sorted(set([*defaults["capabilities"], MENTORSHIP_OUTREACH_REPORT, PROCESSES_PARTICIPATE]))
     now = datetime.now(timezone.utc)
     surname = person.get("apellidos") or person.get("apellido") or ""
     user_doc = {

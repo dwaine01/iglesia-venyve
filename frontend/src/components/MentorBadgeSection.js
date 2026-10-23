@@ -20,7 +20,7 @@ const ACTION_LABELS = {
   mentor_lbs_updated: 'Nota de capacitación LBS actualizada',
 };
 
-export default function MentorBadgeSection({ personId, API, getAuthHeaders, onChanged }) {
+export default function MentorBadgeSection({ personId, API, getAuthHeaders, onChanged, onBadgeStatusLoaded }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -40,8 +40,10 @@ export default function MentorBadgeSection({ personId, API, getAuthHeaders, onCh
       setSince(response.data.since || '');
       setNote(response.data.note || '');
       setLbsNote(response.data.lbs_note || '');
+      if (onBadgeStatusLoaded) onBadgeStatusLoaded(Boolean(response.data.active));
     } catch (requestError) {
       setError(requestError?.response?.data?.detail || 'No se pudo cargar la insignia de Mentor.');
+      if (onBadgeStatusLoaded) onBadgeStatusLoaded(false);
     } finally {
       setLoading(false);
     }

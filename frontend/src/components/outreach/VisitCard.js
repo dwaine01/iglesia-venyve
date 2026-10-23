@@ -28,6 +28,9 @@ const STATUS_COLORS = {
   wants_followup: 'bg-emerald-100 text-emerald-800',
 };
 
+const boolToTri = (value) => (value === true ? 'yes' : value === false ? 'no' : 'unspecified');
+const triToBool = (value) => (value === 'yes' ? true : value === 'no' ? false : null);
+
 export const VisitCard = ({ visit, canManage, onUpdated, onTransfer }) => {
   const { API, getAuthHeaders } = useAuth();
   const [status, setStatus] = useState(visit.status);
@@ -35,6 +38,10 @@ export const VisitCard = ({ visit, canManage, onUpdated, onTransfer }) => {
   const [receivedMcd, setReceivedMcd] = useState(Boolean(visit.received_mcd));
   const [receivedNpt, setReceivedNpt] = useState(Boolean(visit.received_npt));
   const [lbsDecision, setLbsDecision] = useState(visit.lbs_decision || 'none');
+  const [birthDate, setBirthDate] = useState(visit.contact_birth_date || '');
+  const [spiritualStatus, setSpiritualStatus] = useState(visit.spiritual_status || 'unspecified');
+  const [attendsChurch, setAttendsChurch] = useState(boolToTri(visit.attends_church));
+  const [isBackslidden, setIsBackslidden] = useState(boolToTri(visit.is_backslidden));
   const [note, setNote] = useState(visit.note || '');
   const [busy, setBusy] = useState(false);
 
@@ -42,7 +49,9 @@ export const VisitCard = ({ visit, canManage, onUpdated, onTransfer }) => {
     setBusy(true);
     try {
       await axios.put(`${API}/api/mentorship/outreach/visits/${visit.visit_id}/report`, {
-        status, visit_date: visitDate || null, received_mcd: receivedMcd, received_npt: receivedNpt, lbs_decision: lbsDecision, note: note || null,
+        status, visit_date: visitDate || null, received_mcd: receivedMcd, received_npt: receivedNpt, lbs_decision: lbsDecision,
+        contact_birth_date: birthDate || null, spiritual_status: spiritualStatus === 'unspecified' ? null : spiritualStatus,
+        attends_church: triToBool(attendsChurch), is_backslidden: triToBool(isBackslidden), note: note || null,
       }, getAuthHeaders());
       toast.success('Informe actualizado');
       if (onUpdated) onUpdated();
@@ -106,6 +115,46 @@ export const VisitCard = ({ visit, canManage, onUpdated, onTransfer }) => {
         <label className="flex min-h-11 items-center gap-3 rounded-lg border border-slate-200 px-3 py-2 text-sm" data-testid={`outreach-visit-npt-checkbox-${visit.visit_id}`}>
           <Checkbox checked={receivedNpt} onCheckedChange={(value) => setReceivedNpt(Boolean(value))} className="h-6 w-6" /> Recibió &quot;Nací para triunfar&quot;
         </label>
+      </div>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <div className="space-y-1.5">
+          <Label>Fecha de nacimiento</Label>
+          <Input type="date" value={birthDate} onChange={(event) => setBirthDate(event.target.value)} data-testid={`outreach-visit-birthdate-input-${visit.visit_id}`} />
+        </div>
+        <div className="space-y-1.5">
+          <Label>Estado espiritual</Label>
+          <Select value={spiritualStatus} onValueChange={setSpiritualStatus}>
+            <SelectTrigger data-testid={`outreach-visit-spiritual-status-select-${visit.visit_id}`}><SelectValue /></SelectTrigger>
+            <SelectContent className="bg-white">
+              <SelectItem value="unspecified">Sin especificar</SelectItem>
+              <SelectItem value="cristiano">Cristiano</SelectItem>
+              <SelectItem value="no_cristiano">No cristiano</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1.5">
+          <Label>¿Asiste a una iglesia?</Label>
+          <Select value={attendsChurch} onValueChange={setAttendsChurch}>
+            <SelectTrigger data-testid={`outreach-visit-attends-church-select-${visit.visit_id}`}><SelectValue /></SelectTrigger>
+            <SelectContent className="bg-white">
+              <SelectItem value="unspecified">Sin especificar</SelectItem>
+              <SelectItem value="yes">Sí, asiste</SelectItem>
+              <SelectItem value="no">No asiste</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1.5">
+          <Label>¿Está descarriado?</Label>
+          <Select value={isBackslidden} onValueChange={setIsBackslidden}>
+            <SelectTrigger data-testid={`outreach-visit-backslidden-select-${visit.visit_id}`}><SelectValue /></SelectTrigger>
+            <SelectContent className="bg-white">
+              <SelectItem value="unspecified">Sin especificar</SelectItem>
+              <SelectItem value="yes">Sí, descarriado</SelectItem>
+              <SelectItem value="no">No</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       <div className="mt-4 space-y-1.5">

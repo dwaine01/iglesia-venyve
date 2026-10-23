@@ -24,6 +24,7 @@ from access_control import (
     MENTORSHIP_OUTREACH_ASSIGN,
     MENTORSHIP_OUTREACH_REPORT,
     has_capability,
+    is_general_coordinator,
     is_global_pastoral_authority,
 )
 from consolidation_service import assert_mentor_eligible, assign_mentor, configure_entry_stages, load_person, mentor_qualification
@@ -40,16 +41,20 @@ LBS_DECISIONS = ("none", "accepted", "needs_lbs")
 
 class CampaignInput(BaseModel):
     name: str = Field(min_length=1, max_length=200)
-    start_date: Optional[date] = None
+    location: str = Field(min_length=1, max_length=300)
+    start_date: date
     end_date: Optional[date] = None
     zone_notes: Optional[str] = Field(default=None, max_length=1000)
+    assigned_mentor_ids: list[str] = Field(default_factory=list)
 
 
 class CampaignUpdateInput(BaseModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    location: Optional[str] = Field(default=None, min_length=1, max_length=300)
     start_date: Optional[date] = None
     end_date: Optional[date] = None
     zone_notes: Optional[str] = Field(default=None, max_length=1000)
+    assigned_mentor_ids: Optional[list[str]] = None
     status: Optional[Literal["active", "closed"]] = None
 
 
@@ -70,6 +75,10 @@ class VisitReportInput(BaseModel):
     received_mcd: Optional[bool] = None
     received_npt: Optional[bool] = None
     lbs_decision: Optional[Literal["none", "accepted", "needs_lbs"]] = None
+    contact_birth_date: Optional[date] = None
+    spiritual_status: Optional[Literal["cristiano", "no_cristiano"]] = None
+    attends_church: Optional[bool] = None
+    is_backslidden: Optional[bool] = None
     note: Optional[str] = Field(default=None, max_length=1000)
 
 
@@ -87,6 +96,13 @@ def normalize_phone(value: Optional[str]) -> str:
 
 def is_outreach_leader(current_user: dict) -> bool:
     return is_global_pastoral_authority(current_user) or has_capability(current_user, MENTORSHIP_OUTREACH_ASSIGN)
+
+
+def can_manage_outreach_campaigns(current_user: dict) -> bool:
+    """Crear invasiones (lugar/nombre/fecha) y asignar su roster de mentores
+    queda reservado a la pastora/pastor y a los coordinadores generales
+    (pedido explícito del dueño), más restrictivo que `is_outreach_leader`."""
+    return is_global_pastoral_authority(current_user) or is_general_coordinator(current_user)
 
 
 async def is_active_mentor(person_id: Optional[str]) -> bool:
@@ -171,17 +187,22 @@ async def serialize_visits(visits: list[dict], current_user: dict) -> list[dict]
             "lbs_decision": visit.get("lbs_decision", "none"),
             "note": visit.get("note"),
             "enrollment_id": visit.get("enrollment_id"),
+            "converted_person_id": visit.get("converted_person_id"),
             "created_at": serialize(visit.get("created_at")),
             "updated_at": serialize(visit.get("updated_at")),
         }
         if reveal:
             item["contact_phone"] = visit.get("contact_phone")
             item["contact_zone"] = visit.get("contact_zone")
+            item["contact_birth_date"] = visit.get("contact_birth_date")
+            item["spiritual_status"] = visit.get("spiritual_status")
+            item["attends_church"] = visit.get("attends_church")
+            item["is_backslidden"] = visit.get("is_backslidden")
         results.append(item)
     return results
 
 
-async def find_or_create_person_for_visit(contact_name: Optional[str], contact_phone: Optional[str], user_id: str) -> tuple:
+async def find_or_create_person_for_visit(contact_name: Optional[str], contact_phone: Optional[str], user_id: str, birth_date: Optional[str] = None) -> tuple:
     """Deduplica por teléfono (contra person_contacts) y, si no hay teléfono, por nombre
     exacto (igual criterio que campaign_venycome.find_or_create_person); si no encuentra
     nada, crea una Persona 360 mínima."""
@@ -204,7 +225,7 @@ async def find_or_create_person_for_visit(contact_name: Optional[str], contact_p
     nombre = tokens[0] if tokens else "Contacto"
     apellido = " ".join(tokens[1:]) if len(tokens) > 1 else ""
     doc = {
-        "nombre": nombre, "apellido": apellido, "fecha_nacimiento": None, "age_category": None,
+        "nombre": nombre, "apellido": apellido, "fecha_nacimiento": birth_date, "age_category": None,
         "person_number": await next_person_number(), "search_key": normalize_person_name(contact_name or nombre),
         "idempotency_key": str(uuid4()), "version": 1, "created_by": user_id,
         "created_at": now, "updated_at": now, "source": "mentorship_outreach",
@@ -221,15 +242,18 @@ async def find_or_create_person_for_visit(contact_name: Optional[str], contact_p
 
 @router.post("/campaigns", response_model=dict, status_code=201)
 async def create_campaign(payload: CampaignInput, current_user: dict = Depends(get_current_user)):
-    if not is_outreach_leader(current_user):
-        raise HTTPException(status_code=403, detail="Sin permiso para crear campañas de invasión")
+    if not can_manage_outreach_campaigns(current_user):
+        raise HTTPException(status_code=403, detail="Solo la pastora/pastor o un coordinador general puede crear invasiones")
+    mentor_ids = [mid for mid in dict.fromkeys(payload.assigned_mentor_ids) if mid]
+    for mentor_id in mentor_ids:
+        if not await is_active_mentor(mentor_id):
+            raise HTTPException(status_code=409, detail="Uno de los mentores asignados no tiene insignia de Mentor activa")
     now = now_utc()
     campaign_id = str(uuid4())
     doc = {
-        "_id": campaign_id, "campaign_id": campaign_id, "name": payload.name.strip(),
-        "start_date": payload.start_date.isoformat() if payload.start_date else None,
-        "end_date": payload.end_date.isoformat() if payload.end_date else None,
-        "zone_notes": payload.zone_notes, "status": "active",
+        "_id": campaign_id, "campaign_id": campaign_id, "name": payload.name.strip(), "location": payload.location.strip(),
+        "start_date": payload.start_date.isoformat(), "end_date": payload.end_date.isoformat() if payload.end_date else None,
+        "zone_notes": payload.zone_notes, "assigned_mentor_ids": mentor_ids, "status": "active",
         "created_by_user_id": current_user["user_id"], "created_at": now, "updated_at": now,
     }
     await db.outreach_campaigns.insert_one(doc)
@@ -246,8 +270,8 @@ async def list_campaigns(current_user: dict = Depends(get_current_user)):
 
 @router.put("/campaigns/{campaign_id}", response_model=dict)
 async def update_campaign(campaign_id: str, payload: CampaignUpdateInput, current_user: dict = Depends(get_current_user)):
-    if not is_outreach_leader(current_user):
-        raise HTTPException(status_code=403, detail="Sin permiso para administrar campañas de invasión")
+    if not can_manage_outreach_campaigns(current_user):
+        raise HTTPException(status_code=403, detail="Solo la pastora/pastor o un coordinador general puede administrar invasiones")
     campaign = await db.outreach_campaigns.find_one({"campaign_id": campaign_id}, {"_id": 1})
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaña no encontrada")
@@ -256,6 +280,16 @@ async def update_campaign(campaign_id: str, payload: CampaignUpdateInput, curren
         fields["start_date"] = fields["start_date"].isoformat()
     if fields.get("end_date") is not None:
         fields["end_date"] = fields["end_date"].isoformat()
+    if "assigned_mentor_ids" in fields:
+        mentor_ids = [mid for mid in dict.fromkeys(fields["assigned_mentor_ids"] or []) if mid]
+        for mentor_id in mentor_ids:
+            if not await is_active_mentor(mentor_id):
+                raise HTTPException(status_code=409, detail="Uno de los mentores asignados no tiene insignia de Mentor activa")
+        fields["assigned_mentor_ids"] = mentor_ids
+    if fields.get("name") is not None:
+        fields["name"] = fields["name"].strip()
+    if fields.get("location") is not None:
+        fields["location"] = fields["location"].strip()
     fields["updated_at"] = now_utc()
     await db.outreach_campaigns.update_one({"campaign_id": campaign_id}, {"$set": fields})
     return serialize(await db.outreach_campaigns.find_one({"campaign_id": campaign_id}, {"_id": 0}))
@@ -324,6 +358,7 @@ async def create_visit(payload: VisitCreateInput, current_user: dict = Depends(g
         "contact_phone": payload.contact_phone, "contact_zone": payload.contact_zone,
         "phone_normalized": phone_digits, "status": "assigned", "visit_date": None,
         "received_mcd": False, "received_npt": False, "lbs_decision": "none",
+        "contact_birth_date": None, "spiritual_status": None, "attends_church": None, "is_backslidden": None,
         "note": payload.note, "enrollment_id": None, "converted_person_id": None, "converted_at": None,
         "archived": False, "created_by_user_id": current_user["user_id"], "created_at": now, "updated_at": now,
     }
@@ -376,6 +411,8 @@ async def update_visit_report(visit_id: str, payload: VisitReportInput, current_
         raise HTTPException(status_code=409, detail="Ya inició la Ley de las 7 Semanas; el estado no se puede cambiar")
     if fields.get("visit_date") is not None:
         fields["visit_date"] = fields["visit_date"].isoformat()
+    if fields.get("contact_birth_date") is not None:
+        fields["contact_birth_date"] = fields["contact_birth_date"].isoformat()
     fields["updated_at"] = now_utc()
     await db.outreach_visits.update_one({"visit_id": visit_id}, {"$set": fields})
     await log_visit_history(visit_id, current_user, "report_updated", fields)
@@ -421,8 +458,13 @@ async def start_seven_weeks(visit_id: str, current_user: dict = Depends(get_curr
     if visit["contact_type"] == "existing":
         person_id = visit["person_id"]
         created_person = False
+        if visit.get("contact_birth_date"):
+            await db.persons.update_one(
+                {"_id": ObjectId(person_id), "$or": [{"fecha_nacimiento": None}, {"fecha_nacimiento": {"$exists": False}}]},
+                {"$set": {"fecha_nacimiento": visit["contact_birth_date"], "updated_at": now_utc()}},
+            )
     else:
-        person_id, created_person = await find_or_create_person_for_visit(visit.get("contact_name"), visit.get("contact_phone"), current_user["user_id"])
+        person_id, created_person = await find_or_create_person_for_visit(visit.get("contact_name"), visit.get("contact_phone"), current_user["user_id"], visit.get("contact_birth_date"))
     enrollment, created_enrollment = await create_enrollment(
         db, "consolidation", person_id, mentor_person_id, current_user["user_id"],
         status="active", next_action="Dar seguimiento al visitante", source="mentorship_outreach", source_id=visit_id,
