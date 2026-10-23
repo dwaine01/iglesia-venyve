@@ -633,6 +633,37 @@ async def list_campaigns(current_user: dict = Depends(get_current_user)):
     return {"items": serialize(items)}
 
 
+class DeleteReason(BaseModel):
+    reason: str = Field(min_length=3, max_length=600)
+
+
+@router.delete("/campaigns/{campaign_id}", response_model=dict)
+async def delete_campaign(campaign_id: str, payload: DeleteReason, current_user: dict = Depends(get_current_user)):
+    """Borrado TOTAL y permanente de la Invasión (decisión del dueño): borra
+    la campaña y TODOS sus hogares, visitas e intentos registrados. Los
+    expedientes de Consolidación que ya nacieron de aquí NO se tocan (son
+    historial propio de la Persona 360) ni los movimientos de Librería ya
+    hechos (son ledger real de inventario); solo pierden el vínculo visible
+    a esta invasión ya borrada."""
+    if not can_manage_outreach_campaigns(current_user):
+        raise HTTPException(status_code=403, detail="Solo la pastora/pastor o un coordinador general puede borrar invasiones")
+    campaign = await db.outreach_campaigns.find_one({"campaign_id": campaign_id}, {"_id": 0, "name": 1})
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Invasión no encontrada")
+    household_ids = await db.outreach_households.distinct("household_id", {"campaign_id": campaign_id})
+    visits_deleted = (await db.outreach_visits.delete_many({"campaign_id": campaign_id})).deleted_count
+    attempts_deleted = (await db.outreach_visit_events.delete_many({"household_id": {"$in": household_ids}})).deleted_count if household_ids else 0
+    households_deleted = (await db.outreach_households.delete_many({"campaign_id": campaign_id})).deleted_count
+    await db.outreach_participations.delete_many({"campaign_id": campaign_id})
+    await db.outreach_campaigns.delete_one({"campaign_id": campaign_id})
+    await db.admin_deletions.insert_one({
+        "_id": str(uuid4()), "collection": "outreach_campaigns", "target_id": campaign_id, "reason": payload.reason,
+        "detail": {"name": campaign.get("name"), "visits_deleted": visits_deleted, "households_deleted": households_deleted, "attempts_deleted": attempts_deleted},
+        "actor_user_id": current_user["user_id"], "actor_person_id": current_user.get("person_id"), "deleted_at": now_utc(),
+    })
+    return {"deleted": True, "campaign_name": campaign.get("name"), "visits_deleted": visits_deleted, "households_deleted": households_deleted, "attempts_deleted": attempts_deleted}
+
+
 @router.post("/campaigns/{campaign_id}/participate", response_model=dict)
 async def participate_in_campaign(campaign_id: str, current_user: dict = Depends(get_current_user)):
     """El propio mentor confirma su participación (Asignado → Confirmado).
