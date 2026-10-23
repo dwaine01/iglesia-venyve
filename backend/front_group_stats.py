@@ -21,6 +21,7 @@ from front_group_tree import descendant_group_ids, load_group
 from front_groups import person_name, roster_view
 from self_portal import person_activity
 from server import db, get_current_user
+from access_control import is_general_coordinator, is_global_pastoral_authority
 from supervision_analytics import ACCEPTED_OR_LATER, CONSOLIDATION_KEY, compute_semaphore, load_thresholds
 
 router = APIRouter(prefix="/api/front-group-structure", tags=["front-group-stats"])
@@ -59,6 +60,15 @@ def period_days(period: dict) -> tuple[Optional[str], Optional[str]]:
     if period["key"] == "invasion" and campaign.get("start_date"):
         return campaign["start_date"], campaign.get("end_date") or campaign["start_date"]
     return None, None
+
+
+async def campaigns_in_period(period: dict, day_from: Optional[str], day_to: Optional[str]) -> Optional[list[str]]:
+    """Invasiones del período (None = todas, en 'Todo el historial')."""
+    if period["key"] == "invasion":
+        return [period["campaign"]["campaign_id"]] if period.get("campaign") else []
+    if not day_from:
+        return None
+    return await db.outreach_campaigns.distinct("campaign_id", {"start_date": {"$lte": day_to}, "end_date": {"$gte": day_from}})
 
 
 def period_match(period: dict, date_field: str) -> dict:
@@ -126,6 +136,15 @@ async def person_metrics(person_ids: list[str], period: dict) -> dict[str, dict]
         support_match["assigned_at"] = {"$gte": datetime.fromisoformat(day_from[:10]).replace(tzinfo=timezone.utc), "$lt": datetime.fromisoformat(next_day).replace(tzinfo=timezone.utc)}
     support_rows = await db.operation_volunteer_assignments.aggregate([{"$match": support_match}, {"$group": {"_id": "$person_id", "total": {"$sum": 1}}}]).to_list(10000)
     support = {row["_id"]: row["total"] for row in support_rows}
+    # ¿Existe algún registro (aunque sea 'ausente', 'invitado' o una invasión
+    # asignada sin actividad)? Distingue "sin datos" de un 0 real.
+    any_attendance_match = {key: value for key, value in attendance_match.items() if key != "estado"}
+    attendance_records = {row["_id"]: row["total"] for row in await db.person_attendance.aggregate([{"$match": any_attendance_match}, {"$group": {"_id": "$person_id", "total": {"$sum": 1}}}]).to_list(10000)}
+    any_support_match = {key: value for key, value in support_match.items() if key != "status"}
+    support_records = {row["_id"]: row["total"] for row in await db.operation_volunteer_assignments.aggregate([{"$match": any_support_match}, {"$group": {"_id": "$person_id", "total": {"$sum": 1}}}]).to_list(10000)}
+    campaign_ids = await campaigns_in_period(period, day_from, day_to)
+    participation_query = {**mentors, **({"campaign_id": {"$in": campaign_ids}} if campaign_ids is not None else {})}
+    assigned_outreach = set(await db.outreach_participations.distinct("mentor_person_id", participation_query)) if campaign_ids is None or campaign_ids else set()
     result = {}
     for person_id in person_ids:
         by_result = {key: 0 for key in ATTEMPT_RESULTS}
@@ -138,7 +157,12 @@ async def person_metrics(person_ids: list[str], period: dict) -> dict[str, dict]
             "accepted": accepted.get(person_id, 0), "activities_done": activities_done.get(person_id, 0),
             "activities_overdue": activities_overdue.get(person_id, 0), "activities_total": activities_total.get(person_id, 0),
             "attendance": attendance.get(person_id, 0), "support_shifts": support.get(person_id, 0),
+            "attendance_records": attendance_records.get(person_id, 0), "support_records": support_records.get(person_id, 0),
         }
+        metrics["outreach_active"] = bool(metrics["households"] or metrics["attempts"] or metrics["persons_reached"])
+        metrics["outreach_data"] = metrics["outreach_active"] or person_id in assigned_outreach
+        metrics["activity_active"] = bool(metrics["support_shifts"] or metrics["activities_done"])
+        metrics["activity_data"] = bool(metrics["support_records"] or metrics["activities_total"])
         metrics["active"] = bool(metrics["households"] or metrics["attempts"] or metrics["persons_reached"] or metrics["activities_done"])
         metrics["score"] = sum(metrics[key] * weight for key, weight in SCORE_WEIGHTS.items())
         result[person_id] = metrics
@@ -280,35 +304,102 @@ async def campaigns_for_selector(current_user: dict = Depends(get_current_user))
 
 
 # ---------------------------------------------------------------------------
+# Metas: valor real frente a la meta configurable, por período
+# ---------------------------------------------------------------------------
+def period_weeks(period: dict) -> Optional[float]:
+    """Semanas que abarca el período para escalar metas semanales
+    (por invasión cuenta como una unidad; 'Todo' no tiene meta)."""
+    if period["key"] == "week": return 1.0
+    if period["key"] == "month": return round(30 / 7, 2)
+    if period["key"] == "invasion": return 1.0
+    return None
+
+
+def goal_indicators(person_ids: list[str], metrics: dict, thresholds: dict, period: dict) -> dict:
+    """Cuatro indicadores con valor real, meta, período y la fórmula usada.
+    Sin registros en el período → has_data False (se muestra 'sin datos')."""
+    people = sorted(set(person_ids))
+    total = len(people)
+    rows = [metrics.get(person_id, {}) for person_id in people]
+
+    def ratio_indicator(key, label, goal_key, active_key, data_key, numerator_label):
+        numerator = sum(1 for row in rows if row.get(active_key))
+        has_data = any(row.get(data_key) for row in rows)
+        value = numerator / total if total else 0
+        goal = thresholds[goal_key]
+        return {
+            "key": key, "label": label, "unit": "ratio", "has_data": has_data and total > 0,
+            "value": round(value, 3), "goal": goal["value"], "goal_status": goal.get("status", "propuesta"), "goal_key": goal_key,
+            "numerator": numerator, "denominator": total,
+            "explanation": f"{numerator} de {total} integrantes {numerator_label} ÷ meta {round(goal['value'] * 100)}%.",
+        }
+
+    indicators = [
+        ratio_indicator("attendance", "Asistencia", "goal_attendance_ratio", "attendance", "attendance_records", "con al menos una asistencia 'presente' registrada"),
+        ratio_indicator("activities", "Participación en actividades", "goal_activity_ratio", "activity_active", "activity_data", "con un turno de servicio confirmado o una actividad de consolidación realizada"),
+        ratio_indicator("outreach", "Impacto en invasiones", "goal_outreach_ratio", "outreach_active", "outreach_data", "con hogares, intentos de visita o personas alcanzadas"),
+    ]
+    weeks = period_weeks(period)
+    reached = sum(row.get("persons_reached", 0) for row in rows)
+    per_week = thresholds["goal_persons_reached_per_member_week"]
+    goal_value = round(per_week["value"] * weeks, 2) if weeks else None
+    indicators.append({
+        "key": "persons_reached", "label": "Personas alcanzadas por integrante", "unit": "per_member",
+        "has_data": any(row.get("outreach_data") for row in rows) and total > 0,
+        "value": round(reached / total, 2) if total else 0, "goal": goal_value, "goal_status": per_week.get("status", "propuesta"),
+        "goal_key": "goal_persons_reached_per_member_week", "numerator": reached, "denominator": total,
+        "explanation": (f"{reached} personas alcanzadas ÷ {total} integrantes; meta {per_week['value']} por integrante por semana × {weeks} = {goal_value}." if weeks
+                        else f"{reached} personas alcanzadas ÷ {total} integrantes. En 'Todo el historial' no hay meta."),
+    })
+    for item in indicators:
+        item["progress"] = round(min(item["value"] / item["goal"], 1), 3) if item["has_data"] and item["goal"] else None
+    measured = [item["progress"] for item in indicators if item["progress"] is not None]
+    overall = round(sum(measured) / len(measured), 3) if measured else None
+    if overall is None:
+        level = None
+    elif overall >= thresholds["goal_progress_green"]["value"]:
+        level = "A"
+    elif overall >= thresholds["goal_progress_yellow"]["value"]:
+        level = "B"
+    else:
+        level = "C"
+    return {"indicators": indicators, "overall_progress": overall, "class": level}
+
+
+# ---------------------------------------------------------------------------
 # Panel dinámico de "Mi Grupo Frontal": equipos (parejas/individuos) en tarjetas
 # ---------------------------------------------------------------------------
-CLASS_BY_SEMAPHORE = {"green": "A", "yellow": "B", "red": "C"}
 UNAVAILABLE_DATA = [
     {"key": "group_meetings", "label": "Asistencia a reuniones del Grupo Frontal", "reason": "Aún no existe un registro de reuniones propias del Grupo Frontal. La asistencia que se muestra es la registrada en Persona 360 (cultos, células y eventos de Operaciones)."},
     {"key": "brought_to_church", "label": "Personas llevadas o invitadas a la iglesia", "reason": "En 'Llegada y origen' el dato 'invitado por' es texto libre y no está vinculado a una Persona 360, así que no se puede atribuir a un integrante."},
 ]
 
 
+GOAL_KEYS = ("goal_attendance_ratio", "goal_activity_ratio", "goal_outreach_ratio", "goal_persons_reached_per_member_week", "goal_progress_green", "goal_progress_yellow")
+
+
 def panel_criteria(thresholds: dict) -> dict:
     return {
         "classes": {
-            "A": "Verde del semáforo: participación ≥ umbral verde y actividades vencidas por debajo del umbral amarillo.",
-            "B": "Amarillo: participación ≥ umbral amarillo, o actividades vencidas entre los umbrales amarillo y rojo.",
-            "C": "Rojo: participación por debajo del umbral amarillo, o actividades vencidas ≥ umbral rojo.",
+            "A": "Avance hacia las metas ≥ umbral A.",
+            "B": "Avance hacia las metas ≥ umbral B y menor que el de A.",
+            "C": "Avance hacia las metas menor que el umbral B.",
+            "—": "Sin datos: ningún registro de asistencia, actividades ni invasiones en el período.",
         },
-        "participation": {key: thresholds[key] for key in ("participation_ratio_green", "participation_ratio_yellow")},
-        "overdue": {key: thresholds[key] for key in ("overdue_activity_ratio_yellow", "overdue_activity_ratio_red")},
+        "goals": {key: thresholds[key] for key in GOAL_KEYS},
+        "overall_formula": "Avance hacia las metas = promedio de los indicadores con datos, cada uno = valor real ÷ meta (máximo 100%). Un indicador sin registros no entra en el promedio y se muestra como 'sin datos', nunca como 0%.",
         "score": SCORE_LABEL,
-        "participation_formula": "Participación = integrantes del equipo con al menos un registro en el período (hogar, intento de visita, persona alcanzada o actividad de consolidación realizada) ÷ integrantes del equipo.",
-        "progress_formula": "% de avance = avance del equipo ÷ avance del equipo con más avance del mismo grupo × 100.",
-        "attendance": "Asistencias: registros 'presente' de Persona 360 en el período (cultos, células, check-in de eventos).",
-        "support": "Apoyo: turnos de servicio de Operaciones confirmados o con check-in, asignados en el período.",
-        "invasion_dates": "En 'Por invasión', asistencia y apoyo usan las fechas de inicio y fin de esa invasión.",
+        "rank": "Puesto: orden por avance hacia las metas y, en empate, por puntaje de avance.",
+        "attendance": "Asistencia: registros 'presente' de Persona 360 en el período (cultos, células, check-in de eventos). Hay datos si existe algún registro de asistencia (aunque sea 'ausente').",
+        "activities": "Participación en actividades: turnos de servicio de Operaciones confirmados o con check-in, o actividades de consolidación realizadas en el período. Hay datos si existe algún turno asignado o alguna actividad programada.",
+        "outreach": "Impacto en invasiones: hogares, intentos de visita (incluidos 'sin respuesta') o personas alcanzadas en el período. Hay datos si el integrante fue asignado a una invasión del período o registró actividad.",
+        "invasion_dates": "En 'Por invasión', asistencia y apoyo usan las fechas de inicio y fin de esa invasión; la meta de personas alcanzadas es por invasión.",
         "member": "Cada persona se cuenta una sola vez aunque esté en dos equipos o grupos.",
+        "editable": "Las metas y umbrales son configurables por la pastora/pastor o el coordinador general. 'propuesta' = valor inicial aún no confirmado.",
     }
 
 
-async def member_cards(group_id: str, person_ids: list[str], metrics: dict, thresholds: dict, roles: dict[str, str]) -> list[dict]:
+async def member_cards(group_id: str, person_ids: list[str], metrics: dict, thresholds: dict, roles: dict[str, str], period: dict) -> list[dict]:
     mentors = set(await db.mentor_badges.distinct("person_id", {"person_id": {"$in": person_ids}, "active": True}))
     cards = []
     for person_id in person_ids:
@@ -328,6 +419,7 @@ async def member_cards(group_id: str, person_ids: list[str], metrics: dict, thre
             "metrics": {key: item.get(key, 0) for key in ("score", "persons_reached", "households", "attempts", "followups", "accepted", "activities_done", "activities_overdue", "attendance", "support_shifts")},
             "attempts_by_result": item.get("attempts_by_result", {}), "active": item.get("active", False),
             "semaphore": member_semaphore(item, thresholds) if item else "red",
+            "goals": goal_indicators([person_id], metrics, thresholds, period),
         })
     return cards
 
@@ -358,24 +450,29 @@ async def group_panel(
     teams = []
     for team in team_defs:
         summary = aggregate(team["person_ids"], metrics, thresholds)
+        goals = goal_indicators(team["person_ids"], metrics, thresholds, resolved)
         teams.append({
             "team_id": team["team_id"], "type": team["type"],
-            "members": await member_cards(group_id, team["person_ids"], metrics, thresholds, roles),
-            "summary": {**summary, "class": CLASS_BY_SEMAPHORE[summary["semaphore"]]},
+            "members": await member_cards(group_id, team["person_ids"], metrics, thresholds, roles, resolved),
+            "summary": {**summary, "class": goals["class"], "overall_progress": goals["overall_progress"]},
+            "goals": goals["indicators"],
         })
     best = max((team["summary"]["score"] for team in teams), default=0)
     for team in teams:
-        team["summary"]["progress_pct"] = round(team["summary"]["score"] / best * 100) if best else 0
-    for position, team in enumerate(sorted(teams, key=lambda item: -item["summary"]["score"]), start=1):
+        team["summary"]["relative_pct"] = round(team["summary"]["score"] / best * 100) if best else 0
+    ordered = sorted(teams, key=lambda item: (-(item["summary"]["overall_progress"] if item["summary"]["overall_progress"] is not None else -1), -item["summary"]["score"]))
+    for position, team in enumerate(ordered, start=1):
         team["summary"]["rank"] = position
     totals = aggregate(everyone, metrics, thresholds)
+    group_goals = goal_indicators(everyone, metrics, thresholds, resolved)
     return {
         "period": {"key": resolved["key"], "label": resolved["label"], "campaign": resolved["campaign"],
                    "date_from": resolved["date_from"].isoformat() if resolved["date_from"] else None,
                    "date_to": resolved["date_to"].isoformat() if resolved["date_to"] else None},
         "criteria": panel_criteria(thresholds),
         "unavailable": UNAVAILABLE_DATA,
-        "group": {"front_group_id": group_id, "name": group.get("name"), **totals, "class": CLASS_BY_SEMAPHORE[totals["semaphore"]], "teams": len(teams)},
+        "group": {"front_group_id": group_id, "name": group.get("name"), **totals, "class": group_goals["class"], "overall_progress": group_goals["overall_progress"], "goals": group_goals["indicators"], "teams": len(teams)},
+        "can_edit_goals": is_global_pastoral_authority(current_user) or is_general_coordinator(current_user),
         "teams": teams,
     }
 

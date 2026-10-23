@@ -139,14 +139,14 @@ export default function MiGrupoFrontalPage() {
 
   return (
     <div className="min-h-screen bg-[#F8F6F0] pb-10" data-testid="mi-grupo-frontal-page">
-      <header className="bg-[#101D36] px-4 py-6 text-white sm:px-6">
-        <div className="mx-auto max-w-2xl">
+      <header className="bg-[#101D36] px-4 py-6 text-white sm:px-6 lg:px-8">
+        <div className="mx-auto w-full max-w-[1600px]">
           <Link to="/mi-perfil" className="inline-flex min-h-9 items-center gap-1 text-xs text-white/70 hover:text-white"><ArrowLeft className="h-3.5 w-3.5" />Mi perfil</Link>
           <p className="mt-2 text-xs font-semibold uppercase text-[#D4B871]">{isPending ? 'Crear mi grupo frontal' : 'Mi grupo frontal'}</p>
           <h1 className="mt-1 font-['Spectral'] text-2xl font-bold" data-testid="mi-grupo-titulo">{detail?.display_name || detail?.name || 'Grupo Frontal'}</h1>
         </div>
       </header>
-      <div className="mx-auto max-w-2xl space-y-4 px-4 py-5 sm:px-6">
+      <div className="mx-auto w-full max-w-[1600px] space-y-4 px-4 py-5 sm:px-6 lg:px-8">
         {error && <div className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700"><TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />{error}</div>}
         {!detail && !error && <div className="flex justify-center py-16"><Loader2 className="h-7 w-7 animate-spin text-[#9A7A2F]" /></div>}
         {detail?.member_view && <Card testId="mi-grupo-vista-miembro"><p className="text-sm text-slate-700">Líder: {detail.primary_leader_name || 'Por definir'} · Colíder: {detail.co_leader_name || 'Por definir'}</p></Card>}

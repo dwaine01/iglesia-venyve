@@ -338,13 +338,27 @@ async def test_activity_panel_teams_classes_and_member_activity():
         assert "Mentor" in members[marta_id]["functions"]
         assert members[marta_id]["metrics"]["attendance"] == 2 and members[luis_id]["metrics"]["attempts"] == 3
         assert pair["summary"]["participants"] == 1 and pair["summary"]["participation_ratio"] == 0.5
-        assert pair["summary"]["class"] == "B" and pair["summary"]["progress_pct"] == 100 and pair["summary"]["rank"] == 1
+        # Metas (valores iniciales 'propuesta'): asistencia 80%, actividades 50%, invasiones 60%, 1 persona/integrante/semana.
+        goals = {item["key"]: item for item in pair["goals"]}
+        assert goals["attendance"]["value"] == 0.5 and goals["attendance"]["goal"] == 0.8 and goals["attendance"]["progress"] == 0.625
+        assert goals["activities"]["has_data"] is False and goals["activities"]["progress"] is None  # sin turnos ni actividades: sin datos, no 0%
+        assert goals["outreach"]["progress"] == 0.833 and goals["persons_reached"]["goal"] == 1.0 and goals["persons_reached"]["progress"] == 0.5
+        assert goals["attendance"]["goal_status"] == "propuesta"
+        assert pair["summary"]["overall_progress"] == 0.653 and pair["summary"]["class"] == "B" and pair["summary"]["rank"] == 1
+        assert pair["summary"]["relative_pct"] == 100
         solo = body["teams"][2]
         assert solo["summary"]["support_shifts"] == 1 and solo["summary"]["attendance"] == 0
-        assert solo["summary"]["class"] == "C" and solo["summary"]["progress_pct"] == 0
+        solo_goals = {item["key"]: item for item in solo["goals"]}
+        assert solo_goals["attendance"]["has_data"] is True and solo_goals["attendance"]["progress"] == 0  # registro 'ausente': 0% real
+        assert solo_goals["outreach"]["has_data"] is False and solo["summary"]["overall_progress"] == 0.5 and solo["summary"]["class"] == "B"
+        leadership = body["teams"][0]
+        assert leadership["summary"]["overall_progress"] is None and leadership["summary"]["class"] is None and leadership["summary"]["rank"] == 3
         assert body["group"]["people"] == 4 and body["group"]["teams"] == 3
+        assert body["group"]["class"] == "C" and body["group"]["overall_progress"] == 0.37
+        assert body["can_edit_goals"] is True and "goal_progress_green" in body["criteria"]["goals"]
+        member_goals = {item["key"]: item for item in members[marta_id]["goals"]["indicators"]}
+        assert member_goals["attendance"]["value"] == 1
         assert {item["key"] for item in body["unavailable"]} == {"group_meetings", "brought_to_church"}
-        assert "participation_ratio_green" in body["criteria"]["participation"]
 
         # Actividad individual: la pastora ve a todos; el líder solo a su rama; un integrante a nadie.
         activity = await pastora.get(f"/api/front-group-structure/people/{luis_id}/activity", params={"period": "week"})
@@ -353,6 +367,7 @@ async def test_activity_panel_teams_classes_and_member_activity():
         assert (await luis.get(f"/api/front-group-structure/people/{rosa_id}/activity")).status_code == 200
         assert (await luis.get(f"/api/front-group-structure/people/{pastora_id}/activity")).status_code == 403
         assert (await luis.get(f"/api/front-group-structure/groups/{main_id}/panel")).status_code == 403
+        assert (await luis.get(f"/api/front-group-structure/groups/{child_id}/panel")).json()["can_edit_goals"] is False
         assert (await rosa.get(f"/api/front-group-structure/people/{luis_id}/activity")).status_code == 403
     finally:
         await server.db.outreach_visit_events.delete_many({"_id": {"$regex": f"^{tag}"}})
