@@ -200,14 +200,15 @@ function RoleDashboard() {
   return <ProcessesDashboardPage />;
 }
 
-// ETAPA 5A: ver el Perfil 360 de OTRA persona exige la capability de
-// directorio (no basta tener capabilities person.* de solo autoconsulta).
+// La PROPIA ficha siempre abre completa, sin permiso de directorio. Ver el
+// Perfil 360 de OTRA persona exige la capability de directorio (el backend
+// vuelve a validar alcance y permisos).
 function PersonProfileRoute({ children }) {
   const { user, loading } = useAuth();
   const { personId } = useParams();
   if (loading) return <div className="flex min-h-screen items-center justify-center" data-testid="person-profile-route-loading">Cargando…</div>;
   if (!user) return <Navigate to="/login" replace />;
-  if (personId && personId === user.person_id) return <Navigate to="/mi-perfil" replace />;
+  if (personId && personId === user.person_id) return children;
   if (!canViewDirectory(user)) return <AccessDeniedPage />;
   return children;
 }

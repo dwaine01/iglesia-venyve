@@ -40,7 +40,7 @@ from access_control import (
     authorize_person,
     has_capability,
 )
-from core_person import _age_category, db, now_utc, require_person_profile_user
+from core_person import _age_category, db, now_utc, require_person_profile_or_self, require_person_profile_user
 from person_core_expansion import age_info, household_snapshot, relationship_items, talent_snapshot
 from ministries import assignment_items
 from process_engine import create_enrollment, evaluate_alerts
@@ -698,7 +698,7 @@ async def complete_photo_upload(
 
 
 @router.get("/{person_id}/photo")
-async def get_person_photo(person_id: str, current_user: dict = Depends(require_person_profile_user)):
+async def get_person_photo(person_id: str, current_user: dict = Depends(require_person_profile_or_self)):
     await authorize_domain(person_id, current_user, PERSON_PROFILE_SENSITIVE_READ)
     photo = await db.person_photos.find_one({"person_id": person_id})
     if not photo:

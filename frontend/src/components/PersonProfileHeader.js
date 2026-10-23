@@ -103,9 +103,9 @@ export default function PersonProfileHeader({ header, photoSrc, onEdit, onArchiv
   return (
     <section className="space-y-3" data-testid="person-profile-header">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <button onClick={onBack} className="flex items-center gap-2 text-sm font-medium text-gray-600 transition-colors hover:text-[#132443]" data-testid="person-profile-back-button">
+        {onBack ? <button onClick={onBack} className="flex items-center gap-2 text-sm font-medium text-gray-600 transition-colors hover:text-[#132443]" data-testid="person-profile-back-button">
           <span aria-hidden="true">←</span> Volver a Personas
-        </button>
+        </button> : <span />}
         <div className="flex flex-wrap items-center justify-end gap-2 self-end sm:self-auto">
           {onArchive && <Button variant="outline" onClick={onArchive} className="border-red-200 bg-white text-red-700 shadow-sm hover:bg-red-50 hover:text-red-800" data-testid="person-archive-button">
             <Trash2 className="mr-2 h-4 w-4" /> Eliminar Persona

@@ -27,6 +27,8 @@ from access_control import (
     is_global_pastoral_authority,
     normalized_access_scope,
     normalized_capabilities,
+    is_own_person,
+    self_view_user,
 )
 from qa_demo_cleanup import delete_qa_artifacts, qa_preview
 
@@ -73,6 +75,14 @@ def require_person_profile_user(current_user: dict = Depends(get_current_user)) 
     if not any(item.startswith("person.") for item in capabilities) or scope == "none":
         raise HTTPException(status_code=403, detail="No autorizado para Person Profile 360")
     return current_user
+
+
+def require_person_profile_or_self(person_id: str, current_user: dict = Depends(get_current_user)) -> dict:
+    """La propia ficha siempre es legible (sin permiso de directorio); la de
+    otra Persona exige capabilities person.* y alcance, como siempre."""
+    if is_own_person(current_user, person_id):
+        return self_view_user(current_user)
+    return require_person_profile_user(current_user)
 
 
 async def next_person_number() -> str:
