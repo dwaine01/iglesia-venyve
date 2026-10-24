@@ -95,9 +95,10 @@ function ReviewForm({ request, decision, onClose, onSaved }) {
 }
 
 const PARTICIPANT_STATUS = {
-  invited: 'bg-slate-50 text-slate-700 border-slate-200',
+  invited: 'bg-amber-50 text-amber-800 border-amber-200',
   confirmed: 'bg-[#eef5f0] text-[#2f6e47] border-[#bcd8c4]',
   declined: 'bg-[#f8ecea] text-[#8f382f] border-[#e3c2bd]',
+  attended: 'bg-[#e8eefb] text-[#1d4ed8] border-[#c3d3f5]',
 };
 
 // Lista de participantes (mentores, colaboradores, encargados) con su estado.
@@ -127,6 +128,9 @@ function ParticipantsPanel({ campaignId }) {
       announceChange();
     } catch (error) { toast.error(apiErrorMessage(error, 'No se pudo agregar')); } finally { setBusy(false); }
   };
+  const toggleAttendance = async (item) => {
+    try { const response = await axios.put(`${API}/api/invasions/${campaignId}/participants/${item.person_id}/attendance`, { attended: !item.attended }, getAuthHeaders()); setData(response.data); } catch (error) { toast.error(apiErrorMessage(error, 'No se pudo marcar la asistencia')); }
+  };
   const remove = async (item, removeRole) => {
     if (!window.confirm(`¿Quitar a ${item.name} como ${removeRole === 'mentor' ? 'mentor' : 'colaborador'}?`)) return;
     try { const response = await axios.delete(`${API}/api/invasions/${campaignId}/participants/${item.person_id}`, { ...getAuthHeaders(), params: { role: removeRole } }); setData(response.data); announceChange(); } catch (error) { toast.error(apiErrorMessage(error, 'No se pudo quitar')); }
@@ -135,10 +139,15 @@ function ParticipantsPanel({ campaignId }) {
   const counts = data.counts || {};
   return (
     <section className="space-y-3 border-t border-[#EEECE6] pt-3" data-testid="invasion-participants">
-      <div className="flex flex-wrap items-baseline justify-between gap-2"><h4 className="text-base font-semibold text-[#101D36]">Participantes ({counts.total || 0})</h4><p className="text-xs text-slate-500">{counts.confirmed || 0} confirmados · {counts.invited || 0} sin responder · {counts.attended || 0} asistieron</p></div>
+      <h4 className="text-base font-semibold text-[#101D36]">Participantes</h4>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-5" data-testid="participants-counts">{[['total', 'Invitados'], ['confirmed', 'Confirmados'], ['no_response', 'Sin responder'], ['declined', 'No podrán'], ['attended', 'Asistieron']].map(([key, label]) => <div key={key} className="rounded-lg border border-[#EEECE6] bg-[#FBFAF7] p-2 text-center"><p className="text-xl font-semibold text-[#101D36]" data-testid={`participants-count-${key}`}>{counts[key] || 0}</p><p className="text-[11px] text-slate-500">{label}</p></div>)}</div>
       <ul className="space-y-2">{data.items.map((item) => (
         <li key={item.person_id} className="rounded-lg border border-[#EEECE6] p-3" data-testid={`participant-${item.person_id}`}>
-          <div className="flex flex-wrap items-start justify-between gap-2"><div className="min-w-0"><p className="text-sm font-semibold text-[#101D36]">{item.name}</p><p className="text-xs text-slate-500">{item.role_labels.join(' · ')}</p></div><span className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-semibold ${PARTICIPANT_STATUS[item.status] || PARTICIPANT_STATUS.invited}`}>{item.status_label}</span></div>
+          <div className="flex flex-wrap items-start justify-between gap-2"><div className="min-w-0"><p className="text-sm font-semibold text-[#101D36]">{item.name}</p><p className="text-xs text-slate-500">{item.role_labels.join(' · ')}</p></div><span className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-semibold ${PARTICIPANT_STATUS[item.attended ? 'attended' : item.status] || PARTICIPANT_STATUS.invited}`}>{item.status_label}</span></div>
+          {item.response_note && <p className="mt-1 text-xs text-slate-500">«{item.response_note}»</p>}
+          {data.can_edit && <div className="mt-2 flex flex-wrap gap-2">
+            <button type="button" onClick={() => toggleAttendance(item)} className={`min-h-10 rounded-md border px-3 text-xs font-semibold ${item.attended ? 'border-[#c3d3f5] bg-[#e8eefb] text-[#1d4ed8]' : 'border-[#D9D4C7] text-[#101D36]'}`} data-testid={`participant-attendance-${item.person_id}`}>{item.attended ? '✓ Asistió' : 'Marcar asistencia'}</button>
+          </div>}
           {data.can_edit && (item.roles.includes('mentor') || item.roles.includes('collaborator')) && <div className="mt-2 flex flex-wrap gap-2">{['mentor', 'collaborator'].filter((value) => item.roles.includes(value)).map((value) => <button key={value} type="button" onClick={() => remove(item, value)} className="min-h-10 rounded-md border border-[#e3c2bd] px-3 text-xs font-semibold text-[#8f382f]" data-testid={`participant-remove-${value}-${item.person_id}`}>Quitar como {value === 'mentor' ? 'mentor' : 'colaborador'}</button>)}</div>}
         </li>
       ))}</ul>
@@ -209,6 +218,7 @@ export function InvasionHub({ showAction = false }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const [requests, setRequests] = useState({ items: [], can_review: false, can_request: false });
   const [campaigns, setCampaigns] = useState([]);
+  const [counts, setCounts] = useState({});
   const [wizard, setWizard] = useState(null);
   const [requestForm, setRequestForm] = useState(null);
   const [review, setReview] = useState(null);
@@ -217,6 +227,7 @@ export function InvasionHub({ showAction = false }) {
   const load = useCallback(() => {
     axios.get(`${API}/api/invasions/requests`, getAuthHeaders()).then((response) => setRequests(response.data)).catch(() => {});
     axios.get(`${API}/api/mentorship/outreach/campaigns`, getAuthHeaders()).then((response) => setCampaigns(response.data.items || [])).catch(() => setCampaigns([]));
+    axios.get(`${API}/api/invasions/participants/summary`, getAuthHeaders()).then((response) => setCounts(response.data.items || {})).catch(() => setCounts({}));
   }, [API, getAuthHeaders]);
   useEffect(() => { load(); }, [load]);
   useEffect(() => { window.addEventListener(CHANGED, load); return () => window.removeEventListener(CHANGED, load); }, [load]);
@@ -264,7 +275,7 @@ export function InvasionHub({ showAction = false }) {
           <h3 className="text-base font-semibold text-[#101D36]">Invasiones activas</h3>
           <ul className="mt-2 space-y-2">{upcoming.map((item) => (
             <li key={item.campaign_id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[#EEECE6] p-3">
-              <button type="button" onClick={() => setSummaryId(item.campaign_id)} className="min-w-0 flex-1 text-left"><p className="truncate text-sm font-semibold text-[#101D36]">{item.name}</p><p className="text-xs text-slate-500">{item.location} · {formatDate(item.start_date)} → {formatDate(item.end_date)}</p></button>
+              <button type="button" onClick={() => setSummaryId(item.campaign_id)} className="min-w-0 flex-1 text-left"><p className="truncate text-sm font-semibold text-[#101D36]">{item.name}</p><p className="text-xs text-slate-500">{item.location} · {formatDate(item.start_date)} → {formatDate(item.end_date)}</p>{counts[item.campaign_id] && <p className="mt-1 text-xs font-medium text-[#101D36]" data-testid={`invasion-counts-${item.campaign_id}`}>{counts[item.campaign_id].total} invitados · {counts[item.campaign_id].confirmed} confirmados · {counts[item.campaign_id].no_response} sin responder · {counts[item.campaign_id].attended} asistieron</p>}</button>
               {canCreate && <button type="button" onClick={() => setWizard({ campaignId: item.campaign_id })} className="min-h-11 rounded-md border border-[#D9D4C7] px-4 text-sm font-semibold text-[#101D36]" data-testid={`invasion-edit-${item.campaign_id}`}>Editar</button>}
             </li>
           ))}</ul>

@@ -28,6 +28,9 @@ async def notify_users(user_ids: list[str], notification_type: str, title: str, 
         "_id": str(uuid4()), "recipient_user_id": recipient, "type": notification_type, "title": title,
         "message": message, "link": link, "ref": ref or {}, "read_at": None, "created_at": now,
     } for recipient in recipients])
+    # Push al celular: solo si el dueño lo activó (ver push_notifications.py).
+    from push_notifications import send_push_background
+    send_push_background(recipients, title, message, link)
     return len(recipients)
 
 

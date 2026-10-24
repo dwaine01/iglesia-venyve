@@ -363,6 +363,9 @@ async def mark_participation_active(campaign_id: Optional[str], mentor_person_id
         {"campaign_id": campaign_id, "mentor_person_id": mentor_person_id, "status": {"$ne": "active"}},
         {"$set": {"status": "active", "first_activity_at": now_utc(), "updated_at": now_utc()}},
     )
+    # Fase 6B: registrar actividad en la invasión cuenta como asistencia en la lista de participantes.
+    from invasion_participants import mark_attended_from_activity
+    await mark_attended_from_activity(campaign_id, mentor_person_id)
 
 
 async def person_display_name(person_id: Optional[str]) -> Optional[str]:
@@ -741,6 +744,11 @@ async def participate_in_campaign(campaign_id: str, current_user: dict = Depends
     await db.outreach_participations.update_one(
         {"campaign_id": campaign_id, "mentor_person_id": mentor_person_id, "status": "assigned"},
         {"$set": {"status": "confirmed", "confirmed_at": now, "updated_at": now}},
+    )
+    # Mismo estado en la lista de participantes de la invasión (Fase 6B).
+    await db.invasion_participants.update_many(
+        {"campaign_id": campaign_id, "person_id": mentor_person_id, "status": "invited"},
+        {"$set": {"status": "confirmed", "responded_at": now, "updated_at": now}},
     )
     return serialize(await db.outreach_participations.find_one({"campaign_id": campaign_id, "mentor_person_id": mentor_person_id}, {"_id": 0}))
 

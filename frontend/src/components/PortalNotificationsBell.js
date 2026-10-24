@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Bell } from 'lucide-react';
 
 import { useAuth } from '../context/AuthContext';
+import { enablePush, pushSupported } from '../lib/pushNotifications';
 
 // FASE 6: avisos dentro del portal (invitaciones a invasiones, solicitudes,
 // cambios). Consulta cada minuto; tocar un aviso lo marca como leído y abre su enlace.
@@ -13,6 +14,18 @@ export default function PortalNotificationsBell() {
   const [data, setData] = useState({ items: [], unread: 0 });
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
+  const [push, setPush] = useState({ enabled: false, public_key: null, done: false });
+  // Push: solo aparece si el servidor lo tiene activado (hoy apagado hasta aprobación del dueño).
+  useEffect(() => {
+    if (!open || push.checked || !pushSupported()) return;
+    axios.get(`${API}/api/notifications/push/config`, getAuthHeaders()).then((response) => setPush((current) => ({ ...current, ...response.data, checked: true }))).catch(() => setPush((current) => ({ ...current, checked: true })));
+  }, [open, push.checked, API, getAuthHeaders]);
+  const activatePush = async () => {
+    try {
+      await enablePush(push.public_key, (subscription) => axios.post(`${API}/api/notifications/push/subscribe`, subscription, getAuthHeaders()));
+      setPush((current) => ({ ...current, done: true }));
+    } catch (error) { window.alert(error?.response?.data?.detail || error.message); }
+  };
 
   const load = useCallback(() => {
     if (!user) return;
@@ -47,6 +60,7 @@ export default function PortalNotificationsBell() {
             <p className="text-sm font-semibold text-[#101D36]">Avisos</p>
             {data.unread > 0 && <button type="button" onClick={readAll} className="min-h-9 text-xs font-semibold text-[#7A5F22]">Marcar todo como leído</button>}
           </div>
+          {push.enabled && !push.done && Notification.permission !== 'granted' && <button type="button" onClick={activatePush} className="block min-h-11 w-full border-b border-[#EEECE6] bg-[#F3F5F9] px-3 text-left text-sm font-semibold text-[#101D36]" data-testid="push-enable">Recibir avisos en este dispositivo</button>}
           {data.items.length ? (
             <ul className="divide-y divide-[#EEECE6]">
               {data.items.map((item) => (

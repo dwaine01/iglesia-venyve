@@ -14,7 +14,7 @@ import { InvasionHousesMap } from '../components/outreach/InvasionHousesMap';
 import { LogVisitAttemptDialog } from '../components/outreach/LogVisitAttemptDialog';
 import { MyLibraryHoldingsCard } from '../components/outreach/MyLibraryHoldingsCard';
 import { OutreachLeaderPanel } from '../components/outreach/OutreachLeaderPanel';
-import { ParticipateCampaignCard } from '../components/outreach/ParticipateCampaignCard';
+import { MyInvasionsCard } from '../components/invasions/MyInvasionsCard';
 import { TransferVisitDialog } from '../components/outreach/TransferVisitDialog';
 import { VisitCard } from '../components/outreach/VisitCard';
 
@@ -117,12 +117,8 @@ export default function OutreachPage() {
         <TabsContent value="mis-visitas" className="mt-4 space-y-4">
           <MyLibraryHoldingsCard />
 
-          {myCampaigns.length > 0 && (
-            <div className="space-y-3" data-testid="outreach-my-campaigns">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Invasión activa</p>
-              {myCampaigns.map((campaign) => <ParticipateCampaignCard key={campaign.campaign_id} campaign={campaign} onUpdated={loadCampaigns} />)}
-            </div>
-          )}
+          {/* Fase 6B: confirmación "Voy a participar / No podré participar" (mismo estado que en Mi perfil). */}
+          <MyInvasionsCard onChanged={loadCampaigns} />
 
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap gap-2">
