@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 
 import { useAuth } from '../../context/AuthContext';
 import { apiErrorMessage } from '../../lib/apiErrors';
+import { MyPrayerCard } from './PrayerProgress';
 
 const STATUS_STYLE = {
   invited: 'bg-amber-50 text-amber-800 border-amber-200',
@@ -83,6 +84,7 @@ export function MyInvasionsCard({ onChanged }) {
                       <button type="button" onClick={() => setDeclining(item.campaign_id)} disabled={Boolean(busy) || item.status === 'declined'} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg border border-[#e3c2bd] bg-white px-4 text-base font-semibold text-[#8f382f] disabled:opacity-60" data-testid={`my-invasion-no-${item.campaign_id}`}><X className="h-5 w-5" />{item.status === 'declined' ? 'Respondiste que no' : 'No podré participar'}</button>
                     </div>
               )}
+              {!item.finished && item.status !== 'declined' && <MyPrayerCard campaignId={item.campaign_id} />}
               {item.finished && <p className="mt-3 text-xs text-slate-500">Esta invasión ya terminó.</p>}
             </article>
           );
