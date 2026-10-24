@@ -331,6 +331,12 @@ async def compute_report(campaign: dict) -> dict:
                 "declined": sum(1 for row in rows if row.get("status") == "declined"), "no_response": sum(1 for row in rows if row.get("status") == "invited"),
                 "attended": attended, "attendance_pct": round(attended / total * 100) if total else None}
     by_role = [{"role": role, "label": ROLE_LABELS[role], **participation_counts([row for row in participants if role in row.get("roles", [])])} for role in ROLES]
+    # Asistencia por jornada (marcada en la pantalla móvil de Asistencia o por actividad en campo).
+    from invasion_attendance import campaign_days
+    attendance_by_day = []
+    for item in campaign_days(campaign):
+        count = sum(1 for row in participants if item["day"] in (row.get("attended_days") or []))
+        attendance_by_day.append({"day": item["day"], "attended": count, "invited": len(participants), "pct": round(count / len(participants) * 100) if participants else None})
     groups_rows: dict[str, list] = defaultdict(list)
     for row in participants:
         groups_rows[group_of.get(row["person_id"], "")].append(row)
@@ -423,7 +429,7 @@ async def compute_report(campaign: dict) -> dict:
             "logistics_lead": names.get(campaign.get("logistics_lead_person_id")), "state": campaign_state(campaign),
             "key_figures": key_figures,
         },
-        "participation": {"totals": participation_counts(participants), "by_role": by_role, "by_group": by_group},
+        "participation": {"totals": participation_counts(participants), "by_role": by_role, "by_group": by_group, "by_day": attendance_by_day},
         "field": {
             "houses": {"available": sum(1 for house in households if not house.get("mentor_person_id")),
                        "assigned": sum(1 for house in households if house.get("mentor_person_id")),

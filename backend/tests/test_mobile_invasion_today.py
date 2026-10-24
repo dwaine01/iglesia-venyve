@@ -43,7 +43,10 @@ async def test_invasion_today_context_and_visit_with_day():
         lead_context = (await lead.get("/api/invasions/mine/today")).json()
         assert today_a in [item["campaign_id"] for item in lead_context["active"]] and lead_context["can_register_visits"] is False
         for client in (pastora, outsider):
-            assert (await client.get("/api/invasions/mine/today")).json() == {"today": today.isoformat(), "active": [], "upcoming": None, "pending_invitations": 0, "can_register_visits": False}
+            context = (await client.get("/api/invasions/mine/today")).json()
+            managed = context.pop("managed")
+            assert context == {"today": today.isoformat(), "active": [], "upcoming": None, "pending_invitations": 0, "can_register_visits": False}
+            assert bool(managed) is (client is pastora)  # la pastora supervisa (Asistencia), el ajeno no
 
         # "+ Agregar visita": queda con la invasión y la jornada del día.
         created = await ana.post("/api/mentorship/outreach/visits", json={"contact_type": "new", "contact_name": f"Vecino {tag}", "campaign_id": today_a, "invasion_day": today.isoformat()})

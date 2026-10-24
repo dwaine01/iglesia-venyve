@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
 import { Link, useSearchParams } from 'react-router-dom';
-import { CalendarDays, Check, Clock, Loader2, MapPin, X } from 'lucide-react';
+import { CalendarDays, Check, ClipboardCheck, ClipboardList, Clock, Loader2, MapPin, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { useAuth } from '../../context/AuthContext';
@@ -85,6 +85,11 @@ export function MyInvasionsCard({ onChanged }) {
                       <button type="button" onClick={() => setDeclining(item.campaign_id)} disabled={Boolean(busy) || item.status === 'declined'} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg border border-[#e3c2bd] bg-white px-4 text-base font-semibold text-[#8f382f] disabled:opacity-60" data-testid={`my-invasion-no-${item.campaign_id}`}><X className="h-5 w-5" />{item.status === 'declined' ? 'Respondiste que no' : 'No podré participar'}</button>
                     </div>
               )}
+              {/* Programa: botón destacado para todos los invitados (solo lectura). */}
+              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <Link to={`/invasiones/${item.campaign_id}/programa`} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg border-2 border-[#132443] bg-white px-4 text-base font-semibold text-[#132443]" data-testid={`my-invasion-program-${item.campaign_id}`}><ClipboardList className="h-5 w-5" />Ver programa</Link>
+                {item.roles.includes('general_lead') && <Link to={`/invasiones/${item.campaign_id}/asistencia`} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg bg-[#132443] px-4 text-base font-semibold text-white" data-testid={`my-invasion-attendance-${item.campaign_id}`}><ClipboardCheck className="h-5 w-5" />Tomar asistencia</Link>}
+              </div>
               {!item.finished && item.status !== 'declined' && <MyPrayerCard campaignId={item.campaign_id} />}
               {item.finished && <p className="mt-3 text-xs text-slate-500">Esta invasión ya terminó.</p>}
               {item.roles.includes('mentor') && item.start_date <= new Date().toISOString().slice(0, 10) && <Link to={`/invasiones/${item.campaign_id}/reporte`} className="mt-2 inline-flex min-h-10 items-center text-sm font-semibold text-[#101D36] underline" data-testid={`my-invasion-report-${item.campaign_id}`}>Ver mi reporte</Link>}

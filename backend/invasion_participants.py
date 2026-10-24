@@ -300,7 +300,11 @@ async def my_invasion_today(current_user: dict = Depends(get_current_user)):
     La pastora (autoridad principal) no participa: nunca tiene contexto."""
     person_id = current_user.get("person_id")
     today = date.today().isoformat()
-    empty = {"today": today, "active": [], "upcoming": None, "pending_invitations": 0, "can_register_visits": False}
+    from invasion_attendance import managed_invasions
+    # Asistencia y Programa en la barra: coordinadores generales, autoridad,
+    # organizador y encargado general (la pastora también supervisa).
+    managed = await managed_invasions(current_user)
+    empty = {"today": today, "active": [], "upcoming": None, "pending_invitations": 0, "can_register_visits": False, "managed": managed}
     if not person_id or person_id in await principal_authority_person_ids(db):
         return empty
     rows = {row["campaign_id"]: row async for row in db.invasion_participants.find({"person_id": person_id}, {"_id": 0, "campaign_id": 1, "status": 1, "roles": 1})}
@@ -385,6 +389,12 @@ async def mark_attended_from_activity(campaign_id: Optional[str], person_id: str
         {"campaign_id": campaign_id, "person_id": person_id, "attended": {"$ne": True}},
         {"$set": {"attended": True, "attended_at": now, "attendance_source": "activity", "updated_at": now}},
     )
+    # Y cuenta en la jornada de hoy (asistencia por día), si hoy es jornada.
+    campaign = await db.outreach_campaigns.find_one({"campaign_id": campaign_id}, {"_id": 0, "start_date": 1, "end_date": 1, "schedule_days": 1})
+    today = date.today().isoformat()
+    scheduled = {item.get("day") for item in (campaign or {}).get("schedule_days") or []}
+    if campaign and (today in scheduled if scheduled else (campaign.get("start_date") or "") <= today <= (campaign.get("end_date") or campaign.get("start_date") or "")):
+        await db.invasion_participants.update_one({"campaign_id": campaign_id, "person_id": person_id}, {"$addToSet": {"attended_days": today}})
 
 
 async def ensure_indexes() -> None:

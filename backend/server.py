@@ -550,6 +550,7 @@ from leader_accounts import router as leader_accounts_router
 from push_notifications import router as push_notifications_router, ensure_indexes as push_notifications_ensure_indexes
 from invasion_prayer import router as invasion_prayer_router, ensure_indexes as invasion_prayer_ensure_indexes
 from invasion_report import router as invasion_report_router, ensure_indexes as invasion_report_ensure_indexes
+from invasion_attendance import router as invasion_attendance_router
 
 app.include_router(portal_notifications_router)
 app.include_router(invasion_participants_router)
@@ -558,6 +559,7 @@ app.include_router(leader_accounts_router)
 app.include_router(push_notifications_router)
 app.include_router(invasion_prayer_router)
 app.include_router(invasion_report_router)
+app.include_router(invasion_attendance_router)
 app.include_router(invasion_planning_router)
 
 
