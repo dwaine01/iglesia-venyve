@@ -185,6 +185,9 @@ class VisitCreateInput(BaseModel):
     campaign_id: Optional[str] = None
     mentor_person_id: Optional[str] = None
     note: Optional[str] = Field(default=None, max_length=1000)
+    # Jornada de la invasión (día) en la que se registró, p. ej. desde el "+"
+    # de la barra inferior móvil. Requiere campaign_id y estar dentro de sus fechas.
+    invasion_day: Optional[date] = None
 
 
 class VisitReportInput(BaseModel):
@@ -1099,10 +1102,20 @@ async def create_visit(payload: VisitCreateInput, current_user: dict = Depends(g
         raise HTTPException(status_code=403, detail="Solo un líder puede asignar la visita a otro mentor")
     if not await is_active_mentor(mentor_person_id):
         raise HTTPException(status_code=409, detail="El mentor responsable necesita insignia de Mentor activa")
+    if payload.invasion_day:
+        campaign = await db.outreach_campaigns.find_one({"campaign_id": payload.campaign_id}, {"_id": 0, "start_date": 1, "end_date": 1}) if payload.campaign_id else None
+        if not campaign:
+            raise HTTPException(status_code=422, detail="La jornada necesita una invasión")
+        day = payload.invasion_day.isoformat()
+        if not ((campaign.get("start_date") or day) <= day <= (campaign.get("end_date") or campaign.get("start_date") or day)):
+            raise HTTPException(status_code=422, detail="La jornada no está dentro de las fechas de la invasión")
     doc = await resolve_and_insert_contact_visit(
         payload.contact_type, payload.person_id, payload.contact_name, payload.contact_phone, payload.contact_zone,
         payload.campaign_id, mentor_person_id, payload.note, current_user,
     )
+    if payload.invasion_day:
+        doc["invasion_day"] = payload.invasion_day.isoformat()
+        await db.outreach_visits.update_one({"visit_id": doc["visit_id"]}, {"$set": {"invasion_day": doc["invasion_day"]}})
     return (await serialize_visits([doc], current_user))[0]
 
 

@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
+import { useSearchParams } from 'react-router-dom';
 import { Footprints, Home, Loader2, Map, Plus } from 'lucide-react';
 
 import { useAuth } from '../context/AuthContext';
+import { OUTREACH_CHANGED_EVENT, useInvasionToday } from '../context/InvasionTodayContext';
 import { canLeadOutreach } from '../lib/accessControl';
 import { Button } from '../components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
@@ -30,7 +32,20 @@ const STATUS_FILTERS = [
 export default function OutreachPage() {
   const { user, API, getAuthHeaders } = useAuth();
   const isLeader = canLeadOutreach(user);
-  const [activeTab, setActiveTab] = useState(isLeader ? 'panel' : 'mis-visitas');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get('tab');
+  const invasionParam = searchParams.get('invasion');
+  const [activeTab, setActiveTab] = useState(tabParam || (isLeader && !invasionParam ? 'panel' : 'mis-visitas'));
+  const { current: invasionToday } = useInvasionToday();
+  // Barra inferior móvil: "Casas" abre el mapa y "Invasión" la lista propia.
+  useEffect(() => {
+    if (tabParam) setActiveTab(tabParam);
+    else if (invasionParam) setActiveTab('mis-visitas');
+  }, [tabParam, invasionParam]);
+  const changeTab = (value) => {
+    setActiveTab(value);
+    if (tabParam) { const next = new URLSearchParams(searchParams); next.delete('tab'); setSearchParams(next, { replace: true }); }
+  };
   const [campaigns, setCampaigns] = useState([]);
   const [myVisits, setMyVisits] = useState([]);
   const [households, setHouseholds] = useState([]);
@@ -75,6 +90,12 @@ export default function OutreachPage() {
     setLoading(true);
     Promise.all([loadCampaigns(), loadMyVisits(), loadHouseholds(), loadMentorOptions()]).finally(() => setLoading(false));
   }, [loadCampaigns, loadMyVisits, loadHouseholds, loadMentorOptions]);
+  // Visita agregada desde el "+" de la barra inferior.
+  useEffect(() => {
+    const reload = () => { loadMyVisits(); loadCampaigns(); };
+    window.addEventListener(OUTREACH_CHANGED_EVENT, reload);
+    return () => window.removeEventListener(OUTREACH_CHANGED_EVENT, reload);
+  }, [loadMyVisits, loadCampaigns]);
 
   const filteredVisits = statusFilter === 'all' ? myVisits : myVisits.filter((item) => item.status === statusFilter);
   const myCampaigns = campaigns.filter((item) => item.my_participation_status);
@@ -106,12 +127,13 @@ export default function OutreachPage() {
         </div>
       </header>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList data-testid="outreach-tabs">
-          <TabsTrigger value="mis-visitas" data-testid="outreach-tab-my-visits">Mis Visitas</TabsTrigger>
-          <TabsTrigger value="hogares" data-testid="outreach-tab-households">Mis Hogares</TabsTrigger>
-          {mapCampaigns.length > 0 && <TabsTrigger value="mapa" data-testid="outreach-tab-map"><Map className="mr-1 h-3.5 w-3.5 inline" />Mapa</TabsTrigger>}
-          {isLeader && <TabsTrigger value="panel" data-testid="outreach-tab-leader">Panel de líderes</TabsTrigger>}
+      <Tabs value={activeTab} onValueChange={changeTab}>
+        {/* En celular/tablet: segmentos que caben (etiqueta corta), sin cortarse a la derecha. */}
+        <TabsList data-testid="outreach-tabs" className="max-lg:grid max-lg:w-full max-lg:gap-1" style={{ gridTemplateColumns: `repeat(${2 + (mapCampaigns.length > 0 ? 1 : 0) + (isLeader ? 1 : 0)}, minmax(0, 1fr))` }}>
+          <TabsTrigger value="mis-visitas" className="max-lg:px-1" data-testid="outreach-tab-my-visits"><span className="lg:hidden">Visitas</span><span className="max-lg:hidden">Mis Visitas</span></TabsTrigger>
+          <TabsTrigger value="hogares" className="max-lg:px-1" data-testid="outreach-tab-households"><span className="lg:hidden">Hogares</span><span className="max-lg:hidden">Mis Hogares</span></TabsTrigger>
+          {mapCampaigns.length > 0 && <TabsTrigger value="mapa" className="max-lg:px-1" data-testid="outreach-tab-map"><Map className="mr-1 h-3.5 w-3.5 inline" />Mapa</TabsTrigger>}
+          {isLeader && <TabsTrigger value="panel" className="max-lg:px-1" data-testid="outreach-tab-leader"><span className="lg:hidden">Líderes</span><span className="max-lg:hidden">Panel de líderes</span></TabsTrigger>}
         </TabsList>
 
         <TabsContent value="mis-visitas" className="mt-4 space-y-4">
@@ -120,22 +142,22 @@ export default function OutreachPage() {
           {/* Fase 6B: confirmación "Voy a participar / No podré participar" (mismo estado que en Mi perfil). */}
           <MyInvasionsCard onChanged={loadCampaigns} />
 
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap gap-2">
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+            <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 sm:flex-wrap sm:overflow-visible" data-testid="outreach-filters">
               {STATUS_FILTERS.map(([key, label]) => (
                 <Button
                   key={key}
                   size="sm"
                   variant={statusFilter === key ? 'default' : 'outline'}
                   onClick={() => setStatusFilter(key)}
-                  className={statusFilter === key ? 'bg-[#132443]' : ''}
+                  className={`shrink-0 ${statusFilter === key ? 'bg-[#132443]' : ''}`}
                   data-testid={`outreach-filter-${key}`}
                 >
                   {label}
                 </Button>
               ))}
             </div>
-            <Button onClick={() => setAddOpen(true)} className="bg-[#132443]" data-testid="outreach-add-visit-button"><Plus className="h-4 w-4" /> Agregar visita</Button>
+            <Button onClick={() => setAddOpen(true)} className="bg-[#132443] max-lg:w-full" data-testid="outreach-add-visit-button"><Plus className="h-4 w-4" /> Agregar visita</Button>
           </div>
 
           {loading ? (
@@ -164,7 +186,7 @@ export default function OutreachPage() {
           ))}
 
           <div className="flex items-center justify-end">
-            <Button onClick={() => setAddHouseholdOpen(true)} className="bg-[#132443]" data-testid="outreach-add-household-button"><Home className="h-4 w-4" /> Agregar hogar</Button>
+            <Button onClick={() => setAddHouseholdOpen(true)} className="bg-[#132443] max-lg:w-full" data-testid="outreach-add-household-button"><Home className="h-4 w-4" /> Agregar hogar</Button>
           </div>
           {loading ? (
             <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
@@ -198,8 +220,9 @@ export default function OutreachPage() {
         )}
       </Tabs>
 
-      <AddVisitDialog open={addOpen} onOpenChange={setAddOpen} campaigns={campaigns} forcedMentorId={user.person_id} onCreated={() => { loadMyVisits(); loadCampaigns(); }} />
-      <AddHouseholdDialog open={addHouseholdOpen} onOpenChange={setAddHouseholdOpen} campaigns={campaigns} forcedMentorId={user.person_id} onCreated={() => { loadHouseholds(); loadCampaigns(); }} />
+      <AddVisitDialog open={addOpen} onOpenChange={setAddOpen} campaigns={campaigns} forcedMentorId={user.person_id} onCreated={() => { loadMyVisits(); loadCampaigns(); }}
+        defaultCampaignId={invasionToday?.campaign_id || ''} invasionDay={invasionToday?.day || null} invasionLabel={invasionToday?.day_label || ''} />
+      <AddHouseholdDialog open={addHouseholdOpen} onOpenChange={setAddHouseholdOpen} campaigns={campaigns} forcedMentorId={user.person_id} defaultCampaignId={invasionToday?.campaign_id || ''} onCreated={() => { loadHouseholds(); loadCampaigns(); }} />
       <LogVisitAttemptDialog household={attemptHousehold} open={Boolean(attemptHousehold)} onOpenChange={(value) => { if (!value) setAttemptHousehold(null); }} onLogged={() => { loadHouseholds(); loadMyVisits(); loadCampaigns(); }} />
       <TransferVisitDialog visit={transferVisit} onClose={() => setTransferVisit(null)} onTransferred={loadMyVisits} />
     </div>

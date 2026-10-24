@@ -14,6 +14,8 @@ import {
 
 import { LOGO_IGLESIA } from '../data/presentationData';
 import PortalNotificationsBell from './PortalNotificationsBell';
+import MobileBottomBar from './mobile/MobileBottomNav';
+import { InvasionTodayProvider } from '../context/InvasionTodayContext';
 import { ContextGuideButton } from './guides/ContextGuideButton';
 import { FloatingLibraryScanButton } from './library/FloatingLibraryScanButton';
 import { resolveRouteGuide } from './guides/guideRouteMap';
@@ -401,7 +403,8 @@ export default function AppLayout() {
   }, [isMapRoute]);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background print:block print:h-auto print:overflow-visible">
+    <InvasionTodayProvider>
+    <div className="app-shell-height flex overflow-hidden bg-background print:block print:h-auto print:overflow-visible">
       {/* Desktop Sidebar */}
       {(!isMapRoute || mapSidebarOpen) && <aside className="hidden lg:flex lg:w-64 lg:flex-col border-r border-border bg-card" data-testid="desktop-sidebar" data-print-hide>
         <SidebarContent boardAllowed={boardAccess.allowed} isActiveMentor={mentorAccess.isActiveMentor} />
@@ -420,7 +423,7 @@ export default function AppLayout() {
               type="button"
               variant="ghost"
               size="icon"
-              className="lg:hidden shrink-0 h-9 w-9"
+              className="lg:hidden shrink-0 h-11 w-11"
               onClick={() => setMobileOpen(true)}
               data-testid="btn-menu-mobile"
               aria-label="Abrir menú"
@@ -462,8 +465,11 @@ export default function AppLayout() {
         <div className={`min-h-0 flex-1 ${isMapRoute ? 'overflow-hidden' : 'overflow-y-auto'}`} data-testid="app-page-scroll-container">
           <Suspense fallback={<PageSkeleton />}><Outlet /></Suspense>
         </div>
+        {/* Barra inferior tipo app (solo < 1024 px): ocupa su propio espacio, no tapa el contenido. */}
+        <MobileBottomBar isActiveMentor={mentorAccess.isActiveMentor} menuOpen={mobileOpen} onOpenMenu={() => setMobileOpen(true)} />
         <div data-print-hide><FloatingLibraryScanButton /></div>
       </main>
     </div>
+    </InvasionTodayProvider>
   );
 }

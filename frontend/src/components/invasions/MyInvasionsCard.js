@@ -5,6 +5,7 @@ import { CalendarDays, Check, Clock, Loader2, MapPin, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { useAuth } from '../../context/AuthContext';
+import { INVASIONS_CHANGED_EVENT } from '../../context/InvasionTodayContext';
 import { apiErrorMessage } from '../../lib/apiErrors';
 import { MyPrayerCard } from './PrayerProgress';
 
@@ -42,7 +43,7 @@ export function MyInvasionsCard({ onChanged }) {
     try {
       await axios.post(`${API}/api/invasions/${item.campaign_id}/respond`, { response, note: response === 'declined' ? note.trim() || null : null }, getAuthHeaders());
       toast.success(response === 'confirmed' ? '¡Gracias! Quedaste confirmado' : 'Se avisó que no podrás participar');
-      setDeclining(null); setNote(''); load(); onChanged?.();
+      setDeclining(null); setNote(''); load(); onChanged?.(); window.dispatchEvent(new Event(INVASIONS_CHANGED_EVENT));
     } catch (error) { toast.error(apiErrorMessage(error, 'No se pudo guardar tu respuesta')); } finally { setBusy(''); }
   };
 

@@ -11,7 +11,7 @@ export const FloatingLibraryScanButton = () => {
   const navigate = useNavigate();
   if (!location.pathname.startsWith('/libreria') || location.pathname === '/libreria/escanear') return null;
   return <button type="button" onClick={() => navigate('/libreria/escanear')}
-    className="fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-[#132443] text-white shadow-lg transition-transform hover:scale-105"
+    className="fixed bottom-6 right-6 z-40 max-lg:bottom-[calc(5.5rem+env(safe-area-inset-bottom))] flex h-14 w-14 items-center justify-center rounded-full bg-[#132443] text-white shadow-lg transition-transform hover:scale-105"
     data-testid="floating-library-scan-button" title="Escanear">
     <ScanLine className="h-6 w-6" />
   </button>;
