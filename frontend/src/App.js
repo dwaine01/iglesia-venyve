@@ -113,6 +113,8 @@ const EstructuraFrontalPage = lazyPage(() => import('./pages/EstructuraFrontalPa
 const MisEstadisticasPage = lazyPage(() => import('./pages/MisEstadisticasPage'));
 const GeoMapsPage = lazyPage(() => import('./pages/GeoMapsPage'));
 const InvasionReportPage = lazyPage(() => import('./pages/InvasionReportPage'));
+const InvasionAttendancePage = lazyPage(() => import('./pages/InvasionAttendancePage'));
+const InvasionProgramPage = lazyPage(() => import('./pages/InvasionProgramPage'));
 
 
 function ProtectedRoute({ children }) {
@@ -348,6 +350,9 @@ function App() {
             <Route path="mis-estadisticas" element={<MisEstadisticasPage />} />
             {/* Reporte de invasión: el backend decide si es completo, personal o sin acceso. */}
             <Route path="invasiones/:campaignId/reporte" element={<InvasionReportPage />} />
+            <Route path="invasiones/asistencia" element={<InvasionAttendancePage />} />
+            <Route path="invasiones/:campaignId/asistencia" element={<InvasionAttendancePage />} />
+            <Route path="invasiones/:campaignId/programa" element={<InvasionProgramPage />} />
             
             {/* Persona routes */}
             <Route path="mi-progreso" element={<Navigate to="/procesos/dashboard" replace />} />

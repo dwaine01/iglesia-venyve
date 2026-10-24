@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { CalendarDays, ChevronRight, Footprints, Home, MapPinned, Menu, Plus, UserCircle } from 'lucide-react';
+import { CalendarDays, ChevronRight, ClipboardCheck, ClipboardList, Footprints, Home, MapPinned, Menu, Plus, UserCircle } from 'lucide-react';
 
 import { useAuth } from '../../context/AuthContext';
 import { OUTREACH_CHANGED_EVENT, useInvasionToday } from '../../context/InvasionTodayContext';
@@ -65,16 +65,26 @@ export function MobileBottomNav({ isActiveMentor, menuOpen, onOpenMenu, onAddVis
   const invasion = current || data?.active?.[0] || data?.upcoming;
   const canAdd = outreach && data?.can_register_visits;
   const onOutreach = path === '/mentoria/visitas';
+  // Coordinadores generales, autoridad, organizador y encargado general: Asistencia
+  // (el backend decide quién; un mentor o colaborador nunca recibe `managed`).
+  const managed = data?.managed || [];
+  const programTarget = managed.find((item) => item.active_today) || invasion || managed[0];
+  const onAttendance = /^\/invasiones\/(asistencia|[^/]+\/asistencia)$/.test(path);
+  const onProgram = /^\/invasiones\/[^/]+\/programa$/.test(path);
 
   const items = [{ key: 'home', to: '/', icon: Home, label: 'Inicio', active: HOME_PATHS.includes(path) }];
-  if (invasion) {
-    items.push({ key: 'invasion', icon: Footprints, label: 'Invasión', badge: data?.pending_invitations, onClick: onOpenInvasion,
-      active: (onOutreach && search.get('tab') !== 'mapa') || (path === '/mi-perfil' && search.has('invasion')) || path.startsWith('/invasiones/') });
+  if (invasion || managed.length) {
+    items.push({ key: 'invasion', icon: Footprints, label: 'Invasión', badge: invasion ? data?.pending_invitations : 0, onClick: onOpenInvasion,
+      active: (onOutreach && search.get('tab') !== 'mapa') || (path === '/mi-perfil' && search.has('invasion')) || (path.startsWith('/invasiones/') && !onAttendance && !onProgram) || (!invasion && path === '/procesos/consolidacion') });
   } else {
     items.push({ key: 'profile', to: '/mi-perfil', icon: UserCircle, label: 'Mi perfil', active: path === '/mi-perfil' });
   }
   if (canAdd) items.push({ key: 'add', primary: true });
-  if (outreach && invasion) items.push({ key: 'map', to: '/mentoria/visitas?tab=mapa', icon: MapPinned, label: 'Casas', active: onOutreach && search.get('tab') === 'mapa' });
+  if (managed.length) {
+    // Con "+" caben 5: Programa queda dentro de Invasión y de Asistencia.
+    items.push({ key: 'attendance', to: `/invasiones/${programTarget.campaign_id}/asistencia`, icon: ClipboardCheck, label: 'Asistencia', active: onAttendance });
+    if (!canAdd) items.push({ key: 'program', to: `/invasiones/${programTarget.campaign_id}/programa`, icon: ClipboardList, label: 'Programa', active: onProgram });
+  } else if (outreach && invasion) items.push({ key: 'map', to: '/mentoria/visitas?tab=mapa', icon: MapPinned, label: 'Casas', active: onOutreach && search.get('tab') === 'mapa' });
   else items.push({ key: 'map', to: '/mapas', icon: MapPinned, label: 'Mapa', active: path === '/mapas' });
   items.push({ key: 'more', icon: Menu, label: 'Más', onClick: onOpenMenu, active: menuOpen });
 
@@ -125,6 +135,7 @@ export default function MobileBottomBar({ isActiveMentor, menuOpen, onOpenMenu }
   const goToInvasion = (item) => {
     const target = item || current || data?.active?.[0] || data?.upcoming;
     if (target) navigate(outreach ? `/mentoria/visitas?invasion=${target.campaign_id}` : `/mi-perfil?invasion=${target.campaign_id}`);
+    else if (data?.managed?.length) navigate('/procesos/consolidacion'); // coordinador que no participa: panel de invasiones
   };
   const onAddVisit = () => (needsChoice ? setChooser('add') : setAddOpen(true));
   const onOpenInvasion = () => (needsChoice ? setChooser('invasion') : goToInvasion());

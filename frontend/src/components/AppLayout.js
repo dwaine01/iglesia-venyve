@@ -390,6 +390,8 @@ export default function AppLayout() {
     if (path.startsWith('/cuidado-pastoral/casos/')) return 'Expediente pastoral';
     if (path.startsWith('/junta/reuniones/')) return 'Reunión de Junta';
     if (path.startsWith('/invasiones/') && path.endsWith('/reporte')) return 'Reporte de invasión';
+    if (path.startsWith('/invasiones/') && path.endsWith('/asistencia')) return 'Asistencia de invasión';
+    if (path.startsWith('/invasiones/') && path.endsWith('/programa')) return 'Programa de invasión';
     return 'Página';
   };
   const currentBreadcrumb = getBreadcrumb();

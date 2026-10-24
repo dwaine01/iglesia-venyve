@@ -3,6 +3,7 @@ import { useTheme } from "next-themes"
 import { Toaster as Sonner, toast } from "sonner"
 
 const MOBILE_TOAST_QUERY = "(max-width: 767px)"
+const MOBILE_TOAST_BOTTOM = "calc(84px + env(safe-area-inset-bottom))"
 
 const getInitialMobileState = () =>
   typeof window !== "undefined" && window.matchMedia(MOBILE_TOAST_QUERY).matches
@@ -30,6 +31,9 @@ const Toaster = ({
     <Sonner
       theme={theme}
       position={getResponsiveToastPosition(position, isMobile)}
+      // En celular los avisos salen abajo: por encima de la barra inferior de navegación.
+      offset={isMobile ? { bottom: MOBILE_TOAST_BOTTOM } : undefined}
+      mobileOffset={{ bottom: MOBILE_TOAST_BOTTOM, left: "1rem", right: "1rem" }}
       className="toaster group"
       data-testid="global-toast-region"
       style={{
