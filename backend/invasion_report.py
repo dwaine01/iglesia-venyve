@@ -23,10 +23,11 @@ from datetime import date, datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 
 from invasion_participants import ROLE_LABELS, ROLES, can_edit_participants, load_campaign
 from invasion_prayer import prayer_summary
-from mentorship_outreach import campaign_book_rows, now_utc, serialize
+from mentorship_outreach import campaign_book_rows, now_utc, person_display_name, serialize
 from participation_scope import principal_authority_person_ids
 from process_engine import get_definition
 from supervision_analytics import load_thresholds
@@ -187,6 +188,109 @@ def prayer_report(prayer: dict) -> dict:
     meetings = [{"day": meeting["day"], "place": meeting.get("place"), "attendees": meeting.get("attendee_count", 0),
                  "pct": round(meeting.get("attendee_count", 0) / len(people) * 100) if people else None} for meeting in prayer["meetings"]]
     return {"period": period, "totals": prayer["totals"], "by_week": weeks, "meetings": meetings}
+
+
+# ---------------------------------------------------------------- 8) Recomendaciones por reglas
+PRIORITY_ORDER = {"alta": 0, "media": 1, "baja": 2}
+
+
+def build_recommendations(data: dict) -> list[dict]:
+    """Recomendaciones generadas SOLO por reglas explícitas sobre los datos del
+    reporte (nada inventado). Cada una lleva la regla, la evidencia (el dato que
+    la dispara) y un responsable sugerido. El id es estable para guardar
+    "resuelta"."""
+    recs: list[dict] = []
+    summary, field, part = data["summary"], data["field"], data["participation"]
+    figures = summary["key_figures"]
+    follow = data.get("followup") or {}
+    state = summary.get("state")
+
+    def add(rule_id, priority, title, detail, evidence_label, value, total=None, responsible="Encargado general", rule=""):
+        recs.append({"id": rule_id, "priority": priority, "title": title, "detail": detail, "responsible": responsible, "rule": rule,
+                     "evidence": {"label": evidence_label, "value": value, "total": total, "pct": round(value / total * 100) if total else None}})
+
+    if follow.get("unattended"):
+        add("followup:unattended", "alta", f"Atender a {follow['unattended']} persona(s) sin seguimiento",
+            "Quieren seguimiento y llevan más de 48 h sin una actividad de consolidación realizada. Asignar mentor y registrar el primer contacto hoy.",
+            "Personas sin atender > 48 h", follow["unattended"], follow.get("wants_followup"), "Coordinador de Consolidación",
+            f"Regla: quiere seguimiento y sin primer contacto después de {follow.get('unattended_hours', 48)} h.")
+    available = field["houses"]["available"]
+    if available and state in {"active", "finished", "closed"}:
+        share = available / field["houses"]["total"] if field["houses"]["total"] else 0
+        add("houses:available", "media" if share >= 0.2 else "baja", f"{available} casa(s) disponibles sin tomar",
+            "Repartirlas entre los mentores con menos casas o programar otra salida al sector.", "Casas disponibles", available, field["houses"]["total"],
+            "Encargado general", "Regla: casas de la invasión sin mentor asignado.")
+    for sector in field.get("by_sector", []):
+        if sector["sector"] != "Sin sector" and sector["houses"] >= 3 and sector["coverage_pct"] is not None and sector["coverage_pct"] < 30:
+            add(f"sector:{sector['sector']}", "media", f"Baja cobertura en {sector['sector']}",
+                f"Solo {sector['visited']} de {sector['houses']} casas visitadas. Reforzar el sector con más mentores en la próxima jornada.",
+                "Casas visitadas en el sector", sector["visited"], sector["houses"], "Encargado general", "Regla: sector con 3+ casas y menos de 30% visitadas.")
+    idle = [row for row in data["ranking"]["mentors"] if row.get("status") != "declined" and not row["people"] and not row["houses_visited"]]
+    if idle and state in {"active", "finished", "closed"}:
+        names = ", ".join(row["name"] for row in idle[:5]) + ("…" if len(idle) > 5 else "")
+        add("mentors:idle", "alta" if len(idle) >= 3 else "media", f"{len(idle)} mentor(es) sin visitas registradas",
+            f"{names}. Verificar si salieron al campo y apoyarlos para registrar sus visitas.", "Mentores sin actividad", len(idle), len(data["ranking"]["mentors"]),
+            "Líderes de Grupo Frontal", "Regla: mentor invitado (no declinó) sin personas ni casas visitadas.")
+    no_response = part["totals"]["no_response"]
+    if no_response and state in {"upcoming", "active"}:
+        total = part["totals"]["invited"]
+        add("participation:no_response", "media" if no_response / total >= 0.2 else "baja", f"{no_response} invitado(s) sin responder",
+            "Llamarles o enviar un recordatorio para confirmar si participarán.", "Sin responder", no_response, total, "Organizador",
+            "Regla: invitados que no respondieron mientras la invasión no termina.")
+    attendance_goal = next((item for item in data.get("goals", {}).get("items", []) if item["key"] == "attendance"), None)
+    if attendance_goal and attendance_goal["semaphore"] == "rojo" and state in {"finished", "closed"}:
+        add("participation:low_attendance", "alta", f"Baja asistencia: {figures['attendance_pct']}%",
+            "Revisar con los grupos frontales qué impidió asistir (horario, transporte, avisos) antes de la próxima invasión.",
+            "Asistieron", figures["attended"], figures["participants"], "Pastor / Coordinador general", "Regla: semáforo rojo en la meta de asistencia.")
+    teams = [team for team in data["ranking"]["teams"] if team.get("front_group_id")]
+    if len(teams) >= 2 and teams[0]["score"]:
+        for team in teams:
+            if team["score"] < teams[0]["score"] * 0.5:
+                add(f"team:{team['front_group_id']}", "baja", f"El equipo {team['name']} se queda atrás",
+                    f"{team['score']} puntos frente a {teams[0]['score']} del primero. Acompañar al líder del grupo en la próxima salida.",
+                    "Puntaje del equipo", team["score"], teams[0]["score"], "Líder del Grupo Frontal", "Regla: equipo con menos de la mitad del puntaje del primero.")
+    prayer = data.get("prayer")
+    if prayer and prayer["totals"].get("needs_followup"):
+        add("prayer:followup", "media", f"{prayer['totals']['needs_followup']} participante(s) con poca preparación en oración",
+            "Animarles y acompañarles en la oración antes de salir.", "Necesitan seguimiento", prayer["totals"]["needs_followup"], prayer["totals"]["participants"],
+            "Encargado general", "Regla de oración (6C): menos de la mitad de los días o sin oración en los últimos 3 días.")
+    if field["results"].get("lbs_pending"):
+        add("results:lbs", "media", f"{field['results']['lbs_pending']} persona(s) con LBS pendiente",
+            "Asignar un mentor habilitado para LBS.", "LBS pendiente", field["results"]["lbs_pending"], figures["people_reached"], "Coordinador de Consolidación",
+            "Regla: visita con decisión 'necesita LBS'.")
+    unlocated = field["houses"]["total"] - field["houses"]["located"]
+    if unlocated:
+        add("houses:unlocated", "baja", f"{unlocated} casa(s) sin ubicar en el mapa",
+            "Ubicarlas con «Ubicar con mi ubicación» o corregir su dirección.", "Casas sin ubicar", unlocated, field["houses"]["total"], "Logística",
+            "Regla: casa sin coordenadas.")
+    recs.sort(key=lambda item: PRIORITY_ORDER[item["priority"]])
+    return recs
+
+
+class RecommendationState(BaseModel):
+    resolved: bool
+    note: Optional[str] = Field(default=None, max_length=500)
+
+
+class ReportNotes(BaseModel):
+    worked: Optional[str] = Field(default=None, max_length=4000)
+    improve: Optional[str] = Field(default=None, max_length=4000)
+    logistics: Optional[str] = Field(default=None, max_length=4000)
+    testimonies: Optional[str] = Field(default=None, max_length=6000)
+    pastor_recommendations: Optional[str] = Field(default=None, max_length=6000)
+
+
+def state_key(recommendation_id: str) -> str:
+    """Clave segura para Mongo (los ids pueden traer nombres de sector con puntos)."""
+    return recommendation_id.replace(".", "_").replace("$", "_")[:200]
+
+
+async def actor_name(current_user: dict) -> str:
+    return await person_display_name(current_user.get("person_id")) or current_user.get("nombre") or current_user.get("email") or "Usuario"
+
+
+async def load_notes(campaign_id: str) -> dict:
+    return await db.invasion_report_notes.find_one({"campaign_id": campaign_id}, {"_id": 0}) or {"campaign_id": campaign_id, "resolved": {}}
 
 
 def campaign_state(campaign: dict) -> str:
@@ -394,7 +498,43 @@ async def get_report(campaign_id: str, current_user: dict = Depends(get_current_
             "can_finalize": access == "full" and not snapshot and campaign_state(campaign) in {"finished", "active"}}
     if access == "personal":
         return {**meta, **personal_view(data, current_user.get("person_id"))}
-    return {**meta, "scope": "full", **data}
+    notes = await load_notes(campaign_id)
+    resolved = notes.get("resolved") or {}
+    recommendations = []
+    for item in build_recommendations(data):
+        entry = resolved.get(state_key(item["id"])) or {}
+        recommendations.append({**item, "resolved": bool(entry.get("resolved")), "resolved_note": entry.get("note"),
+                                "resolved_by": entry.get("by_name"), "resolved_at": serialize(entry.get("at"))})
+    return {**meta, "scope": "full", **data, "recommendations": recommendations,
+            "notes": {key: notes.get(key) for key in ("worked", "improve", "logistics", "testimonies", "pastor_recommendations")}
+            | {"updated_by": notes.get("updated_by_name"), "updated_at": serialize(notes.get("updated_at"))}}
+
+
+async def _require_full(campaign_id: str, current_user: dict) -> dict:
+    campaign = await load_campaign(campaign_id)
+    if not can_edit_participants(current_user, campaign):
+        raise HTTPException(status_code=403, detail="Solo la autoridad, el organizador o el encargado general")
+    return campaign
+
+
+@router.put("/{campaign_id}/report/recommendations/{recommendation_id:path}", response_model=dict)
+async def set_recommendation_state(campaign_id: str, recommendation_id: str, payload: RecommendationState, current_user: dict = Depends(get_current_user)):
+    """Marca una recomendación como resuelta (también en el reporte final)."""
+    await _require_full(campaign_id, current_user)
+    entry = {"resolved": payload.resolved, "note": (payload.note or "").strip() or None, "by_user_id": current_user["user_id"], "by_name": await actor_name(current_user), "at": now_utc()}
+    await db.invasion_report_notes.update_one({"campaign_id": campaign_id}, {"$set": {f"resolved.{state_key(recommendation_id)}": entry}, "$setOnInsert": {"campaign_id": campaign_id}}, upsert=True)
+    return {"id": recommendation_id, "resolved": payload.resolved}
+
+
+@router.put("/{campaign_id}/report/notes", response_model=dict)
+async def save_notes(campaign_id: str, payload: ReportNotes, current_user: dict = Depends(get_current_user)):
+    """Lecciones aprendidas y recomendaciones del pastor: editables siempre,
+    aunque el reporte final esté congelado."""
+    await _require_full(campaign_id, current_user)
+    fields = {key: (value or "").strip() or None for key, value in payload.model_dump(exclude_unset=True).items()}
+    await db.invasion_report_notes.update_one({"campaign_id": campaign_id}, {"$set": {**fields, "updated_by_user_id": current_user["user_id"], "updated_by_name": await actor_name(current_user), "updated_at": now_utc()}, "$setOnInsert": {"campaign_id": campaign_id, "resolved": {}}}, upsert=True)
+    notes = await load_notes(campaign_id)
+    return {key: notes.get(key) for key in ("worked", "improve", "logistics", "testimonies", "pastor_recommendations")} | {"updated_by": notes.get("updated_by_name"), "updated_at": serialize(notes.get("updated_at"))}
 
 
 @router.post("/{campaign_id}/report/finalize", response_model=dict)
@@ -412,3 +552,4 @@ async def finalize_report(campaign_id: str, current_user: dict = Depends(get_cur
 
 async def ensure_indexes() -> None:
     await db.invasion_reports.create_index([("campaign_id", 1), ("final", 1)])
+    await db.invasion_report_notes.create_index("campaign_id", unique=True)
