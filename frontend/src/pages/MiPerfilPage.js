@@ -2,6 +2,7 @@ import React from 'react';
 import { TriangleAlert } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { MyFrontGroupsCard } from '../components/front-groups/MyFrontGroupsCard';
+import { MyInvasionsCard } from '../components/invasions/MyInvasionsCard';
 import PersonaPerfilPage from './PersonaPerfilPage';
 
 // "Mi perfil" — siempre disponible para toda cuenta: muestra la MISMA ficha
@@ -19,7 +20,7 @@ export default function MiPerfilPage() {
 
   return (
     <div data-testid="mi-perfil-page">
-      <PersonaPerfilPage personId={user.person_id} ownProfileExtra={<MyFrontGroupsCard />} />
+      <PersonaPerfilPage personId={user.person_id} ownProfileExtra={<><MyInvasionsCard /><MyFrontGroupsCard /></>} />
     </div>
   );
 }

@@ -23,7 +23,7 @@ from access_control import is_general_coordinator, is_global_pastoral_authority
 from mentorship_outreach import (
     CampaignInput, MentorRosterEntry, can_manage_outreach_campaigns, create_campaign, now_utc, person_display_name, serialize,
 )
-from invasion_participants import can_edit_participants, sync_participants
+from invasion_participants import can_edit_participants, portal_link, sync_participants
 from portal_notifications import notify_persons, notify_users
 from server import db, get_current_user
 
@@ -216,7 +216,7 @@ async def create_invasion(payload: InvasionCreate, current_user: dict = Depends(
     invited = await sync_participants(campaign, current_user["user_id"], payload.collaborator_person_ids, payload.invited_front_group_ids)
     await notify_persons(invited, "invasion_invited", f"Te invitaron a la invasión «{payload.name}»",
                          f"{payload.location} · del {payload.start_date.isoformat()} al {payload.end_date.isoformat()}. Confirma si vas a participar.",
-                         f"/procesos/consolidacion?invasion={created['campaign_id']}", {"campaign_id": created["campaign_id"]})
+                         portal_link(created["campaign_id"]), {"campaign_id": created["campaign_id"]})
     return {**await invasion_view(campaign), "accounts_created": created.get("accounts_created", [])}
 
 
@@ -360,10 +360,10 @@ async def update_invasion(campaign_id: str, payload: InvasionUpdate, current_use
     invited = await sync_participants(refreshed, current_user["user_id"], front_group_ids=payload.invited_front_group_ids)
     await notify_persons(invited, "invasion_invited", f"Te invitaron a la invasión «{refreshed['name']}»",
                          f"{refreshed['location']} · del {refreshed['start_date']} al {refreshed['end_date']}. Confirma si vas a participar.",
-                         f"/procesos/consolidacion?invasion={campaign_id}", {"campaign_id": campaign_id})
+                         portal_link(campaign_id), {"campaign_id": campaign_id})
     await notify_persons(sorted(previous), "invasion_updated", f"Se actualizó la invasión «{refreshed['name']}»",
                          f"{refreshed['location']} · del {refreshed['start_date']} al {refreshed['end_date']}. Revisa los cambios.",
-                         f"/procesos/consolidacion?invasion={campaign_id}", {"campaign_id": campaign_id})
+                         portal_link(campaign_id), {"campaign_id": campaign_id})
     return {**await invasion_view(refreshed), "can_edit": True, "can_edit_participants": True}
 
 

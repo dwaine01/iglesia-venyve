@@ -25,6 +25,7 @@ Reglas del dueño aplicadas aquí (backend):
   hogares, pero no dirigen etapas sin autorización.
 - Editan la lista: pastor general / coordinadores generales, el organizador
   (quien creó la invasión) y el encargado general."""
+from datetime import date
 from typing import Literal, Optional
 from uuid import uuid4
 
@@ -35,7 +36,7 @@ from mentorship_outreach import (
     can_manage_outreach_campaigns, ensure_participation, is_active_mentor, now_utc, person_display_name, serialize,
 )
 from participation_scope import principal_authority_person_ids, without
-from portal_notifications import notify_persons
+from portal_notifications import notify_persons, notify_users
 from server import db, get_current_user
 
 router = APIRouter(prefix="/api/invasions", tags=["invasion-participants"])
@@ -43,6 +44,20 @@ router = APIRouter(prefix="/api/invasions", tags=["invasion-participants"])
 ROLES = ("mentor", "collaborator", "general_lead", "logistics")
 ROLE_LABELS = {"mentor": "Mentor", "collaborator": "Colaborador", "general_lead": "Encargado general", "logistics": "Logística"}
 STATUS_LABELS = {"invited": "Sin responder", "confirmed": "Confirmado", "declined": "No participará"}
+
+
+class ResponseInput(BaseModel):
+    response: Literal["confirmed", "declined"]
+    note: Optional[str] = Field(default=None, max_length=500)
+
+
+class AttendanceInput(BaseModel):
+    attended: bool
+
+
+def portal_link(campaign_id: str) -> str:
+    """Enlace para los invitados: su portal (Mi perfil) siempre lo pueden abrir."""
+    return f"/mi-perfil?invasion={campaign_id}"
 
 
 class ParticipantsAdd(BaseModel):
@@ -121,7 +136,9 @@ async def participants_view(campaign: dict, current_user: dict) -> dict:
                       "name": await person_display_name(row["person_id"]) or "Persona",
                       "status_label": "Asistió" if row.get("attended") else STATUS_LABELS.get(row.get("status"), row.get("status"))})
     items.sort(key=lambda item: (ROLES.index(item["roles"][0]) if item["roles"] else 9, item["name"]))
+    # Conteos reales de la lista (la autoridad pastoral principal nunca cuenta).
     counts = {"total": len(items), **{status: sum(1 for item in items if item.get("status") == status) for status in STATUS_LABELS}, "attended": sum(1 for item in items if item.get("attended"))}
+    counts["no_response"] = counts["invited"]
     return {"campaign_id": campaign["campaign_id"], "items": items, "counts": counts, "can_edit": can_edit_participants(current_user, campaign)}
 
 
@@ -177,7 +194,7 @@ async def add_participants(campaign_id: str, payload: ParticipantsAdd, current_u
         await db.outreach_campaigns.update_one({"campaign_id": campaign_id}, {"$addToSet": {"invited_front_group_ids": {"$each": list(dict.fromkeys(payload.front_group_ids))}}})
     await notify_persons(new, "invasion_invited", f"Te invitaron a la invasión «{campaign['name']}»",
                          f"{campaign['location']} · del {campaign['start_date']} al {campaign['end_date']}. Confirma si vas a participar.",
-                         f"/procesos/consolidacion?invasion={campaign_id}", {"campaign_id": campaign_id})
+                         portal_link(campaign_id), {"campaign_id": campaign_id})
     return {**await participants_view(await load_campaign(campaign_id), current_user), "added": new, "rejected": rejected}
 
 
@@ -206,6 +223,126 @@ async def remove_participant(campaign_id: str, person_id: str, role: Literal["me
         "actor_user_id": current_user["user_id"], "actor_person_id": current_user.get("person_id"), "deleted_at": now_utc(),
     })
     return await participants_view(await load_campaign(campaign_id), current_user)
+
+
+async def notify_organizers(campaign: dict, title: str, message: str) -> None:
+    users = []
+    if campaign.get("created_by_user_id"):
+        users.append(campaign["created_by_user_id"])
+    persons = [item for item in (campaign.get("general_lead_person_id"),) if item]
+    if users:
+        await notify_users(users, "invasion_response", title, message, f"/procesos/consolidacion?invasion={campaign['campaign_id']}", {"campaign_id": campaign["campaign_id"]})
+    if persons:
+        await notify_persons(persons, "invasion_response", title, message, portal_link(campaign["campaign_id"]), {"campaign_id": campaign["campaign_id"]})
+
+
+@router.get("/participants/summary", response_model=dict)
+async def participants_summary(current_user: dict = Depends(get_current_user)):
+    """Conteos reales por invasión (invitados, confirmados, sin responder,
+    no podrán, asistieron) para las invasiones que la cuenta administra."""
+    authorities = await principal_authority_person_ids(db)
+    campaigns = [item async for item in db.outreach_campaigns.find({"status": {"$ne": "closed"}}, {"_id": 0, "campaign_id": 1, "created_by_user_id": 1, "general_lead_person_id": 1})]
+    allowed = [item["campaign_id"] for item in campaigns if can_edit_participants(current_user, item)]
+    rows = await db.invasion_participants.aggregate([
+        {"$match": {"campaign_id": {"$in": allowed}, "person_id": {"$nin": list(authorities)}}},
+        {"$group": {"_id": "$campaign_id", "total": {"$sum": 1},
+                    "confirmed": {"$sum": {"$cond": [{"$eq": ["$status", "confirmed"]}, 1, 0]}},
+                    "no_response": {"$sum": {"$cond": [{"$eq": ["$status", "invited"]}, 1, 0]}},
+                    "declined": {"$sum": {"$cond": [{"$eq": ["$status", "declined"]}, 1, 0]}},
+                    "attended": {"$sum": {"$cond": [{"$eq": ["$attended", True]}, 1, 0]}}}},
+    ]).to_list(None)
+    return {"items": {row.pop("_id"): row for row in rows}}
+
+
+@router.get("/mine/invitations", response_model=dict)
+async def my_invitations(current_user: dict = Depends(get_current_user)):
+    """Portal del invitado: sus invasiones (no terminadas primero) con su estado."""
+    person_id = current_user.get("person_id")
+    if not person_id:
+        return {"items": []}
+    # Mentores del roster de invasiones anteriores a la Fase 6 también ven su invitación.
+    async for campaign in db.outreach_campaigns.find({"assigned_mentor_ids": person_id}, {"_id": 0}):
+        if not await db.invasion_participants.find_one({"campaign_id": campaign["campaign_id"], "person_id": person_id}, {"_id": 1}):
+            await sync_participants(campaign, None)
+    rows = await db.invasion_participants.find({"person_id": person_id}, {"_id": 0}).to_list(200)
+    campaigns = {item["campaign_id"]: item async for item in db.outreach_campaigns.find({"campaign_id": {"$in": [row["campaign_id"] for row in rows]}}, {"_id": 0})}
+    today = date.today().isoformat()
+    items = []
+    for row in rows:
+        campaign = campaigns.get(row["campaign_id"])
+        if not campaign or campaign.get("status") == "closed":
+            continue
+        roles = [role for role in ROLES if role in row.get("roles", [])]
+        items.append({
+            "campaign_id": campaign["campaign_id"], "name": campaign.get("name"), "location": campaign.get("location"),
+            "purpose": campaign.get("purpose"), "start_date": campaign.get("start_date"), "end_date": campaign.get("end_date"),
+            "schedule_days": campaign.get("schedule_days") or [], "departure_point": campaign.get("departure_point") or campaign.get("meeting_place"),
+            "site_meeting_point": campaign.get("site_meeting_point"), "prayer_start_date": campaign.get("prayer_start_date"),
+            "roles": roles, "role_labels": [ROLE_LABELS[role] for role in roles],
+            "status": row.get("status"), "status_label": "Asistió" if row.get("attended") else STATUS_LABELS.get(row.get("status")),
+            "attended": bool(row.get("attended")), "responded_at": serialize(row.get("responded_at")),
+            "finished": (campaign.get("end_date") or today) < today, "can_respond": (campaign.get("end_date") or today) >= today,
+        })
+    items.sort(key=lambda item: (item["finished"], item["start_date"] or ""))
+    return {"items": items}
+
+
+@router.post("/{campaign_id}/respond", response_model=dict)
+async def respond_invitation(campaign_id: str, payload: ResponseInput, current_user: dict = Depends(get_current_user)):
+    """"Voy a participar" / "No podré participar" desde el portal del invitado."""
+    campaign = await load_campaign(campaign_id)
+    person_id = current_user.get("person_id")
+    if not person_id or person_id in await principal_authority_person_ids(db):
+        raise HTTPException(status_code=409, detail="La autoridad pastoral principal supervisa la invasión; no confirma participación")
+    if person_id in (campaign.get("assigned_mentor_ids") or []):
+        await sync_participants(campaign, None)
+    row = await db.invasion_participants.find_one({"campaign_id": campaign_id, "person_id": person_id}, {"_id": 0})
+    if not row:
+        raise HTTPException(status_code=403, detail="No estás invitado a esta invasión")
+    if (campaign.get("end_date") or "") < date.today().isoformat():
+        raise HTTPException(status_code=409, detail="Esta invasión ya terminó")
+    now = now_utc()
+    await db.invasion_participants.update_one({"campaign_id": campaign_id, "person_id": person_id}, {"$set": {
+        "status": payload.response, "responded_at": now, "response_note": (payload.note or "").strip() or None, "updated_at": now,
+    }})
+    if "mentor" in row.get("roles", []):
+        # Mismo estado en el roster operativo de mentores (Visitas / Supervisión).
+        await ensure_participation(campaign_id, person_id)
+        if payload.response == "confirmed":
+            await db.outreach_participations.update_one({"campaign_id": campaign_id, "mentor_person_id": person_id, "status": "assigned"}, {"$set": {"status": "confirmed", "confirmed_at": now, "updated_at": now}})
+        else:
+            await db.outreach_participations.update_one({"campaign_id": campaign_id, "mentor_person_id": person_id, "status": "confirmed"}, {"$set": {"status": "assigned", "confirmed_at": None, "updated_at": now}})
+    name = await person_display_name(person_id) or "Un invitado"
+    verb = "confirmó que va a participar" if payload.response == "confirmed" else "no podrá participar"
+    await notify_organizers(campaign, f"{name} {verb}", f"Invasión «{campaign.get('name')}»" + (f": {payload.note.strip()}" if payload.note and payload.note.strip() else ""))
+    return {"campaign_id": campaign_id, "status": payload.response, "status_label": STATUS_LABELS[payload.response]}
+
+
+@router.put("/{campaign_id}/participants/{person_id}/attendance", response_model=dict)
+async def set_attendance(campaign_id: str, person_id: str, payload: AttendanceInput, current_user: dict = Depends(get_current_user)):
+    """Marca quién asistió (autoridad, organizador o encargado general)."""
+    campaign = await load_campaign(campaign_id)
+    if not can_edit_participants(current_user, campaign):
+        raise HTTPException(status_code=403, detail="Solo la autoridad, el organizador o el encargado general marcan asistencia")
+    now = now_utc()
+    result = await db.invasion_participants.update_one({"campaign_id": campaign_id, "person_id": person_id}, {"$set": {
+        "attended": payload.attended, "attended_at": now if payload.attended else None, "attendance_source": "manual",
+        "attendance_marked_by_user_id": current_user["user_id"], "updated_at": now,
+    }})
+    if not result.matched_count:
+        raise HTTPException(status_code=404, detail="Esa persona no está en la lista de esta invasión")
+    return await participants_view(campaign, current_user)
+
+
+async def mark_attended_from_activity(campaign_id: Optional[str], person_id: str) -> None:
+    """Registrar un hogar o una visita en la invasión cuenta como asistencia."""
+    if not campaign_id or not person_id:
+        return
+    now = now_utc()
+    await db.invasion_participants.update_one(
+        {"campaign_id": campaign_id, "person_id": person_id, "attended": {"$ne": True}},
+        {"$set": {"attended": True, "attended_at": now, "attendance_source": "activity", "updated_at": now}},
+    )
 
 
 async def ensure_indexes() -> None:
