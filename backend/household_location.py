@@ -237,6 +237,23 @@ async def households_map(campaign_id: str, current_user: dict = Depends(get_curr
         raise HTTPException(status_code=403, detail="Sin permiso para consultar hogares")
     households, full = await visible_households(campaign, current_user)
     points = [point(item, current_user, full) for item in households]
+    # Resultado de cada casa (para colorear el mapa del reporte) y, para quien ve
+    # todo, el nombre del mentor (filtro por mentor). Dos consultas en lote.
+    house_ids = [item["household_id"] for item in points]
+    best: dict[str, str] = {}
+    rank = {"seven_weeks": 4, "followup": 3, "contacted": 2}
+    async for visit in db.outreach_visits.find({"household_id": {"$in": house_ids}, "archived": {"$ne": True}}, {"_id": 0, "household_id": 1, "status": 1, "enrollment_id": 1}):
+        result = "seven_weeks" if visit.get("enrollment_id") else "followup" if visit.get("status") == "wants_followup" else "contacted"
+        if rank[result] > rank.get(best.get(visit["household_id"]), 0):
+            best[visit["household_id"]] = result
+    mentor_names = {}
+    if full:
+        from mentorship_outreach import person_display_name
+        for mentor_id in {item["mentor_person_id"] for item in points if item.get("mentor_person_id")}:
+            mentor_names[mentor_id] = await person_display_name(mentor_id)
+    for item in points:
+        item["result"] = best.get(item["household_id"]) or ("no_answer" if item["attempts"] else "available" if item["category"] == "available" else "pending")
+        item["mentor_name"] = mentor_names.get(item.get("mentor_person_id"))
     located = [item for item in points if item["latitude"] is not None]
     unlocated = [item for item in points if item["latitude"] is None]
     counts = {key: sum(1 for item in points if item["category"] == key) for key in ("mine", "available", "visited", "assigned")}

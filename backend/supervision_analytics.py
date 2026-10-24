@@ -41,6 +41,10 @@ DEFAULT_THRESHOLDS = {
     "goal_activity_ratio": {"value": 0.50, "label": "Meta de participación en actividades: % de integrantes que sirvieron en un turno o realizaron una actividad de consolidación", "status": "propuesta"},
     "goal_outreach_ratio": {"value": 0.60, "label": "Meta de impacto en invasiones: % de integrantes con hogares, intentos de visita o personas alcanzadas", "status": "propuesta"},
     "goal_persons_reached_per_member_week": {"value": 1.0, "label": "Meta de personas alcanzadas por integrante por semana (en 'Por invasión': por invasión)", "status": "propuesta"},
+    # FASE 6F: metas propias del Reporte de invasión (propuesta hasta confirmarlas).
+    "goal_invasion_house_coverage": {"value": 0.70, "label": "Meta de invasión: % de casas de la invasión visitadas", "status": "propuesta"},
+    "goal_invasion_followup_to_consolidation": {"value": 0.60, "label": "Meta de invasión: % de personas que quieren seguimiento que pasan a Consolidación", "status": "propuesta"},
+    "goal_invasion_prayer_ratio": {"value": 0.80, "label": "Meta de invasión: % de participantes que registraron oración en la preparación", "status": "propuesta"},
     "goal_progress_green": {"value": 0.80, "label": "Avance hacia las metas desde el cual el equipo es A (verde)", "status": "propuesta"},
     "goal_progress_yellow": {"value": 0.50, "label": "Avance hacia las metas desde el cual el equipo es B (ámbar); debajo, C (rojo)", "status": "propuesta"},
 }

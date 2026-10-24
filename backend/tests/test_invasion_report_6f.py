@@ -55,8 +55,8 @@ async def test_report_permissions_figures_and_frozen_final():
         report = (await pastora.get(f"/api/invasions/{campaign_id}/report")).json()
         assert report["mode"] == "live" and report["summary"]["state"] == "active" and report["can_finalize"] is True
         figures = report["summary"]["key_figures"]
-        assert figures == {"houses_visited": 1, "houses_total": 3, "people_reached": 2, "wants_followup": 1, "seven_weeks": 1,
-                           "participants": 4, "attended": 1, "attendance_pct": 25}
+        assert {key: figures[key] for key in ("houses_visited", "houses_total", "people_reached", "wants_followup", "seven_weeks", "participants", "attended", "attendance_pct")} == {
+            "houses_visited": 1, "houses_total": 3, "people_reached": 2, "wants_followup": 1, "seven_weeks": 1, "participants": 4, "attended": 1, "attendance_pct": 25}
         # Pastora fuera de participación y ranking.
         roles = {item["role"]: item for item in report["participation"]["by_role"]}
         assert roles["mentor"]["invited"] == 2 and roles["mentor"]["declined"] == 1 and roles["collaborator"]["invited"] == 1
@@ -83,5 +83,60 @@ async def test_report_permissions_figures_and_frozen_final():
             for collection in ("outreach_households", "outreach_visit_events", "outreach_visits", "outreach_participations", "invasion_participants", "invasion_reports", "outreach_campaigns"):
                 await server.db[collection].delete_many({"campaign_id": campaign_id})
         await server.db.mentor_badges.delete_many({"_id": {"$regex": f"^badge-{tag}"}})
+        await server.db.portal_notifications.delete_many({"recipient_user_id": {"$in": [str(item) for item in fx.user_ids]}})
+        await fx.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_report_followup_goals_and_comparison():
+    fx = Fixture()
+    tag = uuid.uuid4().hex[:8]
+    campaign_ids = []
+    today = date.today()
+    try:
+        pastora = await fx.account(await fx.person(f"Pastora{tag}"), "pastora")
+        ana_id = await fx.person(f"Ana{tag}")
+        await fx.account(ana_id, "persona")
+        await server.db.mentor_badges.insert_one({"_id": f"badge-{tag}", "person_id": ana_id, "active": True})
+        for name, start in (("Anterior", today - timedelta(days=40)), ("Actual", today - timedelta(days=5))):
+            created = await pastora.post("/api/invasions", json={"name": f"{name} {tag}", "location": "Barrio", "start_date": start.isoformat(), "end_date": start.isoformat(), "mentor_person_ids": [ana_id]})
+            campaign_ids.append(created.json()["campaign_id"])
+        previous_id, campaign_id = campaign_ids
+        old = datetime.now(timezone.utc) - timedelta(days=4)
+        await server.db.outreach_visits.insert_many([
+            {"_id": f"p-{tag}-{i}", "visit_id": f"p-{tag}-{i}", "campaign_id": previous_id, "mentor_person_id": ana_id, "status": "visited", "archived": False, "created_at": old} for i in range(3)])
+        # Actual: 3 quieren seguimiento → una con expediente contactada a las 10 h (y en etapa NPT), una transferida
+        # sin contacto, y una sin expediente hace 4 días (SIN atender).
+        await server.db.process_enrollments.insert_many([
+            {"_id": f"e1-{tag}", "enrollment_id": f"e1-{tag}", "process_key": "consolidation", "mentor_person_id": ana_id, "current_stage_key": "npt", "created_at": old},
+            {"_id": f"e2-{tag}", "enrollment_id": f"e2-{tag}", "process_key": "consolidation", "mentor_person_id": ana_id, "current_stage_key": "new_visitor", "created_at": datetime.now(timezone.utc)},
+        ])
+        await server.db.consolidation_activities.insert_one({"_id": f"a-{tag}", "activity_id": f"a-{tag}", "enrollment_id": f"e1-{tag}", "status": "done", "completed_at": old + timedelta(hours=10)})
+        await server.db.mentor_assignments.insert_one({"_id": f"m-{tag}", "assignment_id": f"m-{tag}", "enrollment_id": f"e2-{tag}", "transfer": True, "active": True})
+        await server.db.outreach_visits.insert_many([
+            {"_id": f"c-{tag}-1", "visit_id": f"c-{tag}-1", "campaign_id": campaign_id, "mentor_person_id": ana_id, "status": "wants_followup", "enrollment_id": f"e1-{tag}", "archived": False, "created_at": old},
+            {"_id": f"c-{tag}-2", "visit_id": f"c-{tag}-2", "campaign_id": campaign_id, "mentor_person_id": ana_id, "status": "wants_followup", "enrollment_id": f"e2-{tag}", "archived": False, "created_at": datetime.now(timezone.utc)},
+            {"_id": f"c-{tag}-3", "visit_id": f"c-{tag}-3", "campaign_id": campaign_id, "mentor_person_id": ana_id, "status": "wants_followup", "archived": False, "created_at": old},
+        ])
+        report = (await pastora.get(f"/api/invasions/{campaign_id}/report")).json()
+        follow = report["followup"]
+        assert follow["wants_followup"] == 3 and follow["to_consolidation"] == 2 and follow["transferred"] == 1 and follow["assigned_mentor"] == 2
+        assert follow["unattended"] == 1 and follow["pending_recent"] == 1 and follow["attended"] == 1
+        assert {row["bucket"]: row["total"] for row in follow["first_contact"]}["< 24 h"] == 1
+        assert {row["route"]: row["total"] for row in follow["routes"]} == {"MCD": 1, "NPT": 1, "LBS": 0}
+        goals = {item["key"]: item for item in report["goals"]["items"]}
+        assert goals["consolidation"]["numerator"] == 2 and goals["consolidation"]["denominator"] == 3 and goals["consolidation"]["semaphore"] in {"verde", "ambar", "rojo"}
+        assert goals["coverage"]["semaphore"] == "sin_datos" and report["goals"]["rule"].startswith("Verde desde")
+        comparison = report["comparison"]
+        assert comparison[0]["current"] and comparison[0]["people"] == 3
+        assert any(row["campaign_id"] == previous_id and row["people"] == 3 for row in comparison)
+        assert report["summary"]["key_figures"]["to_consolidation"] == 2
+    finally:
+        for collection in ("outreach_visits", "outreach_participations", "invasion_participants", "invasion_reports", "outreach_campaigns"):
+            await server.db[collection].delete_many({"campaign_id": {"$in": campaign_ids}})
+        await server.db.process_enrollments.delete_many({"_id": {"$in": [f"e1-{tag}", f"e2-{tag}"]}})
+        await server.db.consolidation_activities.delete_many({"_id": f"a-{tag}"})
+        await server.db.mentor_assignments.delete_many({"_id": f"m-{tag}"})
+        await server.db.mentor_badges.delete_many({"_id": f"badge-{tag}"})
         await server.db.portal_notifications.delete_many({"recipient_user_id": {"$in": [str(item) for item in fx.user_ids]}})
         await fx.cleanup()
