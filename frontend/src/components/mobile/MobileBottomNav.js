@@ -75,7 +75,7 @@ export function MobileBottomNav({ isActiveMentor, menuOpen, onOpenMenu, onAddVis
   const items = [{ key: 'home', to: '/', icon: Home, label: 'Inicio', active: HOME_PATHS.includes(path) }];
   if (invasion || managed.length) {
     items.push({ key: 'invasion', icon: Footprints, label: 'Invasión', badge: invasion ? data?.pending_invitations : 0, onClick: onOpenInvasion,
-      active: path === '/mentoria/puerta-a-puerta' || (onOutreach && search.get('tab') !== 'mapa') || (path === '/mi-perfil' && search.has('invasion')) || (path.startsWith('/invasiones/') && !onAttendance && !onProgram) || (!invasion && path === '/procesos/consolidacion') });
+      active: (path === '/mentoria/puerta-a-puerta' && !['pendientes', 'mapa'].includes(search.get('vista'))) || (onOutreach && search.get('tab') !== 'mapa') || (path === '/mi-perfil' && search.has('invasion')) || (path.startsWith('/invasiones/') && !onAttendance && !onProgram) || (!invasion && path === '/procesos/consolidacion') });
   } else {
     items.push({ key: 'profile', to: '/mi-perfil', icon: UserCircle, label: 'Mi perfil', active: path === '/mi-perfil' });
   }
@@ -84,7 +84,14 @@ export function MobileBottomNav({ isActiveMentor, menuOpen, onOpenMenu, onAddVis
     // Con "+" caben 5: Programa queda dentro de Invasión y de Asistencia.
     items.push({ key: 'attendance', to: `/invasiones/${programTarget.campaign_id}/asistencia`, icon: ClipboardCheck, label: 'Asistencia', active: onAttendance });
     if (!canAdd) items.push({ key: 'program', to: `/invasiones/${programTarget.campaign_id}/programa`, icon: ClipboardList, label: 'Programa', active: onProgram });
-  } else if (outreach && invasion) items.push({ key: 'map', to: '/mentoria/visitas?tab=mapa', icon: MapPinned, label: 'Casas', active: onOutreach && search.get('tab') === 'mapa' });
+  } else if (outreach && invasion) {
+    // Con invasión activa hoy: «Casas» abre los pendientes del puerta a puerta (lista y mapa).
+    const today = current || data?.active?.[0];
+    const onDoors = path === '/mentoria/puerta-a-puerta' && ['pendientes', 'mapa'].includes(search.get('vista'));
+    items.push(today && canAdd
+      ? { key: 'map', to: `/mentoria/puerta-a-puerta?invasion=${today.campaign_id}&vista=pendientes`, icon: MapPinned, label: 'Casas', active: onDoors }
+      : { key: 'map', to: '/mentoria/visitas?tab=mapa', icon: MapPinned, label: 'Casas', active: onOutreach && search.get('tab') === 'mapa' });
+  }
   else items.push({ key: 'map', to: '/mapas', icon: MapPinned, label: 'Mapa', active: path === '/mapas' });
   items.push({ key: 'more', icon: Menu, label: 'Más', onClick: onOpenMenu, active: menuOpen });
 

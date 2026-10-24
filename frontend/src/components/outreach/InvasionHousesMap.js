@@ -32,7 +32,16 @@ export const RESULT = {
   pending: { label: 'Asignada, sin visitar', color: '#0ea5e9' },
   available: { label: 'Disponible', color: '#d97706' },
 };
-const colorOf = (item, colorBy) => (colorBy === 'result' ? (RESULT[item.result] || RESULT.pending).color : (CATEGORY[item.category] || CATEGORY.assigned).color);
+// Puerta a puerta: estado de cada vivienda (pendiente, programada, abrieron, sin visitar).
+export const DOOR = {
+  pending_revisit: { label: 'Pendiente de nueva visita', color: '#c2410c' },
+  followup_scheduled: { label: 'Seguimiento programado', color: '#2563eb' },
+  opened: { label: 'Abrieron', color: '#16a34a' },
+  new: { label: 'Sin visitar', color: '#94a3b8' },
+};
+const doorKey = (item) => (DOOR[item.door_status] ? item.door_status : 'new');
+const shortDate = (iso) => (iso ? new Date(iso.length === 10 ? `${iso}T12:00:00` : iso).toLocaleDateString('es', { day: 'numeric', month: 'short' }) : '');
+const colorOf = (item, colorBy) => (colorBy === 'door' ? DOOR[doorKey(item)].color : colorBy === 'result' ? (RESULT[item.result] || RESULT.pending).color : (CATEGORY[item.category] || CATEGORY.assigned).color);
 const collection = (points, colorBy) => ({
   type: 'FeatureCollection',
   features: points.map((item) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [item.longitude, item.latitude] }, properties: { id: item.household_id, category: item.category, color: colorOf(item, colorBy) } })),
@@ -42,6 +51,7 @@ const collection = (points, colorBy) => ({
 // muestra lo decide el backend: el mentor recibe solo sus casas y las
 // disponibles; el líder y los encargados, todas.
 export function InvasionHousesMap({ campaigns, onRegisterVisit, onChanged, mentorPersonId, refreshKey = 0, colorBy = 'category', fixedHeight = null }) {
+  const [pendingOnly, setPendingOnly] = useState(colorBy === 'door');
   const [mentorFilter, setMentorFilter] = useState('');
   const [sectorFilter, setSectorFilter] = useState('');
   const { API, getAuthHeaders } = useAuth();
@@ -81,7 +91,8 @@ export function InvasionHousesMap({ campaigns, onRegisterVisit, onChanged, mento
     return () => clearTimeout(timer);
   }, [data, load]);
 
-  const points = useMemo(() => (data?.points || []).filter((item) => (!mentorFilter || item.mentor_person_id === mentorFilter) && (!sectorFilter || (item.sector || 'Sin sector') === sectorFilter)), [data, mentorFilter, sectorFilter]);
+  const points = useMemo(() => (data?.points || []).filter((item) => (!mentorFilter || item.mentor_person_id === mentorFilter) && (!sectorFilter || (item.sector || 'Sin sector') === sectorFilter)
+    && (colorBy !== 'door' || !pendingOnly || ['pending_revisit', 'followup_scheduled'].includes(item.door_status))), [data, mentorFilter, sectorFilter, colorBy, pendingOnly]);
   const mentorOptions = useMemo(() => Array.from(new Map((data?.points || []).concat(data?.unlocated || []).filter((item) => item.mentor_person_id && item.mentor_name).map((item) => [item.mentor_person_id, item.mentor_name])).entries()), [data]);
   const sectorOptions = useMemo(() => Array.from(new Set((data?.points || []).concat(data?.unlocated || []).map((item) => item.sector || 'Sin sector'))).sort(), [data]);
   const all = useMemo(() => [...points, ...(data?.unlocated || [])], [points, data]);
@@ -146,6 +157,8 @@ export function InvasionHousesMap({ campaigns, onRegisterVisit, onChanged, mento
     setBusy(key);
     try { await action(); if (success) toast.success(success); await load(); onChanged?.(); } catch (error) { toast.error(errorDetailText(error, 'No se pudo completar')); } finally { setBusy(''); }
   };
+  // La casa quedó con el punto aproximado de la calle: confirmarlo tal cual (o corregirlo con «mi ubicación»).
+  const confirmPlace = (item) => run(`confirm-${item.household_id}`, () => axios.put(`${API}/api/mentorship/outreach/households/${item.household_id}/location`, { latitude: item.latitude, longitude: item.longitude, accuracy_m: item.location_accuracy_m, source: 'manual' }, getAuthHeaders()), 'Ubicación confirmada');
   const claim = (item) => run(`claim-${item.household_id}`, () => axios.post(`${API}/api/mentorship/outreach/households/${item.household_id}/claim`, {}, getAuthHeaders()), 'Casa tomada: ahora es tuya');
   const placeHere = async (item) => {
     setBusy(`place-${item.household_id}`);
@@ -171,15 +184,17 @@ export function InvasionHousesMap({ campaigns, onRegisterVisit, onChanged, mento
           <span className="inline-flex items-center gap-1.5 text-xs font-semibold" style={{ color: CATEGORY[selected.category]?.color }}><span className="h-2.5 w-2.5 rounded-full" style={{ background: CATEGORY[selected.category]?.color }} />{CATEGORY[selected.category]?.label.replace(/s$/, '').replace('Mis casa', 'Mi casa').replace('De otros mentore', 'De otro mentor')}</span>
           <h3 className="mt-1 text-lg font-semibold text-[#101D36]" data-testid="house-card-address">{addressOf(selected)}</h3>
           {selected.location_reference && <p className="text-sm text-slate-600">{selected.location_reference}</p>}
+          {colorBy === 'door' && <p className="mt-1 text-sm font-semibold" style={{ color: DOOR[doorKey(selected)].color }} data-testid="house-card-door-status">{DOOR[doorKey(selected)].label}{selected.followup_date ? ` · ${shortDate(selected.followup_date)}` : ''}{selected.last_attempt_at ? ` · última visita ${shortDate(selected.last_attempt_at)}` : ''}</p>}
           <p className="mt-1 text-xs text-slate-500">{selected.attempts ? `${selected.attempts} intento(s) de visita` : 'Sin visitas registradas'}{selected.latitude == null ? ` · ${GEOCODING[selected.geocoding_status] || 'Sin ubicación en el mapa'}` : selected.approximate ? ' · ubicación aproximada' : selected.location_source === 'gps' ? ` · GPS ${accuracyLabel(selected.location_accuracy_m)}` : selected.location_source === 'geocoded' ? ' · ubicada por dirección' : ''}</p>
         </div>
         <button type="button" onClick={() => setSelectedId(null)} className="grid h-11 w-11 shrink-0 place-items-center rounded-md hover:bg-slate-100" aria-label="Cerrar"><X className="h-5 w-5" /></button>
       </div>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         {selected.can_claim && <button type="button" onClick={() => claim(selected)} disabled={Boolean(busy)} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg bg-[#d97706] px-4 text-base font-semibold text-white" data-testid="house-card-claim">{busy === `claim-${selected.household_id}` ? <Loader2 className="h-5 w-5 animate-spin" /> : <Home className="h-5 w-5" />}Tomar casa</button>}
-        {selected.can_register_visit && <button type="button" onClick={() => onRegisterVisit?.(selected)} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg bg-[#101D36] px-4 text-base font-semibold text-white" data-testid="house-card-visit"><Plus className="h-5 w-5" />Registrar visita</button>}
+        {selected.can_register_visit && <button type="button" onClick={() => onRegisterVisit?.(selected)} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg bg-[#101D36] px-4 text-base font-semibold text-white" data-testid="house-card-visit"><Plus className="h-5 w-5" />{colorBy === 'door' ? 'Registrar nueva visita' : 'Registrar visita'}</button>}
         <a href={directionsUrl(selected.latitude, selected.longitude, addressOf(selected))} target="_blank" rel="noreferrer" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg border border-[#D9D4C7] bg-white px-4 text-base font-semibold text-[#101D36]" data-testid="house-card-directions"><Navigation className="h-5 w-5" />Cómo llegar</a>
         {selected.can_edit_location && <button type="button" onClick={() => placeHere(selected)} disabled={Boolean(busy)} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg border border-[#D9D4C7] bg-white px-4 text-sm font-semibold text-[#101D36]" data-testid="house-card-place">{busy === `place-${selected.household_id}` ? <Loader2 className="h-5 w-5 animate-spin" /> : <Crosshair className="h-5 w-5" />}{selected.latitude == null ? 'Ubicar con mi ubicación' : 'Corregir con mi ubicación'}</button>}
+        {selected.can_edit_location && selected.location_approx && selected.latitude != null && <button type="button" onClick={() => confirmPlace(selected)} disabled={Boolean(busy)} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg border border-[#D9D4C7] bg-white px-4 text-sm font-semibold text-[#101D36]" data-testid="house-card-confirm">{busy === `confirm-${selected.household_id}` ? <Loader2 className="h-5 w-5 animate-spin" /> : <MapPin className="h-5 w-5" />}Confirmar ubicación</button>}
       </div>
     </article>
   );
@@ -205,7 +220,12 @@ export function InvasionHousesMap({ campaigns, onRegisterVisit, onChanged, mento
         {campaigns.length > 1
           ? <select value={campaignId} onChange={(event) => { setCampaignId(event.target.value); setSelectedId(null); }} className="h-12 w-full rounded-lg border border-[#D9D4C7] bg-white px-3 text-base lg:w-96" data-testid="house-map-campaign">{campaigns.map((item) => <option key={item.campaign_id} value={item.campaign_id}>{item.name}</option>)}</select>
           : <h3 className="font-['Spectral'] text-xl font-semibold text-[#101D36]">{campaigns[0].name}</h3>}
-        {colorBy === 'result'
+        {colorBy === 'door'
+          ? <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <ul className="flex flex-wrap gap-x-4 gap-y-1 text-sm" data-testid="house-map-legend">{Object.entries(DOOR).map(([key, item]) => <li key={key} className="inline-flex items-center gap-1.5"><span className="h-3 w-3 rounded-full ring-2 ring-white" style={{ background: item.color }} />{item.label} <b>{(data?.points || []).filter((point) => doorKey(point) === key).length}</b></li>)}</ul>
+              <label className="inline-flex min-h-11 items-center gap-2 text-[15px] font-semibold text-[#101D36]"><input type="checkbox" checked={pendingOnly} onChange={(event) => setPendingOnly(event.target.checked)} className="h-5 w-5" data-testid="house-map-pending-only" />Solo pendientes</label>
+            </div>
+          : colorBy === 'result'
           ? <ul className="flex flex-wrap gap-x-4 gap-y-1 text-sm" data-testid="house-map-legend">{Object.entries(RESULT).map(([key, item]) => <li key={key} className="inline-flex items-center gap-1.5"><span className="h-3 w-3 rounded-full ring-2 ring-white" style={{ background: item.color }} />{item.label} <b>{points.filter((point) => point.result === key).length}</b></li>)}</ul>
           : <ul className="flex flex-wrap gap-x-4 gap-y-1 text-sm" data-testid="house-map-legend">{categories.map(([key, item]) => <li key={key} className="inline-flex items-center gap-1.5"><span className="h-3 w-3 rounded-full ring-2 ring-white" style={{ background: item.color }} />{item.label} <b>{counts[key] || 0}</b></li>)}<li className="inline-flex items-center gap-1.5 text-slate-500"><MapPin className="h-3.5 w-3.5" />Sin ubicar <b>{counts.unlocated || 0}</b></li></ul>}
         {colorBy === 'result' && (mentorOptions.length > 0 || sectorOptions.length > 1) && <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2" data-testid="house-map-filters">

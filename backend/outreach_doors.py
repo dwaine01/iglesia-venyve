@@ -191,13 +191,18 @@ async def refresh_door_status(household_id: str) -> None:
     """Estado derivado del historial completo (no se pierde ningún intento):
     sin respuesta → pendiente de nueva visita; abrieron → ya no está pendiente."""
     events = await db.outreach_visit_events.find({"household_id": household_id, "is_draft": {"$ne": True}}, {"_id": 0, "opened": 1, "result": 1, "occurred_at": 1, "followup": 1, "followup_date": 1, "contact_level": 1, "books_total": 1}).sort("occurred_at", 1).to_list(500)
+    household = await db.outreach_households.find_one({"household_id": household_id}, {"_id": 0, "next_visit_date": 1, "next_visit_set_at": 1}) or {}
+    # Próxima visita programada a mano («Programar»/«Reprogramar»): vale si es posterior al último intento.
+    manual = household.get("next_visit_date") if household.get("next_visit_set_at") and (not events or household["next_visit_set_at"] >= events[-1].get("occurred_at")) else None
     if not events:
-        await db.outreach_households.update_one({"household_id": household_id}, {"$set": {"attempts_count": 0, "door_status": None, "last_result": None, "last_attempt_at": None, "conversed_ever": False, "books_total": 0}})
+        await db.outreach_households.update_one({"household_id": household_id}, {"$set": {"attempts_count": 0, "door_status": "followup_scheduled" if manual else None, "last_result": None, "last_attempt_at": None,
+                                                                                   "conversed_ever": False, "books_total": 0, "followup_date": manual}})
         return
     last = events[-1]
     opened = event_opened(last)
-    followup_date = next((item.get("followup_date") for item in reversed(events) if item.get("followup") == "yes" and item.get("followup_date")), None)
-    status = "pending_revisit" if not opened else ("followup_scheduled" if followup_date else "opened")
+    # Cada visita resuelve el pendiente anterior: solo cuenta el seguimiento del ÚLTIMO intento (o uno programado después).
+    followup_date = manual or (last.get("followup_date") if last.get("followup") == "yes" else None)
+    status = "followup_scheduled" if followup_date else ("opened" if opened else "pending_revisit")
     await db.outreach_households.update_one({"household_id": household_id}, {"$set": {
         "attempts_count": len(events), "opened_ever": any(event_opened(item) for item in events), "door_status": status,
         "conversed_ever": any(item.get("contact_level") in CONVERSED for item in events), "books_total": sum(item.get("books_total") or 0 for item in events),
@@ -284,6 +289,8 @@ async def record_attempt(household: dict, payload: AttemptInput, current_user: d
         updates["person_warning"] = person_warning
     await db.outreach_visit_events.update_one({"visit_event_id": event_id}, {"$set": updates})
     event.update(updates)
+    # La nueva visita resuelve la próxima visita programada antes (se puede programar otra).
+    await db.outreach_households.update_one({"household_id": household["household_id"]}, {"$set": {"next_visit_date": None, "next_visit_set_at": None}})
     await refresh_door_status(household["household_id"])
     if household.get("campaign_id"):
         await mark_participation_active(household["campaign_id"], mentor_person_id)
@@ -347,7 +354,7 @@ async def create_door(campaign_id: str, street_name: str, number: str, unit: Opt
     if street.get("latitude") is not None:
         # Ubicación aproximada: el punto confirmado de la calle (se corrige desde el mapa).
         doc.update({"latitude": street["latitude"], "longitude": street["longitude"], "location_accuracy_m": street.get("location_accuracy_m"),
-                    "location_source": "manual", "location_approx": True, "location_reference": f"Aproximada: calle {street_name.strip()}", "location_updated_at": now})
+                    "location_source": "manual", "location_approx": True, "location_reference": f"Ubicación aproximada: inicio de {street_name.strip()}", "location_updated_at": now})
     try:
         await db.outreach_households.insert_one(doc)
     except DuplicateKeyError:
@@ -378,6 +385,70 @@ async def register_attempt(household_id: str, payload: AttemptInput, current_use
     elif household["mentor_person_id"] != person_id and not is_outreach_leader(current_user):
         raise HTTPException(status_code=403, detail="Solo el mentor responsable o un líder puede registrar visitas en esta vivienda")
     return await record_attempt(household, payload, current_user)
+
+
+# ------------------------------------------------------------------ pendientes y próxima visita
+class NextVisitInput(BaseModel):
+    next_visit_date: Optional[date] = None  # None = quitar la programación
+    note: Optional[str] = Field(default=None, max_length=300)
+
+
+async def household_for_edit(household_id: str, current_user: dict) -> dict:
+    from household_location import campaign_doc, sees_whole_campaign
+    household = await db.outreach_households.find_one({"household_id": household_id, "archived": {"$ne": True}}, {"_id": 0})
+    if not household:
+        raise HTTPException(status_code=404, detail="Vivienda no encontrada")
+    if household.get("mentor_person_id") != current_user.get("person_id") and not sees_whole_campaign(current_user, await campaign_doc(household.get("campaign_id"))):
+        raise HTTPException(status_code=403, detail="Solo el mentor responsable o un líder de la invasión")
+    return household
+
+
+@router.put("/households/{household_id}/next-visit", response_model=dict)
+async def set_next_visit(household_id: str, payload: NextVisitInput, current_user: dict = Depends(get_current_user)):
+    """«Programar» / «Reprogramar» la próxima visita sin registrar un intento."""
+    await household_for_edit(household_id, current_user)
+    await db.outreach_households.update_one({"household_id": household_id}, {"$set": {
+        "next_visit_date": payload.next_visit_date.isoformat() if payload.next_visit_date else None,
+        "next_visit_set_at": now_utc() if payload.next_visit_date else None, "next_visit_note": (payload.note or "").strip() or None,
+        "next_visit_set_by_user_id": current_user["user_id"], "updated_at": now_utc()}})
+    await refresh_door_status(household_id)
+    return serialize(await db.outreach_households.find_one({"household_id": household_id}, {"_id": 0}))
+
+
+@router.get("/campaigns/{campaign_id}/pending-doors", response_model=dict)
+async def pending_doors(campaign_id: str, status: Literal["all", "pending_revisit", "followup_scheduled"] = "all", offset: int = 0, limit: int = 50, current_user: dict = Depends(get_current_user)):
+    """Pendientes de nueva visita y seguimientos programados. El mentor ve los
+    suyos; quien ve toda la invasión, todos con su mentor y equipo."""
+    from household_location import campaign_doc, sees_whole_campaign
+    campaign = await campaign_doc(campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Invasión no encontrada")
+    full = sees_whole_campaign(current_user, campaign)
+    if not full and not await can_use_outreach(current_user):
+        raise HTTPException(status_code=403, detail="Sin permiso para consultar viviendas")
+    query: dict = {"campaign_id": campaign_id, "archived": {"$ne": True},
+                   "door_status": {"$in": ["pending_revisit", "followup_scheduled"]} if status == "all" else status}
+    if not full:
+        query["mentor_person_id"] = current_user.get("person_id") or "-"
+    limit = max(1, min(limit, 100))
+    total = await db.outreach_households.count_documents(query)
+    keys = {"_id": 0, "household_id": 1, "address_line1": 1, "address_line2": 1, "street_name": 1, "house_number": 1, "unit": 1, "door_status": 1, "last_result": 1,
+            "last_attempt_at": 1, "attempts_count": 1, "followup_date": 1, "next_visit_note": 1, "latitude": 1, "longitude": 1, "location_approx": 1, "location_source": 1,
+            "mentor_person_id": 1, "front_group_id": 1}
+    # Primero las fechas programadas (atrasadas arriba), luego las sin respuesta más antiguas.
+    items = await db.outreach_households.find(query, keys).sort([("followup_date", 1), ("last_attempt_at", 1)]).to_list(2000)
+    items.sort(key=lambda item: (item.get("followup_date") is None, item.get("followup_date") or "", str(item.get("last_attempt_at") or "")))
+    items = items[offset:offset + limit]
+    from mentorship_outreach import person_display_name
+    names = {pid: await person_display_name(pid) for pid in {item.get("mentor_person_id") for item in items} if pid}
+    teams = {doc["front_group_id"]: doc.get("name") async for doc in db.front_groups.find({"front_group_id": {"$in": list({item.get("front_group_id") for item in items if item.get("front_group_id")})}}, {"_id": 0, "front_group_id": 1, "name": 1})}
+    today = date.today().isoformat()
+    for item in items:
+        item["mentor_name"] = names.get(item.get("mentor_person_id"))
+        item["team_name"] = teams.get(item.get("front_group_id"))
+        item["overdue"] = bool(item.get("followup_date") and item["followup_date"] < today)
+        item["mine"] = item.get("mentor_person_id") == current_user.get("person_id")
+    return {"total": total, "scope": "all" if full else "mine", "items": serialize(items)}
 
 
 # ------------------------------------------------------------------ resumen del mentor
