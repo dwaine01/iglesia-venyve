@@ -548,12 +548,14 @@ from invasion_participants import router as invasion_participants_router, ensure
 from household_location import router as household_location_router, ensure_indexes as household_location_ensure_indexes
 from leader_accounts import router as leader_accounts_router
 from push_notifications import router as push_notifications_router, ensure_indexes as push_notifications_ensure_indexes
+from invasion_prayer import router as invasion_prayer_router, ensure_indexes as invasion_prayer_ensure_indexes
 
 app.include_router(portal_notifications_router)
 app.include_router(invasion_participants_router)
 app.include_router(household_location_router)
 app.include_router(leader_accounts_router)
 app.include_router(push_notifications_router)
+app.include_router(invasion_prayer_router)
 app.include_router(invasion_planning_router)
 
 
@@ -758,6 +760,7 @@ async def startup():
     await invasion_participants_ensure_indexes()
     await household_location_ensure_indexes()
     await push_notifications_ensure_indexes()
+    await invasion_prayer_ensure_indexes()
     await campaign_venycome_ensure_indexes()
     await ensure_mentorship_indexes()
     await ensure_outreach_indexes()

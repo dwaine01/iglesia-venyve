@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { useAuth } from '../../context/AuthContext';
 import { apiErrorMessage } from '../../lib/apiErrors';
 import { CreateCampaignDialog, PersonPicker } from '../outreach/CreateCampaignDialog';
+import { PrayerPanel } from './PrayerProgress';
 
 // Avisa a las demás partes de la pantalla que cambió una invasión o solicitud.
 const CHANGED = 'invasions:changed';
@@ -21,10 +22,10 @@ const STATUS = {
 const inputClass = 'h-12 w-full rounded-lg border border-[#D9D4C7] bg-white px-3 text-base';
 const formatDate = (iso) => (iso ? new Date(`${iso}T12:00:00`).toLocaleDateString('es', { day: 'numeric', month: 'short', year: 'numeric' }) : '—');
 
-function Sheet({ title, onClose, children, testId }) {
+function Sheet({ title, onClose, children, testId, wide = false }) {
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center sm:p-6" role="dialog" aria-modal="true" data-testid={testId}>
-      <div className="max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-t-2xl bg-white text-[#101D36] sm:rounded-2xl">
+      <div className={`max-h-[92vh] w-full ${wide ? 'max-w-5xl' : 'max-w-xl'} overflow-y-auto rounded-t-2xl bg-white text-[#101D36] sm:rounded-2xl`}>
         <div className="sticky top-0 flex items-center gap-2 border-b border-[#E8E5DE] bg-white px-3 py-2"><p className="flex-1 font-['Spectral'] text-lg font-semibold text-[#101D36]">{title}</p><button type="button" onClick={onClose} className="grid h-11 w-11 place-items-center rounded-md hover:bg-slate-100" aria-label="Cerrar"><X className="h-5 w-5" /></button></div>
         <div className="space-y-3 p-4">{children}</div>
       </div>
@@ -169,7 +170,7 @@ function InvasionSummary({ campaignId, onClose }) {
   useEffect(() => { axios.get(`${API}/api/invasions/${campaignId}`, getAuthHeaders()).then((response) => setData(response.data)).catch((requestError) => setError(apiErrorMessage(requestError, 'No se pudo abrir la invasión'))); }, [API, getAuthHeaders, campaignId]);
   const row = (label, value) => <div className="border-b border-[#EEECE6] py-2"><p className="text-xs text-slate-500">{label}</p><p className="whitespace-pre-line text-sm font-medium text-[#101D36]">{value || '—'}</p></div>;
   return (
-    <Sheet title={data?.name || 'Invasión'} onClose={onClose} testId="invasion-summary">
+    <Sheet title={data?.name || 'Invasión'} onClose={onClose} testId="invasion-summary" wide>
       {error && <p className="text-sm text-red-600">{error}</p>}
       {!data && !error && <Loader2 className="mx-auto h-6 w-6 animate-spin text-[#9A7A2F]" />}
       {data && <>
@@ -183,6 +184,7 @@ function InvasionSummary({ campaignId, onClose }) {
         {row('Emergencias', data.emergency_contact ? `${data.emergency_contact.name} · ${data.emergency_contact.phone}` : '')}
         {row('Descripción', data.description)}
         <ParticipantsPanel campaignId={campaignId} />
+        <PrayerPanel campaignId={campaignId} />
       </>}
     </Sheet>
   );
