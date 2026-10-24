@@ -204,7 +204,10 @@ def point(household: dict, current_user: dict, full: bool) -> dict:
         "category": category, "mine": mine, "status": household.get("status"),
         "address_line1": household.get("address_line1"), "address_line2": household.get("address_line2"), "sector": household.get("sector"),
         "location_reference": household.get("location_reference"), "note": household.get("note") if (mine or full) else None,
-        "latitude": lat, "longitude": lng, "approximate": lat is not None and not exact,
+        "latitude": lat, "longitude": lng, "approximate": lat is not None and (not exact or bool(household.get("location_approx"))),
+        "location_approx": bool(household.get("location_approx")),
+        "door_status": household.get("door_status"), "last_result": household.get("last_result"), "last_attempt_at": household.get("last_attempt_at"),
+        "followup_date": household.get("followup_date"), "unit": household.get("unit"),
         "location_source": household.get("location_source"), "location_accuracy_m": household.get("location_accuracy_m"),
         "geocoding_status": household.get("geocoding_status"),
         "attempts": attempts, "last_occurred_at": household.get("last_occurred_at"),
@@ -278,7 +281,9 @@ async def set_household_location(household_id: str, payload: LocationInput, curr
         update["location_reference"] = (payload.reference or "").strip() or None
     if payload.latitude is not None:
         update.update({"latitude": payload.latitude, "longitude": payload.longitude, "location_accuracy_m": payload.accuracy_m,
-                       "location_source": payload.source, "geocoding_status": None})
+                       "location_source": payload.source, "geocoding_status": None, "location_approx": False})
+        if household.get("location_approx") and "reference" not in payload.model_fields_set and (household.get("location_reference") or "").startswith(("Aproximada", "Ubicación aproximada")):
+            update["location_reference"] = None  # ya no es el punto aproximado de la calle
     elif "reference" not in payload.model_fields_set:
         raise HTTPException(status_code=422, detail="Indique coordenadas o una referencia")
     await db.outreach_households.update_one({"household_id": household_id}, {"$set": update})

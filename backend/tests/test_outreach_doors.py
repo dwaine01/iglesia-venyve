@@ -196,3 +196,64 @@ async def test_door_summary_lists_and_books_scope():
         await db.mentor_badges.delete_many({"_id": {"$regex": f"^badge-{tag}"}})
         await db.portal_notifications.delete_many({"recipient_user_id": {"$in": [str(item) for item in fx.user_ids]}})
         await fx.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_pending_doors_schedule_resolution_map_and_location():
+    fx = Fixture()
+    tag = uuid.uuid4().hex[:8]
+    campaign_id = None
+    try:
+        pastora = await fx.account(await fx.person(f"Pastora{tag}"), "pastora")
+        ana_id, beto_id = [await fx.person(f"{name}{tag}") for name in ("Ana", "Beto")]
+        ana = await fx.account(ana_id, "persona")
+        beto = await fx.account(beto_id, "persona")
+        for person_id in (ana_id, beto_id):
+            await db.mentor_badges.insert_one({"_id": f"badge-{tag}-{person_id}", "person_id": person_id, "active": True})
+        today = date.today()
+        campaign_id = (await pastora.post("/api/invasions", json={"name": f"Inv {tag}", "location": "Barrio", "start_date": today.isoformat(), "end_date": today.isoformat(), "mentor_person_ids": [ana_id, beto_id]})).json()["campaign_id"]
+        base = f"/api/mentorship/outreach/campaigns/{campaign_id}"
+        await ana.put(f"{base}/my-street", json={"street_name": "Calle Luna", "latitude": 41.0, "longitude": -87.0, "location_source": "gps"})
+        closed = (await ana.post(f"{base}/doors", json=door("1"))).json()["household"]                     # sin respuesta
+        opened = (await ana.post(f"{base}/doors", json=door("2", opened=True, followup="yes", followup_date="2020-01-01"))).json()["household"]  # seguimiento atrasado
+        (await ana.post(f"{base}/doors", json=door("3", opened=True))).json()                              # abrieron, sin pendiente
+        await beto.put(f"{base}/my-street", json={"street_name": "Calle Mar"})
+        await beto.post(f"{base}/doors", json=door("9"))
+
+        pending = (await ana.get(f"{base}/pending-doors")).json()
+        assert pending["scope"] == "mine" and pending["total"] == 2
+        assert [item["household_id"] for item in pending["items"]] == [opened["household_id"], closed["household_id"]]  # programados (atrasados) primero
+        assert pending["items"][0]["overdue"] is True and pending["items"][0]["door_status"] == "followup_scheduled"
+        assert (await ana.get(f"{base}/pending-doors", params={"status": "pending_revisit"})).json()["total"] == 1
+        everyone = (await pastora.get(f"{base}/pending-doors")).json()
+        assert everyone["scope"] == "all" and everyone["total"] == 3 and all(item["mentor_name"] for item in everyone["items"])
+
+        # Programar una vivienda sin respuesta → seguimiento programado; otro mentor no puede.
+        next_day = (today.replace(day=28) if today.day < 28 else today).isoformat()
+        assert (await beto.put(f"/api/mentorship/outreach/households/{closed['household_id']}/next-visit", json={"next_visit_date": next_day})).status_code == 403
+        scheduled = (await ana.put(f"/api/mentorship/outreach/households/{closed['household_id']}/next-visit", json={"next_visit_date": next_day, "note": "Volver en la tarde"})).json()
+        assert scheduled["door_status"] == "followup_scheduled" and scheduled["followup_date"] == next_day
+        # Registrar la visita resuelve lo programado; si vuelven a no abrir, queda pendiente otra vez.
+        again = (await ana.post(f"/api/mentorship/outreach/households/{closed['household_id']}/attempts", json={"client_request_id": f"req-{uuid.uuid4().hex}", "opened": False})).json()
+        assert again["household"]["door_status"] == "pending_revisit" and again["household"]["followup_date"] is None and again["household"]["attempts_count"] == 2
+        # Si después abren sin seguimiento, ya no es pendiente; el seguimiento antiguo no "revive".
+        resolved = (await ana.post(f"/api/mentorship/outreach/households/{opened['household_id']}/attempts", json={"client_request_id": f"req-{uuid.uuid4().hex}", "opened": True})).json()
+        assert resolved["household"]["door_status"] == "opened" and resolved["household"]["followup_date"] is None
+        # Quitar la programación.
+        await ana.put(f"/api/mentorship/outreach/households/{closed['household_id']}/next-visit", json={"next_visit_date": next_day})
+        cleared = (await ana.put(f"/api/mentorship/outreach/households/{closed['household_id']}/next-visit", json={"next_visit_date": None})).json()
+        assert cleared["door_status"] == "pending_revisit"
+
+        # Mapa con el estado de cada puerta; confirmar ubicación quita "aproximada".
+        points = {item["household_id"]: item for item in (await ana.get(f"{base}/households/map")).json()["points"]}
+        assert points[closed["household_id"]]["door_status"] == "pending_revisit" and points[closed["household_id"]]["location_approx"] is True
+        confirm = await ana.put(f"/api/mentorship/outreach/households/{closed['household_id']}/location", json={"latitude": 41.0001, "longitude": -87.0001, "accuracy_m": 8, "source": "gps"})
+        assert confirm.status_code == 200, confirm.text
+        assert confirm.json()["household"]["location_approx"] is False and confirm.json()["household"]["location_reference"] is None
+    finally:
+        if campaign_id:
+            for collection in ("outreach_households", "outreach_visit_events", "outreach_visits", "outreach_participations", "invasion_participants", "outreach_campaigns"):
+                await db[collection].delete_many({"campaign_id": campaign_id})
+        await db.mentor_badges.delete_many({"_id": {"$regex": f"^badge-{tag}"}})
+        await db.portal_notifications.delete_many({"recipient_user_id": {"$in": [str(item) for item in fx.user_ids]}})
+        await fx.cleanup()
