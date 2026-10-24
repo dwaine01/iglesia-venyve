@@ -80,7 +80,7 @@ export const AddVisitDialog = ({ open, onOpenChange, campaigns, mentorOptions, f
   return (
     <Dialog open={open} onOpenChange={(value) => { if (!value) reset(); onOpenChange(value); }}>
       <DialogContent className="bg-white sm:max-w-lg" data-testid="outreach-add-visit-dialog">
-        <DialogHeader><DialogTitle>Agregar visita</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>Persona sin vivienda</DialogTitle><p className="text-sm text-slate-500">Para contactos fuera del puerta a puerta. Las casas de la invasión se registran en «Puerta a puerta».</p></DialogHeader>
         <div className="space-y-4">
           <div className="flex gap-2">
             <Button type="button" size="sm" variant={contactType === 'new' ? 'default' : 'outline'} onClick={() => setContactType('new')} className={contactType === 'new' ? 'bg-[#132443]' : ''} data-testid="outreach-contact-type-new">Contacto nuevo</Button>
@@ -150,7 +150,7 @@ export const AddVisitDialog = ({ open, onOpenChange, campaigns, mentorOptions, f
           )}
 
           <Button className="w-full bg-[#132443] max-lg:min-h-12" disabled={saving} onClick={submit} data-testid="outreach-add-visit-submit">
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />} Agregar visita
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />} Guardar persona
           </Button>
         </div>
       </DialogContent>

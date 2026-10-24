@@ -247,6 +247,7 @@ const breadcrumbMap = {
   '/mapas': 'Mapa 360',
   '/procesos/mentoria': 'Mentoría',
   '/mentoria/visitas': 'Visitas e Invasiones',
+  '/mentoria/puerta-a-puerta': 'Puerta a puerta',
   '/procesos/cap': 'Encuentra tu lugar para servir',
   '/celulas/dashboard': 'Panel del Sistema Celular',
   '/celulas/redes': 'Redes Celulares',

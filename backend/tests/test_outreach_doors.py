@@ -155,3 +155,44 @@ async def test_migration_of_legacy_visits_is_safe_and_idempotent():
         await db.outreach_visits.delete_many({"visit_id": {"$regex": tag}})
         await db.outreach_households.delete_many({"campaign_id": campaign_id})
         await db.outreach_visit_events.delete_many({"campaign_id": campaign_id})
+
+
+@pytest.mark.asyncio
+async def test_door_summary_lists_and_books_scope():
+    fx = Fixture()
+    tag = uuid.uuid4().hex[:8]
+    campaign_id = None
+    try:
+        pastora = await fx.account(await fx.person(f"Pastora{tag}"), "pastora")
+        ana_id, beto_id = [await fx.person(f"{name}{tag}") for name in ("Ana", "Beto")]
+        ana = await fx.account(ana_id, "persona")
+        beto = await fx.account(beto_id, "persona")
+        for person_id in (ana_id, beto_id):
+            await db.mentor_badges.insert_one({"_id": f"badge-{tag}-{person_id}", "person_id": person_id, "active": True})
+        today = date.today().isoformat()
+        campaign_id = (await pastora.post("/api/invasions", json={"name": f"Inv {tag}", "location": "Barrio", "start_date": today, "end_date": today, "mentor_person_ids": [ana_id, beto_id]})).json()["campaign_id"]
+        base = f"/api/mentorship/outreach/campaigns/{campaign_id}"
+        await ana.put(f"{base}/my-street", json={"street_name": "Calle Sol"})
+        await ana.post(f"{base}/doors", json=door("1"))                                      # no abrieron
+        await ana.post(f"{base}/doors", json=door("1"))                                      # 2.º intento, misma vivienda
+        await ana.post(f"{base}/doors", json=door("2", opened=True, contact_level="brief", books=[{"book": "NO-CARGADO", "quantity": 2}]))
+        await ana.post(f"{base}/doors", json=door("3", opened=True, contact_level="conversation"))
+        summary = (await ana.get(f"{base}/door-summary")).json()
+        assert {key: summary[key] for key in ("visited", "opened", "no_answer", "conversed", "books", "attempts", "pending_revisit", "consolidation")} == {
+            "visited": 3, "opened": 2, "no_answer": 1, "conversed": 1, "books": 2, "attempts": 4, "pending_revisit": 1, "consolidation": 0}
+        no_answer = (await ana.get(f"{base}/door-summary/no_answer")).json()
+        assert no_answer["total"] == 1 and no_answer["items"][0]["address_line1"] == "1 Calle Sol" and no_answer["items"][0]["attempts_count"] == 2
+        assert (await ana.get(f"{base}/door-summary/books")).json()["items"][0]["books_total"] == 2
+        assert (await ana.get(f"{base}/door-summary/nada")).status_code == 404
+        # Beto solo ve su trabajo (vacío) y no el de Ana.
+        assert (await beto.get(f"{base}/door-summary")).json()["visited"] == 0
+        assert (await beto.get(f"{base}/door-summary", params={"mentor_person_id": ana_id})).status_code == 403
+        books = (await ana.get("/api/mentorship/outreach/door-books")).json()["items"]
+        assert [item["sku"] for item in books[:2]] == ["MCD", "NPT"]
+    finally:
+        if campaign_id:
+            for collection in ("outreach_households", "outreach_visit_events", "outreach_visits", "outreach_participations", "invasion_participants", "outreach_campaigns"):
+                await db[collection].delete_many({"campaign_id": campaign_id})
+        await db.mentor_badges.delete_many({"_id": {"$regex": f"^badge-{tag}"}})
+        await db.portal_notifications.delete_many({"recipient_user_id": {"$in": [str(item) for item in fx.user_ids]}})
+        await fx.cleanup()

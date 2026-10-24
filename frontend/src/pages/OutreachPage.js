@@ -157,7 +157,7 @@ export default function OutreachPage() {
                 </Button>
               ))}
             </div>
-            <Button onClick={() => setAddOpen(true)} className="bg-[#132443] max-lg:w-full" data-testid="outreach-add-visit-button"><Plus className="h-4 w-4" /> Agregar visita</Button>
+            <Button onClick={() => setAddOpen(true)} className="bg-[#132443] max-lg:w-full" data-testid="outreach-add-visit-button"><Plus className="h-4 w-4" /> Persona sin vivienda</Button>
           </div>
 
           {loading ? (

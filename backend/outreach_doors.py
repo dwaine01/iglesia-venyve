@@ -40,6 +40,7 @@ from server import db, get_current_user
 router = APIRouter(prefix="/api/mentorship/outreach", tags=["outreach-doors"])
 
 DOOR_DELIVERY_HOLDER = {"type": "writeoff", "id": "door_delivery"}
+CONVERSED = {"conversation", "invited_in"}
 ACTIONS = Literal["invitation", "prayer", "book", "other_material"]
 
 
@@ -189,9 +190,9 @@ async def discount_books(entries: list[BookEntry], mentor_person_id: str, target
 async def refresh_door_status(household_id: str) -> None:
     """Estado derivado del historial completo (no se pierde ningún intento):
     sin respuesta → pendiente de nueva visita; abrieron → ya no está pendiente."""
-    events = await db.outreach_visit_events.find({"household_id": household_id, "is_draft": {"$ne": True}}, {"_id": 0, "opened": 1, "result": 1, "occurred_at": 1, "followup": 1, "followup_date": 1}).sort("occurred_at", 1).to_list(500)
+    events = await db.outreach_visit_events.find({"household_id": household_id, "is_draft": {"$ne": True}}, {"_id": 0, "opened": 1, "result": 1, "occurred_at": 1, "followup": 1, "followup_date": 1, "contact_level": 1, "books_total": 1}).sort("occurred_at", 1).to_list(500)
     if not events:
-        await db.outreach_households.update_one({"household_id": household_id}, {"$set": {"attempts_count": 0, "door_status": None, "last_result": None, "last_attempt_at": None}})
+        await db.outreach_households.update_one({"household_id": household_id}, {"$set": {"attempts_count": 0, "door_status": None, "last_result": None, "last_attempt_at": None, "conversed_ever": False, "books_total": 0}})
         return
     last = events[-1]
     opened = event_opened(last)
@@ -199,6 +200,7 @@ async def refresh_door_status(household_id: str) -> None:
     status = "pending_revisit" if not opened else ("followup_scheduled" if followup_date else "opened")
     await db.outreach_households.update_one({"household_id": household_id}, {"$set": {
         "attempts_count": len(events), "opened_ever": any(event_opened(item) for item in events), "door_status": status,
+        "conversed_ever": any(item.get("contact_level") in CONVERSED for item in events), "books_total": sum(item.get("books_total") or 0 for item in events),
         "last_result": "opened" if opened else "no_answer", "last_attempt_at": last.get("occurred_at"), "followup_date": followup_date,
     }})
 
@@ -378,6 +380,78 @@ async def register_attempt(household_id: str, payload: AttemptInput, current_use
     return await record_attempt(household, payload, current_user)
 
 
+# ------------------------------------------------------------------ resumen del mentor
+SUMMARY_METRICS = ("visited", "no_answer", "opened", "conversed", "books", "consolidation")
+
+
+async def summary_scope(campaign_id: str, current_user: dict, mentor_person_id: Optional[str]) -> dict:
+    """El mentor ve SOLO su trabajo; consultar a otro mentor queda para la
+    supervisión (Mi Trabajo · MT3)."""
+    if mentor_person_id and mentor_person_id != current_user.get("person_id") and not is_outreach_leader(current_user):
+        raise HTTPException(status_code=403, detail="Solo puede consultar su propio trabajo")
+    person_id = mentor_person_id or current_user.get("person_id")
+    if not person_id or not await can_use_outreach(current_user):
+        raise HTTPException(status_code=403, detail="Sin permiso para consultar visitas")
+    return {"campaign_id": campaign_id, "mentor_person_id": person_id, "archived": {"$ne": True}}
+
+
+@router.get("/campaigns/{campaign_id}/door-summary", response_model=dict)
+async def door_summary(campaign_id: str, mentor_person_id: Optional[str] = None, current_user: dict = Depends(get_current_user)):
+    """Resumen compacto en UNA consulta agregada sobre las viviendas (estado
+    derivado de su historial) + personas en Consolidación de esta invasión."""
+    match = await summary_scope(campaign_id, current_user, mentor_person_id)
+    facet = await db.outreach_households.aggregate([
+        {"$match": {**match, "attempts_count": {"$gt": 0}}},
+        {"$group": {"_id": None, "visited": {"$sum": 1}, "opened": {"$sum": {"$cond": ["$opened_ever", 1, 0]}},
+                    "conversed": {"$sum": {"$cond": ["$conversed_ever", 1, 0]}}, "books": {"$sum": {"$ifNull": ["$books_total", 0]}},
+                    "attempts": {"$sum": "$attempts_count"}, "pending_revisit": {"$sum": {"$cond": [{"$eq": ["$door_status", "pending_revisit"]}, 1, 0]}}}},
+    ]).to_list(1)
+    totals = facet[0] if facet else {"visited": 0, "opened": 0, "conversed": 0, "books": 0, "attempts": 0, "pending_revisit": 0}
+    consolidation = await db.outreach_visits.count_documents({**match, "enrollment_id": {"$nin": [None, ""]}})
+    return {"campaign_id": campaign_id, "mentor_person_id": match["mentor_person_id"], "visited": totals["visited"], "opened": totals["opened"],
+            "no_answer": totals["visited"] - totals["opened"], "conversed": totals["conversed"], "books": totals["books"],
+            "attempts": totals["attempts"], "pending_revisit": totals["pending_revisit"], "consolidation": consolidation}
+
+
+@router.get("/campaigns/{campaign_id}/door-summary/{metric}", response_model=dict)
+async def door_summary_list(campaign_id: str, metric: str, mentor_person_id: Optional[str] = None, offset: int = 0, limit: int = 50, current_user: dict = Depends(get_current_user)):
+    """Las direcciones y registros que componen cada cifra (paginado)."""
+    if metric not in SUMMARY_METRICS:
+        raise HTTPException(status_code=404, detail="Indicador desconocido")
+    match = await summary_scope(campaign_id, current_user, mentor_person_id)
+    limit = max(1, min(limit, 100))
+    if metric == "consolidation":
+        query = {**match, "enrollment_id": {"$nin": [None, ""]}}
+        total = await db.outreach_visits.count_documents(query)
+        visits = await db.outreach_visits.find(query, {"_id": 0}).sort("converted_at", -1).skip(offset).limit(limit).to_list(limit)
+        return {"metric": metric, "total": total, "items": await serialize_visits(visits, current_user)}
+    query = {**match, "attempts_count": {"$gt": 0}}
+    query.update({"no_answer": {"opened_ever": {"$ne": True}}, "opened": {"opened_ever": True}, "conversed": {"conversed_ever": True},
+                  "books": {"books_total": {"$gt": 0}}}.get(metric, {}))
+    total = await db.outreach_households.count_documents(query)
+    keys = {"_id": 0, "household_id": 1, "address_line1": 1, "address_line2": 1, "street_name": 1, "house_number": 1, "unit": 1, "door_status": 1,
+            "last_result": 1, "last_attempt_at": 1, "attempts_count": 1, "books_total": 1, "followup_date": 1, "latitude": 1, "longitude": 1, "location_approx": 1}
+    items = await db.outreach_households.find(query, keys).sort("last_attempt_at", -1).skip(offset).limit(limit).to_list(limit)
+    return {"metric": metric, "total": total, "items": serialize(items)}
+
+
+@router.get("/door-books", response_model=dict)
+async def door_books(current_user: dict = Depends(get_current_user)):
+    """Libros para entregar en la puerta: el inventario del mentor + MCD/NPT
+    siempre visibles (si no hay existencias se registran para conciliar)."""
+    if not await can_use_outreach(current_user):
+        raise HTTPException(status_code=403, detail="Sin permiso")
+    user_id = current_user["user_id"]
+    holdings = {row["book_id"]: row.get("quantity_on_hand", 0) async for row in db.library_holdings.find({"holder_type": "user", "holder_id": user_id}, {"_id": 0, "book_id": 1, "quantity_on_hand": 1})}
+    books = await db.library_books.find({"$or": [{"book_id": {"$in": list(holdings)}}, {"sku": {"$in": ["MCD", "NPT"]}}], "is_active": True}, {"_id": 0, "book_id": 1, "sku": 1, "name": 1}).to_list(100)
+    items = [{"book": book.get("sku") if book.get("sku") in {"MCD", "NPT"} else book["book_id"], "sku": book.get("sku"), "name": book["name"], "on_hand": holdings.get(book["book_id"], 0)} for book in books]
+    for sku, name in (("MCD", "Mi Conexión con Dios"), ("NPT", "Nací para Triunfar")):
+        if not any(item["sku"] == sku for item in items):
+            items.append({"book": sku, "sku": sku, "name": name, "on_hand": 0})
+    items.sort(key=lambda item: ({"MCD": 0, "NPT": 1}.get(item["sku"], 2), item["name"]))
+    return {"items": items}
+
+
 # ------------------------------------------------------------------ migración segura
 async def migrate_legacy_visits() -> dict:
     """Idempotente y sin borrar nada: cada visita de una invasión que aún no
@@ -419,7 +493,7 @@ async def migrate_legacy_visits() -> dict:
         await db.outreach_visits.update_one({"visit_id": visit["visit_id"], "household_id": None}, {"$set": {"household_id": household_id, "visit_event_id": event_id or visit.get("visit_event_id")}})
     # Estado de puerta para viviendas anteriores (derivado; no cambia sus datos).
     refreshed = 0
-    async for household in db.outreach_households.find({"attempts_count": {"$exists": False}}, {"_id": 0, "household_id": 1}):
+    async for household in db.outreach_households.find({"$or": [{"attempts_count": {"$exists": False}}, {"conversed_ever": {"$exists": False}}]}, {"_id": 0, "household_id": 1}):
         await refresh_door_status(household["household_id"])
         refreshed += 1
     return {"households": created_households, "events": created_events, "refreshed": refreshed}
