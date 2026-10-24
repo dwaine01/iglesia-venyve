@@ -33,7 +33,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from mentorship_outreach import (
-    can_manage_outreach_campaigns, ensure_participation, is_active_mentor, now_utc, person_display_name, serialize,
+    can_manage_outreach_campaigns, can_use_outreach, ensure_participation, is_active_mentor, now_utc, person_display_name, serialize,
 )
 from participation_scope import principal_authority_person_ids, without
 from portal_notifications import notify_persons, notify_users
@@ -285,6 +285,48 @@ async def my_invitations(current_user: dict = Depends(get_current_user)):
         })
     items.sort(key=lambda item: (item["finished"], item["start_date"] or ""))
     return {"items": items}
+
+
+def schedule_day_for(campaign: dict, day: str) -> Optional[dict]:
+    """La jornada programada de ese día (si la invasión definió jornadas)."""
+    return next((item for item in campaign.get("schedule_days") or [] if item.get("day") == day), None)
+
+
+@router.get("/mine/today", response_model=dict)
+async def my_invasion_today(current_user: dict = Depends(get_current_user)):
+    """Contexto de invasión para la barra inferior móvil: las invasiones en las
+    que la persona participa y están activas HOY (o la más próxima), si puede
+    registrar visitas propias y cuántas invitaciones le faltan por responder.
+    La pastora (autoridad principal) no participa: nunca tiene contexto."""
+    person_id = current_user.get("person_id")
+    today = date.today().isoformat()
+    empty = {"today": today, "active": [], "upcoming": None, "pending_invitations": 0, "can_register_visits": False}
+    if not person_id or person_id in await principal_authority_person_ids(db):
+        return empty
+    rows = {row["campaign_id"]: row async for row in db.invasion_participants.find({"person_id": person_id}, {"_id": 0, "campaign_id": 1, "status": 1, "roles": 1})}
+    query = {"status": {"$ne": "closed"}, "$or": [{"campaign_id": {"$in": list(rows)}}, {"assigned_mentor_ids": person_id},
+                                                 {"general_lead_person_id": person_id}, {"logistics_lead_person_id": person_id}]}
+    active, upcoming, pending = [], None, 0
+    async for campaign in db.outreach_campaigns.find(query, {"_id": 0, "campaign_id": 1, "name": 1, "location": 1, "start_date": 1, "end_date": 1, "schedule_days": 1}):
+        row = rows.get(campaign["campaign_id"]) or {}
+        if row.get("status") == "declined":
+            continue
+        start = campaign.get("start_date") or ""
+        end = campaign.get("end_date") or start
+        if end and end < today:
+            continue
+        if row.get("status") == "invited":
+            pending += 1
+        item = {"campaign_id": campaign["campaign_id"], "name": campaign.get("name"), "location": campaign.get("location"),
+                "start_date": start or None, "end_date": end or None, "status": row.get("status") or "confirmed", "roles": row.get("roles") or []}
+        if start and start <= today:
+            day = schedule_day_for(campaign, today)
+            active.append({**item, "day": today, "day_label": f"Jornada de hoy · {day['start_time']}" if day and day.get("start_time") else "Jornada de hoy"})
+        elif start and (upcoming is None or start < upcoming["start_date"]):
+            upcoming = item
+    active.sort(key=lambda item: (item["start_date"] or "", item["name"] or ""))
+    can_register = await can_use_outreach(current_user) and await is_active_mentor(person_id)
+    return {**empty, "active": active, "upcoming": upcoming, "pending_invitations": pending, "can_register_visits": can_register}
 
 
 @router.post("/{campaign_id}/respond", response_model=dict)

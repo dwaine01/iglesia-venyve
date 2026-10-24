@@ -91,3 +91,12 @@
     font-size: 36px;
   }
 }
+
+/* Alto del portal: en celular usa el alto visible real (sin la barra del
+   navegador) para que la barra inferior quede siempre a la vista. */
+@media screen {
+  .app-shell-height {
+    height: 100vh;
+    height: 100dvh;
+  }
+}
