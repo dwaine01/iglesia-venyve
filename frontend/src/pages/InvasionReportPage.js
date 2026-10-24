@@ -275,6 +275,16 @@ export default function InvasionReportPage() {
           <LessonsBlock key={`notes-${report.mode}`} campaignId={campaignId} notes={report.notes} />
         </Section>
 
+        {report.help_alerts && <Section title="Alertas de ayuda" testId="report-help" csv={() => downloadCsv(`alertas-${s.name}.csv`, report.help_alerts.items.map((row) => ({ persona: row.person_name, motivo: row.reason_label, nota: row.note || '', hora: row.created_at, estado: row.status, respuesta_min: row.response_minutes ?? '', atendio: row.acknowledged_by_name || '', resolvio: row.resolved_by_name || '' })))}>
+          {report.help_alerts.total === 0 ? <p className="text-sm text-slate-500">No hubo alertas de ayuda.</p> : <>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <Tile label="Alertas" value={report.help_alerts.total} /><Tile label="Resueltas" value={report.help_alerts.resolved} />
+              <Tile label="Sin resolver" value={report.help_alerts.open} /><Tile label="Respuesta promedio" value={report.help_alerts.avg_response_minutes == null ? '—' : `${report.help_alerts.avg_response_minutes} min`} />
+            </div>
+            <div className="mt-3"><Table columns={[['person_name', 'Persona'], ['reason_label', 'Motivo'], ['created_at', 'Hora', (row) => new Date(row.created_at).toLocaleString('es', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })], ['response_minutes', 'Respuesta', (row) => (row.response_minutes == null ? 'Sin atender' : `${row.response_minutes} min`)], ['resolved_by_name', 'Resolvió']]} rows={report.help_alerts.items.map((row) => ({ ...row, key: row.alert_id }))} /></div>
+          </>}
+        </Section>}
+
         {report.books?.length > 0 && <Section title="Libros por mentor" testId="report-books" csv={() => downloadCsv(`libros-${s.name}.csv`, report.books.map((row) => ({ mentor: row.mentor_name, libro: row.book_name, asignados: row.assigned, entregados: row.delivered, le_quedan: row.remaining })))}>
           <Table columns={[['mentor_name', 'Mentor'], ['book_name', 'Libro'], ['assigned', 'Asignados'], ['delivered', 'Entregados'], ['remaining', 'Le quedan']]} rows={report.books.map((row) => ({ ...row, key: `${row.mentor_person_id}-${row.book_id}` }))} />
           <BookDeliveries campaignId={campaignId} books={report.books} />

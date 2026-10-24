@@ -54,6 +54,7 @@ export default function InvasionProgramPage() {
         {program.purpose && <p className="text-base text-slate-700">{program.purpose}</p>}
         <div className="grid grid-cols-1 gap-2 sm:flex">
           {program.can_take_attendance && <Link to={`/invasiones/${program.campaign_id}/asistencia`} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg bg-[#132443] px-4 text-[15px] font-semibold text-white" data-testid="program-attendance-link"><ClipboardCheck className="h-5 w-5" />Tomar asistencia</Link>}
+          {program.can_take_attendance && <Link to={`/invasiones/${program.campaign_id}/ayuda`} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg border-2 border-[#b91c1c] bg-white px-4 text-[15px] font-semibold text-[#b91c1c]" data-testid="program-help-link">Alertas de ayuda</Link>}
           {program.can_edit && <button type="button" onClick={() => setEditing(true)} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg border border-[#D9D4C7] bg-white px-4 text-[15px] font-semibold text-[#101D36]" data-testid="program-edit"><Pencil className="h-5 w-5" />Editar programa</button>}
         </div>
       </header>
