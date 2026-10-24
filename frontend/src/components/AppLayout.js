@@ -13,7 +13,6 @@ import {
 } from 'lucide-react';
 
 import { LOGO_IGLESIA } from '../data/presentationData';
-import DisplayScaleToggle from './DisplayScaleToggle';
 import PortalNotificationsBell from './PortalNotificationsBell';
 import { ContextGuideButton } from './guides/ContextGuideButton';
 import { FloatingLibraryScanButton } from './library/FloatingLibraryScanButton';
@@ -455,7 +454,6 @@ export default function AppLayout() {
             <div className="flex-1 sm:flex-initial sm:ml-auto flex items-center justify-end gap-1">
               {routeGuideKey && <ContextGuideButton moduleKey={routeGuideKey} compact />}
               <PortalNotificationsBell />
-              <DisplayScaleToggle />
             </div>
           </div>
         </div>
