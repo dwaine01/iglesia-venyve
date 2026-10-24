@@ -1,5 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 
+import { useMapLibre } from '../../lib/mapLibre';
+
 const TILE_URL = process.env.REACT_APP_MAP_TILE_URL;
 const SATELLITE_TILE_URL = process.env.REACT_APP_SATELLITE_TILE_URL;
 const zoneColors = { north: '#247BA0', east: '#2F8F6B', south: '#D97706', west: '#C0266D' };
@@ -149,7 +151,7 @@ export const GeoMapCanvas = ({
   onSelect, onSelectZone, onSelectSector, editorActive = false, draftCoordinates = [],
   onDraftChange, selectedVertex, onSelectVertex, selectedSectorId, presentationLevel,
 }) => {
-  const maplibregl = typeof window !== 'undefined' ? window.maplibregl : null;
+  const { maplibregl, failed: mapLibraryFailed } = useMapLibre();
   const containerRef = useRef(null); const mapRef = useRef(null); const valuesRef = useRef({}); const presentationMarkersRef = useRef([]);
   valuesRef.current = { features, sectors, mode, presentationLevel, focusGeometry, editorActive, draftCoordinates, onDraftChange, onSelect, onSelectZone, onSelectSector, onSelectVertex };
 
@@ -273,6 +275,7 @@ export const GeoMapCanvas = ({
     if (bounds[0][0] === bounds[1][0] && bounds[0][1] === bounds[1][1]) map.flyTo({ center: bounds[0], zoom: 16, essential: true });
     else map.fitBounds(bounds, { padding: 80, duration: 900, maxZoom: 16 });
   }, [focusGeometry]);
+  if (!maplibregl && !mapLibraryFailed) return <div className="flex h-full min-h-0 items-center justify-center border bg-slate-50 p-6 text-center text-sm text-slate-500" data-testid="map-library-loading">Cargando mapa…</div>;
   if (!maplibregl) return <div className="flex h-full min-h-0 items-center justify-center border bg-amber-50 p-6 text-center text-sm text-amber-900" data-testid="geo-map-library-error">No se pudo cargar la biblioteca cartográfica local.</div>;
   return <div ref={containerRef} className="h-full min-h-0 w-full overflow-hidden bg-slate-100" data-testid="geo-map-canvas" aria-label="Mapa geográfico interactivo" />;
 };

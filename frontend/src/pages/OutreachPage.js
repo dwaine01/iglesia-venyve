@@ -10,7 +10,7 @@ import { AddHouseholdDialog } from '../components/outreach/AddHouseholdDialog';
 import { AddVisitDialog } from '../components/outreach/AddVisitDialog';
 import { AvailableHouseholdsPanel } from '../components/outreach/AvailableHouseholdsPanel';
 import { HouseholdCard } from '../components/outreach/HouseholdCard';
-import { HouseholdsMapView } from '../components/outreach/HouseholdsMapView';
+import { InvasionHousesMap } from '../components/outreach/InvasionHousesMap';
 import { LogVisitAttemptDialog } from '../components/outreach/LogVisitAttemptDialog';
 import { MyLibraryHoldingsCard } from '../components/outreach/MyLibraryHoldingsCard';
 import { OutreachLeaderPanel } from '../components/outreach/OutreachLeaderPanel';
@@ -78,6 +78,8 @@ export default function OutreachPage() {
 
   const filteredVisits = statusFilter === 'all' ? myVisits : myVisits.filter((item) => item.status === statusFilter);
   const myCampaigns = campaigns.filter((item) => item.my_participation_status);
+  // Mapa: el líder ve todas las invasiones; el mentor las suyas; el encargado las que encarga (el backend filtra las casas).
+  const mapCampaigns = campaigns.filter((item) => item.status !== 'closed' && (isLeader || item.my_participation_status || [item.general_lead_person_id, item.logistics_lead_person_id].includes(user?.person_id)));
 
   const loadAvailableFor = useCallback(async (campaignId) => {
     try {
@@ -108,7 +110,7 @@ export default function OutreachPage() {
         <TabsList data-testid="outreach-tabs">
           <TabsTrigger value="mis-visitas" data-testid="outreach-tab-my-visits">Mis Visitas</TabsTrigger>
           <TabsTrigger value="hogares" data-testid="outreach-tab-households">Mis Hogares</TabsTrigger>
-          {myCampaigns.length > 0 && <TabsTrigger value="mapa" data-testid="outreach-tab-map"><Map className="mr-1 h-3.5 w-3.5 inline" />Mapa</TabsTrigger>}
+          {mapCampaigns.length > 0 && <TabsTrigger value="mapa" data-testid="outreach-tab-map"><Map className="mr-1 h-3.5 w-3.5 inline" />Mapa</TabsTrigger>}
           {isLeader && <TabsTrigger value="panel" data-testid="outreach-tab-leader">Panel de líderes</TabsTrigger>}
         </TabsList>
 
@@ -187,9 +189,9 @@ export default function OutreachPage() {
           )}
         </TabsContent>
 
-        {myCampaigns.length > 0 && (
+        {mapCampaigns.length > 0 && (
           <TabsContent value="mapa" className="mt-4">
-            <HouseholdsMapView myCampaigns={myCampaigns} myHouseholds={households} availableByCampaign={availableByCampaign} />
+            <InvasionHousesMap campaigns={mapCampaigns} mentorPersonId={user?.person_id} refreshKey={poolVersion} onRegisterVisit={setAttemptHousehold} onChanged={() => { loadHouseholds(); }} />
           </TabsContent>
         )}
 

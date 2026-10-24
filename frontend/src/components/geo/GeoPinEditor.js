@@ -1,9 +1,11 @@
 import React, { useEffect, useRef } from 'react';
 
+import { useMapLibre } from '../../lib/mapLibre';
+
 const TILE_URL = process.env.REACT_APP_MAP_TILE_URL;
 
 export const GeoPinEditor = ({ center, value, onChange }) => {
-  const maplibregl = typeof window !== 'undefined' ? window.maplibregl : null;
+  const { maplibregl, failed: mapLibraryFailed } = useMapLibre();
   const containerRef = useRef(null); const mapRef = useRef(null); const markerRef = useRef(null);
   useEffect(() => {
     if (!maplibregl || !center || mapRef.current || !containerRef.current) return undefined;
@@ -15,6 +17,7 @@ export const GeoPinEditor = ({ center, value, onChange }) => {
     mapRef.current = map; markerRef.current = marker;
     return () => { marker.remove(); map.remove(); mapRef.current = null; };
   }, [center, maplibregl]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!maplibregl && !mapLibraryFailed) return <div className="flex h-72 items-center justify-center border bg-slate-50 p-6 text-center text-sm text-slate-500" data-testid="map-library-loading">Cargando mapa…</div>;
   if (!maplibregl) return <div className="flex h-72 items-center justify-center border bg-amber-50 p-4 text-sm text-amber-900" data-testid="geo-pin-library-error">No se pudo cargar el editor cartográfico local.</div>;
   return <div ref={containerRef} className="h-72 w-full border bg-slate-100" data-testid="geo-manual-pin-editor" />;
 };
