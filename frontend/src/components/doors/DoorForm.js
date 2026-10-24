@@ -95,7 +95,7 @@ export function DoorForm({ campaignId, street, books, household = null, onSaved 
       const response = await axios.post(url, household ? body : { ...body, house_number: number.trim(), unit: unit.trim() || null, street_name: street?.street_name }, getAuthHeaders());
       const data = response.data;
       const place = [data.household.address_line1, data.household.address_line2].filter(Boolean).join(' · ');
-      toast.success(data.duplicate ? `Ya estaba guardado: ${place}` : `Guardado: ${place}`, { id: 'door-saved', duration: 2500 });
+      // Confirmación fija en el formulario (sin aviso flotante que tape los botones).
       const pendingBooks = (data.event.books || []).filter((item) => item.inventory_status !== 'discounted');
       setLastSaved({ place, duplicate: data.duplicate, opened: data.event.opened, at: new Date(),
         warnings: [data.person_warning && `La visita quedó guardada, pero ${data.person_warning.charAt(0).toLowerCase()}${data.person_warning.slice(1)}`,
@@ -193,9 +193,10 @@ export function DoorForm({ campaignId, street, books, household = null, onSaved 
       </>}
       {visit.opened === false && <textarea value={visit.note} onChange={(event) => set({ note: event.target.value })} rows={1} placeholder="Nota (opcional)" className="w-full rounded-lg border border-[#D9D4C7] p-3 text-base" data-testid="door-note" />}
 
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        {!household && <button type="button" onClick={() => save(true)} disabled={saving} className="inline-flex min-h-14 items-center justify-center gap-2 rounded-xl bg-[#132443] px-4 text-base font-semibold text-white disabled:opacity-60" data-testid="door-save-next">{saving ? <Loader2 className="h-5 w-5 animate-spin" /> : <Plus className="h-5 w-5" />}Guardar y agregar otra vivienda</button>}
-        <button type="button" onClick={() => save(false)} disabled={saving} className={`inline-flex min-h-14 items-center justify-center gap-2 rounded-xl px-4 text-base font-semibold disabled:opacity-60 ${household ? 'bg-[#132443] text-white' : 'border-2 border-[#132443] bg-white text-[#132443]'}`} data-testid="door-save">{saving ? <Loader2 className="h-5 w-5 animate-spin" /> : <Save className="h-5 w-5" />}Guardar</button>
+      {/* Barra compacta (una fila, 48 px) pegada al fondo de lo visible: no tapa las opciones. */}
+      <div className={`sticky-actions -mx-4 grid gap-2 px-4 ${household ? 'grid-cols-1' : 'grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]'}`} data-testid="door-actions">
+        {!household && <button type="button" onClick={() => save(true)} disabled={saving} aria-label="Guardar y agregar otra vivienda" className="inline-flex min-h-12 items-center justify-center gap-1.5 rounded-xl bg-[#132443] px-2 text-[15px] font-semibold leading-tight text-white disabled:opacity-60" data-testid="door-save-next">{saving ? <Loader2 className="h-5 w-5 shrink-0 animate-spin" /> : <Plus className="h-5 w-5 shrink-0" />}<span className="sm:hidden">Guardar y otra</span><span className="hidden sm:inline">Guardar y agregar otra vivienda</span></button>}
+        <button type="button" onClick={() => save(false)} disabled={saving} className={`inline-flex min-h-12 items-center justify-center gap-1.5 rounded-xl px-2 text-[15px] font-semibold disabled:opacity-60 ${household ? 'bg-[#132443] text-white' : 'border-2 border-[#132443] bg-white text-[#132443]'}`} data-testid="door-save">{saving ? <Loader2 className="h-5 w-5 shrink-0 animate-spin" /> : <Save className="h-5 w-5 shrink-0" />}Guardar</button>
       </div>
       <PersonMatchDialog match={match} busy={false} onPick={(personId) => startConsolidation(match.visitId, { ...match.action, person_id: personId })} onConfirmDistinct={(reason) => startConsolidation(match.visitId, { ...match.action, confirm_distinct_person: true, distinct_reason: reason })} onClose={() => setMatch(null)} />
     </section>

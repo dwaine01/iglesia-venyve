@@ -315,7 +315,7 @@ export function CreateCampaignDialog({ open, onOpenChange, onCreated, mentorOpti
   }[current.key];
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-[#F8F6F0] text-[#101D36]" role="dialog" aria-modal="true" aria-label={campaignId ? 'Editar invasión' : 'Crear invasión'} data-testid="invasion-wizard">
+    <div className="vv-fit fixed inset-0 z-50 flex flex-col bg-[#F8F6F0] text-[#101D36]" role="dialog" aria-modal="true" aria-label={campaignId ? 'Editar invasión' : 'Crear invasión'} data-testid="invasion-wizard">
       <header className="flex items-center gap-2 border-b border-[#E8E5DE] bg-white px-3 py-2 sm:px-6">
         <button type="button" onClick={onClose} className="grid h-11 w-11 place-items-center rounded-md hover:bg-slate-100" aria-label="Cerrar"><X className="h-5 w-5" /></button>
         <div className="min-w-0 flex-1">

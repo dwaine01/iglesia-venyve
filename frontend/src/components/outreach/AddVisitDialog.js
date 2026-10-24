@@ -149,9 +149,9 @@ export const AddVisitDialog = ({ open, onOpenChange, campaigns, mentorOptions, f
             </div>
           )}
 
-          <Button className="w-full bg-[#132443] max-lg:min-h-12" disabled={saving} onClick={submit} data-testid="outreach-add-visit-submit">
+          <div className="sticky-actions"><Button className="w-full bg-[#132443] max-lg:min-h-12" disabled={saving} onClick={submit} data-testid="outreach-add-visit-submit">
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />} Guardar persona
-          </Button>
+          </Button></div>
         </div>
       </DialogContent>
     </Dialog>

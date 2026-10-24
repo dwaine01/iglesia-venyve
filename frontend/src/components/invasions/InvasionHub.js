@@ -24,8 +24,8 @@ const formatDate = (iso) => (iso ? new Date(`${iso}T12:00:00`).toLocaleDateStrin
 
 function Sheet({ title, onClose, children, testId, wide = false }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center sm:p-6" role="dialog" aria-modal="true" data-testid={testId}>
-      <div className={`max-h-[92vh] w-full ${wide ? 'max-w-5xl' : 'max-w-xl'} overflow-y-auto rounded-t-2xl bg-white text-[#101D36] sm:rounded-2xl`}>
+    <div className="vv-fit fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center sm:p-6" role="dialog" aria-modal="true" data-testid={testId}>
+      <div className={`max-h-[min(92vh,calc(var(--vvh,100dvh)-8px))] w-full ${wide ? 'max-w-5xl' : 'max-w-xl'} overflow-y-auto rounded-t-2xl bg-white text-[#101D36] sm:rounded-2xl`}>
         <div className="sticky top-0 flex items-center gap-2 border-b border-[#E8E5DE] bg-white px-3 py-2"><p className="flex-1 font-['Spectral'] text-lg font-semibold text-[#101D36]">{title}</p><button type="button" onClick={onClose} className="grid h-11 w-11 place-items-center rounded-md hover:bg-slate-100" aria-label="Cerrar"><X className="h-5 w-5" /></button></div>
         <div className="space-y-3 p-4">{children}</div>
       </div>

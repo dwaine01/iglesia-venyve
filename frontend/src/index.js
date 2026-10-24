@@ -2,6 +2,10 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import "@/index.css";
 import App from "@/App";
+import { installViewportVars } from "@/lib/visualViewport";
+
+// Teclado del celular: diálogos y hojas se ajustan al área visible real.
+installViewportVars();
 
 const isResizeObserverNotice = (message) => typeof message === 'string' && message.includes('ResizeObserver loop');
 
