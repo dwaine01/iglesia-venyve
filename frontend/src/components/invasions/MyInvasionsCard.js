@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { CalendarDays, Check, Clock, Loader2, MapPin, X } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -86,6 +86,7 @@ export function MyInvasionsCard({ onChanged }) {
               )}
               {!item.finished && item.status !== 'declined' && <MyPrayerCard campaignId={item.campaign_id} />}
               {item.finished && <p className="mt-3 text-xs text-slate-500">Esta invasión ya terminó.</p>}
+              {item.roles.includes('mentor') && item.start_date <= new Date().toISOString().slice(0, 10) && <Link to={`/invasiones/${item.campaign_id}/reporte`} className="mt-2 inline-flex min-h-10 items-center text-sm font-semibold text-[#101D36] underline" data-testid={`my-invasion-report-${item.campaign_id}`}>Ver mi reporte</Link>}
             </article>
           );
         })}
