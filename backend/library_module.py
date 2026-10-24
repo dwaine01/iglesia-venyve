@@ -102,7 +102,7 @@ async def holder_label(holder: Optional[dict]) -> str:
     if holder_type == "warehouse":
         return "Inventario Central" if holder_id == "central" else f"Almacén {holder_id}"
     if holder_type == "writeoff":
-        return {"damage": "Dañado", "loss": "Perdido", "adjustment": "Ajuste"}.get(holder_id, "Baja de inventario")
+        return {"damage": "Dañado", "loss": "Perdido", "adjustment": "Ajuste", "door_delivery": "Entregado en puerta (invasión)"}.get(holder_id, "Baja de inventario")
     if holder_type == "user":
         queries = [{"user_id": holder_id}, {"_id": holder_id}]
         if ObjectId.is_valid(holder_id):

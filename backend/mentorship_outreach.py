@@ -1589,6 +1589,7 @@ async def create_visit_event(household_id: str, payload: VisitEventInput, curren
     event_doc = {
         "_id": event_id, "visit_event_id": event_id, "household_id": household_id, "campaign_id": household.get("campaign_id"),
         "mentor_person_id": household["mentor_person_id"], "result": payload.result, "note": payload.note,
+        "opened": payload.result in {"contacted", "refused"},
         "is_draft": payload.is_draft, "occurred_at": now, "created_by_user_id": current_user["user_id"], "created_at": now,
     }
     await db.outreach_visit_events.insert_one(event_doc)
@@ -1602,6 +1603,8 @@ async def create_visit_event(household_id: str, payload: VisitEventInput, curren
         created_visits.append(visit_doc)
     if household.get("campaign_id"):
         await mark_participation_active(household["campaign_id"], household["mentor_person_id"])
+    from outreach_doors import refresh_door_status
+    await refresh_door_status(household_id)
     return {"event": serialize(event_doc), "visits": await serialize_visits(created_visits, current_user)}
 
 
