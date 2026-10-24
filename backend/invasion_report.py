@@ -304,6 +304,11 @@ def campaign_state(campaign: dict) -> str:
     return "finished"
 
 
+async def _help_alerts(campaign_id: str) -> dict:
+    from invasion_alerts import help_summary
+    return await help_summary(campaign_id)
+
+
 async def compute_report(campaign: dict) -> dict:
     """Todas las secciones con datos vivos (lo que se congela al cerrar)."""
     campaign_id = campaign["campaign_id"]
@@ -442,6 +447,7 @@ async def compute_report(campaign: dict) -> dict:
         },
         "ranking": {"mentors": mentor_rows, "teams": teams},
         "prayer": prayer_report(prayer) if prayer else None,
+        "help_alerts": await _help_alerts(campaign["campaign_id"]),
         # Lo que mostraba el "Informe" anterior: libros asignados/entregados por mentor.
         "books": [row for row in await campaign_book_rows(campaign) if row["mentor_person_id"] not in authorities],
         "followup": {key: value for key, value in followup.items() if key != "unattended_items"},

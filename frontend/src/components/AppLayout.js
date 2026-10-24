@@ -15,6 +15,7 @@ import {
 import { LOGO_IGLESIA } from '../data/presentationData';
 import PortalNotificationsBell from './PortalNotificationsBell';
 import MobileBottomBar from './mobile/MobileBottomNav';
+import { HelpButton } from './invasions/HelpButton';
 import { InvasionTodayProvider } from '../context/InvasionTodayContext';
 import { ContextGuideButton } from './guides/ContextGuideButton';
 import { FloatingLibraryScanButton } from './library/FloatingLibraryScanButton';
@@ -393,6 +394,7 @@ export default function AppLayout() {
     if (path.startsWith('/invasiones/') && path.endsWith('/reporte')) return 'Reporte de invasión';
     if (path.startsWith('/invasiones/') && path.endsWith('/asistencia')) return 'Asistencia de invasión';
     if (path.startsWith('/invasiones/') && path.endsWith('/programa')) return 'Programa de invasión';
+    if (path.startsWith('/invasiones/') && path.endsWith('/ayuda')) return 'Alertas de ayuda';
     return 'Página';
   };
   const currentBreadcrumb = getBreadcrumb();
@@ -460,6 +462,8 @@ export default function AppLayout() {
             {/* Spacer + acciones a la derecha */}
             <div className="flex-1 sm:flex-initial sm:ml-auto flex items-center justify-end gap-1">
               {routeGuideKey && <ContextGuideButton moduleKey={routeGuideKey} compact />}
+              {/* Botón rojo de ayuda: solo para participantes de una invasión activa hoy. */}
+              <HelpButton />
               <PortalNotificationsBell />
             </div>
           </div>
