@@ -23,13 +23,25 @@ const DialogOverlay = React.forwardRef(({ className, ...props }, ref) => (
 ))
 DialogOverlay.displayName = DialogPrimitive.Overlay.displayName
 
-const DialogContent = React.forwardRef(({ className, children, ...props }, ref) => (
+// En pantallas táctiles no se enfoca un campo al abrir: el teclado subiría
+// antes de que el diálogo se acomode. Se enfoca el diálogo y el teclado abre
+// cuando la persona toca el campo.
+const isTouch = () => typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches
+
+const DialogContent = React.forwardRef(({ className, children, onOpenAutoFocus, ...props }, ref) => (
   <DialogPortal>
     <DialogOverlay />
     <DialogPrimitive.Content
       ref={ref}
+      onOpenAutoFocus={(event) => {
+        onOpenAutoFocus?.(event)
+        if (!event.defaultPrevented && isTouch()) {
+          event.preventDefault()
+          event.currentTarget?.focus?.({ preventScroll: true })
+        }
+      }}
       className={cn(
-        "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg max-lg:bottom-0 max-lg:top-auto max-lg:max-h-[92dvh] max-lg:translate-y-0 max-lg:overflow-y-auto max-lg:overscroll-contain max-lg:rounded-b-none max-lg:rounded-t-2xl max-lg:pb-[calc(1.5rem+env(safe-area-inset-bottom))] max-lg:data-[state=open]:slide-in-from-bottom-[30%]",
+        "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg max-lg:bottom-[var(--kb,0px)] max-lg:top-auto max-lg:max-h-[calc(var(--vvh,100dvh)-8px)] max-lg:translate-y-0 max-lg:overflow-y-auto max-lg:overscroll-contain max-lg:rounded-b-none max-lg:rounded-t-2xl max-lg:pb-[calc(1.5rem+env(safe-area-inset-bottom))] max-lg:data-[state=open]:slide-in-from-bottom-[30%]",
         className
       )}
       {...props}>

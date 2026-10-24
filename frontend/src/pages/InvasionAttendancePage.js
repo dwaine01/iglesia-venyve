@@ -157,7 +157,7 @@ export default function InvasionAttendancePage() {
         <DialogContent className="bg-white sm:max-w-md" data-testid="attendance-walk-in-dialog">
           <DialogHeader><DialogTitle>Agregar y marcar asistencia</DialogTitle><DialogDescription>Busca a la persona en Persona 360. Entra como colaborador confirmado y queda marcada en la jornada del {dayLabel(day, { day: 'numeric', month: 'long' })}.</DialogDescription></DialogHeader>
           <PersonPicker value={person} onChange={setPerson} testId="attendance-walk-in-person" />
-          <button type="button" onClick={addWalkIn} disabled={!person || busy === 'walk-in'} className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-[#132443] text-[15px] font-semibold text-white disabled:opacity-50" data-testid="attendance-walk-in-save">{busy === 'walk-in' ? <Loader2 className="h-5 w-5 animate-spin" /> : <Check className="h-5 w-5" />}Agregar y marcar</button>
+          <div className="sticky-actions"><button type="button" onClick={addWalkIn} disabled={!person || busy === 'walk-in'} className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-[#132443] text-[15px] font-semibold text-white disabled:opacity-50" data-testid="attendance-walk-in-save">{busy === 'walk-in' ? <Loader2 className="h-5 w-5 animate-spin" /> : <Check className="h-5 w-5" />}Agregar y marcar</button></div>
         </DialogContent>
       </Dialog>
     </div>

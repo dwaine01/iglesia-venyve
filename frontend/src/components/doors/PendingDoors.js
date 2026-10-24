@@ -45,7 +45,7 @@ function ScheduleDialog({ household, onClose, onSaved }) {
         <DialogHeader><DialogTitle>{household?.followup_date ? 'Reprogramar visita' : 'Programar visita'}</DialogTitle><DialogDescription>{household && addressOf(household)}</DialogDescription></DialogHeader>
         <input type="date" value={day} onChange={(event) => setDay(event.target.value)} className="h-12 w-full rounded-lg border border-[#D9D4C7] px-3 text-base" data-testid="door-schedule-date" />
         <input value={note} onChange={(event) => setNote(event.target.value)} maxLength={300} placeholder="Nota (opcional): ej. volver en la tarde" className="h-12 w-full rounded-lg border border-[#D9D4C7] px-3 text-base" />
-        <button type="button" onClick={() => save(day)} disabled={!day || busy} className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#132443] text-base font-semibold text-white disabled:opacity-50" data-testid="door-schedule-save">{busy ? <Loader2 className="h-5 w-5 animate-spin" /> : <CalendarClock className="h-5 w-5" />}Guardar fecha</button>
+        <div className="sticky-actions"><button type="button" onClick={() => save(day)} disabled={!day || busy} className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#132443] text-base font-semibold text-white disabled:opacity-50" data-testid="door-schedule-save">{busy ? <Loader2 className="h-5 w-5 animate-spin" /> : <CalendarClock className="h-5 w-5" />}Guardar fecha</button></div>
         {household?.followup_date && <button type="button" onClick={() => save(null)} disabled={busy} className="min-h-11 text-[15px] font-semibold text-[#8f382f] underline">Quitar fecha programada</button>}
       </DialogContent>
     </Dialog>

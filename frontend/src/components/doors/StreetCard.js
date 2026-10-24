@@ -24,7 +24,7 @@ export function StreetCard({ campaignId, street, onChange }) {
         street_name: name.trim(), latitude: location?.latitude ?? null, longitude: location?.longitude ?? null,
         location_accuracy_m: location?.accuracy_m ?? null, location_source: location ? 'gps' : null,
       }, getAuthHeaders());
-      onChange(response.data.active_street); setOpen(false); toast.success(`Calle activa: ${response.data.active_street.street_name}`, { id: 'door-saved', duration: 2500 });
+      onChange(response.data.active_street); setOpen(false); // la tarjeta «Calle activa» confirma
     } catch (error) { toast.error(apiErrorMessage(error, 'No se pudo guardar la calle')); } finally { setSaving(false); }
   };
   return (
@@ -38,9 +38,9 @@ export function StreetCard({ campaignId, street, onChange }) {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="bg-white sm:max-w-md" data-testid="door-street-dialog">
           <DialogHeader><DialogTitle>{street ? 'Cambiar calle' : 'Comenzar calle'}</DialogTitle><DialogDescription>Escríbela una sola vez; después solo pones el número de cada casa.</DialogDescription></DialogHeader>
-          <label className="block"><span className="text-sm font-semibold text-slate-700">Nombre de la calle</span><input value={name} onChange={(event) => setName(event.target.value)} autoFocus placeholder="Ej.: W 18th St" className="mt-1 h-12 w-full rounded-lg border border-[#D9D4C7] px-3 text-base" data-testid="door-street-name" /></label>
+          <label className="block"><span className="text-sm font-semibold text-slate-700">Nombre de la calle</span><input value={name} onChange={(event) => setName(event.target.value)} enterKeyHint="done" autoComplete="off" placeholder="Ej.: W 18th St" className="mt-1 h-12 w-full rounded-lg border border-[#D9D4C7] px-3 text-base" data-testid="door-street-name" /></label>
           <div><p className="mb-1 text-sm font-semibold text-slate-700">Confirma la ubicación (recomendado)</p><LocationCapture value={location} onChange={setLocation} testId="door-street-location" /></div>
-          <button type="button" onClick={save} disabled={saving} className="inline-flex min-h-14 w-full items-center justify-center gap-2 rounded-xl bg-[#132443] text-base font-semibold text-white disabled:opacity-60" data-testid="door-street-save">{saving ? <Loader2 className="h-5 w-5 animate-spin" /> : <Route className="h-5 w-5" />}{street ? 'Cambiar a esta calle' : 'Comenzar esta calle'}</button>
+          <div className="sticky-actions"><button type="button" onClick={save} disabled={saving} className="inline-flex min-h-14 w-full items-center justify-center gap-2 rounded-xl bg-[#132443] text-base font-semibold text-white disabled:opacity-60" data-testid="door-street-save">{saving ? <Loader2 className="h-5 w-5 animate-spin" /> : <Route className="h-5 w-5" />}{street ? 'Cambiar a esta calle' : 'Comenzar esta calle'}</button></div>
         </DialogContent>
       </Dialog>
     </>

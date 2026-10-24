@@ -100,3 +100,28 @@
     height: 100dvh;
   }
 }
+
+/* Teclado abierto (iPhone/Android): las hojas a pantalla completa y el portal
+   se ajustan al área visible para que el campo y el botón de guardar se vean. */
+html[data-keyboard="open"] .vv-fit {
+  top: var(--vv-top, 0px);
+  bottom: auto;
+  height: var(--vvh, 100dvh);
+}
+@media screen {
+  html[data-keyboard="open"] .app-shell-height {
+    height: var(--vvh, 100dvh);
+    transform: translateY(var(--vv-top, 0px));
+  }
+}
+
+/* Botón principal pegado al fondo de lo visible (dentro de diálogos y formularios largos). */
+.sticky-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+  background: #ffffff;
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+  box-shadow: 0 -10px 12px -12px rgba(16, 29, 54, 0.35);
+}

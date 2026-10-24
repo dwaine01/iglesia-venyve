@@ -18,17 +18,38 @@ function useKeyboardOpen() {
   useEffect(() => {
     const viewport = window.visualViewport;
     const touch = window.matchMedia?.('(pointer: coarse)').matches;
-    const check = () => {
+    let timer = null;
+    let pointerDown = false;
+    const isOpen = () => {
       const element = document.activeElement;
       const typing = Boolean(element) && ((element.tagName === 'INPUT' && !TYPING_TYPES.has(element.type)) || element.tagName === 'TEXTAREA' || element.isContentEditable);
       const shrunk = viewport ? window.innerHeight - viewport.height > 150 : false;
-      setOpen(shrunk || (typing && touch));
+      return shrunk || (typing && touch);
     };
-    const later = () => setTimeout(check, 60);
+    // Se esconde al instante; reaparece con retraso y nunca a mitad de un toque:
+    // si la barra volviera de golpe, empujaría el botón fijo de guardar bajo el dedo.
+    const check = () => {
+      clearTimeout(timer);
+      if (isOpen()) { setOpen(true); return; }
+      timer = setTimeout(() => { if (!pointerDown && !isOpen()) setOpen(false); else if (!isOpen()) check(); }, 450);
+    };
+    const down = () => { pointerDown = true; };
+    const up = () => { pointerDown = false; check(); };
     viewport?.addEventListener('resize', check);
     document.addEventListener('focusin', check);
-    document.addEventListener('focusout', later);
-    return () => { viewport?.removeEventListener('resize', check); document.removeEventListener('focusin', check); document.removeEventListener('focusout', later); };
+    document.addEventListener('focusout', check);
+    document.addEventListener('pointerdown', down, true);
+    document.addEventListener('pointerup', up, true);
+    document.addEventListener('pointercancel', up, true);
+    return () => {
+      clearTimeout(timer);
+      viewport?.removeEventListener('resize', check);
+      document.removeEventListener('focusin', check);
+      document.removeEventListener('focusout', check);
+      document.removeEventListener('pointerdown', down, true);
+      document.removeEventListener('pointerup', up, true);
+      document.removeEventListener('pointercancel', up, true);
+    };
   }, []);
   return open;
 }
