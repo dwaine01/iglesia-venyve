@@ -80,7 +80,7 @@ async def test_report_permissions_figures_and_frozen_final():
         assert (await lead.post(f"/api/invasions/{campaign_id}/report/finalize")).json()["frozen_at"] == final["frozen_at"]
     finally:
         if campaign_id:
-            for collection in ("outreach_households", "outreach_visit_events", "outreach_visits", "outreach_participations", "invasion_participants", "invasion_reports", "outreach_campaigns"):
+            for collection in ("outreach_households", "outreach_visit_events", "outreach_visits", "outreach_participations", "invasion_participants", "invasion_reports", "invasion_report_notes", "outreach_campaigns"):
                 await server.db[collection].delete_many({"campaign_id": campaign_id})
         await server.db.mentor_badges.delete_many({"_id": {"$regex": f"^badge-{tag}"}})
         await server.db.portal_notifications.delete_many({"recipient_user_id": {"$in": [str(item) for item in fx.user_ids]}})
@@ -132,11 +132,80 @@ async def test_report_followup_goals_and_comparison():
         assert any(row["campaign_id"] == previous_id and row["people"] == 3 for row in comparison)
         assert report["summary"]["key_figures"]["to_consolidation"] == 2
     finally:
-        for collection in ("outreach_visits", "outreach_participations", "invasion_participants", "invasion_reports", "outreach_campaigns"):
+        for collection in ("outreach_visits", "outreach_participations", "invasion_participants", "invasion_reports", "invasion_report_notes", "outreach_campaigns"):
             await server.db[collection].delete_many({"campaign_id": {"$in": campaign_ids}})
         await server.db.process_enrollments.delete_many({"_id": {"$in": [f"e1-{tag}", f"e2-{tag}"]}})
         await server.db.consolidation_activities.delete_many({"_id": f"a-{tag}"})
         await server.db.mentor_assignments.delete_many({"_id": f"m-{tag}"})
         await server.db.mentor_badges.delete_many({"_id": f"badge-{tag}"})
+        await server.db.portal_notifications.delete_many({"recipient_user_id": {"$in": [str(item) for item in fx.user_ids]}})
+        await fx.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_report_recommendations_resolved_and_lessons():
+    """Tramo 3: recomendaciones por reglas con evidencia, casilla «resuelta»
+    persistente (ids con puntos) y lecciones editables aun con el final congelado."""
+    fx = Fixture()
+    tag = uuid.uuid4().hex[:8]
+    campaign_id = None
+    today = date.today()
+    try:
+        pastora = await fx.account(await fx.person(f"Pastora{tag}"), "pastora")
+        lead_id, ana_id, beto_id, other_id = [await fx.person(f"{name}{tag}") for name in ("Encargado", "Ana", "Beto", "Ajeno")]
+        lead = await fx.account(lead_id, "persona")
+        ana = await fx.account(ana_id, "persona")
+        other = await fx.account(other_id, "persona")
+        await fx.account(beto_id, "persona")
+        for person_id in (ana_id, beto_id):
+            await server.db.mentor_badges.insert_one({"_id": f"badge-{tag}-{person_id}", "person_id": person_id, "active": True})
+        created = await pastora.post("/api/invasions", json={
+            "name": f"Invasión {tag}", "location": "Barrio", "start_date": (today - timedelta(days=1)).isoformat(), "end_date": today.isoformat(),
+            "general_lead_person_id": lead_id, "mentor_person_ids": [ana_id, beto_id]})
+        assert created.status_code == 201, created.text
+        campaign_id = created.json()["campaign_id"]
+        sector = "Sector 1.A"
+        await pastora.post(f"/api/mentorship/outreach/campaigns/{campaign_id}/households/import", json={"entries": [{"address_line1": f"{n} Calle", "sector": sector} for n in range(3)]})
+        old = datetime.now(timezone.utc) - timedelta(days=4)
+        await server.db.outreach_visits.insert_one({"_id": f"r-{tag}", "visit_id": f"r-{tag}", "campaign_id": campaign_id, "mentor_person_id": ana_id, "status": "wants_followup", "archived": False, "created_at": old})
+
+        report = (await lead.get(f"/api/invasions/{campaign_id}/report")).json()
+        recs = {item["id"]: item for item in report["recommendations"]}
+        assert recs["followup:unattended"]["priority"] == "alta" and recs["followup:unattended"]["evidence"] == {"label": "Personas sin atender > 48 h", "value": 1, "total": 1, "pct": 100}
+        assert recs["houses:available"]["evidence"]["value"] == 3 and recs[f"sector:{sector}"]["evidence"]["pct"] == 0
+        assert recs["mentors:idle"]["evidence"]["value"] == 1 and "Beto" in recs["mentors:idle"]["detail"]
+        assert recs["houses:unlocated"]["priority"] == "baja" and all(item["rule"].startswith("Regla") and item["responsible"] for item in recs.values())
+        assert [item["priority"] for item in report["recommendations"]] == sorted((item["priority"] for item in report["recommendations"]), key={"alta": 0, "media": 1, "baja": 2}.get)
+        assert not any(item["resolved"] for item in report["recommendations"])
+        assert report["notes"]["worked"] is None
+
+        # Mentor y ajeno no pueden marcar ni editar.
+        for client in (ana, other):
+            assert (await client.put(f"/api/invasions/{campaign_id}/report/recommendations/houses:available", json={"resolved": True})).status_code == 403
+            assert (await client.put(f"/api/invasions/{campaign_id}/report/notes", json={"worked": "x"})).status_code == 403
+        assert "recommendations" not in (await ana.get(f"/api/invasions/{campaign_id}/report")).json()
+
+        # Congelar y luego marcar resuelta (id con punto) y escribir lecciones: sigue permitido.
+        await lead.post(f"/api/invasions/{campaign_id}/report/finalize")
+        marked = await lead.put(f"/api/invasions/{campaign_id}/report/recommendations/sector:{sector}", json={"resolved": True, "note": "Se reforzó"})
+        assert marked.status_code == 200, marked.text
+        saved = await lead.put(f"/api/invasions/{campaign_id}/report/notes", json={"worked": "  Buena oración  ", "testimonies": "Una familia aceptó a Cristo"})
+        assert saved.json()["worked"] == "Buena oración" and saved.json()["updated_by"]
+        pastor_saved = (await pastora.put(f"/api/invasions/{campaign_id}/report/notes", json={"pastor_recommendations": "Volver en un mes"})).json()
+        assert pastor_saved["worked"] == "Buena oración" and pastor_saved["pastor_recommendations"] == "Volver en un mes"
+
+        final = (await pastora.get(f"/api/invasions/{campaign_id}/report")).json()
+        assert final["mode"] == "final"
+        resolved = {item["id"]: item for item in final["recommendations"]}[f"sector:{sector}"]
+        assert resolved["resolved"] is True and resolved["resolved_note"] == "Se reforzó" and resolved["resolved_by"]
+        assert final["notes"]["testimonies"] == "Una familia aceptó a Cristo"
+        await lead.put(f"/api/invasions/{campaign_id}/report/recommendations/sector:{sector}", json={"resolved": False})
+        again = (await lead.get(f"/api/invasions/{campaign_id}/report")).json()
+        assert not {item["id"]: item for item in again["recommendations"]}[f"sector:{sector}"]["resolved"]
+    finally:
+        if campaign_id:
+            for collection in ("outreach_households", "outreach_visit_events", "outreach_visits", "outreach_participations", "invasion_participants", "invasion_reports", "invasion_report_notes", "outreach_campaigns"):
+                await server.db[collection].delete_many({"campaign_id": campaign_id})
+        await server.db.mentor_badges.delete_many({"_id": {"$regex": f"^badge-{tag}"}})
         await server.db.portal_notifications.delete_many({"recipient_user_id": {"$in": [str(item) for item in fx.user_ids]}})
         await fx.cleanup()

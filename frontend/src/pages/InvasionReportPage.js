@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 import { apiErrorMessage } from '../lib/apiErrors';
 import { InvasionHousesMap } from '../components/outreach/InvasionHousesMap';
+import { LessonsBlock, RecommendationsBlock } from '../components/invasions/ReportRecommendations';
 import { COLORS, ChartCard, Donut, GoalBar, HBars, Lines, PALETTE, VBars, semaphoreStyle } from '../components/invasions/reportCharts';
 
 const STATE = { upcoming: 'Próxima', active: 'En curso', finished: 'Terminada (sin cerrar)', closed: 'Cerrada' };
@@ -264,6 +265,14 @@ export default function InvasionReportPage() {
               </div>
             : <p className="text-sm text-slate-500">Aún no hay invasiones anteriores para comparar.</p>}
           <Table columns={[['name', 'Invasión'], ['start_date', 'Inicio', (row) => fmtDate(row.start_date)], ['people', 'Personas'], ['followup', 'Seguimiento'], ['attendance_pct', 'Asistencia', (row) => pct(row.attendance_pct)]]} rows={report.comparison.map((row) => ({ ...row, key: row.campaign_id }))} />
+        </Section>
+
+        <Section title="8. Recomendaciones" className="xl:col-span-2" testId="report-recommendations" csv={() => downloadCsv(`recomendaciones-${s.name}.csv`, (report.recommendations || []).map((row) => ({ prioridad: row.priority, recomendacion: row.title, detalle: row.detail, evidencia: row.evidence.label, valor: row.evidence.value, base: row.evidence.total ?? '', pct: row.evidence.pct ?? '', responsable: row.responsible, regla: row.rule, resuelta: row.resolved ? 'sí' : 'no', nota: row.resolved_note || '' })))}>
+          <RecommendationsBlock key={`rec-${report.mode}`} campaignId={campaignId} items={report.recommendations} />
+        </Section>
+
+        <Section title="Lecciones aprendidas" className="xl:col-span-2" testId="report-lessons-section">
+          <LessonsBlock key={`notes-${report.mode}`} campaignId={campaignId} notes={report.notes} />
         </Section>
 
         {report.books?.length > 0 && <Section title="Libros por mentor" testId="report-books" csv={() => downloadCsv(`libros-${s.name}.csv`, report.books.map((row) => ({ mentor: row.mentor_name, libro: row.book_name, asignados: row.assigned, entregados: row.delivered, le_quedan: row.remaining })))}>
