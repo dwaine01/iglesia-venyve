@@ -551,6 +551,7 @@ from push_notifications import router as push_notifications_router, ensure_index
 from invasion_prayer import router as invasion_prayer_router, ensure_indexes as invasion_prayer_ensure_indexes
 from invasion_report import router as invasion_report_router, ensure_indexes as invasion_report_ensure_indexes
 from invasion_attendance import router as invasion_attendance_router
+from outreach_doors import router as outreach_doors_router, ensure_indexes as outreach_doors_ensure_indexes
 
 app.include_router(portal_notifications_router)
 app.include_router(invasion_participants_router)
@@ -560,6 +561,7 @@ app.include_router(push_notifications_router)
 app.include_router(invasion_prayer_router)
 app.include_router(invasion_report_router)
 app.include_router(invasion_attendance_router)
+app.include_router(outreach_doors_router)
 app.include_router(invasion_planning_router)
 
 
@@ -766,6 +768,7 @@ async def startup():
     await push_notifications_ensure_indexes()
     await invasion_prayer_ensure_indexes()
     await invasion_report_ensure_indexes()
+    await outreach_doors_ensure_indexes()
     await campaign_venycome_ensure_indexes()
     await ensure_mentorship_indexes()
     await ensure_outreach_indexes()
