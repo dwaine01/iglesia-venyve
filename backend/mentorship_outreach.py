@@ -782,7 +782,12 @@ async def update_campaign(campaign_id: str, payload: CampaignUpdateInput, curren
         fields["location"] = fields["location"].strip()
     fields["updated_at"] = now_utc()
     await db.outreach_campaigns.update_one({"campaign_id": campaign_id}, {"$set": fields})
-    result = serialize(await db.outreach_campaigns.find_one({"campaign_id": campaign_id}, {"_id": 0}))
+    refreshed = await db.outreach_campaigns.find_one({"campaign_id": campaign_id}, {"_id": 0})
+    if fields.get("status") == "closed":
+        # Fase 6F: al cerrar la invasión se congela su "Reporte final".
+        from invasion_report import freeze_report
+        await freeze_report(refreshed, current_user["user_id"])
+    result = serialize(refreshed)
     result["accounts_created"] = accounts_created
     return result
 
@@ -971,6 +976,12 @@ async def list_campaign_books(campaign_id: str, current_user: dict = Depends(get
     campaign = await db.outreach_campaigns.find_one({"campaign_id": campaign_id}, {"_id": 0})
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaña no encontrada")
+    return {"items": await campaign_book_rows(campaign)}
+
+
+async def campaign_book_rows(campaign: dict) -> list:
+    """Asignado/entregado por mentor y libro (también lo usa el Reporte de invasión)."""
+    campaign_id = campaign["campaign_id"]
     mentor_ids = campaign.get("assigned_mentor_ids") or []
     movements = await db.library_movements.find({"campaign_id": campaign_id, "movement_type": {"$in": ["ASSIGNMENT", "DELIVERY"]}}, {"_id": 0}).to_list(5000)
     books = {b["book_id"]: b["name"] for b in await db.library_books.find({}, {"_id": 0, "book_id": 1, "name": 1}).to_list(2000)}
@@ -998,7 +1009,7 @@ async def list_campaign_books(campaign_id: str, current_user: dict = Depends(get
     items = list(buckets.values())
     for item in items:
         item["remaining"] = item["assigned"] - item["delivered"]
-    return {"items": items}
+    return items
 
 
 @router.get("/campaigns/{campaign_id}/books/{book_id}/deliveries", response_model=dict)

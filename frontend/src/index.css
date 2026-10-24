@@ -18,6 +18,11 @@
   .logo-transparent-light {
     mix-blend-mode: normal !important;
   }
+  /* Impresión / PDF de reportes: sin menú ni barra superior y con todo el contenido. */
+  [data-print-hide] { display: none !important; }
+  html, body, #root, [data-print-main], [data-testid="app-page-scroll-container"] { height: auto !important; overflow: visible !important; }
+  [data-print-main] { display: block !important; }
+  .print-break-avoid { break-inside: avoid; }
 }
 
 

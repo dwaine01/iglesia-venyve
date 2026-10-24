@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Loader2, Plus, Send, X } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -183,6 +183,7 @@ function InvasionSummary({ campaignId, onClose }) {
         {row('Encargado general / logística', [data.general_lead?.name, data.logistics_lead?.name].filter(Boolean).join(' / '))}
         {row('Emergencias', data.emergency_contact ? `${data.emergency_contact.name} · ${data.emergency_contact.phone}` : '')}
         {row('Descripción', data.description)}
+        <Link to={`/invasiones/${campaignId}/reporte`} className="inline-flex min-h-11 w-full items-center justify-center rounded-lg bg-[#101D36] text-sm font-semibold text-white" data-testid="invasion-summary-report">Ver reporte de la invasión</Link>
         <ParticipantsPanel campaignId={campaignId} />
         <PrayerPanel campaignId={campaignId} />
       </>}
@@ -278,7 +279,10 @@ export function InvasionHub({ showAction = false }) {
           <ul className="mt-2 space-y-2">{upcoming.map((item) => (
             <li key={item.campaign_id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[#EEECE6] p-3">
               <button type="button" onClick={() => setSummaryId(item.campaign_id)} className="min-w-0 flex-1 text-left"><p className="truncate text-sm font-semibold text-[#101D36]">{item.name}</p><p className="text-xs text-slate-500">{item.location} · {formatDate(item.start_date)} → {formatDate(item.end_date)}</p>{counts[item.campaign_id] && <p className="mt-1 text-xs font-medium text-[#101D36]" data-testid={`invasion-counts-${item.campaign_id}`}>{counts[item.campaign_id].total} invitados · {counts[item.campaign_id].confirmed} confirmados · {counts[item.campaign_id].no_response} sin responder · {counts[item.campaign_id].attended} asistieron</p>}</button>
-              {canCreate && <button type="button" onClick={() => setWizard({ campaignId: item.campaign_id })} className="min-h-11 rounded-md border border-[#D9D4C7] px-4 text-sm font-semibold text-[#101D36]" data-testid={`invasion-edit-${item.campaign_id}`}>Editar</button>}
+              <div className="flex gap-2">
+                <Link to={`/invasiones/${item.campaign_id}/reporte`} className="inline-flex min-h-11 items-center rounded-md border border-[#D9D4C7] px-4 text-sm font-semibold text-[#101D36]" data-testid={`invasion-report-${item.campaign_id}`}>Reporte</Link>
+                {canCreate && <button type="button" onClick={() => setWizard({ campaignId: item.campaign_id })} className="min-h-11 rounded-md border border-[#D9D4C7] px-4 text-sm font-semibold text-[#101D36]" data-testid={`invasion-edit-${item.campaign_id}`}>Editar</button>}
+              </div>
             </li>
           ))}</ul>
         </section>}

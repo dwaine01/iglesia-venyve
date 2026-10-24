@@ -387,6 +387,7 @@ export default function AppLayout() {
     if (path.startsWith('/puertas/')) return 'Sistema de las 9 Puertas';
     if (path.startsWith('/cuidado-pastoral/casos/')) return 'Expediente pastoral';
     if (path.startsWith('/junta/reuniones/')) return 'Reunión de Junta';
+    if (path.startsWith('/invasiones/') && path.endsWith('/reporte')) return 'Reporte de invasión';
     return 'Página';
   };
   const currentBreadcrumb = getBreadcrumb();
@@ -400,18 +401,18 @@ export default function AppLayout() {
   }, [isMapRoute]);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
+    <div className="flex h-screen overflow-hidden bg-background print:block print:h-auto print:overflow-visible">
       {/* Desktop Sidebar */}
-      {(!isMapRoute || mapSidebarOpen) && <aside className="hidden lg:flex lg:w-64 lg:flex-col border-r border-border bg-card" data-testid="desktop-sidebar">
+      {(!isMapRoute || mapSidebarOpen) && <aside className="hidden lg:flex lg:w-64 lg:flex-col border-r border-border bg-card" data-testid="desktop-sidebar" data-print-hide>
         <SidebarContent boardAllowed={boardAccess.allowed} isActiveMentor={mentorAccess.isActiveMentor} />
       </aside>}
 
       {mobileOpen && <div className="fixed inset-0 z-50 lg:hidden" data-testid="mobile-navigation-overlay"><button type="button" className="absolute inset-0 bg-black/45" onClick={() => setMobileOpen(false)} aria-label="Cerrar menú" data-testid="close-mobile-navigation-backdrop" /><aside id="mobile-navigation-sheet" className="relative h-full w-[85vw] max-w-xs bg-white shadow-2xl" data-testid="mobile-navigation-sheet" aria-label="Menú de navegación"><SidebarContent onClose={() => setMobileOpen(false)} testIdPrefix="mobile-" boardAllowed={boardAccess.allowed} isActiveMentor={mentorAccess.isActiveMentor} /></aside></div>}
 
       {/* Main Content */}
-      <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
+      <main className="flex min-w-0 flex-1 flex-col overflow-hidden" data-print-main>
         {/* Top Bar: hamburger + breadcrumb + logo (mobile) */}
-        <div className="z-20 shrink-0 border-b border-border bg-card/95 backdrop-blur-md">
+        <div className="z-20 shrink-0 border-b border-border bg-card/95 backdrop-blur-md" data-print-hide>
           <div className="flex items-center gap-2 px-3 py-2.5 lg:px-6 lg:py-3">
             {isMapRoute && <Button type="button" variant="ghost" size="icon" className="hidden h-9 w-9 shrink-0 lg:inline-flex" onClick={() => setMapSidebarOpen((value) => !value)} data-testid="toggle-map-sidebar-button" aria-label={mapSidebarOpen ? 'Ocultar menú lateral' : 'Mostrar menú lateral'}>{mapSidebarOpen ? <PanelLeftClose className="h-5 w-5" /> : <PanelLeftOpen className="h-5 w-5" />}</Button>}
             {/* Hamburger - solo mobile */}
@@ -461,7 +462,7 @@ export default function AppLayout() {
         <div className={`min-h-0 flex-1 ${isMapRoute ? 'overflow-hidden' : 'overflow-y-auto'}`} data-testid="app-page-scroll-container">
           <Suspense fallback={<PageSkeleton />}><Outlet /></Suspense>
         </div>
-        <FloatingLibraryScanButton />
+        <div data-print-hide><FloatingLibraryScanButton /></div>
       </main>
     </div>
   );

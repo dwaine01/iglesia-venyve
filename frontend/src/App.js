@@ -112,6 +112,7 @@ const GrupoFrontalPastoralPage = lazyPage(() => import('./pages/GrupoFrontalPast
 const EstructuraFrontalPage = lazyPage(() => import('./pages/EstructuraFrontalPage'));
 const MisEstadisticasPage = lazyPage(() => import('./pages/MisEstadisticasPage'));
 const GeoMapsPage = lazyPage(() => import('./pages/GeoMapsPage'));
+const InvasionReportPage = lazyPage(() => import('./pages/InvasionReportPage'));
 
 
 function ProtectedRoute({ children }) {
@@ -345,6 +346,8 @@ function App() {
             <Route path="estructura-frontal/:groupId" element={<EstructuraFrontalPage />} />
             <Route path="grupo-frontal-pastoral" element={<CapabilityRoute allowed={canViewPastoralFrontGroup}><GrupoFrontalPastoralPage /></CapabilityRoute>} />
             <Route path="mis-estadisticas" element={<MisEstadisticasPage />} />
+            {/* Reporte de invasión: el backend decide si es completo, personal o sin acceso. */}
+            <Route path="invasiones/:campaignId/reporte" element={<InvasionReportPage />} />
             
             {/* Persona routes */}
             <Route path="mi-progreso" element={<Navigate to="/procesos/dashboard" replace />} />
