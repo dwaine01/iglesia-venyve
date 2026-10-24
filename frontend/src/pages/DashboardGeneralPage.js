@@ -21,6 +21,8 @@ import { toast } from 'sonner';
 import { StatusBadge, ProgressVsExpected } from '../components/StatusBadge';
 import { LOGO_IGLESIA } from '../data/presentationData';
 import { BRAND } from '../config/brand';
+import { LeaderDeleteDialog } from '../components/LeaderDeleteDialog';
+import { isPastoralAuthority } from '../lib/accessControl';
 
 export default function DashboardGeneralPage() {
   const { API, getAuthHeaders, user } = useAuth();
@@ -39,6 +41,9 @@ export default function DashboardGeneralPage() {
   const [resetTarget, setResetTarget] = useState(null);
   const [resetForm, setResetForm] = useState({ password: '', confirmPassword: '' });
   const [resetting, setResetting] = useState(false);
+  const [leaderToDelete, setLeaderToDelete] = useState(null);
+  const canDeleteLeaders = isPastoralAuthority(user);
+  const reloadDashboard = () => axios.get(`${API}/api/dashboard/role-based`, getAuthHeaders()).then((res) => setData(res.data)).catch(() => {});
 
   useEffect(() => {
     const fetchData = async () => {
@@ -323,14 +328,17 @@ export default function DashboardGeneralPage() {
                       <ProgressVsExpected status={lider.estado} compact={false} />
                     )}
 
-                    <Button
-                      size="sm"
-                      className="w-full bg-[#1B2A4A] hover:bg-[#2A3D63] text-white font-medium"
-                      onClick={() => navigate(`/lider/${lider._id}/dashboard`)}
-                    >
-                      Entrar al Líder
-                      <ArrowRight className="w-3.5 h-3.5 ml-1" />
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        className="min-h-11 flex-1 bg-[#1B2A4A] hover:bg-[#2A3D63] text-white font-medium"
+                        onClick={() => navigate(`/lider/${lider._id}/dashboard`)}
+                      >
+                        Entrar al Líder
+                        <ArrowRight className="w-3.5 h-3.5 ml-1" />
+                      </Button>
+                      {canDeleteLeaders && <Button size="sm" variant="outline" className="min-h-11 border-red-200 text-red-700 hover:bg-red-50" onClick={() => setLeaderToDelete(lider)} aria-label={`Eliminar a ${lider.nombre}`} data-testid={`lider-delete-${lider._id}`}><Trash2 className="h-4 w-4" />Eliminar</Button>}
+                    </div>
                   </motion.div>
                 ))}
               </div>
@@ -396,14 +404,17 @@ export default function DashboardGeneralPage() {
                           </div>
                         </TableCell>
                         <TableCell className="text-right">
-                          <Button
-                            size="sm"
-                            className="bg-[#1B2A4A] hover:bg-[#2A3D63] text-white font-medium"
-                            onClick={() => navigate(`/lider/${lider._id}/dashboard`)}
-                          >
-                            Entrar al Líder
-                            <ArrowRight className="w-3.5 h-3.5 ml-1" />
-                          </Button>
+                          <div className="flex items-center justify-end gap-2">
+                            <Button
+                              size="sm"
+                              className="bg-[#1B2A4A] hover:bg-[#2A3D63] text-white font-medium"
+                              onClick={() => navigate(`/lider/${lider._id}/dashboard`)}
+                            >
+                              Entrar al Líder
+                              <ArrowRight className="w-3.5 h-3.5 ml-1" />
+                            </Button>
+                            {canDeleteLeaders && <Button size="icon" variant="outline" className="h-9 w-9 border-red-200 text-red-700 hover:bg-red-50" onClick={() => setLeaderToDelete(lider)} aria-label={`Eliminar a ${lider.nombre}`} title="Eliminar cuenta" data-testid={`lider-delete-${lider._id}`}><Trash2 className="h-4 w-4" /></Button>}
+                          </div>
                         </TableCell>
                       </motion.tr>
                     ))}
@@ -413,6 +424,28 @@ export default function DashboardGeneralPage() {
             </CardContent>
           </Card>
         </motion.div>
+
+        {/* Personas que quedaron sin líder (al eliminar la cuenta de su líder): para reasignar */}
+        {data.personas_sin_lider?.length > 0 && (
+          <Card className="border border-amber-200 bg-amber-50/40" data-testid="personas-sin-lider">
+            <CardHeader>
+              <CardTitle style={{ fontFamily: 'Spectral, serif' }}>Personas sin líder ({data.personas_sin_lider.length})</CardTitle>
+              <p className="text-sm text-muted-foreground">Quedaron sin líder al eliminarse la cuenta de su líder. Abre su Perfil 360 para asignarles un mentor o grupo.</p>
+            </CardHeader>
+            <CardContent>
+              <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                {data.personas_sin_lider.map((persona) => (
+                  <li key={persona._id}>
+                    {persona.canonical_person_id
+                      ? <button type="button" onClick={() => navigate(`/personas/${persona.canonical_person_id}`)} className="flex min-h-12 w-full items-center justify-between gap-2 rounded-lg border border-[#E7E2D6] bg-white px-3 text-left text-sm font-medium text-[#1B2A4A] hover:border-[#1B2A4A]">{persona.nombre || 'Persona'}<ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" /></button>
+                      : <span className="flex min-h-12 items-center rounded-lg border border-[#E7E2D6] bg-white px-3 text-sm text-[#1B2A4A]">{persona.nombre || 'Persona'}</span>}
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        )}
+        <LeaderDeleteDialog leader={leaderToDelete} onClose={() => setLeaderToDelete(null)} onDeleted={reloadDashboard} />
 
         {/* Gestión de Pastores */}
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
