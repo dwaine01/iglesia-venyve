@@ -75,7 +75,7 @@ export function MobileBottomNav({ isActiveMentor, menuOpen, onOpenMenu, onAddVis
   const items = [{ key: 'home', to: '/', icon: Home, label: 'Inicio', active: HOME_PATHS.includes(path) }];
   if (invasion || managed.length) {
     items.push({ key: 'invasion', icon: Footprints, label: 'Invasión', badge: invasion ? data?.pending_invitations : 0, onClick: onOpenInvasion,
-      active: (onOutreach && search.get('tab') !== 'mapa') || (path === '/mi-perfil' && search.has('invasion')) || (path.startsWith('/invasiones/') && !onAttendance && !onProgram) || (!invasion && path === '/procesos/consolidacion') });
+      active: path === '/mentoria/puerta-a-puerta' || (onOutreach && search.get('tab') !== 'mapa') || (path === '/mi-perfil' && search.has('invasion')) || (path.startsWith('/invasiones/') && !onAttendance && !onProgram) || (!invasion && path === '/procesos/consolidacion') });
   } else {
     items.push({ key: 'profile', to: '/mi-perfil', icon: UserCircle, label: 'Mi perfil', active: path === '/mi-perfil' });
   }
@@ -93,7 +93,7 @@ export function MobileBottomNav({ isActiveMentor, menuOpen, onOpenMenu, onAddVis
       <div className="mx-auto grid max-w-2xl" style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}>
         {items.map((item) => (item.primary
           ? <div key="add" className="flex min-h-[56px] items-start justify-center">
-              <button type="button" onClick={onAddVisit} className="-mt-5 flex flex-col items-center gap-0.5 text-[13px] font-semibold text-[#132443]" data-testid="mobile-nav-add-visit" aria-label={current ? `Agregar visita en ${current.name}` : 'Agregar visita'}>
+              <button type="button" onClick={onAddVisit} className="-mt-5 flex flex-col items-center gap-0.5 text-[13px] font-semibold text-[#132443]" data-testid="mobile-nav-add-visit" aria-label={current ? `Registrar viviendas en ${current.name}` : 'Persona sin vivienda'}>
                 <span className="flex h-14 w-14 items-center justify-center rounded-full bg-[#132443] text-white shadow-lg ring-4 ring-white"><Plus className="h-7 w-7" strokeWidth={2.6} /></span>
                 Visita
               </button>
@@ -132,18 +132,27 @@ export default function MobileBottomBar({ isActiveMentor, menuOpen, onOpenMenu }
   const [addOpen, setAddOpen] = useState(false);
   const [chooser, setChooser] = useState(null); // 'add' | 'invasion'
   const outreach = canAccessOutreach(user, isActiveMentor);
+  // Con invasión activa hoy y permiso de registrar: el "+" y "Invasión" llevan
+  // al puerta a puerta (calle activa + vivienda). Sin invasión: «Persona sin vivienda».
+  const doors = (item) => navigate(`/mentoria/puerta-a-puerta?invasion=${item.campaign_id}`);
   const goToInvasion = (item) => {
+    const today = item || current || data?.active?.[0];
+    if (today && outreach && data?.can_register_visits) { doors(today); return; }
     const target = item || current || data?.active?.[0] || data?.upcoming;
     if (target) navigate(outreach ? `/mentoria/visitas?invasion=${target.campaign_id}` : `/mi-perfil?invasion=${target.campaign_id}`);
     else if (data?.managed?.length) navigate('/procesos/consolidacion'); // coordinador que no participa: panel de invasiones
   };
-  const onAddVisit = () => (needsChoice ? setChooser('add') : setAddOpen(true));
+  const onAddVisit = () => {
+    if (needsChoice) setChooser('add');
+    else if (current) doors(current);
+    else setAddOpen(true);
+  };
   const onOpenInvasion = () => (needsChoice ? setChooser('invasion') : goToInvasion());
   const onChoose = (item) => {
     choose(item.campaign_id);
     const next = chooser;
     setChooser(null);
-    if (next === 'add') setAddOpen(true); else goToInvasion(item);
+    if (next === 'add') doors(item); else goToInvasion(item);
   };
   return (
     <>

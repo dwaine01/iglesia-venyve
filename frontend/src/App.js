@@ -115,6 +115,7 @@ const GeoMapsPage = lazyPage(() => import('./pages/GeoMapsPage'));
 const InvasionReportPage = lazyPage(() => import('./pages/InvasionReportPage'));
 const InvasionAttendancePage = lazyPage(() => import('./pages/InvasionAttendancePage'));
 const InvasionProgramPage = lazyPage(() => import('./pages/InvasionProgramPage'));
+const DoorToDoorPage = lazyPage(() => import('./pages/DoorToDoorPage'));
 
 
 function ProtectedRoute({ children }) {
@@ -321,6 +322,7 @@ function App() {
             <Route path="libreria/etiquetas" element={<CapabilityRoute allowed={canManageLibraryInventory}><LibraryLabelsPage /></CapabilityRoute>} />
             <Route path="campanas/ven-y-come/control" element={<CapabilityRoute allowed={canAccessCampaignOperator}><CampaignControlPage /></CapabilityRoute>} />
             <Route path="mentoria/visitas" element={<OutreachAccessRoute><OutreachPage /></OutreachAccessRoute>} />
+            <Route path="mentoria/puerta-a-puerta" element={<OutreachAccessRoute><DoorToDoorPage /></OutreachAccessRoute>} />
             <Route path="mentoria/supervision" element={<SupervisionAccessRoute><SupervisionPage /></SupervisionAccessRoute>} />
             <Route path="admin/historial-borrados" element={<CapabilityRoute allowed={canCreateOutreachCampaign}><AdminDeletionsPage /></CapabilityRoute>} />
             <Route path="admin/migracion-c11" element={<CapabilityRoute allowed={canCreateOutreachCampaign}><MigrationC11Page /></CapabilityRoute>} />
