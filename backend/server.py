@@ -546,10 +546,12 @@ from portal_notifications import router as portal_notifications_router, ensure_i
 from invasion_planning import router as invasion_planning_router, ensure_indexes as invasion_planning_ensure_indexes
 from invasion_participants import router as invasion_participants_router, ensure_indexes as invasion_participants_ensure_indexes
 from household_location import router as household_location_router, ensure_indexes as household_location_ensure_indexes
+from leader_accounts import router as leader_accounts_router
 
 app.include_router(portal_notifications_router)
 app.include_router(invasion_participants_router)
 app.include_router(household_location_router)
+app.include_router(leader_accounts_router)
 app.include_router(invasion_planning_router)
 
 
@@ -2419,8 +2421,11 @@ async def get_dashboard_by_role(authorization: Optional[str] = Header(None), lea
         for start in range(0, len(lideres), 20):
             lideres_data.extend(await asyncio.gather(*(lider_row(lider) for lider in lideres[start:start + 20])))
         
+        # Personas que quedaron sin líder (p. ej. al eliminar la cuenta de su líder): visibles para reasignar.
+        sin_lider_docs = await db.people.find({"leader_id": None, "previous_leader_id": {"$exists": True}}, {"nombre": 1, "apellido": 1, "canonical_person_id": 1, "estado": 1}).sort("nombre", 1).to_list(500)
         return {
             "rol": "pastor",
+            "personas_sin_lider": [{"_id": str(doc["_id"]), "nombre": " ".join(filter(None, [doc.get("nombre"), doc.get("apellido")])), "estado": doc.get("estado"), "canonical_person_id": doc.get("canonical_person_id")} for doc in sin_lider_docs],
             "lideres": lideres_data,
             "total_lideres": len(lideres_data),
         "total_personas_global": await db.persons.count_documents({"is_archived": {"$ne": True}}),
