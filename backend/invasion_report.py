@@ -19,7 +19,7 @@ Permisos (backend):
   nombres de mentores/participantes solo los ve quien ve el reporte completo.
 - La autoridad pastoral principal no cuenta en ninguna métrica de participación."""
 from collections import Counter, defaultdict
-from datetime import date
+from datetime import date, datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -28,6 +28,8 @@ from invasion_participants import ROLE_LABELS, ROLES, can_edit_participants, loa
 from invasion_prayer import prayer_summary
 from mentorship_outreach import campaign_book_rows, now_utc, serialize
 from participation_scope import principal_authority_person_ids
+from process_engine import get_definition
+from supervision_analytics import load_thresholds
 from server import db, get_current_user
 
 router = APIRouter(prefix="/api/invasions", tags=["invasion-report"])
@@ -49,6 +51,142 @@ async def _names(person_ids) -> dict:
         return {}
     return {str(doc["_id"]): " ".join(filter(None, [doc.get("nombre"), doc.get("apellido")])) or "Persona"
             async for doc in db.persons.find({"_id": {"$in": oids}}, {"nombre": 1, "apellido": 1})}
+
+
+UNATTENDED_HOURS = 48
+FIRST_CONTACT_BUCKETS = [("< 24 h", 24), ("24–48 h", 48), ("2–3 días", 72), ("3–7 días", 168), ("> 7 días", None)]
+
+
+def _aware(value):
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    return None
+
+
+async def followup_section(visits: list[dict]) -> dict:
+    """4) Seguimiento y Consolidación (por personas alcanzadas en la invasión)."""
+    now = datetime.now(timezone.utc)
+    enrollment_ids = [visit["enrollment_id"] for visit in visits if visit.get("enrollment_id")]
+    enrollments = {item["enrollment_id"]: item async for item in db.process_enrollments.find({"enrollment_id": {"$in": enrollment_ids}}, {"_id": 0, "enrollment_id": 1, "mentor_person_id": 1, "current_stage_key": 1, "status": 1, "created_at": 1})} if enrollment_ids else {}
+    first_done: dict[str, datetime] = {}
+    if enrollment_ids:
+        async for row in db.consolidation_activities.aggregate([
+            {"$match": {"enrollment_id": {"$in": enrollment_ids}, "status": "done"}},
+            {"$group": {"_id": "$enrollment_id", "first": {"$min": "$completed_at"}}},
+        ]):
+            first_done[row["_id"]] = _aware(row["first"])
+    transferred = set(await db.mentor_assignments.distinct("enrollment_id", {"enrollment_id": {"$in": enrollment_ids}, "transfer": True})) if enrollment_ids else set()
+    try:
+        stages = {stage["key"]: stage["order"] for stage in (await get_definition(db, "consolidation")).get("stages", [])}
+    except ValueError:
+        stages = {}
+    order = lambda key: stages.get(key or "", 0)  # noqa: E731
+    wants = [visit for visit in visits if visit.get("status") == "wants_followup" or visit.get("enrollment_id")]
+    buckets = Counter()
+    unattended = []
+    for visit in wants:
+        created = _aware(visit.get("created_at"))
+        enrollment = enrollments.get(visit.get("enrollment_id"))
+        contact = first_done.get(visit.get("enrollment_id"))
+        if contact and created:
+            hours = (contact - created).total_seconds() / 3600
+            label = next(name for name, limit in FIRST_CONTACT_BUCKETS if limit is None or hours < limit)
+            buckets[label] += 1
+        else:
+            buckets["Sin contacto"] += 1
+            age_hours = (now - created).total_seconds() / 3600 if created else 0
+            if age_hours >= UNATTENDED_HOURS:
+                unattended.append({"visit_id": visit.get("visit_id"), "mentor_person_id": visit.get("mentor_person_id"), "hours": round(age_hours), "has_enrollment": bool(enrollment)})
+    reached_stage = lambda threshold: sum(1 for item in enrollments.values() if order(item.get("current_stage_key")) >= threshold)  # noqa: E731
+    mcd, npt, lbs = stages.get("mcd", 4), stages.get("npt", 5), stages.get("lbs_1", 7)
+    by_day = Counter(_day(item.get("created_at")) for item in enrollments.values() if item.get("created_at"))
+    return {
+        "wants_followup": len(wants), "to_consolidation": len(enrollments),
+        "assigned_mentor": sum(1 for item in enrollments.values() if item.get("mentor_person_id")),
+        "transferred": len(transferred), "attended": len(wants) - buckets["Sin contacto"],
+        "unattended": len(unattended), "pending_recent": buckets["Sin contacto"] - len(unattended), "unattended_hours": UNATTENDED_HOURS,
+        "first_contact": [{"bucket": name, "total": buckets.get(name, 0)} for name, _ in FIRST_CONTACT_BUCKETS] + [{"bucket": "Sin contacto", "total": buckets.get("Sin contacto", 0)}],
+        "routes": [{"route": "MCD", "total": reached_stage(mcd)}, {"route": "NPT", "total": reached_stage(npt)}, {"route": "LBS", "total": reached_stage(lbs)}],
+        "consolidation_by_day": [{"day": key, "total": value} for key, value in sorted(by_day.items())],
+        "unattended_items": unattended,
+    }
+
+
+def semaphore(progress: Optional[float], thresholds: dict) -> str:
+    if progress is None:
+        return "sin_datos"
+    return "verde" if progress >= thresholds["goal_progress_green"]["value"] else "ambar" if progress >= thresholds["goal_progress_yellow"]["value"] else "rojo"
+
+
+def goals_section(summary_figures: dict, field: dict, followup: dict, prayer: Optional[dict], active_participants: int, thresholds: dict) -> dict:
+    """6) Metas vs resultado real (umbrales 'propuesta' editables en Supervisión)."""
+    def indicator(key, label, numerator, denominator, goal_key, unit="ratio", explanation=""):
+        goal = thresholds[goal_key]
+        value = (numerator / denominator) if denominator else None
+        progress = round(min(value / goal["value"], 1), 3) if value is not None and goal["value"] else None
+        return {"key": key, "label": label, "unit": unit, "value": round(value, 3) if value is not None else None, "goal": goal["value"],
+                "goal_status": goal.get("status", "propuesta"), "numerator": numerator, "denominator": denominator,
+                "progress": progress, "semaphore": semaphore(progress, thresholds), "explanation": explanation}
+    figures = summary_figures
+    attended = figures["attended"]
+    items = [
+        indicator("attendance", "Asistencia de invitados", attended, figures["participants"], "goal_attendance_ratio", explanation=f"{attended} de {figures['participants']} invitados asistieron"),
+        indicator("outreach", "Participantes con actividad en campo", active_participants, figures["participants"], "goal_outreach_ratio", explanation=f"{active_participants} de {figures['participants']} registraron casas o personas"),
+        indicator("reached", "Personas alcanzadas por asistente", figures["people_reached"], attended, "goal_persons_reached_per_member_week", unit="per_member", explanation=f"{figures['people_reached']} personas ÷ {attended} asistentes"),
+        indicator("coverage", "Cobertura de casas", field["houses"]["visited"], field["houses"]["total"], "goal_invasion_house_coverage", explanation=f"{field['houses']['visited']} de {field['houses']['total']} casas visitadas"),
+        indicator("consolidation", "Seguimiento que pasa a Consolidación", followup["to_consolidation"], followup["wants_followup"], "goal_invasion_followup_to_consolidation", explanation=f"{followup['to_consolidation']} de {followup['wants_followup']} personas"),
+    ]
+    if prayer:
+        totals = prayer["totals"]
+        items.append(indicator("prayer", "Preparación en oración", totals["prayed_any"], totals["participants"], "goal_invasion_prayer_ratio", explanation=f"{totals['prayed_any']} de {totals['participants']} oraron"))
+    measured = [item["progress"] for item in items if item["progress"] is not None]
+    overall = round(sum(measured) / len(measured), 3) if measured else None
+    return {"items": items, "overall": overall, "overall_semaphore": semaphore(overall, thresholds),
+            "rule": f"Verde desde {round(thresholds['goal_progress_green']['value'] * 100)}% de avance hacia la meta, ámbar desde {round(thresholds['goal_progress_yellow']['value'] * 100)}%, rojo debajo. Metas 'propuesta' editables por la pastora o el coordinador general."}
+
+
+async def comparison_section(campaign: dict, current: dict) -> list[dict]:
+    """7) Esta invasión y las 5 anteriores (ya iniciadas), con agregados por invasión."""
+    previous = await db.outreach_campaigns.find(
+        {"campaign_id": {"$ne": campaign["campaign_id"]}, "start_date": {"$lt": campaign.get("start_date") or "9999"}},
+        {"_id": 0, "campaign_id": 1, "name": 1, "start_date": 1},
+    ).sort("start_date", -1).limit(5).to_list(5)
+    ids = [item["campaign_id"] for item in previous]
+    authorities = list(await principal_authority_person_ids(db))
+    visits = {row["_id"]: row async for row in db.outreach_visits.aggregate([
+        {"$match": {"campaign_id": {"$in": ids}, "archived": {"$ne": True}, "mentor_person_id": {"$nin": authorities}}},
+        {"$group": {"_id": "$campaign_id", "people": {"$sum": 1}, "followup": {"$sum": {"$cond": [{"$eq": ["$status", "wants_followup"]}, 1, 0]}}}},
+    ])} if ids else {}
+    participation = {row["_id"]: row async for row in db.invasion_participants.aggregate([
+        {"$match": {"campaign_id": {"$in": ids}, "person_id": {"$nin": authorities}}},
+        {"$group": {"_id": "$campaign_id", "total": {"$sum": 1}, "attended": {"$sum": {"$cond": [{"$eq": ["$attended", True]}, 1, 0]}}}},
+    ])} if ids else {}
+    rows = [{"campaign_id": campaign["campaign_id"], "name": campaign.get("name"), "start_date": campaign.get("start_date"), "current": True,
+             "people": current["people_reached"], "followup": current["wants_followup"], "attendance_pct": current["attendance_pct"]}]
+    for item in previous:
+        part = participation.get(item["campaign_id"], {})
+        rows.append({"campaign_id": item["campaign_id"], "name": item["name"], "start_date": item.get("start_date"), "current": False,
+                     "people": visits.get(item["campaign_id"], {}).get("people", 0), "followup": visits.get(item["campaign_id"], {}).get("followup", 0),
+                     "attendance_pct": round(part["attended"] / part["total"] * 100) if part.get("total") else None})
+    return rows
+
+
+def prayer_report(prayer: dict) -> dict:
+    """5) Oración: totales, % que oró por semana y asistencia por reunión."""
+    from datetime import timedelta
+    period = prayer["period"]
+    start, end = date.fromisoformat(period["prayer_start"]), date.fromisoformat(period["prep_end"])
+    people = prayer["items"]
+    weeks = []
+    cursor, number = start, 1
+    while cursor <= end and people:
+        week_end = min(cursor + timedelta(days=6), end)
+        prayed = sum(1 for item in people if any(cursor.isoformat() <= day <= week_end.isoformat() for day in item["prayer_days"]))
+        weeks.append({"week": f"Semana {number}", "from": cursor.isoformat(), "to": week_end.isoformat(), "prayed": prayed, "pct": round(prayed / len(people) * 100)})
+        cursor, number = week_end + timedelta(days=1), number + 1
+    meetings = [{"day": meeting["day"], "place": meeting.get("place"), "attendees": meeting.get("attendee_count", 0),
+                 "pct": round(meeting.get("attendee_count", 0) / len(people) * 100) if people else None} for meeting in prayer["meetings"]]
+    return {"period": period, "totals": prayer["totals"], "by_week": weeks, "meetings": meetings}
 
 
 def campaign_state(campaign: dict) -> str:
@@ -159,6 +297,19 @@ async def compute_report(campaign: dict) -> dict:
     prayer = await prayer_summary(campaign) if campaign.get("start_date") else None
     total_participants = len(participants)
     attended_total = sum(1 for row in participants if row.get("attended"))
+    followup = await followup_section(visits)
+    key_figures = {
+        "houses_visited": len(visited_houses & {house["household_id"] for house in households}), "houses_total": len(households),
+        "people_reached": len(visits), "wants_followup": results["wants_followup"], "seven_weeks": results["seven_weeks"],
+        "participants": total_participants, "attended": attended_total,
+        "attendance_pct": round(attended_total / total_participants * 100) if total_participants else None,
+        "confirmed": sum(1 for row in participants if row.get("status") == "confirmed"),
+        "to_consolidation": followup["to_consolidation"], "route_started": next(item["total"] for item in followup["routes"] if item["route"] == "MCD"),
+    }
+    active_people = {house.get("mentor_person_id") for house in households if house.get("mentor_person_id")} | {visit.get("mentor_person_id") for visit in visits}
+    field_section = {"houses": {"visited": key_figures["houses_visited"], "total": len(households)}}
+    goals = goals_section(key_figures, field_section, followup, {"totals": prayer["totals"]} if prayer and prayer["period"]["expected_days"] else None,
+                          sum(1 for row in participants if row["person_id"] in active_people), await load_thresholds())
     return {
         "version": REPORT_VERSION,
         "summary": {
@@ -166,12 +317,7 @@ async def compute_report(campaign: dict) -> dict:
             "location": campaign.get("location"), "purpose": campaign.get("purpose"), "description": campaign.get("description"),
             "organizer": campaign.get("created_by_name"), "general_lead": names.get(campaign.get("general_lead_person_id")),
             "logistics_lead": names.get(campaign.get("logistics_lead_person_id")), "state": campaign_state(campaign),
-            "key_figures": {
-                "houses_visited": len(visited_houses & {house["household_id"] for house in households}), "houses_total": len(households),
-                "people_reached": len(visits), "wants_followup": results["wants_followup"], "seven_weeks": results["seven_weeks"],
-                "participants": total_participants, "attended": attended_total,
-                "attendance_pct": round(attended_total / total_participants * 100) if total_participants else None,
-            },
+            "key_figures": key_figures,
         },
         "participation": {"totals": participation_counts(participants), "by_role": by_role, "by_group": by_group},
         "field": {
@@ -185,9 +331,12 @@ async def compute_report(campaign: dict) -> dict:
             "attempts_by_result": [{"result": key, "label": RESULT_LABELS.get(key, key), "total": value} for key, value in attempts_by_result.items() if key],
         },
         "ranking": {"mentors": mentor_rows, "teams": teams},
-        "prayer": {"period": prayer["period"], "totals": prayer["totals"]} if prayer else None,
+        "prayer": prayer_report(prayer) if prayer else None,
         # Lo que mostraba el "Informe" anterior: libros asignados/entregados por mentor.
         "books": [row for row in await campaign_book_rows(campaign) if row["mentor_person_id"] not in authorities],
+        "followup": {key: value for key, value in followup.items() if key != "unattended_items"},
+        "goals": goals,
+        "comparison": await comparison_section(campaign, key_figures),
     }
 
 

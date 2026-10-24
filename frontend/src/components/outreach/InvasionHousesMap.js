@@ -23,15 +23,27 @@ const GEOCODING = {
 };
 const emptyCollection = { type: 'FeatureCollection', features: [] };
 const addressOf = (item) => [item.address_line1, item.address_line2].filter(Boolean).join(', ') || item.sector || 'Casa sin dirección';
-const collection = (points) => ({
+// Colores por resultado (Reporte de invasión): etiqueta + valor siempre visibles en la leyenda.
+export const RESULT = {
+  seven_weeks: { label: 'Iniciaron 7 Semanas', color: '#7c3aed' },
+  followup: { label: 'Quieren seguimiento', color: '#16a34a' },
+  contacted: { label: 'Contacto sin seguimiento', color: '#2563eb' },
+  no_answer: { label: 'Sin respuesta', color: '#64748b' },
+  pending: { label: 'Asignada, sin visitar', color: '#0ea5e9' },
+  available: { label: 'Disponible', color: '#d97706' },
+};
+const colorOf = (item, colorBy) => (colorBy === 'result' ? (RESULT[item.result] || RESULT.pending).color : (CATEGORY[item.category] || CATEGORY.assigned).color);
+const collection = (points, colorBy) => ({
   type: 'FeatureCollection',
-  features: points.map((item) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [item.longitude, item.latitude] }, properties: { id: item.household_id, category: item.category } })),
+  features: points.map((item) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [item.longitude, item.latitude] }, properties: { id: item.household_id, category: item.category, color: colorOf(item, colorBy) } })),
 });
 
 // Mapa real de las casas de una invasión (MapLibre, carga diferida). Lo que se
 // muestra lo decide el backend: el mentor recibe solo sus casas y las
 // disponibles; el líder y los encargados, todas.
-export function InvasionHousesMap({ campaigns, onRegisterVisit, onChanged, mentorPersonId, refreshKey = 0 }) {
+export function InvasionHousesMap({ campaigns, onRegisterVisit, onChanged, mentorPersonId, refreshKey = 0, colorBy = 'category', fixedHeight = null }) {
+  const [mentorFilter, setMentorFilter] = useState('');
+  const [sectorFilter, setSectorFilter] = useState('');
   const { API, getAuthHeaders } = useAuth();
   const { maplibregl, failed } = useMapLibre();
   const [campaignId, setCampaignId] = useState(campaigns[0]?.campaign_id || '');
@@ -47,10 +59,10 @@ export function InvasionHousesMap({ campaigns, onRegisterVisit, onChanged, mento
   const [height, setHeight] = useState(480);
   // El mapa ocupa desde su borde superior hasta el final de la pantalla (sin quedar cortado).
   useLayoutEffect(() => {
-    const measure = () => { const top = frameRef.current?.getBoundingClientRect().top ?? 0; setHeight(Math.max(420, Math.round(window.innerHeight - top - 16))); };
+    const measure = () => { if (fixedHeight) { setHeight(fixedHeight); return; } const top = frameRef.current?.getBoundingClientRect().top ?? 0; setHeight(Math.max(420, Math.round(window.innerHeight - top - 16))); };
     measure(); window.addEventListener('resize', measure);
     return () => window.removeEventListener('resize', measure);
-  }, [data]);
+  }, [data, fixedHeight]);
   useEffect(() => { const timer = setTimeout(() => mapRef.current?.resize(), 50); return () => clearTimeout(timer); }, [fullscreen, height]);
 
   useEffect(() => { if (!campaigns.some((item) => item.campaign_id === campaignId)) setCampaignId(campaigns[0]?.campaign_id || ''); }, [campaigns, campaignId]);
@@ -69,7 +81,9 @@ export function InvasionHousesMap({ campaigns, onRegisterVisit, onChanged, mento
     return () => clearTimeout(timer);
   }, [data, load]);
 
-  const points = useMemo(() => data?.points || [], [data]);
+  const points = useMemo(() => (data?.points || []).filter((item) => (!mentorFilter || item.mentor_person_id === mentorFilter) && (!sectorFilter || (item.sector || 'Sin sector') === sectorFilter)), [data, mentorFilter, sectorFilter]);
+  const mentorOptions = useMemo(() => Array.from(new Map((data?.points || []).concat(data?.unlocated || []).filter((item) => item.mentor_person_id && item.mentor_name).map((item) => [item.mentor_person_id, item.mentor_name])).entries()), [data]);
+  const sectorOptions = useMemo(() => Array.from(new Set((data?.points || []).concat(data?.unlocated || []).map((item) => item.sector || 'Sin sector'))).sort(), [data]);
   const all = useMemo(() => [...points, ...(data?.unlocated || [])], [points, data]);
   const selected = all.find((item) => item.household_id === selectedId) || null;
 
@@ -88,7 +102,7 @@ export function InvasionHousesMap({ campaigns, onRegisterVisit, onChanged, mento
       map.addLayer({ id: 'houses-selected', type: 'circle', source: 'houses', filter: ['==', ['get', 'id'], ''], paint: { 'circle-radius': 19, 'circle-color': 'rgba(16,29,54,0.18)', 'circle-stroke-width': 2, 'circle-stroke-color': '#101D36' } });
       map.addLayer({ id: 'houses', type: 'circle', source: 'houses', paint: {
         'circle-radius': ['interpolate', ['linear'], ['zoom'], 11, 6, 16, 11], 'circle-stroke-width': 2.5, 'circle-stroke-color': '#ffffff',
-        'circle-color': ['match', ['get', 'category'], 'mine', CATEGORY.mine.color, 'available', CATEGORY.available.color, 'visited', CATEGORY.visited.color, CATEGORY.assigned.color],
+        'circle-color': ['get', 'color'],
       } });
       map.on('click', 'houses', (event) => { const id = event.features?.[0]?.properties?.id; if (id) { setSelectedId(id); setListOpen(false); } });
       map.on('mouseenter', 'houses', () => { map.getCanvas().style.cursor = 'pointer'; });
@@ -103,7 +117,7 @@ export function InvasionHousesMap({ campaigns, onRegisterVisit, onChanged, mento
   useEffect(() => {
     const map = mapRef.current; if (!map) return undefined;
     const paint = () => {
-      map.getSource('houses')?.setData(collection(points));
+      map.getSource('houses')?.setData(collection(points, colorBy));
       if (points.length && fittedRef.current !== campaignId) {
         fittedRef.current = campaignId;
         const bounds = points.reduce((box, item) => box.extend([item.longitude, item.latitude]), new maplibregl.LngLatBounds([points[0].longitude, points[0].latitude], [points[0].longitude, points[0].latitude]));
@@ -114,7 +128,7 @@ export function InvasionHousesMap({ campaigns, onRegisterVisit, onChanged, mento
     };
     if (map.isReadyForHouses) paint(); else map.once('houses-ready', paint);
     return undefined;
-  }, [points, campaignId, maplibregl]);
+  }, [points, campaignId, maplibregl, colorBy]);
   useEffect(() => { const map = mapRef.current; if (map?.isReadyForHouses) map.setFilter('houses-selected', ['==', ['get', 'id'], selectedId || '']); }, [selectedId, points]);
   useEffect(() => { const map = mapRef.current; if (map?.isReadyForHouses) map.getSource('me')?.setData(me ? { type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: [me.longitude, me.latitude] }, properties: {} }] } : emptyCollection); }, [me]);
 
@@ -187,11 +201,17 @@ export function InvasionHousesMap({ campaigns, onRegisterVisit, onChanged, mento
 
   return (
     <div className="space-y-3" data-testid="outreach-map-view">
-      <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+      <div className="flex flex-col gap-2 lg:flex-row lg:flex-wrap lg:items-center lg:justify-between">
         {campaigns.length > 1
           ? <select value={campaignId} onChange={(event) => { setCampaignId(event.target.value); setSelectedId(null); }} className="h-12 w-full rounded-lg border border-[#D9D4C7] bg-white px-3 text-base lg:w-96" data-testid="house-map-campaign">{campaigns.map((item) => <option key={item.campaign_id} value={item.campaign_id}>{item.name}</option>)}</select>
           : <h3 className="font-['Spectral'] text-xl font-semibold text-[#101D36]">{campaigns[0].name}</h3>}
-        <ul className="flex flex-wrap gap-x-4 gap-y-1 text-sm" data-testid="house-map-legend">{categories.map(([key, item]) => <li key={key} className="inline-flex items-center gap-1.5"><span className="h-3 w-3 rounded-full ring-2 ring-white" style={{ background: item.color }} />{item.label} <b>{counts[key] || 0}</b></li>)}<li className="inline-flex items-center gap-1.5 text-slate-500"><MapPin className="h-3.5 w-3.5" />Sin ubicar <b>{counts.unlocated || 0}</b></li></ul>
+        {colorBy === 'result'
+          ? <ul className="flex flex-wrap gap-x-4 gap-y-1 text-sm" data-testid="house-map-legend">{Object.entries(RESULT).map(([key, item]) => <li key={key} className="inline-flex items-center gap-1.5"><span className="h-3 w-3 rounded-full ring-2 ring-white" style={{ background: item.color }} />{item.label} <b>{points.filter((point) => point.result === key).length}</b></li>)}</ul>
+          : <ul className="flex flex-wrap gap-x-4 gap-y-1 text-sm" data-testid="house-map-legend">{categories.map(([key, item]) => <li key={key} className="inline-flex items-center gap-1.5"><span className="h-3 w-3 rounded-full ring-2 ring-white" style={{ background: item.color }} />{item.label} <b>{counts[key] || 0}</b></li>)}<li className="inline-flex items-center gap-1.5 text-slate-500"><MapPin className="h-3.5 w-3.5" />Sin ubicar <b>{counts.unlocated || 0}</b></li></ul>}
+        {colorBy === 'result' && (mentorOptions.length > 0 || sectorOptions.length > 1) && <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2" data-testid="house-map-filters">
+          {mentorOptions.length > 0 && <select value={mentorFilter} onChange={(event) => setMentorFilter(event.target.value)} className="h-11 rounded-lg border border-[#D9D4C7] bg-white px-3 text-sm" aria-label="Filtrar por mentor"><option value="">Todos los mentores</option>{mentorOptions.map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select>}
+          {sectorOptions.length > 1 && <select value={sectorFilter} onChange={(event) => setSectorFilter(event.target.value)} className="h-11 rounded-lg border border-[#D9D4C7] bg-white px-3 text-sm" aria-label="Filtrar por sector"><option value="">Todos los sectores</option>{sectorOptions.map((sector) => <option key={sector} value={sector}>{sector}</option>)}</select>}
+        </div>}
       </div>
       {data?.scope === 'mine' && <p className="text-xs text-slate-500">Ves tus casas y las disponibles de esta invasión.</p>}
       {data && !data.geocoding_configured && counts.unlocated > 0 && <p className="text-xs text-amber-800">La ubicación automática por dirección no está configurada en el servidor: ubica las casas con «Ubicar con mi ubicación».</p>}
