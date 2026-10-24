@@ -126,12 +126,19 @@ class HouseholdInput(BaseModel):
     note: Optional[str] = Field(default=None, max_length=1000)
     is_draft: bool = False
     available: bool = False
+    # Ubicación (opcional): "Usar mi ubicación actual" (gps) o punto manual.
+    latitude: Optional[float] = Field(default=None, ge=-90, le=90)
+    longitude: Optional[float] = Field(default=None, ge=-180, le=180)
+    location_accuracy_m: Optional[float] = Field(default=None, ge=0, le=100000)
+    location_source: Optional[Literal["gps", "manual"]] = None
+    location_reference: Optional[str] = Field(default=None, max_length=300)
 
 
 class HouseholdImportEntry(BaseModel):
     address_line1: Optional[str] = Field(default=None, max_length=220)
     sector: Optional[str] = Field(default=None, max_length=200)
     note: Optional[str] = Field(default=None, max_length=1000)
+    location_reference: Optional[str] = Field(default=None, max_length=300)
 
 
 class HouseholdImportInput(BaseModel):
@@ -1297,8 +1304,19 @@ async def create_household(payload: HouseholdInput, current_user: dict = Depends
         "sector": payload.sector, "note": payload.note, "is_draft": payload.is_draft,
         "front_group_id": snapshot["front_group_id"], "front_group_ancestor_ids": snapshot["front_group_ancestor_ids"],
         "archived": False, "created_by_user_id": current_user["user_id"], "created_at": now, "updated_at": now,
+        "location_reference": (payload.location_reference or "").strip() or None,
     }
+    with_point = payload.latitude is not None and payload.longitude is not None
+    if with_point:
+        doc.update({"latitude": payload.latitude, "longitude": payload.longitude, "location_accuracy_m": payload.location_accuracy_m,
+                    "location_source": payload.location_source or "manual", "location_updated_at": now})
+    else:
+        doc.update({"latitude": None, "longitude": None})
     await db.outreach_households.insert_one(doc)
+    if not with_point:
+        from household_location import mark_pending_and_geocode
+        await mark_pending_and_geocode([household_id])
+        doc = await db.outreach_households.find_one({"household_id": household_id}, {"_id": 0}) or doc
     if payload.campaign_id and mentor_person_id:
         await mark_participation_active(payload.campaign_id, mentor_person_id)
     return serialize(doc)
@@ -1327,11 +1345,15 @@ async def import_available_households(campaign_id: str, payload: HouseholdImport
             "mentor_person_id": None, "status": "available",
             "address_line1": entry.address_line1, "address_line2": None, "address_city": None, "address_state": None, "address_zip": None,
             "sector": entry.sector, "note": entry.note, "is_draft": False,
+            "location_reference": entry.location_reference, "latitude": None, "longitude": None,
             "front_group_id": None, "front_group_ancestor_ids": [],
             "archived": False, "created_by_user_id": current_user["user_id"], "created_at": now, "updated_at": now,
         })
     if docs:
         await db.outreach_households.insert_many(docs)
+        # Casas importadas solo con dirección: se ubican en segundo plano (estado "pending").
+        from household_location import mark_pending_and_geocode
+        await mark_pending_and_geocode([doc["household_id"] for doc in docs])
     return {"created": len(docs), "skipped": skipped}
 
 
@@ -1505,7 +1527,14 @@ async def update_household(household_id: str, payload: HouseholdUpdateInput, cur
     if not fields:
         raise HTTPException(status_code=422, detail="Indique al menos un campo para actualizar")
     fields["updated_at"] = now_utc()
+    address_changed = any(key in fields and fields[key] != household.get(key) for key in ("address_line1", "address_line2", "address_city", "address_state", "address_zip"))
+    if address_changed and household.get("location_source") in (None, "geocoded"):
+        # La ubicación geocodificada era de la dirección anterior; GPS o manual se conservan.
+        fields.update({"latitude": None, "longitude": None, "location_source": None, "location_accuracy_m": None})
     await db.outreach_households.update_one({"household_id": household_id}, {"$set": fields})
+    if address_changed:
+        from household_location import mark_pending_and_geocode
+        await mark_pending_and_geocode([household_id])
     return serialize(await load_household(household_id))
 
 
