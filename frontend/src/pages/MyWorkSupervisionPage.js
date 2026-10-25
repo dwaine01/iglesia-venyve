@@ -5,7 +5,7 @@ import { Eye, Loader2 } from 'lucide-react';
 
 import { useAuth } from '../context/AuthContext';
 import { apiErrorMessage } from '../lib/apiErrors';
-import MyWorkPage from './MyWorkPage';
+import MyWorkPage, { mentorLabel } from './MyWorkPage';
 
 /** MT3 · Supervisar «Mi Trabajo» por mentor (coordinador general, pastoral,
  * encargados de Consolidación): el mismo panel del mentor, en lectura, con
@@ -28,7 +28,7 @@ export default function MyWorkSupervisionPage() {
       <select value={mentorId} onChange={(event) => { const next = new URLSearchParams(params); next.set('mentor', event.target.value); next.delete('vista'); setParams(next, { replace: true }); }}
         className="h-12 w-full rounded-lg border border-[#D9D4C7] bg-white px-3 text-lg font-semibold text-[#101D36]" data-testid="my-work-mentor-select">
         <option value="">Elige un mentor…</option>
-        {mentors.map((item) => <option key={item.person_id} value={item.person_id}>{item.name} · {item.households} vivienda(s) · {item.people} persona(s)</option>)}
+        {mentors.map((item) => <option key={item.person_id} value={item.person_id}>{mentorLabel(item)}</option>)}
       </select>
       {current && <p className="text-sm text-slate-600">Vista de supervisión: puedes consultar y reasignar pendientes; cada atención conserva quién la hizo.</p>}
     </header>

@@ -122,7 +122,8 @@ async def test_supervision_and_reassign_keep_history_and_notify():
         # Supervisión: lista de mentores con su carga; el mentor no la ve.
         assert (await ana.get("/api/my-work/mentors")).status_code == 403
         mentors = {row["person_id"]: row for row in (await lead.get("/api/my-work/mentors")).json()["items"]}
-        assert mentors[ana_id]["households"] == 1 and mentors[ana_id]["people"] == 2
+        assert mentors[ana_id]["pending_households"] == 1 and mentors[ana_id]["pending_people"] == 2 and mentors[ana_id]["pending"] == 3
+        assert mentors[ana_id]["houses_visited"] == 2 and mentors[ana_id]["people_contacted"] == 2  # totales reales, no solo pendientes
         assert (await lead.get("/api/my-work/pending", params={"mentor_person_id": ana_id})).json()["total"] == 3
 
         items = [{"kind": "household", "id": house["household_id"]}, {"kind": "contact", "id": contact["visit_id"]}, {"kind": "person", "id": eid}]

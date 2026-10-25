@@ -125,14 +125,15 @@ async def compute_summary(mentor: str, period: str, campaign_id: Optional[str]) 
     if since:
         started_query["converted_at"] = {"$gte": since}
     started = await db.outreach_visits.count_documents(started_query)
-    no_next = await db.process_enrollments.count_documents({**enrollment_query, "next_action_at": None}) + await db.outreach_visits.count_documents(
-        {**base, "enrollment_id": {"$in": [None, ""]}, "followup_accepted": True, "next_action_at": None})
     pending = await pending_items(mentor, campaign_id, zone)
     today_count = sum(1 for item in pending if item["bucket"] == "today")
     overdue = sum(1 for item in pending if item["bucket"] == "overdue")
     mentor_user = await db.users.find_one({"person_id": mentor}, {"_id": 1})
     books_to_complete = await db.library_movements.count_documents({"movement_type": {"$in": ["DELIVERY", "DELIVERY_PENDING"]}, "recipient_status": "unidentified",
                                                                     "household_id": {"$nin": [None, ""]}, "from_holder.id": str(mentor_user["_id"])}) if mentor_user else 0
+    totals = (await mentor_totals([mentor], campaign_id)).get(mentor) or empty_totals()
+    people = await people_rows(mentor, campaign_id)
+    no_next = sum(1 for row in people if not row.get("due_date"))
     words = {"week": "Esta semana", "invasion": "En esta invasión", "all": "En total"}[period]
     message = (f"{words} visitaste {figures['visited']} vivienda(s), conversaste en {figures['conversed']} y {started} persona(s) comenzaron el proceso."
                + (f" Tienes {today_count} atención(es) para hoy." if today_count else ""))
@@ -140,13 +141,13 @@ async def compute_summary(mentor: str, period: str, campaign_id: Optional[str]) 
     if overdue:
         notices.append({"key": "overdue", "text": f"Tienes {overdue} atención(es) con fecha pasada; puedes reprogramarlas."})
     if no_next:
-        notices.append({"key": "no_next_action", "text": f"Tienes {no_next} persona(s) sin próxima atención programada."})
+        notices.append({"key": "no_next_action", "text": f"Tienes {no_next} persona(s) sin próxima atención programada.", "action": "personas"})
     if books_to_complete:
         notices.append({"key": "books_recipient", "text": f"Tienes {books_to_complete} libro(s) entregado(s) sin saber a quién; puedes completar el nombre."})
     return {"mentor_person_id": mentor, "period": period, "campaign_id": campaign_id, "period_start": since.isoformat() if since else None,
             "figures": {"visited": figures["visited"], "opened": figures["opened"], "conversed": figures["conversed"], "pending_return": pending_return,
                         "people_to_attend": enrollments + contacts, "started_consolidation": started},
-            "today": today_count, "overdue": overdue, "message": message, "notices": notices}
+            "today": today_count, "overdue": overdue, "message": message, "notices": notices, "totals": totals}
 
 
 @router.get("/summary", response_model=dict)
@@ -313,7 +314,15 @@ async def my_work_mentors(current_user: dict = Depends(get_current_user)):
     contacts = {row["_id"]: row["n"] async for row in db.outreach_visits.aggregate([
         {"$match": {"mentor_person_id": {"$in": mentor_ids}, "archived": {"$ne": True}, "enrollment_id": {"$in": [None, ""]}, "$or": [{"followup_accepted": True}, {"status": "wants_followup"}]}},
         {"$group": {"_id": "$mentor_person_id", "n": {"$sum": 1}}}])}
-    items = [{"person_id": pid, "name": await person_display_name(pid) or "Mentor", "households": houses.get(pid, 0), "people": people.get(pid, 0) + contacts.get(pid, 0)} for pid in mentor_ids]
+    totals = await mentor_totals(mentor_ids)
+    items = []
+    for pid in mentor_ids:
+        row = totals.get(pid) or empty_totals()
+        items.append({"person_id": pid, "name": await person_display_name(pid) or "Mentor", **row,
+                      "pending_households": houses.get(pid, 0), "pending_people": people.get(pid, 0) + contacts.get(pid, 0),
+                      # Compatibilidad: «households»/«people» = totales reales del trabajo (no solo pendientes).
+                      "households": row["houses_visited"], "people": row["people_contacted"],
+                      "pending": houses.get(pid, 0) + people.get(pid, 0) + contacts.get(pid, 0)})
     items.sort(key=lambda row: row["name"])
     return {"items": items}
 
@@ -374,3 +383,193 @@ async def reassign_pending(payload: ReassignInput, current_user: dict = Depends(
         await notify_persons([target], "my_work_reassigned", "Te asignaron pendientes", f"Te asignaron {len(done)} pendiente(s) en Mi Trabajo. Motivo: {reason}", "/mi-trabajo",
                              {"type": "my_work_reassign", "count": len(done)})
     return {"reassigned": len(done), "skipped": skipped, "to_mentor_person_id": target}
+
+
+# ------------------------------------------------------------------ trabajo completo (no solo pendientes)
+BOOK_TYPES = ["DELIVERY", "LOAN", "DELIVERY_PENDING"]
+STATUS_LABELS = {"consolidation": "En Consolidación", "followup": "Seguimiento aceptado", "contacted": "Contactada"}
+
+
+def empty_totals() -> dict:
+    return {"houses_visited": 0, "people_contacted": 0, "books_delivered": 0, "inventory": {"received": 0, "delivered": 0, "available": 0}}
+
+
+async def _mentor_users(mentor_ids: list[str]) -> dict:
+    """{person_id: user_id} de las cuentas de los mentores."""
+    return {doc["person_id"]: str(doc["_id"]) async for doc in db.users.find({"person_id": {"$in": mentor_ids}}, {"_id": 1, "person_id": 1})}
+
+
+def _latest(current, value) -> Optional[str]:
+    values = [item for item in (current, serialize(value)) if item]
+    return max(str(item) for item in values) if values else None
+
+
+def _visit_person(visit: dict) -> Optional[str]:
+    return visit.get("converted_person_id") or visit.get("person_id")
+
+
+async def mentor_totals(mentor_ids: list[str], campaign_id: Optional[str] = None) -> dict:
+    """Totales reales por mentor: viviendas visitadas (incluidas visitas antiguas
+    sin vivienda), personas contactadas o con libro, libros e inventario."""
+    from library_ledger import ledger_balances
+    if not mentor_ids:
+        return {}
+    users = await _mentor_users(mentor_ids)
+    person_of_user = {user_id: pid for pid, user_id in users.items()}
+    scope = {"campaign_id": campaign_id} if campaign_id else {}
+    result = {pid: {**empty_totals(), "_people": set()} for pid in mentor_ids}
+    async for row in db.outreach_households.aggregate([{"$match": {"mentor_person_id": {"$in": mentor_ids}, "archived": {"$ne": True}, "attempts_count": {"$gt": 0}, **scope}},
+                                                        {"$group": {"_id": "$mentor_person_id", "n": {"$sum": 1}}}]):
+        result[row["_id"]]["houses_visited"] += row["n"]
+    async for visit in db.outreach_visits.find({"mentor_person_id": {"$in": mentor_ids}, "archived": {"$ne": True}, **scope},
+                                               {"_id": 0, "visit_id": 1, "mentor_person_id": 1, "person_id": 1, "converted_person_id": 1, "household_id": 1, "status": 1, "received_mcd": 1, "received_npt": 1}):
+        result[visit["mentor_person_id"]]["_people"].add(_visit_person(visit) or f"visit:{visit['visit_id']}")
+        if not visit.get("household_id") and (visit.get("status") != "assigned" or visit.get("received_mcd") or visit.get("received_npt")):
+            result[visit["mentor_person_id"]]["houses_visited"] += 1  # visita antigua sin vivienda
+    async for enrollment in db.process_enrollments.find({"mentor_person_id": {"$in": mentor_ids}, "process_key": "consolidation", "status": {"$in": ACTIVE_ENROLLMENT}, **scope}, {"_id": 0, "mentor_person_id": 1, "person_id": 1}):
+        result[enrollment["mentor_person_id"]]["_people"].add(enrollment["person_id"])
+    if users:
+        movement_match = {"from_holder.type": "user", "from_holder.id": {"$in": list(users.values())}, "movement_type": {"$in": BOOK_TYPES}, "is_reversal": {"$ne": True}, "person_id": {"$nin": [None, ""]}, **scope}
+        async for movement in db.library_movements.find(movement_match, {"_id": 0, "from_holder": 1, "person_id": 1}):
+            pid = person_of_user.get(movement["from_holder"]["id"])
+            if pid:
+                result[pid]["_people"].add(movement["person_id"])
+        for (user_id, _book), row in (await ledger_balances(list(users.values()))).items():
+            pid = person_of_user.get(user_id)
+            if not pid:
+                continue
+            inventory = result[pid]["inventory"]
+            inventory["received"] += row.get("received", 0) + row.get("transferred_in", 0)
+            inventory["delivered"] += row.get("delivered", 0) + row.get("pending_delivered", 0)
+            inventory["available"] += max(row.get("balance", 0), 0)
+    for pid, row in result.items():
+        row["people_contacted"] = len(row.pop("_people"))
+        # Libros: los de la invasión filtrada, o el total del inventario.
+        row["books_delivered"] = row["inventory"]["delivered"]
+    if campaign_id and users:
+        counted = {pid: 0 for pid in mentor_ids}
+        async for movement in db.library_movements.find({"from_holder.type": "user", "from_holder.id": {"$in": list(users.values())}, "movement_type": {"$in": BOOK_TYPES}, "is_reversal": {"$ne": True}, "campaign_id": campaign_id}, {"_id": 0, "from_holder": 1, "quantity": 1}):
+            pid = person_of_user.get(movement["from_holder"]["id"])
+            if pid:
+                counted[pid] += movement.get("quantity") or 1
+        for pid in mentor_ids:
+            result[pid]["books_delivered"] = counted[pid]
+    return result
+
+
+async def people_rows(mentor: str, campaign_id: Optional[str] = None) -> list[dict]:
+    """TODAS las personas del mentor: visitas (también las antiguas), destinatarios
+    de sus libros y expedientes de Consolidación, cada una una vez y con su estado."""
+    zone = await _zone()
+    scope = {"campaign_id": campaign_id} if campaign_id else {}
+    rows: dict[str, dict] = {}
+
+    def row_for(key: str) -> dict:
+        return rows.setdefault(key, {"kind": "contact_person", "id": key, "person_id": None if key.startswith("visit:") else key, "visit_id": None, "enrollment_id": None,
+                                     "contact_name": None, "status": "contacted", "books": 0, "last_at": None, "due_date": None, "next_action": None,
+                                     "campaign_id": None, "address": None, "household_id": None, "visit_status": None})
+
+    async for visit in db.outreach_visits.find({"mentor_person_id": mentor, "archived": {"$ne": True}, **scope}, {"_id": 0}).sort("created_at", 1):
+        row = row_for(_visit_person(visit) or f"visit:{visit['visit_id']}")
+        row.update({"visit_id": visit["visit_id"], "contact_name": row["contact_name"] or visit.get("contact_name"), "campaign_id": row["campaign_id"] or visit.get("campaign_id"),
+                    "address": row["address"] or " · ".join(filter(None, [visit.get("address_line1"), visit.get("address_line2")])) or visit.get("contact_zone"),
+                    "household_id": row["household_id"] or visit.get("household_id"), "visit_status": visit.get("status"),
+                    "last_at": _latest(row["last_at"], visit.get("visit_date") or visit.get("created_at"))})
+        if visit.get("received_mcd") or visit.get("received_npt"):
+            row["books"] = max(row["books"], int(bool(visit.get("received_mcd"))) + int(bool(visit.get("received_npt"))))
+        if visit.get("enrollment_id"):
+            row.update({"status": "consolidation", "enrollment_id": visit["enrollment_id"]})
+        elif row["status"] != "consolidation" and (visit.get("followup_accepted") or visit.get("status") == "wants_followup"):
+            row["status"] = "followup"
+        if visit.get("next_action_at") and not visit.get("enrollment_id"):
+            row.update({"due_date": _local_day(visit["next_action_at"], zone), "next_action": visit.get("next_action")})
+    user = await db.users.find_one({"person_id": mentor}, {"_id": 1})
+    if user:
+        async for movement in db.library_movements.find({"from_holder.type": "user", "from_holder.id": str(user["_id"]), "movement_type": {"$in": BOOK_TYPES}, "is_reversal": {"$ne": True},
+                                                         "person_id": {"$nin": [None, ""]}, **scope}, {"_id": 0, "person_id": 1, "quantity": 1, "occurred_at": 1, "campaign_id": 1}):
+            row = row_for(movement["person_id"])
+            row["_logged"] = row.get("_logged", 0) + (movement.get("quantity") or 1)
+            row["campaign_id"] = row["campaign_id"] or movement.get("campaign_id")
+            row["last_at"] = _latest(row["last_at"], movement.get("occurred_at"))
+    async for enrollment in db.process_enrollments.find({"mentor_person_id": mentor, "process_key": "consolidation", "status": {"$in": ACTIVE_ENROLLMENT}, **scope},
+                                                        {"_id": 0, "enrollment_id": 1, "person_id": 1, "next_action": 1, "next_action_at": 1, "current_stage_key": 1, "campaign_id": 1}):
+        row = row_for(enrollment["person_id"])
+        row.update({"status": "consolidation", "enrollment_id": enrollment["enrollment_id"], "due_date": _local_day(enrollment.get("next_action_at"), zone),
+                    "next_action": enrollment.get("next_action"), "stage": STAGE_LABELS.get(enrollment.get("current_stage_key"), enrollment.get("current_stage_key")),
+                    "campaign_id": row["campaign_id"] or enrollment.get("campaign_id")})
+    # Una persona con expediente activo con OTRO mentor también figura «En Consolidación».
+    person_ids = [row["person_id"] for row in rows.values() if row["person_id"]]
+    async for enrollment in db.process_enrollments.find({"person_id": {"$in": person_ids}, "process_key": "consolidation", "status": {"$in": ACTIVE_ENROLLMENT}}, {"_id": 0, "enrollment_id": 1, "person_id": 1}):
+        row = rows[enrollment["person_id"]]
+        if row["status"] != "consolidation":
+            row.update({"status": "consolidation", "enrollment_id": enrollment["enrollment_id"]})
+    campaign_ids = list({row["campaign_id"] for row in rows.values() if row["campaign_id"]})
+    names = {doc["campaign_id"]: doc.get("name") async for doc in db.outreach_campaigns.find({"campaign_id": {"$in": campaign_ids}}, {"_id": 0, "campaign_id": 1, "name": 1})} if campaign_ids else {}
+    items = []
+    for row in rows.values():
+        # Libros: la bitácora manda; las marcas de la visita (MCD/NPT) cubren lo que no se registró.
+        row["books"] = max(row["books"], row.pop("_logged", 0))
+        row["title"] = (await person_display_name(row["person_id"]) if row["person_id"] else None) or row["contact_name"] or "Persona contactada"
+        row["campaign_name"] = names.get(row["campaign_id"])
+        label = STATUS_LABELS[row["status"]]
+        if row["status"] == "contacted" and not row["due_date"]:
+            label = "Contactada · sin próxima atención"
+        row["status_label"] = label
+        # Programar = seguimiento de la visita; Pasar a Consolidación = «Iniciar 7 Semanas» (visita con seguimiento aceptado).
+        row["can_schedule"] = bool(row["visit_id"]) and row["status"] != "consolidation"
+        row["can_start_consolidation"] = bool(row["visit_id"]) and row["status"] == "followup" and row["visit_status"] == "wants_followup"
+        items.append(row)
+    order = {"contacted": 0, "followup": 1, "consolidation": 2}
+    items.sort(key=lambda row: (order[row["status"]], row["due_date"] or "9999", row["title"]))
+    return serialize(items)
+
+
+@router.get("/people", response_model=dict)
+async def my_work_people(status: Literal["all", "contacted", "followup", "consolidation", "no_next"] = "all", campaign_id: Optional[str] = None,
+                         mentor_person_id: Optional[str] = None, current_user: dict = Depends(get_current_user)):
+    """«Mis personas»: todas (contactadas, con seguimiento o en Consolidación)."""
+    mentor = scope_mentor(current_user, mentor_person_id)
+    items = await people_rows(mentor, campaign_id)
+    counts = {key: sum(1 for row in items if row["status"] == key) for key in STATUS_LABELS}
+    counts["no_next"] = sum(1 for row in items if not row["due_date"])
+    if status == "no_next":
+        items = [row for row in items if not row["due_date"]]
+    elif status != "all":
+        items = [row for row in items if row["status"] == status]
+    return {"total": len(items), "counts": counts, "items": items}
+
+
+@router.get("/households", response_model=dict)
+async def my_work_households(state: Literal["pending", "visited", "all"] = "all", campaign_id: Optional[str] = None, mentor_person_id: Optional[str] = None,
+                             offset: int = 0, limit: int = 100, current_user: dict = Depends(get_current_user)):
+    """«Mis viviendas»: pendientes, visitadas o todas (incluidas visitas antiguas sin vivienda)."""
+    mentor = scope_mentor(current_user, mentor_person_id)
+    query: dict = {"mentor_person_id": mentor, "archived": {"$ne": True}}
+    if campaign_id:
+        query["campaign_id"] = campaign_id
+    if state == "pending":
+        query["door_status"] = {"$in": PENDING_DOORS}
+    elif state == "visited":
+        query["attempts_count"] = {"$gt": 0}
+    keys = {"_id": 0, "household_id": 1, "address_line1": 1, "address_line2": 1, "door_status": 1, "last_result": 1, "last_attempt_at": 1, "attempts_count": 1,
+            "followup_date": 1, "campaign_id": 1, "books_total": 1, "created_at": 1}
+    houses = await db.outreach_households.find(query, keys).to_list(5000)
+    rows = [{**house, "kind": "household", "id": house["household_id"], "title": " · ".join(filter(None, [house.get("address_line1"), house.get("address_line2")])) or "Vivienda",
+             "pending": house.get("door_status") in PENDING_DOORS, "last_result_label": RESULT_LABELS.get(house.get("last_result"), house.get("last_result"))} for house in houses]
+    if state != "pending":
+        legacy = {"mentor_person_id": mentor, "archived": {"$ne": True}, "household_id": {"$in": [None, ""]}, **({"campaign_id": campaign_id} if campaign_id else {})}
+        async for visit in db.outreach_visits.find(legacy, {"_id": 0}):
+            visited = visit.get("status") != "assigned" or visit.get("received_mcd") or visit.get("received_npt")
+            if state == "visited" and not visited:
+                continue
+            rows.append({"kind": "visit", "id": visit["visit_id"], "visit_id": visit["visit_id"], "title": " · ".join(filter(None, [visit.get("address_line1"), visit.get("address_line2")])) or visit.get("contact_zone") or visit.get("contact_name") or "Visita",
+                         "campaign_id": visit.get("campaign_id"), "attempts_count": 1 if visited else 0, "last_attempt_at": visit.get("visit_date") or visit.get("created_at"),
+                         "last_result_label": "Visita registrada (Hogar)" if visited else "Asignada", "books_total": int(bool(visit.get("received_mcd"))) + int(bool(visit.get("received_npt"))), "pending": False})
+    ids = list({row["campaign_id"] for row in rows if row.get("campaign_id")})
+    names = {doc["campaign_id"]: doc.get("name") async for doc in db.outreach_campaigns.find({"campaign_id": {"$in": ids}}, {"_id": 0, "campaign_id": 1, "name": 1})} if ids else {}
+    for row in rows:
+        row["campaign_name"] = names.get(row.get("campaign_id"))
+    rows = sorted(rows, key=lambda row: str(serialize(row.get("last_attempt_at")) or ""), reverse=True)
+    rows.sort(key=lambda row: not row["pending"])
+    limit = max(1, min(limit, 200))
+    return {"total": len(rows), "items": serialize(rows[offset:offset + limit])}
