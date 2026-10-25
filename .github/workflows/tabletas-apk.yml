@@ -121,6 +121,8 @@ jobs:
   emulador:
     name: Probar en un emulador Android (API ${{ matrix.api }})
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # solo para subir las capturas
     timeout-minutes: 45
     strategy:
       fail-fast: false
@@ -159,11 +161,23 @@ jobs:
             android-kiosk/app/build/reports/androidTests/
             capturas/
           if-no-files-found: ignore
+      - name: Capturas a «Releases» (para verlas sin descargar el artefacto)
+        if: always() && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          ls capturas/*.png >/dev/null 2>&1 || exit 0
+          gh release view tabletas-capturas --repo "$REPO" >/dev/null 2>&1 || gh release create tabletas-capturas --repo "$REPO" --prerelease \
+            --title "Capturas de las pruebas de tabletas" --notes "Capturas automáticas de los emuladores. No es una app para instalar."
+          gh release upload tabletas-capturas capturas/*.png --repo "$REPO" --clobber
 
   apk-final:
     name: APK FINAL firmada en Android viejo (API 24)
     needs: [compilar]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # solo para subir las capturas
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -196,6 +210,16 @@ jobs:
           name: capturas-apk-final
           path: capturas/
           if-no-files-found: ignore
+      - name: Capturas a «Releases» (para verlas sin descargar el artefacto)
+        if: always() && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          ls capturas/*.png >/dev/null 2>&1 || exit 0
+          gh release view tabletas-capturas --repo "$REPO" >/dev/null 2>&1 || gh release create tabletas-capturas --repo "$REPO" --prerelease \
+            --title "Capturas de las pruebas de tabletas" --notes "Capturas automáticas de los emuladores. No es una app para instalar."
+          gh release upload tabletas-capturas capturas/*.png --repo "$REPO" --clobber
 
   publicar:
     name: Publicar en Releases
