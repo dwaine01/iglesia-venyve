@@ -23,6 +23,16 @@
   html, body, #root, [data-print-main], [data-testid="app-page-scroll-container"] { height: auto !important; overflow: visible !important; }
   [data-print-main] { display: block !important; }
   .print-break-avoid { break-inside: avoid; }
+  /* Portada del reporte: página propia, centrada. */
+  @page { margin: 12mm; }
+  .report-cover { display: flex !important; min-height: 245mm; flex-direction: column; justify-content: center; align-items: center; text-align: center; break-after: page; }
+  /* Gráficas: tamaño estable al imprimir (SVG vectorial = alta calidad). */
+  .recharts-responsive-container { break-inside: avoid; }
+  section, figure { break-inside: avoid; }
+  [data-testid="report-section-tables"], [data-testid="report-tables"] { break-inside: auto !important; }
+  table { break-inside: auto; }
+  tr { break-inside: avoid; }
+  thead { display: table-header-group; }
 }
 
 
