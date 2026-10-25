@@ -50,11 +50,11 @@ public final class KioskPolicy {
         return allowed ? Decision.LOAD : Decision.BLOCK;
     }
 
-    /** Para los registros: el dominio de una dirección (o «dirección inválida»). */
+    /** Para los registros: esquema y dominio de una dirección (sin el resto, que puede llevar el código). */
     public static String hostOf(String url) {
         try {
-            String host = new URI(url).getHost();
-            return host == null ? String.valueOf(url) : host;
+            URI uri = new URI(url);
+            return uri.getHost() == null ? String.valueOf(uri.getScheme()) + ":" : uri.getScheme() + "://" + uri.getHost();
         } catch (URISyntaxException | NullPointerException error) {
             return "dirección inválida";
         }

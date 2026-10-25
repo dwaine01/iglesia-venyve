@@ -6,8 +6,9 @@ import { SLIDES, RESUMENES_NOTAS } from '../data/presentationData';
 import { AlertCircle, Wifi, WifiOff, BookOpen, Zap, FileText, CheckCircle2 } from 'lucide-react';
 import { useScreenZoom } from '../hooks/useScreenZoom';
 import { ScreenZoomControl } from '../components/ScreenZoomControl';
+import { API_BASE } from '../lib/apiBase';
 
-const API = process.env.REACT_APP_BACKEND_URL;
+const API = API_BASE;
 
 /**
  * PresentacionNotasPage — "Teleprompter" para el TV detras del escenario.

@@ -7,8 +7,9 @@ import { useAuth } from '../../context/AuthContext';
 import { BusPuzzleReveal } from '../../components/campaign/BusPuzzleReveal';
 import { CampaignDonorFeed } from '../../components/campaign/CampaignDonorFeed';
 import { formatUsdCents } from '../../lib/campaignFormat';
+import { API_BASE } from '../../lib/apiBase';
 
-const API = process.env.REACT_APP_BACKEND_URL;
+const API = API_BASE;
 
 export default function CampaignScreenPage() {
   const [searchParams] = useSearchParams();

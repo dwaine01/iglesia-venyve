@@ -9,8 +9,9 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { LOGO_IGLESIA } from '../data/presentationData';
 import { BRAND } from '../config/brand';
+import { API_BASE } from '../lib/apiBase';
 
-const API = process.env.REACT_APP_BACKEND_URL;
+const API = API_BASE;
 
 // C5: la persona invitada abre este enlace de un solo uso y define su propia
 // contraseña (nunca la escribió quien creó la cuenta).

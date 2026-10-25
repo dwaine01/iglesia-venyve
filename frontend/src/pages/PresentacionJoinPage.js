@@ -8,8 +8,9 @@ import { Label } from '../components/ui/label';
 import { MonitorPlay, ArrowRight, Home } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
+import { API_BASE } from '../lib/apiBase';
 
-const API = process.env.REACT_APP_BACKEND_URL;
+const API = API_BASE;
 
 export default function PresentacionJoinPage() {
   const navigate = useNavigate();

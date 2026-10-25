@@ -74,6 +74,20 @@ GENERATE_SOURCEMAP=false
 
 ---
 
+### 2.1 El panel reenvía /api al servidor (un solo dominio para el navegador)
+
+El servicio del panel ya no usa `serve`. Usa `frontend/deploy/server.js`, que es solo Node, sin paquetes. Hace dos cosas:
+
+- sirve la app;
+- reenvía `/api/*`, WebSocket incluido (radio y pantalla de campaña), al servidor.
+
+El navegador llama a `https://panel.iglesiavenyve.org/api/...` y nunca a `*.up.railway.app`. Ese dominio fallaba en las tabletas Amazon Fire (Silk).
+
+- **Destino del reenvío:** `API_PROXY_TARGET` o, si no existe, `REACT_APP_BACKEND_URL`, que ya está configurada. No hay que cambiar nada.
+- **Red privada de Railway (opcional, más rápida):** `API_PROXY_TARGET=http://<servicio-backend>.railway.internal:<puerto>`.
+- **Para volver al modo anterior** (el navegador llama directo al servidor): en el servicio del panel, poner `REACT_APP_API_SAME_ORIGIN=0` y hacer **Redeploy**.
+- **El servidor no cambia:** CORS sigue igual, así que las páginas abiertas con la versión anterior siguen funcionando.
+
 ## 3. Conectar dominios personalizados en Railway
 
 ### 3.1 Backend → `panel.iglesiavenyve.org`

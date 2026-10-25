@@ -82,7 +82,8 @@ jobs:
           for file in apk/*.apk; do
             echo "== $file ($(du -h "$file" | cut -f1))"
             "$TOOLS/aapt" dump badging "$file" | grep -E "^(package|application-label|sdkVersion|targetSdkVersion|uses-permission)"
-            "$TOOLS/apksigner" verify --print-certs "$file" | grep -E "Signer #1 certificate (DN|SHA-256)"
+            "$TOOLS/apksigner" verify "$file"  # falla si la firma no es válida
+            "$TOOLS/apksigner" verify --print-certs "$file" 2>&1 | grep -iE "certificate (DN|SHA-256)" || true
           done
 
       - name: Borrar la llave de este equipo

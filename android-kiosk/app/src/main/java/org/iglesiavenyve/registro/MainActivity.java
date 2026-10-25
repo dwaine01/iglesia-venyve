@@ -275,7 +275,7 @@ public class MainActivity extends Activity {
                 return false;
             }
             if (decision == KioskPolicy.Decision.BLOCK) {
-                Log.w(TAG, "BLOQUEADO: " + KioskPolicy.hostOf(url) + " no es " + KioskPolicy.HOST);
+                Log.w(TAG, "BLOQUEADO: " + KioskPolicy.hostOf(url) + " (solo se permite https://" + KioskPolicy.HOST + ")");
                 return false;
             }
             Log.i(TAG, "Permitido: " + KioskPolicy.hostOf(url));

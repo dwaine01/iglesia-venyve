@@ -8,6 +8,11 @@ COPY frontend/ .
 
 ARG REACT_APP_BACKEND_URL
 ENV REACT_APP_BACKEND_URL=$REACT_APP_BACKEND_URL
+# El navegador llama a /api en el MISMO dominio del panel y el panel lo reenvía al
+# servidor (deploy/server.js). Para volver a llamar directo al servidor: variable
+# REACT_APP_API_SAME_ORIGIN=0 en Railway (servicio del panel) y volver a desplegar.
+ARG REACT_APP_API_SAME_ORIGIN=1
+ENV REACT_APP_API_SAME_ORIGIN=$REACT_APP_API_SAME_ORIGIN
 ARG REACT_APP_MAP_TILE_URL
 ENV REACT_APP_MAP_TILE_URL=$REACT_APP_MAP_TILE_URL
 ARG REACT_APP_SATELLITE_TILE_URL
@@ -19,8 +24,11 @@ RUN yarn build
 
 FROM node:20-alpine
 WORKDIR /app
-RUN npm install -g serve@14
+# Servidor propio, solo con Node (sin paquetes): sirve la app y reenvía /api al servidor.
+# Destino: API_PROXY_TARGET o, si no está, REACT_APP_BACKEND_URL (ya configurada en Railway).
+COPY frontend/deploy/server.js ./server.js
 COPY --from=build /app/build ./build
 ENV PORT=8080
+ENV NODE_ENV=production
 EXPOSE 8080
-CMD sh -c "serve -s build -l tcp://0.0.0.0:$PORT"
+CMD ["node", "server.js"]
