@@ -229,7 +229,8 @@ function PersonProfileRoute({ children }) {
   if (loading) return <div className="flex min-h-screen items-center justify-center" data-testid="person-profile-route-loading">Cargando…</div>;
   if (!user) return <Navigate to="/login" replace />;
   if (personId && personId === user.person_id) return children;
-  if (!canViewDirectory(user)) return <AccessDeniedPage />;
+  // Sin directorio, la ficha igual abre: el backend decide (p. ej. el mentor
+  // que contactó a la persona ve una vista mínima; los demás reciben 403).
   return children;
 }
 

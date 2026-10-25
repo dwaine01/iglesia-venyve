@@ -8,11 +8,22 @@ import { Button } from '../ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../ui/table';
 import { DeliverBookDialog } from './DeliverBookDialog';
 import { BookThumbnail } from './BookThumbnail';
+import { JourneyDialog } from './JourneyDialog';
+import { invasionLabel } from '../PersonContactOrigin';
 
 const PAYMENT_LABELS = { pagado: 'Pagado', pendiente: 'Pendiente', exonerado: 'Exonerado', beca: 'Beca', descuento: 'Descuento', pago_parcial: 'Pago parcial', no_aplica: 'Gratis' };
+const PROCESS_LABELS = { consolidation: 'Consolidación', discipleship: 'Discipulado', formation: 'Formación' };
 const TYPE_LABELS = { DELIVERY_PENDING: 'Entregado · sin conciliar', DELIVERY: 'Entregado', LOAN: 'Prestado', LOAN_RETURN: 'Devuelto', RETURN: 'Devuelto', ASSIGNMENT: 'Asignado' };
 
-export const LibraryPersonSection = ({ personId, user }) => {
+export const LibraryPersonSection = ({ personId, user, origin = null }) => {
+  const [journey, setJourney] = useState(null);
+  // Quién la entregó, en qué invasión y en qué vivienda (de «Contactado por»).
+  const trace = Object.fromEntries((origin?.books || []).map((item) => [item.movement_id, item]));
+  const processLabel = (item) => {
+    const info = trace[item.movement_id];
+    if (item.campaign_id || info?.campaign_name || (item.process_key || '').startsWith('outreach')) return invasionLabel(info?.campaign_name);
+    return PROCESS_LABELS[item.process_key] || item.process_key || '—';
+  };
   const { API, getAuthHeaders } = useAuth();
   const [items, setItems] = useState([]);
   const [books, setBooks] = useState({});
@@ -21,8 +32,10 @@ export const LibraryPersonSection = ({ personId, user }) => {
   const refresh = useCallback(async () => {
     try {
       const { data } = await axios.get(`${API}/api/library/persons/${personId}/materials`, getAuthHeaders());
-      setItems(data.items || []);
-      const booksRes = await axios.get(`${API}/api/library/books`, getAuthHeaders());
+      // El «destinatario completado» no es otro libro: se muestra solo la entrega.
+      setItems((data.items || []).filter((item) => item.movement_type !== 'RECIPIENT_COMPLETION'));
+      // Portadas: el mentor sin Librería no ve el catálogo (403) y la tabla igual se muestra.
+      const booksRes = await axios.get(`${API}/api/library/books`, getAuthHeaders()).catch(() => ({ data: { items: [] } }));
       setBooks(Object.fromEntries((booksRes.data.items || []).map((b) => [b.book_id, b])));
     } finally { setLoading(false); }
   }, [API, personId]);
@@ -51,15 +64,18 @@ export const LibraryPersonSection = ({ personId, user }) => {
     {loading ? <p className="mt-4 text-sm text-slate-500">Cargando…</p> : items.length === 0 ? (
       <p className="mt-4 text-sm text-slate-500" data-testid="library-person-empty">Sin materiales registrados todavía.</p>
     ) : <Table className="mt-4" data-testid="library-person-materials-table">
-      <TableHeader><TableRow><TableHead /><TableHead>Material</TableHead><TableHead>Proceso</TableHead><TableHead>Fecha</TableHead><TableHead>Estado</TableHead><TableHead>Pago</TableHead></TableRow></TableHeader>
-      <TableBody>{items.map((item) => <TableRow key={item.movement_id} data-testid={`library-person-material-row-${item.movement_id}`}>
+      <TableHeader><TableRow><TableHead /><TableHead>Material</TableHead><TableHead>Proceso / Invasión</TableHead><TableHead>Entregado por</TableHead><TableHead>Vivienda / dirección</TableHead><TableHead>Fecha</TableHead><TableHead>Estado</TableHead><TableHead>Pago</TableHead></TableRow></TableHeader>
+      <TableBody>{items.map((item) => <TableRow key={item.movement_id} data-testid={`library-person-material-row-${item.movement_id}`} role="button" tabIndex={0} title="Ver recorrido del libro" className="cursor-pointer hover:bg-[#FBFAF7]" onClick={() => setJourney(item.movement_id)} onKeyDown={(event) => { if (event.key === 'Enter') setJourney(item.movement_id); }}>
         <TableCell><BookThumbnail fileId={books[item.book_id]?.cover_file_id} size={28} /></TableCell>
         <TableCell>{item.book_name}</TableCell>
-        <TableCell>{item.process_key || '—'}</TableCell>
+        <TableCell>{processLabel(item)}</TableCell>
+        <TableCell>{trace[item.movement_id]?.delivered_by || item.from_holder_label || '—'}</TableCell>
+        <TableCell>{trace[item.movement_id]?.address || '—'}</TableCell>
         <TableCell>{(item.occurred_at || '').slice(0, 10)}</TableCell>
         <TableCell><Badge variant="outline">{TYPE_LABELS[item.movement_type] || item.movement_type}</Badge></TableCell>
         <TableCell>{item.amount_paid_cents ? `$${(item.amount_paid_cents / 100).toFixed(2)} pagado` : (PAYMENT_LABELS[item.payment_status] || 'Gratis')}</TableCell>
       </TableRow>)}</TableBody>
     </Table>}
+    <JourneyDialog movementId={journey} onClose={() => setJourney(null)} />
   </section>;
 };
