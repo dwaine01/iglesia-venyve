@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import { useParams } from 'react-router-dom';
-import { Check, HeartHandshake, Lock, Users } from 'lucide-react';
+import { Check, HeartHandshake, Lock, Users, X } from 'lucide-react';
 
 import { enqueue, flush, pendingCount } from '../lib/kioskQueue';
 import { rememberedToken, useAppManifest } from '../lib/appManifest';
@@ -19,7 +19,7 @@ const DEFAULT_TIMEOUTS = { form_warn_seconds: 240, form_reset_seconds: 300, star
 const C = { navy: '#14213D', ink: '#101D36', gold: '#C8A951', goldDark: '#8A6A1F', goldSoft: '#F6EEDA', bg: '#F7F5EF', line: '#DDD6C6', muted: '#475467' };
 
 const CONTACT = [['call', 'Llamada'], ['text', 'Mensaje de texto'], ['whatsapp', 'WhatsApp'], ['email', 'Correo electrónico']];
-const VISIT_MODES = [['nearby', 'Vivo cerca de la iglesia'], ['other_city', 'Vengo de otra ciudad'], ['passing', 'Estoy de paso']];
+const VISIT_MODES = [['nearby', 'Vivo cerca de la iglesia'], ['other_city', 'Vengo de otra ciudad'], ['passing', 'Estoy de paso'], ['new_in_area', 'Soy nuevo en el área']];
 const MONTHS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 /** Teléfono de EE. UU. con guiones mientras se escribe: 555-123-4567 (se guarda solo con dígitos). */
 export const phoneDigits = (value) => (value || '').replace(/\D/g, '').replace(/^1(?=\d{10})/, '').slice(0, 10);
@@ -29,17 +29,26 @@ export const formatPhone = (value) => {
   if (digits.length <= 6) return `${digits.slice(0, 3)}-${digits.slice(3)}`;
   return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
 };
-const HEARD = ['Un amigo o familiar', 'Redes sociales', 'Pasaba por aquí', 'Visitaron mi casa (invasión)', 'Internet o Google', 'Otro'];
-const REQUESTS = [['prayer', 'Oración'], ['visit', 'Una visita'], ['info', 'Información de la iglesia'], ['counseling_personal', 'Consejería personal'], ['counseling_marriage', 'Consejería matrimonial'],
-  ['counseling_family', 'Consejería familiar'], ['support_child', 'Apoyo para un hijo o familiar'], ['other_help', 'Otro tipo de ayuda']];
-// Pasos en orden; «notas» solo aparece si eligió oración, consejería o ayuda (así ninguna pantalla necesita desplazarse).
-const needsNotes = (requests) => requests.some((item) => item === 'prayer' || item.startsWith('counseling') || ['support_child', 'other_help'].includes(item));
-const stepOrder = (form) => ['aviso', 'nombre', 'cumple', 'contacto', 'como', 'visita', 'familia', 'servir', ...(needsNotes(form.requests) ? ['notas'] : []), 'seguimiento', 'revisar'];
+const HEARD = ['Invitación de alguien', 'Redes sociales', 'Internet', 'Pasé por la iglesia', 'Evento o campaña Ven y Come', 'Otro'];
+const REQUESTS = [['prayer_me', 'Quiero oración por mí'], ['prayer_family', 'Quiero oración por mi familia'], ['call_prayer', 'Llámenme para orar'], ['visit', 'Me gustaría que me visiten'],
+  ['info', 'Quiero saber más de esta iglesia'], ['counseling_personal', 'Consejería personal'], ['counseling_marriage', 'Consejería matrimonial'], ['counseling_family', 'Consejería familiar'],
+  ['support_child', 'Apoyo para un hijo o familiar'], ['membership', 'Me gustaría pertenecer a la iglesia'], ['serve', 'Quiero servir en la iglesia'], ['home_service', 'Me gustaría un culto en mi casa'],
+  ['other_help', 'Otra ayuda'], ['no_followup', 'Prefiero no recibir seguimiento por ahora']];
+const CHRISTIAN = [['yes', 'Sí'], ['on_way', 'Estoy en camino'], ['not_yet', 'No todavía']];
+const ACCEPT = [['today', 'Hoy'], ['another_day', 'Otro día']];
+const MARITAL = [['single', 'Soltero o soltera'], ['married', 'Casado o casada'], ['other', 'Otro']];
+const PRAYER = ['prayer_me', 'prayer_family', 'call_prayer'];
+// Formulario ÚNICO (los 3 papeles + el digital), un tema por paso. «Cuéntanos más» solo aparece
+// si eligió oración, consejería u otra ayuda (así ninguna pantalla necesita desplazarse).
+const needsNotes = (requests) => requests.some((item) => PRAYER.includes(item) || item.startsWith('counseling') || ['support_child', 'other_help'].includes(item));
+const stepOrder = (form) => ['nombre', 'contacto', 'vives', 'visita', 'fe', 'familia', 'servir', ...(needsNotes(form.requests) ? ['notas'] : []), 'apoyo', 'cierre'];
 
 const emptyForm = () => ({
   idempotency_key: (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`).replace(/[^a-zA-Z0-9-]/g, '') + Date.now().toString(36),
   started_at: new Date().toISOString(), privacy_accepted: false, first_name: '', last_name: '', preferred_name: '', phone: '', email: '', contact_methods: [], city: '', address: '',
-  birth_date: '', first_visit: null, invited: null, invited_by: '', visit_mode: null, other_church: null, other_church_name: '', how_heard: '', family: [], requests: [],
+  zip_code: '', birth_date: '', first_visit: null, invited_by: '', visit_mode: null, how_heard: '',
+  faith_christian: null, accept_jesus: null, reconcile: false, faith_info: false, other_church: null, other_church_name: '', other_church_pastor: '',
+  marital_status: null, spouse_name: '', has_children: null, children: [], companions: '', kids_ministry: false, requests: [], giving_info: false,
   prayer_request: '', counseling_note: '', needs_note: '', consent_followup: null, website: '',
 });
 
@@ -125,22 +134,15 @@ function BirthdayPicker({ value, onChange }) {
   );
 }
 const YesNo = ({ value, onChange, testId }) => <Chips options={[[true, 'Sí'], [false, 'No']]} value={value} onChange={onChange} testId={testId} />;
-// Sí/No con su detalle en la MISMA fila (al decir «Sí» no crece la pantalla).
-function YesNoDetail({ value, onChange, testId, detail, onDetail, placeholder, detailTestId }) {
-  return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
-      <YesNo value={value} onChange={onChange} testId={testId} />
-      {value && <input value={detail} onChange={(event) => onDetail(event.target.value)} placeholder={placeholder} autoComplete="off" aria-label={placeholder} style={{ ...inputStyle, flex: '1 1 220px', width: 'auto', minWidth: 0 }} data-testid={detailTestId} />}
-    </div>
-  );
-}
 const Accent = () => <span aria-hidden style={{ display: 'block', width: 88, height: 2, background: C.gold, margin: 'clamp(10px, 2vh, 18px) auto' }} />;
 // En horizontal los campos van en dos columnas para que todo quepa sin desplazar.
 const Section = ({ children, testId }) => <div className="vk-grid" data-testid={testId}>{children}</div>;
 const Wide = ({ children }) => <div className="vk-wide">{children}</div>;
 const LOGO = { src: '/logo-iglesia.png', srcSet: '/logo-iglesia.png 1x, /logo-iglesia@2x.png 2x', alt: 'Primera Iglesia del Nazareno · Casa de oración Ven y Ve' };
 const KIOSK_CSS = `
-  .vk-grid { display: grid; gap: clamp(14px, 2.2vh, 22px); align-content: start; }
+  .vk-grid { display: grid; gap: clamp(12px, 2vh, 22px); align-content: start; }
+  .vk-kids { display: grid; gap: 8px; }
+  @media (min-width: 700px) { .vk-kids { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 24px; } }
   @media (orientation: landscape) and (min-width: 900px) {
     .vk-grid { grid-template-columns: 1fr 1fr; column-gap: 36px; }
     .vk-wide { grid-column: 1 / -1; }
@@ -229,19 +231,27 @@ export default function KioskPage() {
 
   // Al continuar después del nombre: borrador en el servidor para que el nombre aparezca YA en la
   // bienvenida de la pastora. No detiene a la persona (si falla, el registro final lo crea igual).
+  // Lo que se envía (en cada paso al borrador y al terminar). Al continuar después del nombre la persona
+  // acepta el aviso corto (lo ve completo al final).
+  const buildPayload = () => {
+    const payload = {
+      ...form, privacy_accepted: true, privacy_version: config.texts.privacy_version, birth_date: form.birth_date || null, phone: phoneDigits(form.phone),
+      invited: form.invited_by.trim() ? true : null, children: form.has_children ? form.children.filter((item) => item.name.trim()).map((item) => ({ name: item.name.trim(), age: item.age === '' || item.age == null ? null : Number(item.age) })) : [],
+      ...(form.other_church ? {} : { other_church_name: '', other_church_pastor: '' }), ...(form.marital_status === 'married' ? {} : { spouse_name: '' }),
+    };
+    Object.keys(payload).forEach((key) => { if (payload[key] === '') payload[key] = null; });
+    return payload;
+  };
+  // En cada «Siguiente» se guarda el borrador: el nombre aparece YA en la bienvenida y nada se pierde si
+  // la persona abandona. No detiene a la persona (si falla, el registro final lo guarda igual).
   const saveDraft = () => {
-    if (!config) return;
-    axios.post(`${API}/api/kiosk/registrations/draft`, { idempotency_key: form.idempotency_key, first_name: form.first_name.trim(), last_name: form.last_name.trim(),
-      preferred_name: form.preferred_name.trim() || null, privacy_version: config.texts.privacy_version, privacy_accepted: true, website: form.website || null }, { headers, timeout: 8000 }).catch(() => {});
+    if (!config || !form.first_name.trim() || !form.last_name.trim()) return;
+    axios.post(`${API}/api/kiosk/registrations/draft`, buildPayload(), { headers, timeout: 8000 }).catch(() => {});
   };
 
   const submit = async () => {
     setSaving(true); setError('');
-    const payload = {
-      ...form, privacy_accepted: true, privacy_version: config.texts.privacy_version, birth_date: form.birth_date || null, phone: phoneDigits(form.phone),
-      family: form.family.filter((item) => item.name.trim()), ...(form.invited ? {} : { invited_by: '' }), ...(form.other_church ? {} : { other_church_name: '' }),
-    };
-    Object.keys(payload).forEach((key) => { if (payload[key] === '') payload[key] = null; });
+    const payload = buildPayload();
     try {
       const data = await send(payload);
       setResult({ ...data, offline: false });
@@ -257,7 +267,7 @@ export default function KioskPage() {
   const stepKey = order[Math.min(step, order.length - 1)];
   // Obligatorio: nombre y apellido, y un medio de contacto solo si aceptó el seguimiento.
   const missingContact = form.consent_followup === true && !phoneDigits(form.phone) && !form.email.trim();
-  const canNext = () => (stepKey === 'nombre' ? form.first_name.trim() && form.last_name.trim() : stepKey === 'seguimiento' ? !missingContact : true);
+  const canNext = () => (stepKey === 'nombre' ? form.first_name.trim() && form.last_name.trim() : true);
   const shell = (children, footer = null, hideLogo = false) => (
     // Pantalla fija de app: encabezado y botones nunca se mueven; solo el centro se desplaza si de verdad no cabe.
     // Alto = área visible (visualViewport), así el teclado no empuja el encabezado fuera de vista.
@@ -270,7 +280,7 @@ export default function KioskPage() {
         {config && <span style={{ fontSize: 19, color: C.muted, textAlign: 'right' }}>{config.service.label}{pending ? ` · ${pending} registro(s) esperando internet` : ''}</span>}
       </header>
       <main className="vk-main" data-testid="kiosk-main" style={{ flex: '1 1 auto', minHeight: 0, overflowY: 'auto', overscrollBehavior: 'contain', touchAction: 'pan-y', WebkitOverflowScrolling: 'touch' }}>
-        <div style={{ width: '100%', maxWidth: hideLogo || result ? 1040 : 1120, minHeight: '100%', margin: '0 auto', padding: 'clamp(14px, 3vh, 28px) 24px 24px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column' }}>{children}</div>
+        <div style={{ width: '100%', maxWidth: hideLogo || result ? 1040 : 1120, minHeight: '100%', margin: '0 auto', padding: 'clamp(10px, 2.4vh, 28px) 24px 20px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column' }}>{children}</div>
       </main>
       {footer && <footer style={{ flex: '0 0 auto', background: '#fff', borderTop: `2px solid ${C.line}`, padding: 16, display: 'flex', justifyContent: 'space-between', gap: 12 }}>{footer}</footer>}
       {idle >= times.form_warn_seconds && step >= 0 && !result && (
@@ -345,8 +355,8 @@ export default function KioskPage() {
     <>
       <Big kind="secondary" onClick={() => (step === 0 ? reset() : setStep(step - 1))} testId="kiosk-back">{step === 0 ? 'Cancelar' : 'Atrás'}</Big>
       {step < order.length - 1
-        ? <Big onClick={() => { if (step === 0) set('privacy_accepted', true); if (stepKey === 'nombre') saveDraft(); setStep(step + 1); }} disabled={!canNext()} testId="kiosk-next">{step === 0 ? 'Acepto y continuar' : 'Siguiente'}</Big>
-        : <Big onClick={submit} disabled={saving} testId="kiosk-submit">{saving ? 'Guardando…' : 'Terminar registro'}</Big>}
+        ? <Big onClick={() => { saveDraft(); setStep(step + 1); }} disabled={!canNext()} testId="kiosk-next">Siguiente</Big>
+        : <Big onClick={submit} disabled={saving || missingContact} testId="kiosk-submit">{saving ? 'Guardando…' : 'Terminar registro'}</Big>}
     </>
   );
   const title = (text, sub) => (
@@ -356,77 +366,88 @@ export default function KioskPage() {
       {sub && <p style={{ fontSize: 20, color: C.muted, margin: '6px 0 0' }}>{sub}</p>}
     </div>
   );
+  const setChild = (index, key, value) => set('children', form.children.map((item, position) => (position === index ? { ...item, [key]: value } : item)));
   const body = {
-    aviso: <Section testId="kiosk-step-aviso">{title('Antes de empezar', 'Así cuidamos tus datos:')}
-      <Wide><ul style={{ display: 'grid', gap: 'clamp(18px, 3.4vh, 34px)', margin: '8px 0 0', padding: 0, listStyle: 'none', maxWidth: 820 }} data-testid="kiosk-privacy">
-        {phrases(config.texts.privacy).map((line, index) => {
-          const Icon = [Lock, Users, HeartHandshake][index % 3];
-          return <li key={line} style={{ display: 'flex', alignItems: 'flex-start', gap: 18, fontSize: 'clamp(23px, 3.4vh, 27px)', lineHeight: 1.35 }}><Icon size={30} color={C.goldDark} aria-hidden style={{ flex: '0 0 auto', marginTop: 3 }} /><span>{line}</span></li>;
-        })}
-      </ul></Wide></Section>,
     nombre: <Section testId="kiosk-step-nombre">{title('¿Cómo te llamas?')}
       <Field label="Nombre" value={form.first_name} onChange={(value) => set('first_name', value)} testId="kiosk-first-name" />
-      <Field label="Apellido" value={form.last_name} onChange={(value) => set('last_name', value)} testId="kiosk-last-name" />
+      <Field label="Apellidos" value={form.last_name} onChange={(value) => set('last_name', value)} testId="kiosk-last-name" />
       <Field label="¿Cómo te gusta que te llamen?" value={form.preferred_name} onChange={(value) => set('preferred_name', value)} placeholder="Ej.: Toño" testId="kiosk-preferred" />
-
+      <Wide><p style={{ margin: 0, fontSize: 18, color: C.muted, display: 'flex', alignItems: 'center', gap: 10 }}><Lock size={20} color={C.goldDark} aria-hidden />Cuidamos tus datos: solo los usamos para darte la bienvenida y servirte.</p></Wide>
       {/* Campo trampa: invisible para personas; los robots lo llenan. */}
       <input type="text" name="website" value={form.website} onChange={(event) => set('website', event.target.value)} tabIndex={-1} autoComplete="off" aria-hidden="true"
         style={{ position: 'absolute', left: '-10000px', width: 1, height: 1, opacity: 0 }} data-testid="kiosk-website" /></Section>,
-    cumple: <Section testId="kiosk-step-cumple">{title('Para tenerte presente el día de tu cumpleaños')}
-      <Wide><div style={{ maxWidth: 720 }}><BirthdayPicker value={form.birth_date} onChange={(value) => set('birth_date', value)} /></div></Wide></Section>,
     contacto: <Section testId="kiosk-step-contacto">{title('¿Cómo te contactamos?')}
       <label style={{ display: 'block' }}><Label>Teléfono</Label><input type="tel" inputMode="numeric" autoComplete="off" value={formatPhone(form.phone)} onChange={(event) => set('phone', phoneDigits(event.target.value))} placeholder="555-123-4567" style={inputStyle} data-testid="kiosk-phone" /></label>
       <Field label="Correo electrónico" type="email" value={form.email} onChange={(value) => set('email', value)} testId="kiosk-email" />
-      <Wide><Label>¿Cómo prefieres que te contactemos? Puedes elegir varias.</Label><CheckChips options={CONTACT} value={form.contact_methods} onChange={(value) => set('contact_methods', value)} testId="kiosk-contact-methods" /></Wide>
-      <Field label="Ciudad o zona donde vives" value={form.city} onChange={(value) => set('city', value)} testId="kiosk-city" />
-      <Field label="Dirección completa" value={form.address} onChange={(value) => set('address', value)} testId="kiosk-address" /></Section>,
-    como: <Section testId="kiosk-step-como">{title('¿Cómo nos visitas hoy?')}
-      <Wide><div style={{ display: 'grid', gap: 16, maxWidth: 720 }} data-testid="kiosk-visit-mode">
-        {VISIT_MODES.map(([key, label]) => (
-          <button key={key} type="button" aria-pressed={form.visit_mode === key} onClick={() => set('visit_mode', form.visit_mode === key ? null : key)} data-testid={`kiosk-visit-mode-${key}`}
-            style={{ minHeight: 'clamp(76px, 11vh, 96px)', borderRadius: 20, fontSize: 'clamp(24px, 3.6vh, 30px)', fontWeight: 700, textAlign: 'left', padding: '0 28px', border: `2px solid ${form.visit_mode === key ? C.navy : C.line}`, background: form.visit_mode === key ? C.navy : '#fff', color: form.visit_mode === key ? '#fff' : C.ink }}>{label}</button>
+      <Wide><Label>¿Cómo prefieres que te contactemos? Puedes elegir varias.</Label><CheckChips options={CONTACT} value={form.contact_methods} onChange={(value) => set('contact_methods', value)} testId="kiosk-contact-methods" /></Wide></Section>,
+    vives: <Section testId="kiosk-step-vives">{title('¿Dónde vives?')}
+      <Wide><Field label="Calle y número" value={form.address} onChange={(value) => set('address', value)} testId="kiosk-address" /></Wide>
+      <Field label="Ciudad" value={form.city} onChange={(value) => set('city', value)} testId="kiosk-city" />
+      <label style={{ display: 'block' }}><Label>Código postal</Label><input inputMode="numeric" autoComplete="off" value={form.zip_code} onChange={(event) => set('zip_code', event.target.value.replace(/[^0-9-]/g, '').slice(0, 10))} style={inputStyle} data-testid="kiosk-zip" /></label>
+      <Wide><Label>¿Cómo nos visitas hoy?</Label><Chips options={VISIT_MODES} value={form.visit_mode} onChange={(value) => set('visit_mode', value)} testId="kiosk-visit-mode" /></Wide>
+      <Wide><Label>Para tenerte presente el día de tu cumpleaños</Label><div style={{ maxWidth: 720 }}><BirthdayPicker value={form.birth_date} onChange={(value) => set('birth_date', value)} /></div></Wide></Section>,
+    visita: <Section testId="kiosk-step-visita">{title('Tu visita')}
+      <div><Label>¿Es tu primera vez con nosotros?</Label><Chips options={[[true, 'Primera vez'], [false, 'Ya los había visitado']]} value={form.first_visit} onChange={(value) => set('first_visit', value)} testId="kiosk-first-visit" /></div>
+      <Field label="¿Quién te invitó?" value={form.invited_by} onChange={(value) => set('invited_by', value)} placeholder="Nombre de quien te invitó" testId="kiosk-invited-by" />
+      <Wide><Label>¿Cómo te enteraste de nosotros?</Label><Chips options={HEARD.map((item) => [item, item])} value={form.how_heard || null} onChange={(value) => set('how_heard', value || '')} testId="kiosk-heard" /></Wide></Section>,
+    fe: <Section testId="kiosk-step-fe">{title('Tu fe')}
+      <div><Label>¿Eres cristiano o cristiana?</Label><Chips options={CHRISTIAN} value={form.faith_christian} onChange={(value) => set('faith_christian', value)} testId="kiosk-christian" /></div>
+      <div><Label>Quiero aceptar a Jesús como mi Salvador</Label><Chips options={ACCEPT} value={form.accept_jesus} onChange={(value) => set('accept_jesus', value)} testId="kiosk-accept-jesus" /></div>
+      <Wide><CheckChips options={[['reconcile', 'Deseo reconciliarme con Dios'], ['faith_info', 'Quiero informarme de cómo ser cristiano']]} value={['reconcile', 'faith_info'].filter((key) => form[key])}
+        onChange={(value) => setForm((current) => ({ ...current, reconcile: value.includes('reconcile'), faith_info: value.includes('faith_info') }))} testId="kiosk-faith" /></Wide>
+      <Wide><Label>¿Asistes a otra iglesia?</Label>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
+          <YesNo value={form.other_church} onChange={(value) => set('other_church', value)} testId="kiosk-other-church" />
+          {form.other_church && <>
+            <input value={form.other_church_name} onChange={(event) => set('other_church_name', event.target.value)} placeholder="Nombre de la iglesia" aria-label="Nombre de la iglesia" autoComplete="off" style={{ ...inputStyle, flex: '1 1 220px', width: 'auto', minWidth: 0 }} data-testid="kiosk-other-church-name" />
+            <input value={form.other_church_pastor} onChange={(event) => set('other_church_pastor', event.target.value)} placeholder="Nombre del pastor" aria-label="Nombre del pastor" autoComplete="off" style={{ ...inputStyle, flex: '1 1 220px', width: 'auto', minWidth: 0 }} data-testid="kiosk-other-church-pastor" />
+          </>}
+        </div></Wide></Section>,
+    familia: <Section testId="kiosk-step-familia">{title('Tu familia')}
+      <Wide><Label>Estado civil</Label>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
+          <Chips options={MARITAL} value={form.marital_status} onChange={(value) => set('marital_status', value)} testId="kiosk-marital" />
+          {form.marital_status === 'married' && <input value={form.spouse_name} onChange={(event) => set('spouse_name', event.target.value)} placeholder="Nombre de tu esposo o esposa" aria-label="Nombre de tu esposo o esposa" autoComplete="off" style={{ ...inputStyle, flex: '1 1 260px', width: 'auto', minWidth: 0 }} data-testid="kiosk-spouse" />}
+        </div></Wide>
+      <div><Label>¿Tienes hijos?</Label><YesNo value={form.has_children} onChange={(value) => setForm((current) => ({ ...current, has_children: value, children: value && !current.children.length ? [{ name: '', age: '' }] : current.children }))} testId="kiosk-has-children" /></div>
+      <Field label="¿Quién te acompaña hoy?" value={form.companions} onChange={(value) => set('companions', value)} placeholder="Ej.: mi esposa y mis dos hijos" testId="kiosk-companions" />
+      {form.has_children && <Wide><div className="vk-kids" data-testid="kiosk-children">
+        {form.children.map((child, index) => (
+          <div key={index} style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <input value={child.name} onChange={(event) => setChild(index, 'name', event.target.value)} placeholder={`Nombre del hijo o hija ${index + 1}`} aria-label={`Nombre del hijo o hija ${index + 1}`} autoComplete="off" style={{ ...inputStyle, minHeight: 56, flex: '1 1 auto', width: 'auto', minWidth: 0 }} data-testid={`kiosk-child-name-${index}`} />
+            <input value={child.age} onChange={(event) => setChild(index, 'age', event.target.value.replace(/\D/g, '').slice(0, 2))} inputMode="numeric" placeholder="Edad" aria-label={`Edad del hijo o hija ${index + 1}`} style={{ ...inputStyle, minHeight: 56, flex: '0 0 96px', width: 96 }} data-testid={`kiosk-child-age-${index}`} />
+            <button type="button" onClick={() => set('children', form.children.filter((_, position) => position !== index))} aria-label={`Quitar al hijo o hija ${index + 1}`} title="Quitar"
+              style={{ flex: '0 0 56px', height: 56, borderRadius: 14, border: `2px solid ${C.line}`, background: '#fff', color: C.ink, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><X size={26} aria-hidden /></button>
+          </div>
         ))}
+      </div></Wide>}
+      <Wide><div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
+        {form.has_children && <Big kind="secondary" onClick={() => set('children', [...form.children, { name: '', age: '' }])} testId="kiosk-child-add">Agregar otro hijo</Big>}
+        <CheckChips options={[['kids', 'Deseo que mis hijos participen en el ministerio de niños']]} value={form.kids_ministry ? ['kids'] : []} onChange={(value) => set('kids_ministry', value.includes('kids'))} testId="kiosk-kids-ministry" />
       </div></Wide></Section>,
-    visita: <Section testId="kiosk-step-visita">{title('Sobre tu visita')}
-      <div><Label>¿Es tu primera visita?</Label><YesNo value={form.first_visit} onChange={(value) => set('first_visit', value)} testId="kiosk-first-visit" /></div>
-      <div><Label>¿Alguien te invitó?</Label><YesNoDetail value={form.invited} onChange={(value) => set('invited', value)} testId="kiosk-invited" detail={form.invited_by} onDetail={(value) => set('invited_by', value)} placeholder="¿Quién te invitó?" detailTestId="kiosk-invited-by" /></div>
-      <div><Label>¿Asistes a otra iglesia?</Label><YesNoDetail value={form.other_church} onChange={(value) => set('other_church', value)} testId="kiosk-other-church" detail={form.other_church_name} onDetail={(value) => set('other_church_name', value)} placeholder="¿Cuál?" detailTestId="kiosk-other-church-name" /></div>
-      <Wide><Label>¿Cómo supiste de nosotros?</Label><Chips options={HEARD.map((item) => [item, item])} value={form.how_heard || null} onChange={(value) => set('how_heard', value || '')} testId="kiosk-heard" /></Wide>
-</Section>,
-    familia: <Section testId="kiosk-step-familia">{title('¿Vienes con familiares?')}
-      {form.family.map((member, index) => (
-        <div key={index} className="vk-wide" style={{ display: 'grid', gap: 12, paddingTop: index ? 18 : 0, borderTop: index ? `1px solid ${C.line}` : 'none' }}>
-          <Field label={`Nombre del familiar ${index + 1}`} value={member.name} onChange={(value) => set('family', form.family.map((item, position) => (position === index ? { ...item, name: value } : item)))} testId={`kiosk-family-name-${index}`} />
-          <Chips options={[['Esposo o esposa', 'Esposo o esposa'], ['Hijo o hija', 'Hijo o hija'], ['Padre o madre', 'Padre o madre'], ['Otro familiar', 'Otro familiar']]} value={member.relation} onChange={(value) => set('family', form.family.map((item, position) => (position === index ? { ...item, relation: value, is_minor: value === 'Hijo o hija' ? item.is_minor : false } : item)))} />
-          {member.relation === 'Hijo o hija' && <div><Label>¿Es menor de edad?</Label><YesNo value={member.is_minor} onChange={(value) => set('family', form.family.map((item, position) => (position === index ? { ...item, is_minor: Boolean(value) } : item)))} /></div>}
-          <Big kind="secondary" onClick={() => set('family', form.family.filter((_, position) => position !== index))}>Quitar</Big>
-        </div>
-      ))}
-      {form.family.length < 8 && <Wide><Big kind="secondary" onClick={() => set('family', [...form.family, { name: '', relation: null, is_minor: false }])} testId="kiosk-family-add">Agregar un familiar</Big></Wide>}</Section>,
-    servir: <Section testId="kiosk-step-servir">{title('¿Cómo podemos servirte?', 'Elige lo que quieras. Es confidencial.')}
-      <Wide><Chips multiple options={REQUESTS} value={form.requests} onChange={(value) => set('requests', value)} testId="kiosk-requests" /></Wide></Section>,
+    servir: <Section testId="kiosk-step-servir">{title('¿Cómo podemos servirte?', 'Puedes elegir varias.')}
+      <Wide><CheckChips options={REQUESTS} value={form.requests} onChange={(value) => set('requests', value.includes('no_followup') && !form.requests.includes('no_followup') ? ['no_followup'] : value.filter((item) => item !== 'no_followup' || value.length === 1))} testId="kiosk-requests" /></Wide></Section>,
     notas: <Section testId="kiosk-step-notas">{title('Cuéntanos un poco más', 'Es confidencial.')}
-      {form.requests.includes('prayer') && <Area label="Tu petición de oración" hint="Solo la verá el equipo de oración." value={form.prayer_request} onChange={(value) => set('prayer_request', value)} testId="kiosk-prayer" />}
+      {form.requests.some((item) => PRAYER.includes(item)) && <Area label="¿Por qué quieres que oremos?" hint="Solo lo verá el equipo de oración." value={form.prayer_request} onChange={(value) => set('prayer_request', value)} testId="kiosk-prayer" />}
       {form.requests.some((item) => item.startsWith('counseling')) && <Area label="Cuéntanos brevemente" hint="Solo lo verá el equipo pastoral." value={form.counseling_note} onChange={(value) => set('counseling_note', value)} testId="kiosk-counseling" />}
-      {form.requests.some((item) => ['support_child', 'other_help'].includes(item)) && <Area label="¿En qué te podemos ayudar?" hint="Confidencial." value={form.needs_note} onChange={(value) => set('needs_note', value)} testId="kiosk-needs" />}</Section>,
-    seguimiento: <Section testId="kiosk-step-seguimiento">{title('¿Podemos comunicarnos contigo para darte seguimiento?')}
+      {form.requests.some((item) => ['support_child', 'other_help'].includes(item)) && <Area label="¿Qué otra ayuda necesitas?" hint="Confidencial." value={form.needs_note} onChange={(value) => set('needs_note', value)} testId="kiosk-needs" />}</Section>,
+    apoyo: <Section testId="kiosk-step-apoyo">{title('Apoyo')}
+      <Wide><CheckChips options={[['giving', 'Quiero información para ofrendar o donar mensualmente']]} value={form.giving_info ? ['giving'] : []} onChange={(value) => set('giving_info', value.includes('giving'))} testId="kiosk-giving" /></Wide>
+      <Wide><p style={{ margin: 0, fontSize: 20, color: C.muted }}>No pedimos datos de pago. La encargada de finanzas te dará la información.</p></Wide></Section>,
+    cierre: <Section testId="kiosk-step-cierre">{title('¿Podemos comunicarnos contigo para darte seguimiento?')}
       <Wide><YesNo value={form.consent_followup} onChange={(value) => set('consent_followup', value)} testId="kiosk-consent-followup" /></Wide>
       {missingContact && (
-        <Wide><div style={{ display: 'grid', gap: 14, justifyItems: 'start' }} data-testid="kiosk-need-contact">
-          <p style={{ margin: 0, fontSize: 23, color: C.goldDark, fontWeight: 700 }}>Para darte seguimiento necesitamos tu teléfono o tu correo.</p>
+        <Wide><div style={{ display: 'grid', gap: 12, justifyItems: 'start' }} data-testid="kiosk-need-contact">
+          <p style={{ margin: 0, fontSize: 22, color: C.goldDark, fontWeight: 700 }}>Para darte seguimiento necesitamos tu teléfono o tu correo.</p>
           <Big kind="secondary" onClick={() => setStep(order.indexOf('contacto'))} testId="kiosk-add-contact">Escribir mi teléfono o correo</Big>
         </div></Wide>
-      )}</Section>,
-    revisar: <Section testId="kiosk-step-revisar">{title('Revisa tus datos')}
-      <dl className="vk-grid vk-wide" style={{ fontSize: 23, margin: 0 }}>
-        {[['Nombre', `${form.first_name} ${form.last_name}`], ['Te llamaremos', form.preferred_name || form.first_name], ['Teléfono', formatPhone(form.phone)], ['Correo electrónico', form.email.trim()],
-          ['Cómo contactarte', form.contact_methods.map((key) => CONTACT.find(([value]) => value === key)?.[1]).join(', ')], ['Ciudad o zona', form.city],
-          ['Cómo nos visitas hoy', VISIT_MODES.find(([value]) => value === form.visit_mode)?.[1]],
-          ['Tu cumpleaños', form.birth_date ? `${Number(form.birth_date.slice(8, 10))} de ${MONTHS[Number(form.birth_date.slice(5, 7)) - 1]} de ${form.birth_date.slice(0, 4)}` : null],
-          ['Cómo podemos servirte', form.requests.map((key) => REQUESTS.find(([value]) => value === key)?.[1]).join(', ')],
-          ['Seguimiento', form.consent_followup === true ? 'Sí' : form.consent_followup === false ? 'No' : null]]
-          .filter(([, value]) => value).map(([label, value]) => <div key={label} style={{ borderBottom: `1px solid ${C.line}`, paddingBottom: 10 }}><dt style={{ fontWeight: 700, color: C.muted, fontSize: 19 }}>{label}</dt><dd style={{ margin: '2px 0 0' }}>{value}</dd></div>)}
-      </dl>
+      )}
+      <Wide><ul style={{ display: 'grid', gap: 'clamp(10px, 2vh, 18px)', margin: '6px 0 0', padding: 0, listStyle: 'none', maxWidth: 860 }} data-testid="kiosk-privacy">
+        {phrases(config.texts.privacy).map((line, index) => {
+          const Icon = [Lock, Users, HeartHandshake][index % 3];
+          return <li key={line} style={{ display: 'flex', alignItems: 'flex-start', gap: 14, fontSize: 'clamp(19px, 2.8vh, 22px)', lineHeight: 1.35, color: C.muted }}><Icon size={26} color={C.goldDark} aria-hidden style={{ flex: '0 0 auto', marginTop: 2 }} /><span>{line}</span></li>;
+        })}
+      </ul></Wide>
       {error && <p className="vk-wide" style={{ fontSize: 20, color: '#B42318' }}>{error}</p>}</Section>,
   }[stepKey];
   return shell(body, footer);

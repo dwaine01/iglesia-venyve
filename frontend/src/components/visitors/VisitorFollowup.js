@@ -14,7 +14,7 @@ import { apiErrorMessage } from '../../lib/apiErrors';
 
 const SERVICES = [['', 'Todos los servicios'], ['sunday', 'Domingo'], ['wednesday', 'Miércoles'], ['special', 'Actividad especial']];
 const CONTACT = { call: 'Llamada', whatsapp: 'WhatsApp', text: 'Mensaje de texto', email: 'Correo electrónico' };
-const VISIT_MODES = { nearby: 'Vive cerca de la iglesia', other_city: 'Viene de otra ciudad', passing: 'Está de paso' };
+const VISIT_MODES = { nearby: 'Vive cerca de la iglesia', other_city: 'Viene de otra ciudad', passing: 'Está de paso', new_in_area: 'Es nuevo en el área' };
 const fmtPhone = (value) => { const digits = (value || '').replace(/\D/g, ''); return digits.length === 10 ? `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}` : value; };
 const KINDS = [['call', 'Llamada'], ['visit', 'Visita'], ['message', 'Mensaje']];
 const OUTCOMES = [['reached', 'Se habló con la persona'], ['no_answer', 'No contestó'], ['wrong_number', 'Número equivocado'], ['visit_done', 'Visita realizada'],
@@ -112,6 +112,43 @@ function Restricted({ item }) {
   );
 }
 
+// Tareas que generaron sus respuestas (enrutamiento): urgentes primero.
+function Tasks({ item, onDone, canEdit }) {
+  const { API, getAuthHeaders } = useAuth();
+  const tasks = [...(item.tasks || [])].sort((a, b) => Number(b.urgent) - Number(a.urgent));
+  if (!tasks.length) return null;
+  const toggle = async (task) => {
+    try { onDone((await axios.post(`${API}/api/visitors/registrations/${item.registration_id}/tasks/${task.key}`, { done: !task.done }, getAuthHeaders())).data); }
+    catch (error) { toast.error(apiErrorMessage(error, 'No se pudo guardar')); }
+  };
+  return (
+    <div data-testid="followup-tasks"><p className="text-[15px] font-semibold text-[#101D36]">Tareas</p>
+      <ul className="mt-1 space-y-2">{tasks.map((task) => (
+        <li key={task.key} className={`flex items-start gap-3 rounded-xl p-3 ${task.urgent && !task.done ? 'bg-rose-50 ring-2 ring-rose-200' : 'bg-[#F8F6F0]'}`}>
+          <input type="checkbox" checked={task.done} disabled={!canEdit} onChange={() => toggle(task)} className="mt-1 h-6 w-6" aria-label={`Marcar como hecha: ${task.label}`} data-testid={`followup-task-${task.key}`} />
+          <span className="min-w-0 text-[15px]"><span className={`font-semibold ${task.done ? 'text-slate-400 line-through' : task.urgent ? 'text-rose-800' : 'text-[#101D36]'}`}>{task.label}</span>
+            <span className="block text-sm text-slate-600">{task.area_label}{task.done && task.done_by ? ` · hecha por ${task.done_by}` : ''}</span></span>
+        </li>
+      ))}</ul>
+    </div>
+  );
+}
+
+// Resumen legible de todas sus respuestas, por tema.
+function Answers({ item }) {
+  if (!item.answers?.length) return null;
+  return (
+    <div data-testid="followup-answers"><p className="text-[15px] font-semibold text-[#101D36]">Sus respuestas</p>
+      <div className="mt-1 grid gap-3 sm:grid-cols-2">{item.answers.map((section) => (
+        <section key={section.section} className="rounded-xl bg-[#F8F6F0] p-3">
+          <p className="text-sm font-semibold uppercase tracking-wide text-[#8A6A1F]">{section.section}</p>
+          <dl className="mt-1 space-y-1">{section.items.map((row) => <div key={row.label}><dt className="text-sm text-slate-600">{row.label}</dt><dd className="text-[15px] font-semibold text-[#101D36]">{row.value}</dd></div>)}</dl>
+        </section>
+      ))}</div>
+    </div>
+  );
+}
+
 function IncompleteActions({ item, onDone, onChanged }) {
   const { API, getAuthHeaders } = useAuth();
   const finish = async () => {
@@ -125,11 +162,11 @@ function IncompleteActions({ item, onDone, onChanged }) {
   };
   return (
     <div className="space-y-2 rounded-xl border-2 border-rose-200 bg-rose-50 p-3" data-testid="followup-incomplete">
-      <p className="text-[15px] font-semibold text-rose-900">{item.registration_state === 'registering' ? 'La persona está llenando el formulario ahora mismo.' : 'La persona dejó el formulario a medias: solo tenemos su nombre.'}</p>
-      <div className="flex flex-wrap gap-2">
+      <p className="text-[15px] font-semibold text-rose-900">{item.registration_state === 'registering' ? 'La persona está llenando el formulario ahora mismo.' : item.registration_state === 'manual' ? 'Lo agregó el operador en la bienvenida: falta completar sus datos (o transcribir su hoja en papel).' : 'La persona dejó el formulario a medias: abajo está lo que alcanzó a contestar.'}</p>
+      {item.registration_state !== 'registering' && <div className="flex flex-wrap gap-2">
         <button type="button" onClick={finish} className="min-h-11 rounded-lg bg-[#132443] px-3 text-[15px] font-semibold text-white" data-testid="followup-finish">Completar: pasar a Persona 360</button>
         <button type="button" onClick={discard} className="min-h-11 rounded-lg border border-rose-300 bg-white px-3 text-[15px] font-semibold text-rose-800" data-testid="followup-discard">Descartar</button>
-      </div>
+      </div>}
     </div>
   );
 }
@@ -154,6 +191,7 @@ function FollowupCard({ item: initial, canManage, canRestricted, onChanged }) {
         </div>
         <p className="mt-1 text-[15px] text-slate-700">{item.assigned_name ? `Asignado a ${item.assigned_name}` : 'Sin asignar'}{item.requests.length ? ` · Pide: ${item.requests.join(', ')}` : ''}</p>
         {item.match_status === 'possible' && <p className="text-[15px] font-semibold text-amber-800">{item.match_label}</p>}
+        {(item.tasks || []).some((task) => task.urgent && !task.done) && <p className="mt-1 text-[15px] font-bold text-rose-700" data-testid="followup-urgent">Llamar hoy</p>}
       </button>
       {open && (
         <div className="mt-3 space-y-4 border-t border-[#EEECE6] pt-3">
@@ -168,7 +206,9 @@ function FollowupCard({ item: initial, canManage, canRestricted, onChanged }) {
             {item.person_id && <Link to={`/personas/${item.person_id}`} className="font-semibold text-[#0879BE] underline">Ver Perfil 360</Link>}
           </div>
           {item.has_restricted && canRestricted && <Restricted item={item} />}
-          {canManage && ['incomplete', 'registering'].includes(item.registration_state) && <IncompleteActions item={item} onDone={setItem} onChanged={onChanged} />}
+          {canManage && ['incomplete', 'registering', 'manual'].includes(item.registration_state) && <IncompleteActions item={item} onDone={setItem} onChanged={onChanged} />}
+          <Tasks item={item} onDone={setItem} canEdit={canManage || isAssignee} />
+          <Answers item={item} />
           {canManage && item.match_status === 'possible' && <MatchReview item={item} onDone={setItem} />}
           {canManage && <AssignBox item={item} onDone={setItem} />}
           {(canManage || isAssignee) && <AttemptForm item={item} onDone={setItem} />}

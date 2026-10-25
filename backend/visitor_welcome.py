@@ -9,6 +9,7 @@
   (incluidos menores) NO se muestran.
 - La encargada avanza y retrocede en la propia pantalla (flechas o botones);
   aquí solo se entrega la lista en orden de llegada."""
+from datetime import timezone
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException
@@ -25,13 +26,29 @@ STATE_ID = "visitor_welcome_state"
 
 
 def default_name(doc: dict) -> str:
+    if (doc.get("welcome") or {}).get("manual_name"):
+        return doc["welcome"]["manual_name"]  # agregado a mano: tal como lo escribió el operador
     preferred = (doc.get("welcome") or {}).get("preferred_name") or doc["first_name"]
     last = (doc.get("last_name") or "").split()
     return f"{preferred} {last[0]}" if last else preferred
 
 
 def shown_name(doc: dict) -> str:
-    return (doc.get("welcome") or {}).get("display_name") or default_name(doc)
+    welcome = doc.get("welcome") or {}
+    return welcome.get("display_name") or welcome.get("manual_name") or default_name(doc)
+
+
+def order_of(doc: dict) -> float:
+    """Orden de lectura: el de llegada, salvo que el operador lo haya puesto «Siguiente»."""
+    order = (doc.get("welcome") or {}).get("order")
+    if order is not None:
+        return float(order)
+    created = doc.get("created_at")
+    return created.replace(tzinfo=created.tzinfo or timezone.utc).timestamp() if created else 0.0
+
+
+def in_order(docs: list) -> list:
+    return sorted(docs, key=order_of)
 
 
 def default_inviter(doc: dict) -> Optional[str]:
@@ -68,8 +85,9 @@ async def screen_welcome(x_link_token: Optional[str] = Header(default=None)):
     await link_access("screen", x_link_token)
     state = await load_state()
     docs = await db.visitor_registrations.find({**await service_query(state), "welcome.hidden": {"$ne": True}}, {"_id": 0, "registration_id": 1, "first_name": 1, "last_name": 1, "welcome": 1, "visit.invited": 1, "visit.invited_by": 1,
-                                                                                                         "status": 1, "updated_at": 1, "created_at": 1}) \
+                                                                                                         "status": 1, "updated_at": 1, "created_at": 1, "origin": 1}) \
         .sort("created_at", 1).to_list(500)
+    docs = in_order(docs)
     reset = (await load_kiosk_settings())["form_reset_seconds"]
     # El nombre aparece apenas lo escribe (borrador), con «registrando…» mientras llena el resto.
     return {"names": [{"id": doc["registration_id"], "name": shown_name(doc), "invited_by": shown_inviter(doc), "registering": registration_state(doc, reset) == "registering"} for doc in docs], "total": len(docs), "service_label": await service_label(state)}
@@ -81,14 +99,14 @@ def operator_item(doc: dict) -> dict:
     return {"registration_id": doc["registration_id"], "visitor_number": doc["visitor_number"], "name": shown_name(doc), "default_name": default_name(doc),
             "corrected": bool((doc.get("welcome") or {}).get("display_name")), "hidden": bool((doc.get("welcome") or {}).get("hidden")), "service_label": doc["service"]["label"],
             "invited_by": shown_inviter(doc), "default_invited_by": default_inviter(doc), "invited_corrected": bool((doc.get("welcome") or {}).get("invited_by_display")),
-            "registering": registration_state(doc) == "registering"}
+            "registering": registration_state(doc) == "registering", "manual": doc.get("origin") == "operator"}
 
 
 @operator_router.get("", response_model=dict)
 async def operator_view(current_user: dict = Depends(get_current_user)):
     require(current_user, VISITORS_WELCOME_OPERATE)
     state = await load_state()
-    docs = await db.visitor_registrations.find({**await service_query(state), "status": {"$nin": ["discarded", "merged"]}}, {"_id": 0}).sort("created_at", 1).to_list(500)
+    docs = in_order(await db.visitor_registrations.find({**await service_query(state), "status": {"$nin": ["discarded", "merged"]}}, {"_id": 0}).sort("created_at", 1).to_list(500))
     await audit("welcome_viewed", current_user["user_id"], {"count": len(docs)})
     return {"items": [operator_item(doc) for doc in docs], "state": state, "today": await current_service(), "service_label": await service_label(state)}
 
@@ -113,6 +131,60 @@ async def set_state(payload: StateInput, current_user: dict = Depends(get_curren
     await db.app_settings.update_one({"_id": STATE_ID}, {"$set": {**state, "updated_at": now_utc(), "updated_by": current_user["user_id"]}}, upsert=True)
     await audit("welcome_state", current_user["user_id"], payload.model_dump(exclude_none=True))
     return state
+
+
+class ManualInput(BaseModel):
+    name: str = Field(min_length=2, max_length=160)
+    invited_by: Optional[str] = Field(default=None, max_length=120)
+    position: Literal["next", "end"] = "end"
+    after_id: Optional[str] = Field(default=None, max_length=80)
+
+
+@operator_router.post("/manual", response_model=dict, status_code=201)
+async def add_manual(payload: ManualInput, current_user: dict = Depends(get_current_user)):
+    """«Agregar nombre» en la bienvenida: entra YA a la lista (después del actual o al final) y queda un
+    registro «Agregado a mano · por completar» para completarlo o transcribir el papel después."""
+    require(current_user, VISITORS_WELCOME_OPERATE)
+    from uuid import uuid4
+    from person_matching import normalize_text
+    from visitor_registry import next_number
+    name = " ".join(payload.name.split())
+    parts = name.split(" ", 1)
+    name_key = normalize_text(name)
+    state = await load_state()
+    service = await current_service()
+    if state.get("service_date") and state["service_date"] != service["date"]:
+        service = {**service, "date": state["service_date"], "label": "Servicio anterior"}
+    same = await db.visitor_registrations.find_one({"service.date": service["date"], "name_key": name_key, "status": {"$nin": ["discarded", "merged"]}}, {"_id": 0, "registration_id": 1})
+    if same:
+        raise HTTPException(status_code=409, detail=f"«{name}» ya está en la lista de hoy")
+    docs = in_order(await db.visitor_registrations.find({**await service_query(state), "welcome.hidden": {"$ne": True}, "status": {"$nin": ["discarded", "merged"]}},
+                                                        {"_id": 0, "registration_id": 1, "welcome": 1, "created_at": 1}).to_list(500))
+    order = (order_of(docs[-1]) + 1) if docs else now_utc().timestamp()
+    if payload.position == "next" and payload.after_id:
+        index = next((position for position, doc in enumerate(docs) if doc["registration_id"] == payload.after_id), None)
+        if index is not None:
+            after = order_of(docs[index])
+            following = order_of(docs[index + 1]) if index + 1 < len(docs) else after + 2
+            order = (after + following) / 2
+    now = now_utc()
+    registration_id = str(uuid4())
+    inviter = " ".join((payload.invited_by or "").split()) or None
+    doc = {
+        "_id": registration_id, "registration_id": registration_id, "idempotency_key": f"manual-{registration_id}", "visitor_number": await next_number(now.year),
+        "status": "draft", "origin": "operator", "created_by": current_user["user_id"], "device_id": f"operator:{current_user['user_id']}", "device_name": "Agregado por el operador",
+        "service": service, "name_key": name_key, "person_id": None, "match_status": "pending", "possible_person_ids": [],
+        "first_name": parts[0], "last_name": parts[1] if len(parts) > 1 else "",
+        "welcome": {"preferred_name": parts[0], "manual_name": name, "display_name": None, "hidden": False, "invited_by": inviter, "invited_by_display": None, "order": order},
+        "contact": {"phone": None, "phone_normalized": None, "email": None, "methods": [], "city": None, "address": None, "zip_code": None, "birth_date": None},
+        "visit": {"first_visit": None, "invited": bool(inviter), "invited_by": inviter, "visit_mode": None, "other_church": None, "how_heard": None},
+        "faith": {}, "household": {}, "giving": {}, "family": [], "requests": [], "has_restricted": False, "consents": {"followup": None},
+        "privacy": {"version": None, "accepted_at": None}, "followup": {"status": "pending", "assigned_person_id": None, "results": [], "tasks": []},
+        "test_data": False, "created_at": now, "updated_at": now,
+    }
+    await db.visitor_registrations.insert_one(doc)
+    await audit("welcome_manual_added", current_user["user_id"], {"registration_id": registration_id, "position": payload.position})
+    return operator_item(doc)
 
 
 class ItemInput(BaseModel):

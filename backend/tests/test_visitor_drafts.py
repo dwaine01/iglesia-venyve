@@ -83,6 +83,9 @@ async def test_draft_names_show_immediately_complete_without_duplicates_and_aban
         junk = visitor(f"{tag}jk")
         await tablets[2].post("/api/kiosk/registrations/draft", json=draft_of(junk))
         junk_doc = await db.visitor_registrations.find_one({"idempotency_key": junk["idempotency_key"]}, {"_id": 0})
+        # Mientras la persona sigue llenando no se puede descartar; ya abandonado, sí.
+        assert (await pastora.post(f"/api/visitors/registrations/{junk_doc['registration_id']}/discard")).status_code == 409
+        await db.visitor_registrations.update_one({"registration_id": junk_doc["registration_id"]}, {"$set": {"updated_at": now_utc() - timedelta(minutes=20)}})
         assert (await pastora.post(f"/api/visitors/registrations/{junk_doc['registration_id']}/discard")).status_code == 200
         assert junk_doc["registration_id"] not in [item["id"] for item in (await screen()).json()["names"]]
         assert junk_doc["registration_id"] not in [item["registration_id"] for item in (await pastora.get("/api/visitors/followup")).json()["items"]]

@@ -11,7 +11,7 @@ from tests.test_visitor_registry import cleanup, link, tablet, visitor
 
 db = server.db
 SCREEN_KEYS = {"names", "total", "service_label"}
-ITEM_KEYS = {"registration_id", "visitor_number", "name", "default_name", "corrected", "hidden", "service_label", "invited_by", "default_invited_by", "invited_corrected", "registering"}
+ITEM_KEYS = {"registration_id", "visitor_number", "name", "default_name", "corrected", "hidden", "service_label", "invited_by", "default_invited_by", "invited_corrected", "registering", "manual"}
 
 
 @pytest.mark.asyncio
