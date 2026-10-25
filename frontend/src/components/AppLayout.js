@@ -21,7 +21,7 @@ import { ContextGuideButton } from './guides/ContextGuideButton';
 import { FloatingLibraryScanButton } from './library/FloatingLibraryScanButton';
 import { resolveRouteGuide } from './guides/guideRouteMap';
 import { BRAND } from '../config/brand';
-import { canManageBaptismEvents, canManageDedicationEvents, canViewCare, canViewFinanceModule, canViewFormation, canViewFrontGroups, canViewGeo, canViewLeadership, canViewLibraryModule, canViewOperations, canAccessCampaignOperator, canAccessOutreach, canCreateOutreachCampaign, canViewPastoralFrontGroup, canViewProcesses, canViewCellular, canViewDoors, canViewDirectory, canManageInvitationCodes, canWriteEvangelismLog, canViewPresentationManual, hasAnyCapability, isPastoralAuthority } from '../lib/accessControl';
+import { canManageBaptismEvents, canManageDedicationEvents, canViewCare, canViewFinanceModule, canViewFormation, canViewFrontGroups, canViewGeo, canViewLeadership, canViewLibraryModule, canViewOperations, canAccessCampaignOperator, canAccessOutreach, canCreateOutreachCampaign, canViewPastoralFrontGroup, canViewProcesses, canViewCellular, canViewDoors, canViewDirectory, canManageInvitationCodes, canWriteEvangelismLog, canViewPresentationManual, hasAnyCapability, hasCapability, isPastoralAuthority } from '../lib/accessControl';
 import { useBoardAccess } from '../hooks/useBoardAccess';
 import { useMentorAccess } from '../hooks/useMentorAccess';
 const LOGO_URL = LOGO_IGLESIA;
@@ -85,7 +85,8 @@ const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
       ...BASE_PORTAL_ITEMS,
       ...(processesVisible ? [
         { to: '/procesos/dashboard', icon: Trophy, label: 'Mi Progreso', end: true },
-        { to: '/procesos/consolidacion', icon: Activity, label: 'Mi Consolidación', end: true, extraActiveMatch: consolidationDetailMatch },
+        // Encargados de Consolidación (C1): el mismo módulo, con alcance completo según sus capacidades.
+        { to: '/procesos/consolidacion', icon: Activity, label: hasCapability(user, 'consolidation.assign') ? 'Consolidación' : 'Mi Consolidación', end: true, extraActiveMatch: consolidationDetailMatch },
         { to: '/procesos/discipulado', icon: BookHeart, label: 'Mi Discipulado' },
         { to: '/procesos/mentoria', icon: HeartHandshake, label: 'Mi Mentoría' },
         { to: '/procesos/cap', icon: Compass, label: 'Mi lugar para servir' },
