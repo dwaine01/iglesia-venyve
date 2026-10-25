@@ -58,7 +58,7 @@ LEGACY_TEXTS = {
     "Usamos tus datos solo para darte la bienvenida, comunicarnos contigo si lo autorizas y servirte mejor. Los cuida un equipo autorizado de la iglesia; no los compartimos con nadie fuera de la iglesia. Tu nombre solo se anuncia o se muestra en pantallas si tú lo autorizas. Puedes pedir en cualquier momento que corrijamos o borremos tus datos.",
     "¡Gracias por registrarte! Ya eres parte de esta familia. Si necesitas algo, muestra este número a cualquier servidor de la iglesia.",
 }
-REQUEST_KEYS = ["prayer", "visit", "info", "counseling_personal", "counseling_marriage", "counseling_family", "support_child", "other_help", "no_followup"]
+from visitor_form import REQUEST_KEYS, REQUEST_LABELS, RESTRICTED_REQUESTS, alert_urgent, answers, build_tasks, merge_followup  # noqa: E402
 
 
 def now_utc() -> datetime:
@@ -291,6 +291,11 @@ class FamilyMember(BaseModel):
     is_minor: bool = False
 
 
+class ChildInput(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    age: Optional[int] = Field(default=None, ge=0, le=60)
+
+
 class RegistrationInput(BaseModel):
     idempotency_key: str = Field(min_length=16, max_length=120)
     first_name: str = Field(min_length=1, max_length=80)
@@ -309,13 +314,30 @@ class RegistrationInput(BaseModel):
     invited_by: Optional[str] = Field(default=None, max_length=120)
     # «¿Cómo nos visitas hoy?» (sin preguntar país de origen). `visiting_from` se acepta por
     # registros viejos en cola, pero ya no se guarda.
-    visit_mode: Optional[Literal["nearby", "other_city", "passing"]] = None
+    visit_mode: Optional[Literal["nearby", "other_city", "passing", "new_in_area"]] = None
+    zip_code: Optional[str] = Field(default=None, max_length=12)
+    # Tu fe (de las hojas en papel).
+    faith_christian: Optional[Literal["yes", "on_way", "not_yet"]] = None
+    accept_jesus: Optional[Literal["today", "another_day"]] = None
+    reconcile: bool = False
+    faith_info: bool = False
+    other_church_pastor: Optional[str] = Field(default=None, max_length=160)
+    # Familia.
+    marital_status: Optional[Literal["single", "married", "other"]] = None
+    spouse_name: Optional[str] = Field(default=None, max_length=160)
+    has_children: Optional[bool] = None
+    children: list[ChildInput] = Field(default_factory=list, max_length=30)
+    companions: Optional[str] = Field(default=None, max_length=300)
+    kids_ministry: bool = False
+    # Apoyo: solo el interés (nunca datos de pago); se enruta a Finanzas.
+    giving_info: bool = False
     visiting_from: Optional[str] = Field(default=None, max_length=160)
     other_church: Optional[bool] = None
     other_church_name: Optional[str] = Field(default=None, max_length=160)
     how_heard: Optional[str] = Field(default=None, max_length=200)
     family: list[FamilyMember] = Field(default_factory=list, max_length=12)
-    requests: list[Literal["prayer", "visit", "info", "counseling_personal", "counseling_marriage", "counseling_family", "support_child", "other_help", "no_followup"]] = Field(default_factory=list)
+    requests: list[Literal["prayer_me", "prayer_family", "call_prayer", "visit", "info", "counseling_personal", "counseling_marriage", "counseling_family", "support_child",
+                           "membership", "serve", "home_service", "other_help", "no_followup", "prayer"]] = Field(default_factory=list)
     prayer_request: Optional[str] = Field(default=None, max_length=1500)
     counseling_note: Optional[str] = Field(default=None, max_length=1500)
     needs_note: Optional[str] = Field(default=None, max_length=1500)
@@ -441,21 +463,31 @@ async def create_registration(payload: RegistrationInput, device: dict = Depends
             await db.visitor_locks.insert_one({"_id": lock_id, "idempotency_key": payload.idempotency_key, "created_at": now_utc()})
         except DuplicateKeyError:
             import asyncio
+            mine = (draft or {}).get("registration_id")
+            taken = False
             for _ in range(30):
-                same = await db.visitor_registrations.find_one({"service.date": service["date"], "contact.phone_normalized": phone_norm, "name_key": name_key}, {"_id": 0})
-                if same and same["registration_id"] == (draft or {}).get("registration_id"):
-                    if same.get("status") == "complete":
-                        return kiosk_reply(same, True, texts)  # doble toque al terminar un borrador
-                    await asyncio.sleep(0.2)
-                    continue
+                if mine:
+                    current = await db.visitor_registrations.find_one({"registration_id": mine}, {"_id": 0})
+                    if current and current.get("status") == "complete":
+                        return kiosk_reply(current, True, texts)  # doble toque al terminar un borrador
+                # OTRO registro ya completo de la misma persona hoy (el borrador propio, que ya guarda el teléfono, no cuenta).
+                same = await db.visitor_registrations.find_one({"service.date": service["date"], "contact.phone_normalized": phone_norm, "name_key": name_key,
+                                                                "registration_id": {"$ne": mine}, "status": {"$nin": ["draft", "completing", "merged", "discarded"]}}, {"_id": 0})
                 if same:
                     if draft:
                         # La misma persona ya quedó registrada en otra tableta: el borrador se une a ese registro.
                         await db.visitor_registrations.update_one({"registration_id": draft["registration_id"]}, {"$set": {"status": "merged", "merged_into": same["registration_id"], "welcome.hidden": True, "updated_at": now_utc()}})
                     await audit("registration_repeat", f"device:{device['device_id']}", {"registration_id": same["registration_id"]})
                     return kiosk_reply(same, True, texts)
+                # Candado viejo sin registro completo (p. ej. descartado): se toma.
+                stale = await db.visitor_locks.find_one_and_update({"_id": lock_id, "created_at": {"$lt": now_utc() - timedelta(seconds=20)}},
+                                                                   {"$set": {"idempotency_key": payload.idempotency_key, "created_at": now_utc()}})
+                if stale:
+                    taken = True
+                    break
                 await asyncio.sleep(0.2)
-            raise HTTPException(status_code=409, detail="Ya se está guardando un registro igual; intente de nuevo en unos segundos")
+            if not taken:
+                raise HTTPException(status_code=409, detail="Ya se está guardando un registro igual; intente de nuevo en unos segundos")
     try:
         if draft:
             return await complete_draft(draft, payload, device, service, phone_norm, name_key, texts)
@@ -466,17 +498,7 @@ async def create_registration(payload: RegistrationInput, device: dict = Depends
         raise
 
 
-class DraftInput(BaseModel):
-    idempotency_key: str = Field(min_length=16, max_length=120)
-    first_name: str = Field(min_length=1, max_length=80)
-    last_name: str = Field(min_length=1, max_length=80)
-    preferred_name: Optional[str] = Field(default=None, max_length=80)
-    privacy_version: int = Field(ge=1)
-    privacy_accepted: bool
-    website: Optional[str] = Field(default=None, max_length=200)
-
-
-def draft_doc(payload: DraftInput, device: dict, service: dict, name_key: str, number: str) -> dict:
+def draft_doc(payload: "RegistrationInput", device: dict, service: dict, name_key: str, number: str) -> dict:
     """Borrador: SOLO nombre y servicio; el resto llega al terminar. Ya entra a la bienvenida."""
     now = now_utc()
     registration_id = str(uuid4())
@@ -495,40 +517,62 @@ def draft_doc(payload: DraftInput, device: dict, service: dict, name_key: str, n
     }
 
 
+def keep_welcome(old: dict, fields: dict) -> dict:
+    """Lo que el encargado ya corrigió, quitó o reordenó en la bienvenida se respeta."""
+    welcome = old.get("welcome") or {}
+    return {**fields["welcome"], **{key: welcome.get(key) for key in ("display_name", "invited_by_display", "manual_name", "order") if welcome.get(key) is not None},
+            "hidden": welcome.get("hidden", False)}
+
+
+async def apply_progress(doc: dict, payload: "RegistrationInput", device: dict) -> None:
+    """Paso a paso: todo lo que la persona ya contestó queda en el borrador (sin tocar Persona 360)."""
+    from person_matching import normalize_phone, normalize_text
+    name_key = normalize_text(f"{payload.first_name} {payload.last_name}")
+    fields = await registration_fields(payload, device, doc["service"], normalize_phone(payload.phone), name_key, link=False)
+    fields["welcome"] = keep_welcome(doc, fields)
+    fields["followup"] = merge_followup(doc.get("followup"), fields["followup"])
+    result = await db.visitor_registrations.update_one({"registration_id": doc["registration_id"], "status": "draft"}, {"$set": {**fields, "updated_at": now_utc()}})
+    if result.matched_count:
+        fresh = await db.visitor_registrations.find_one({"registration_id": doc["registration_id"]}, {"_id": 0})
+        await save_restricted(fresh, payload, now_utc())
+        # «Aceptar a Jesús» u oración: el aviso sale YA, aunque la persona no termine.
+        await alert_urgent(db, fresh)
+
+
 @kiosk_router.post("/registrations/draft", response_model=dict)
-async def save_draft(payload: DraftInput, device: dict = Depends(kiosk_device)):
-    """Al escribir el nombre: el borrador aparece YA en la bienvenida. La tableta no recibe nada más."""
+async def save_draft(payload: RegistrationInput, device: dict = Depends(kiosk_device)):
+    """Al escribir el nombre el borrador aparece YA en la bienvenida; en cada paso se guarda lo contestado.
+    La tableta no recibe nada más."""
     await ensure_indexes()
     if not payload.privacy_accepted:
         raise HTTPException(status_code=422, detail="Para registrarte necesitamos que aceptes el aviso de privacidad")
-    await rate_limit(f"draft:{device['name']}:{device['ip']}", 20)
+    await rate_limit(f"draft:{device['name']}:{device['ip']}", 40)
     if (payload.website or "").strip():
         await audit("bot_blocked", f"device:{device['device_id']}", {"ip": device["ip"], "draft": True})
         return {"ok": True}
     from person_matching import normalize_text
     name_key = normalize_text(f"{payload.first_name} {payload.last_name}")
-    names = {"first_name": payload.first_name.strip(), "last_name": payload.last_name.strip(), "name_key": name_key,
-             "welcome.preferred_name": (payload.preferred_name or "").strip() or payload.first_name.strip(), "updated_at": now_utc()}
-    existing = await db.visitor_registrations.find_one({"idempotency_key": payload.idempotency_key}, {"_id": 0, "registration_id": 1, "status": 1})
+    existing = await db.visitor_registrations.find_one({"idempotency_key": payload.idempotency_key}, {"_id": 0})
     if existing:
         if existing.get("status") == "draft":
-            # Volvió atrás y corrigió su nombre: se actualiza el mismo borrador.
-            await db.visitor_registrations.update_one({"registration_id": existing["registration_id"], "status": "draft"}, {"$set": names})
+            await apply_progress(existing, payload, device)  # siguiente paso o corrigió su nombre
         return {"ok": True}
     service = await current_service()
     # Misma persona, misma tableta, mismo servicio (p. ej. la tableta se reinició): se retoma su borrador.
-    again = await db.visitor_registrations.find_one({"service.date": service["date"], "name_key": name_key, "device_name": device["name"], "status": "draft"}, {"_id": 0, "registration_id": 1})
+    again = await db.visitor_registrations.find_one({"service.date": service["date"], "name_key": name_key, "device_name": device["name"], "status": "draft"}, {"_id": 0})
     if again:
         try:
-            await db.visitor_registrations.update_one({"registration_id": again["registration_id"], "status": "draft"}, {"$set": {**names, "idempotency_key": payload.idempotency_key}})
-            return {"ok": True}
+            await db.visitor_registrations.update_one({"registration_id": again["registration_id"], "status": "draft"}, {"$set": {"idempotency_key": payload.idempotency_key}})
         except DuplicateKeyError:
             return {"ok": True}
+        await apply_progress(again, payload, device)
+        return {"ok": True}
     doc = draft_doc(payload, device, service, name_key, await next_number(datetime.now(timezone.utc).year))
     try:
         await db.visitor_registrations.insert_one(doc)
     except DuplicateKeyError:
         return {"ok": True}  # doble toque: ya existe
+    await apply_progress(doc, payload, device)
     await audit("registration_draft", f"device:{device['device_id']}", {"registration_id": doc["registration_id"], "visitor_number": doc["visitor_number"]})
     return {"ok": True}
 
@@ -551,13 +595,14 @@ async def complete_draft(draft: dict, payload: "RegistrationInput", device: dict
         await db.visitor_registrations.update_one({"registration_id": draft["registration_id"], "status": "completing"}, {"$set": {"status": "draft"}})
         raise
     # Lo que el encargado ya corrigió o quitó en la bienvenida se respeta.
-    welcome = {**fields["welcome"], "display_name": draft["welcome"].get("display_name"), "hidden": draft["welcome"].get("hidden", False),
-               "invited_by_display": draft["welcome"].get("invited_by_display")}
+    welcome = keep_welcome(draft, fields)
+    fields["followup"] = merge_followup(draft.get("followup"), fields["followup"])
     now = now_utc()
     await db.visitor_registrations.update_one({"registration_id": draft["registration_id"]},
                                               {"$set": {**fields, "welcome": welcome, "status": "complete", "completed_at": now, "updated_at": now}})
     doc = await db.visitor_registrations.find_one({"registration_id": draft["registration_id"]}, {"_id": 0})
     await save_restricted(doc, payload, now)
+    await alert_urgent(db, doc)
     await audit("registration_completed", f"device:{device['device_id']}", {"registration_id": doc["registration_id"], "visitor_number": doc["visitor_number"], "match_status": doc["match_status"]})
     return kiosk_reply(doc, False, texts)
 
@@ -568,9 +613,12 @@ async def save_restricted(doc: dict, payload: "RegistrationInput", now: datetime
                                                                                  "counseling_note": payload.counseling_note, "needs_note": payload.needs_note, "created_at": now}, upsert=True)
 
 
-async def registration_fields(payload: "RegistrationInput", device: dict, service: dict, phone_norm: Optional[str], name_key: str) -> dict:
-    """Todos los datos del formulario completo (para un registro nuevo o para completar un borrador)."""
-    match = await link_person(payload, device)
+async def registration_fields(payload: "RegistrationInput", device: dict, service: dict, phone_norm: Optional[str], name_key: str, link: bool = True) -> dict:
+    """Todos los datos del formulario (registro nuevo, borrador paso a paso o al completar un borrador).
+    En el borrador (`link=False`) aún no se toca Persona 360."""
+    match = await link_person(payload, device) if link else {"person_id": None, "match_status": "pending", "candidates": []}
+    invited = payload.invited if payload.invited is not None else bool((payload.invited_by or "").strip())
+    payload.invited = invited
     methods = list(dict.fromkeys(payload.contact_methods or ([payload.contact_method] if payload.contact_method and payload.contact_method != "none" else [])))
     inviter = await resolve_inviter(payload.invited_by) if payload.invited and (payload.invited_by or "").strip() else None
     if payload.invited and (payload.invited_by or "").strip() and not inviter:
@@ -579,7 +627,7 @@ async def registration_fields(payload: "RegistrationInput", device: dict, servic
     requests = [item for item in payload.requests if item in REQUEST_KEYS]
     # Solo un «No» explícito (o «prefiero no recibir seguimiento») lo saca del seguimiento.
     wants_followup = payload.consent_followup is not False and "no_followup" not in requests
-    return {
+    fields = {
         "device_id": device["device_id"], "device_name": device["name"], "service": service, "name_key": name_key,
         "person_id": match["person_id"], "match_status": match["match_status"], "possible_person_ids": match["candidates"] if match["match_status"] == "possible" else [],
         "first_name": payload.first_name.strip(), "last_name": payload.last_name.strip(),
@@ -589,10 +637,17 @@ async def registration_fields(payload: "RegistrationInput", device: dict, servic
                     "invited_by": inviter["name"] if inviter else None, "invited_by_display": None},
         # Bloque de CONTACTO (personal autorizado).
         "contact": {"phone": phone_norm, "phone_normalized": phone_norm, "email": (payload.email or "").strip() or None, "methods": methods, "city": payload.city, "address": payload.address,
+                    "zip_code": (payload.zip_code or "").strip() or None,
                     "birth_date": payload.birth_date.isoformat() if payload.birth_date else None},
         "visit": {"first_visit": payload.first_visit, "invited": payload.invited, "invited_by": (payload.invited_by or "").strip() or None if payload.invited else None,
                   "invited_by_person_id": inviter["person_id"] if inviter else None, "visit_mode": payload.visit_mode,
-                  "other_church": payload.other_church, "other_church_name": payload.other_church_name if payload.other_church else None, "how_heard": payload.how_heard},
+                  "other_church": payload.other_church, "other_church_name": payload.other_church_name if payload.other_church else None,
+                  "other_church_pastor": payload.other_church_pastor if payload.other_church else None, "how_heard": payload.how_heard},
+        "faith": {"christian": payload.faith_christian, "accept_jesus": payload.accept_jesus, "reconcile": payload.reconcile, "faith_info": payload.faith_info},
+        "household": {"marital_status": payload.marital_status, "spouse_name": (payload.spouse_name or "").strip() or None if payload.marital_status == "married" else None,
+                      "has_children": payload.has_children, "children": [{"name": item.name.strip(), "age": item.age} for item in payload.children] if payload.has_children else [],
+                      "companions": (payload.companions or "").strip() or None, "kids_ministry": payload.kids_ministry},
+        "giving": {"info": payload.giving_info},
         # Familiares: solo nombre y parentesco; nunca datos sensibles de menores. No se anuncian sin consentimiento.
         "family": [{"name": item.name.strip(), "relation": item.relation, "is_minor": item.is_minor} for item in payload.family],
         "requests": requests, "has_restricted": bool(payload.prayer_request or payload.counseling_note or payload.needs_note),
@@ -602,6 +657,8 @@ async def registration_fields(payload: "RegistrationInput", device: dict, servic
         "followup": {"status": "pending" if wants_followup else "not_requested", "assigned_person_id": None, "results": []},
         "test_data": False, "started_at": payload.started_at,
     }
+    fields["followup"]["tasks"] = build_tasks(fields)
+    return fields
 
 
 async def insert_registration(payload: "RegistrationInput", device: dict, service: dict, phone_norm: Optional[str], name_key: str, texts: dict) -> dict:
@@ -618,13 +675,12 @@ async def insert_registration(payload: "RegistrationInput", device: dict, servic
             return kiosk_reply(same, True, texts)
         raise
     await save_restricted(doc, payload, now)
+    await alert_urgent(db, doc)
     await audit("registration_created", f"device:{device['device_id']}", {"registration_id": registration_id, "visitor_number": doc["visitor_number"], "match_status": doc["match_status"]})
     return kiosk_reply(doc, False, texts)
 
 
 # ------------------------------------------------------------------ personal: consultar registros (V1 básico)
-REQUEST_LABELS = {"prayer": "Oración", "visit": "Una visita", "info": "Información de la iglesia", "counseling_personal": "Consejería personal", "counseling_marriage": "Consejería matrimonial",
-                  "counseling_family": "Consejería familiar", "support_child": "Apoyo para un hijo o familiar", "other_help": "Otro tipo de ayuda", "no_followup": "Prefiere no recibir seguimiento por ahora"}
 MATCH_LABELS = {"created": "Persona nueva en Persona 360", "linked": "Vinculado a su perfil existente", "possible": "Ya está en Persona 360 · confirmar si es una persona que ya existía"}
 
 
@@ -666,19 +722,20 @@ async def get_registration(registration_id: str, current_user: dict = Depends(ge
 
 
 # ------------------------------------------------------------------ V2: seguimiento por servicio y fecha
-RESTRICTED_REQUESTS = {"counseling_personal", "counseling_marriage", "counseling_family", "support_child", "other_help"}
 FOLLOWUP_LABELS = {"pending": "Pendiente de asignar", "assigned": "Asignado", "in_progress": "En contacto", "done": "Completado", "not_requested": "No pidió seguimiento"}
 ATTEMPT_KINDS = {"call": "Llamada", "visit": "Visita", "message": "Mensaje"}
 OUTCOMES = {"reached": "Se habló con la persona", "no_answer": "No contestó", "wrong_number": "Número equivocado", "visit_done": "Visita realizada",
             "wants_more": "Quiere más información o acompañamiento", "declined": "Prefiere no recibir seguimiento", "other": "Otro resultado"}
 
 
-STATE_LABELS = {"registering": "Registrándose ahora", "incomplete": "Incompleto", "complete": None, "discarded": "Descartado", "merged": "Unido a otro registro"}
+STATE_LABELS = {"registering": "Registrándose ahora", "incomplete": "Incompleto", "manual": "Agregado a mano · por completar", "complete": None, "discarded": "Descartado", "merged": "Unido a otro registro"}
 
 
 def registration_state(doc: dict, form_reset_seconds: int = 300) -> str:
     """Borrador reciente = «registrándose»; si la persona lo dejó a medias, «incompleto»."""
     status = doc.get("status") or "complete"
+    if status == "draft" and doc.get("origin") == "operator":
+        return "manual"
     if status in ("draft", "completing"):
         updated = doc.get("updated_at") or doc.get("created_at")
         updated = updated if updated is None or updated.tzinfo else updated.replace(tzinfo=timezone.utc)
@@ -705,7 +762,10 @@ def followup_view(doc: dict, current_user: dict, names: dict) -> dict:
             "assigned_person_id": followup.get("assigned_person_id"), "assigned_name": names.get(followup.get("assigned_person_id")) if followup.get("assigned_person_id") else None,
             "attempts": [{**item, "at": item["at"].isoformat() if isinstance(item.get("at"), datetime) else item.get("at"), "kind_label": ATTEMPT_KINDS.get(item.get("kind")), "outcome_label": OUTCOMES.get(item.get("outcome"))}
                          for item in followup.get("results") or []], "consent_followup": doc["consents"]["followup"],
-            "registration_state": registration_state(doc), "registration_state_label": STATE_LABELS.get(registration_state(doc))}
+            "registration_state": registration_state(doc), "registration_state_label": STATE_LABELS.get(registration_state(doc)), "origin": doc.get("origin", "tablet"),
+            # Resumen legible de todas sus respuestas y las tareas que generaron (lo confidencial, solo con permiso).
+            "answers": answers(doc, restricted_ok),
+            "tasks": [{**task, "label": task["label"] if restricted_ok or not task.get("restricted") else "Atención pastoral confidencial"} for task in followup.get("tasks") or []]}
 
 
 async def names_for(docs: list) -> dict:
@@ -739,9 +799,9 @@ async def followup_list(service_date: Optional[str] = None, service_kind: Option
             return {"items": [], "can_manage": False}
         query["followup.assigned_person_id"] = current_user["person_id"]
     docs = await db.visitor_registrations.find(query, {"_id": 0}).sort("created_at", -1).to_list(500)
-    incomplete = sum(1 for doc in docs if registration_state(doc) == "incomplete")
+    incomplete = sum(1 for doc in docs if registration_state(doc) in ("incomplete", "manual"))
     if state:
-        docs = [doc for doc in docs if registration_state(doc) == state]
+        docs = [doc for doc in docs if registration_state(doc) == state or (state == "incomplete" and registration_state(doc) == "manual")]
     names = await names_for(docs)
     counts: dict = {}
     for doc in docs:
@@ -850,8 +910,8 @@ async def finish_incomplete(registration_id: str, current_user: dict = Depends(g
     (misma búsqueda de duplicados; lo dudoso queda como «posible coincidencia»)."""
     require(current_user, VISITORS_FOLLOWUP_MANAGE)
     doc = await load_registration(registration_id)
-    if registration_state(doc) not in ("incomplete", "registering"):
-        raise HTTPException(status_code=409, detail="Este registro ya está completo")
+    if registration_state(doc) not in ("incomplete", "manual"):
+        raise HTTPException(status_code=409, detail="Este registro está completo o la persona lo está llenando ahora")
     from types import SimpleNamespace
     person = SimpleNamespace(first_name=doc["first_name"], last_name=doc["last_name"], phone=None, email=None, birth_date=None, idempotency_key=doc["idempotency_key"])
     match = await link_person(person, {"device_id": f"staff:{current_user['user_id']}"})
@@ -870,11 +930,30 @@ async def discard_registration(registration_id: str, current_user: dict = Depend
     """Descartar un registro incompleto (p. ej. una prueba): no se borra, queda oculto y auditado."""
     require(current_user, VISITORS_FOLLOWUP_MANAGE)
     doc = await load_registration(registration_id)
-    if registration_state(doc) not in ("incomplete", "registering"):
+    if registration_state(doc) not in ("incomplete", "manual"):
         raise HTTPException(status_code=409, detail="Solo se descartan registros incompletos")
     await db.visitor_registrations.update_one({"registration_id": registration_id}, {"$set": {"status": "discarded", "welcome.hidden": True, "discarded_by": current_user["user_id"], "updated_at": now_utc()}})
     await audit("registration_discarded", current_user["user_id"], {"registration_id": registration_id})
     return {"ok": True}
+
+
+class TaskInput(BaseModel):
+    done: bool
+
+
+@admin_router.post("/registrations/{registration_id}/tasks/{task_key}", response_model=dict)
+async def set_task(registration_id: str, task_key: str, payload: TaskInput, current_user: dict = Depends(get_current_user)):
+    """Marcar una tarea del seguimiento como hecha (quien administra o la persona asignada)."""
+    doc = await load_registration(registration_id)
+    if not (can(current_user, VISITORS_FOLLOWUP_MANAGE) or is_assignee(doc, current_user)):
+        raise HTTPException(status_code=403, detail="Solo quien administra el seguimiento o la persona asignada")
+    result = await db.visitor_registrations.update_one({"registration_id": registration_id, "followup.tasks.key": task_key},
+                                                       {"$set": {"followup.tasks.$.done": payload.done, "followup.tasks.$.done_at": now_utc() if payload.done else None,
+                                                                 "followup.tasks.$.done_by": current_user.get("nombre") if payload.done else None}})
+    if not result.matched_count:
+        raise HTTPException(status_code=404, detail="Tarea no encontrada")
+    await audit("followup_task", current_user["user_id"], {"registration_id": registration_id, "task": task_key, "done": payload.done})
+    return await followup_reply(registration_id, current_user)
 
 
 class ResolveMatchInput(BaseModel):
