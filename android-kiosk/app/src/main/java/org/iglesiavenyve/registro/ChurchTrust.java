@@ -34,7 +34,7 @@ import javax.net.ssl.X509TrustManager;
  * (SSLHandshakeException). Silk funciona porque trae su propia lista.
  *
  * Aquí se confía en las raíces del SISTEMA y, además, en las raíces públicas oficiales que
- * vienen dentro de la app (assets/raices: ISRG Root X1/X2 y Google Trust Services). La
+ * vienen dentro de la app (assets/raices/*.cer: ISRG Root X1/X2 y Google Trust Services; son públicos). La
  * verificación es completa (cadena hasta la raíz, fechas y nombre del sitio); nunca se acepta
  * un certificado sin verificar. Para el navegador interno solo se aplica a panel.iglesiavenyve.org.
  */
@@ -46,7 +46,7 @@ final class ChurchTrust {
     private ChurchTrust() {
     }
 
-    /** Lee los certificados raíz incluidos (archivos .pem de assets/raices). */
+    /** Lee los certificados raíz PÚBLICOS incluidos (assets/raices/*.cer; no son llaves). */
     static List<X509Certificate> bundledRoots(Context context) throws Exception {
         List<X509Certificate> roots = new ArrayList<>();
         CertificateFactory factory = CertificateFactory.getInstance("X.509");
