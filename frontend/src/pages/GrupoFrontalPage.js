@@ -40,11 +40,13 @@ function WorkDialog({ person, onClose }) {
 }
 
 /** Un nivel del árbol: el grupo y sus equipos (cada equipo abre su propio grupo). */
-function BranchNode({ group, depth, expanded, toggle, onWork, onOpenGroup, onForm }) {
+function BranchNode({ group: summary, depth, expanded, toggle, onWork, onOpenGroup, onForm, loaded }) {
+  // Profundidad ilimitada: los niveles de abajo llegan resumidos y se cargan al expandir.
+  const group = loaded[summary.front_group_id] || summary;
   return (
     <div className={depth ? 'border-l-2 border-[#E8DCC0] pl-3 sm:pl-4' : ''} data-testid={`branch-node-${group.front_group_id}`}>
       <div className="rounded-xl border border-[#E8E5DE] bg-white p-3 shadow-sm">
-        <p className="font-['Spectral'] text-lg font-semibold text-[#101D36]">{group.name}</p>
+        <p className="flex flex-wrap items-center gap-2 font-['Spectral'] text-lg font-semibold text-[#101D36]"><span className="rounded-full bg-[#F3EBD7] px-2 py-0.5 font-sans text-sm font-semibold text-[#7A5F22]" data-testid="branch-level">Nivel {group.level}</span>{group.name}</p>
         <p className="text-[15px] text-slate-700">Líder: {group.leader?.name || 'Por definir'} · Colíder: {group.co_leader?.name || 'Por definir'}</p>
         <p className="mt-1 text-[15px] text-[#132443]" data-testid="branch-node-totals">{plural(group.people_branch, 'persona', 'personas')} en toda la rama · {plural(group.teams_total, 'equipo', 'equipos')} · {plural(group.groups_formed, 'grupo formado', 'grupos formados')}{group.progress != null ? ` · Avance de la rama: ${group.progress} %` : ''}</p>
         <div className="mt-2 flex flex-wrap gap-2">
@@ -52,7 +54,8 @@ function BranchNode({ group, depth, expanded, toggle, onWork, onOpenGroup, onFor
           {depth > 0 && <button type="button" onClick={() => onOpenGroup(group.front_group_id)} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-[#101D36] px-3 text-[15px] font-semibold text-white" data-testid="branch-open">Abrir este grupo</button>}
         </div>
       </div>
-      {group.teams.length > 0 && <ul className="mt-2 space-y-2">
+      {!group.teams && <p className="mt-2 flex items-center gap-2 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" />Cargando sus equipos…</p>}
+      {group.teams?.length > 0 && <ul className="mt-2 space-y-2">
         {group.teams.map((team) => {
           const key = `${group.front_group_id}:${team.key}`;
           const open = expanded.has(key);
@@ -64,23 +67,23 @@ function BranchNode({ group, depth, expanded, toggle, onWork, onOpenGroup, onFor
                     <p className="text-[15px] font-semibold text-[#101D36]">Equipo: {teamNames(team)}</p>
                     <p className="text-sm text-slate-600">Líder: {team.leader?.name || 'Por definir'}{team.co_leader ? ` · Colíder: ${team.co_leader.name}` : ''}</p>
                     {team.status === 'formed'
-                      ? <p className="text-sm text-[#132443]">Su grupo: {team.group.name} · {plural(team.group.people_branch, 'persona', 'personas')}{team.group.progress != null ? ` · Avance: ${team.group.progress} %` : ''}</p>
+                      ? <p className="text-sm text-[#132443]">Su grupo (nivel {team.group.level}): {team.group.name} · {plural(team.group.people_branch, 'persona', 'personas')} · {plural(team.group.teams_total, 'equipo', 'equipos')}{team.group.progress != null ? ` · Avance: ${team.group.progress} %` : ''}</p>
                       : <p className="text-sm font-semibold text-amber-800" data-testid="branch-not-formed">Todavía no ha formado su grupo</p>}
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {team.leader && <button type="button" onClick={() => onWork(team.leader)} className="inline-flex min-h-11 items-center gap-1 rounded-lg border border-[#D9D4C7] bg-white px-3 text-sm font-semibold text-[#101D36]">Ver el trabajo del líder</button>}
                     {team.status !== 'formed' && team.can_form && <button type="button" onClick={() => onForm(group, team)} className="inline-flex min-h-11 items-center gap-1 rounded-lg bg-amber-700 px-3 text-sm font-semibold text-white" data-testid="branch-form"><Sparkles className="h-4 w-4" />Formar grupo</button>}
-                    {team.status === 'formed' && <button type="button" onClick={() => toggle(key)} aria-expanded={open} className="inline-flex min-h-11 items-center gap-1 rounded-lg bg-[#101D36] px-3 text-sm font-semibold text-white" data-testid="branch-expand">{open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}{open ? 'Ocultar su rama' : 'Ver su rama'}</button>}
+                    {team.status === 'formed' && <button type="button" onClick={() => toggle(key, team.group)} aria-expanded={open} className="inline-flex min-h-11 items-center gap-1 rounded-lg bg-[#101D36] px-3 text-sm font-semibold text-white" data-testid="branch-expand">{open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}{open ? 'Ocultar su rama' : 'Ver su rama'}</button>}
                   </div>
                 </div>
               </div>
-              {open && team.group && <div className="mt-2"><BranchNode group={team.group} depth={depth + 1} expanded={expanded} toggle={toggle} onWork={onWork} onOpenGroup={onOpenGroup} onForm={onForm} /></div>}
+              {open && team.group && <div className="mt-2"><BranchNode group={team.group} depth={depth + 1} expanded={expanded} toggle={toggle} onWork={onWork} onOpenGroup={onOpenGroup} onForm={onForm} loaded={loaded} /></div>}
             </li>
           );
         })}
       </ul>}
-      {group.individuals.length > 0 && <p className="mt-2 text-sm text-slate-600">Integrantes individuales: {group.individuals.map((item) => item.name).join(', ')}</p>}
-      {group.teams.length === 0 && group.individuals.length === 0 && <p className="mt-2 text-sm text-slate-500">Este grupo todavía no tiene integrantes.</p>}
+      {group.individuals?.length > 0 && <p className="mt-2 text-sm text-slate-600">Integrantes individuales: {group.individuals.map((item) => item.name).join(', ')}</p>}
+      {group.teams && group.teams.length === 0 && group.individuals.length === 0 && <p className="mt-2 text-sm text-slate-500">Este grupo todavía no tiene integrantes.</p>}
     </div>
   );
 }
@@ -92,12 +95,21 @@ function BranchTree({ groupId, onOpenGroup, reloadKey }) {
   const [error, setError] = useState('');
   const [expanded, setExpanded] = useState(new Set());
   const [work, setWork] = useState(null);
+  const [loaded, setLoaded] = useState({});
   useEffect(() => {
-    setData(null); setError('');
+    setData(null); setError(''); setLoaded({}); setExpanded(new Set());
     axios.get(`${API}/api/front-group-structure/tree`, { ...getAuthHeaders(), params: groupId ? { root: groupId } : {} })
       .then((response) => setData(response.data)).catch((requestError) => setError(apiErrorMessage(requestError, 'No se pudo cargar el árbol')));
   }, [API, getAuthHeaders, groupId, reloadKey]);
-  const toggle = (key) => setExpanded((current) => { const next = new Set(current); if (next.has(key)) next.delete(key); else next.add(key); return next; });
+  const toggle = (key, group) => {
+    setExpanded((current) => { const next = new Set(current); if (next.has(key)) next.delete(key); else next.add(key); return next; });
+    // Al expandir un grupo resumido se pide SU nivel (carga por niveles, sin límite de profundidad).
+    if (group && !group.loaded && !loaded[group.front_group_id]) {
+      axios.get(`${API}/api/front-group-structure/tree`, { ...getAuthHeaders(), params: { root: group.front_group_id } })
+        .then((response) => setLoaded((current) => ({ ...current, [group.front_group_id]: response.data.root })))
+        .catch((requestError) => toast.error(apiErrorMessage(requestError, 'No se pudo abrir esta rama')));
+    }
+  };
   const form = async (parent, team) => {
     if (team.pending_group_id) { navigate(`/mi-grupo-frontal/${team.pending_group_id}?formar=1`); return; }
     try {
@@ -109,9 +121,9 @@ function BranchTree({ groupId, onOpenGroup, reloadKey }) {
   if (!data) return <Loader2 className="mx-auto h-6 w-6 animate-spin text-slate-400" />;
   return (
     <section className="space-y-3" data-testid="branch-tree">
-      <p className="text-[15px] text-slate-700">Cada equipo (líder y colíder) abre su propio Grupo Frontal con otros integrantes. Toca «Ver su rama» para bajar un nivel. Las personas de cada rama se cuentan una sola vez. Avance = el mismo indicador del resumen del grupo ({data.period?.label || 'este mes'}).</p>
+      <p className="text-[15px] text-slate-700">Cada equipo (líder y colíder) abre su propio Grupo Frontal con otros integrantes. Toca «Ver su rama» para bajar un nivel; la ramificación sigue sin límite de niveles. Las personas de cada rama se cuentan una sola vez. Avance = el mismo indicador del resumen del grupo ({data.period?.label || 'este mes'}).</p>
       {data.direct_leader && <p className="text-sm text-[#7A5F22]" data-testid="branch-direct-leader">Tu líder directo: {data.direct_leader.name}</p>}
-      <BranchNode group={data.root} depth={0} expanded={expanded} toggle={toggle} onWork={setWork} onOpenGroup={onOpenGroup} onForm={form} />
+      <BranchNode group={data.root} depth={0} expanded={expanded} toggle={toggle} onWork={setWork} onOpenGroup={onOpenGroup} onForm={form} loaded={loaded} />
       <WorkDialog person={work} onClose={() => setWork(null)} />
     </section>
   );

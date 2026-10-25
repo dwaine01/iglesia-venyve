@@ -50,7 +50,7 @@ async def test_branch_tree_form_and_scopes():
         m1, m2 = await fx.person(f"Marta{tag}"), await fx.person(f"Pedro{tag}")
         assert (await luis.put(f"/api/front-groups/{luis_gid}/roster", json={"entries": [{"person_ids": [m1, m2]}]})).status_code == 200
 
-        root = (await pastora.get("/api/front-group-structure/tree")).json()["root"]
+        root = (await pastora.get("/api/front-group-structure/tree", params={"levels": 2})).json()["root"]
         branch = next(item for item in root["teams"] if item["leader"]["person_id"] == luis_id)
         assert branch["status"] == "formed" and branch["group"]["name"] == f"Grupo de Luis {tag}" and branch["group"]["people_branch"] == 4
         assert branch["group"]["teams"][0]["status"] == "not_designated"
@@ -65,6 +65,35 @@ async def test_branch_tree_form_and_scopes():
         assert (await pastora.get("/api/my-work/leader-detail", params={"mentor_person_id": luis_id})).status_code == 200
         assert (await luis.get("/api/my-work/leader-detail", params={"mentor_person_id": pastora_person(fx)})).status_code == 403
         assert (await ana.get("/api/my-work/leader-detail", params={"mentor_person_id": luis_id})).status_code == 403
+
+        # SIN LÍMITE DE NIVELES: un integrante del grupo de Luis (Marta) abre el suyo, y uno de ella el suyo.
+        marta = await fx.account(m1, "persona")
+        level3 = (await marta.post("/api/front-group-structure/form", json={"parent_group_id": luis_gid, "person_ids": [m1, m2]})).json()["front_group_id"]
+        assert (await marta.put(f"/api/front-groups/{level3}/conform", json={"name": f"Grupo de Marta {tag}"})).status_code == 200
+        n1, n2 = await fx.person(f"Nora{tag}"), await fx.person(f"Nico{tag}")
+        assert (await marta.put(f"/api/front-groups/{level3}/roster", json={"entries": [{"person_ids": [n1, n2]}, {"person_ids": [solo]}]})).status_code == 200
+        nora = await fx.account(n1, "persona")
+        level4 = (await nora.post("/api/front-group-structure/form", json={"parent_group_id": level3, "person_ids": [n1, n2]})).json()["front_group_id"]
+        assert (await nora.put(f"/api/front-groups/{level4}/conform", json={"name": f"Grupo de Nora {tag}"})).status_code == 200
+        # Carga por niveles: la raíz trae el nivel 2 resumido (sin sus equipos).
+        root = (await pastora.get("/api/front-group-structure/tree")).json()["root"]
+        assert root["level"] == 1 and root["loaded"] is True
+        summary = next(item for item in root["teams"] if item["leader"]["person_id"] == luis_id)["group"]
+        assert summary["level"] == 2 and summary["loaded"] is False and summary["teams"] is None and summary["teams_total"] == 1
+        # «Solo» está en la rama de la pastora y también en el grupo de Marta: cuenta una sola vez.
+        assert root["people_branch"] == 9  # 5 + Marta y Pedro + Nora y Nico; «Solo» una vez
+        luis_level = (await luis.get("/api/front-group-structure/tree", params={"root": luis_gid})).json()["root"]
+        marta_team = luis_level["teams"][0]
+        assert luis_level["level"] == 2 and marta_team["status"] == "formed" and marta_team["group"]["level"] == 3 and marta_team["group"]["loaded"] is False
+        # Luis (nivel 2) ve todo lo que cuelga de él a cualquier profundidad; Marta no ve hacia arriba.
+        deep = (await luis.get("/api/front-group-structure/tree", params={"root": level3})).json()["root"]
+        assert deep["level"] == 3 and deep["teams"][0]["group"]["level"] == 4
+        assert (await luis.get("/api/front-group-structure/tree", params={"root": level4})).status_code == 200
+        assert (await marta.get("/api/front-group-structure/tree", params={"root": luis_gid})).status_code == 403
+        assert (await luis.get("/api/my-work/leader-detail", params={"mentor_person_id": n1})).status_code == 200  # trabajo del líder del nivel 4
+        # Protección contra ciclos: un dato antiguo con el padre apuntando a un descendiente no cuelga el árbol.
+        await db.front_groups.update_one({"front_group_id": level3}, {"$set": {"parent_group_id": level4}})
+        assert (await pastora.get("/api/front-group-structure/tree", params={"root": luis_gid, "levels": 50}, timeout=20)).status_code == 200
     finally:
         groups = await db.front_groups.distinct("front_group_id", {"$or": [{"name": {"$regex": tag}}, {"primary_leader_person_id": {"$in": fx.person_ids}}]})
         await db.front_groups.delete_many({"front_group_id": {"$in": groups}})
