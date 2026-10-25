@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import { Link, useSearchParams } from 'react-router-dom';
-import { ArrowDownRight, ArrowUpRight, BarChart3, CalendarCheck, FileSpreadsheet, HelpCircle, Loader2, Minus, Printer, Sprout, TriangleAlert } from 'lucide-react';
+import { ArrowDownRight, ArrowUpRight, BarChart3, CalendarCheck, CalendarDays, FileSpreadsheet, HelpCircle, Landmark, Loader2, Minus, Printer, Sprout, TriangleAlert } from 'lucide-react';
 
 import { useAuth } from '../context/AuthContext';
 import { apiErrorMessage } from '../lib/apiErrors';
@@ -13,9 +13,10 @@ import { downloadXlsx } from '../lib/xlsx';
  * datos dice por qué. La pastora no cuenta en participación. */
 
 const PERIODS = [['today', 'Hoy'], ['week', 'Semana'], ['month', 'Mes'], ['quarter', 'Trimestre'], ['year', 'Año'], ['custom', 'Rango']];
-const SECTIONS = [['summary', 'Resumen de la iglesia', BarChart3], ['consolidation', 'Consolidación', Sprout], ['attendance', 'Asistencia', CalendarCheck]];
+const SECTIONS = [['summary', 'Resumen de la iglesia', BarChart3], ['consolidation', 'Consolidación', Sprout], ['attendance', 'Asistencia', CalendarCheck], ['finance', 'Finanzas', Landmark], ['activities', 'Proyectos y actividades', CalendarDays]];
 const SERVICES = [['all', 'Todos'], ['sunday', 'Domingo'], ['wednesday', 'Miércoles'], ['special', 'Actividades especiales'], ['cell', 'Células']];
 const fmt = (value) => (value == null ? '' : typeof value === 'number' ? value.toLocaleString('es') : value);
+const usd = (value) => (value == null ? '—' : value.toLocaleString('es-US', { style: 'currency', currency: 'USD' }));
 const fmtDate = (iso) => (iso ? new Date(`${iso}T12:00:00`).toLocaleDateString('es', { day: 'numeric', month: 'long', year: 'numeric' }) : '');
 
 function Change({ pct }) {
@@ -32,9 +33,9 @@ function StatCard({ item }) {
       <p className="text-[15px] font-semibold text-[#101D36]">{item.label}</p>
       {item.empty_reason
         ? <p className="mt-2 text-[15px] text-slate-600" data-testid="gs-empty-reason">{item.empty_reason}</p>
-        : <p className="mt-1"><span className="text-4xl font-bold text-[#132443]">{fmt(item.value) || 0}</span>{item.unit && <span className="ml-1.5 text-[15px] text-slate-600">{item.unit}</span>}</p>}
+        : <p className="mt-1"><span className="text-4xl font-bold text-[#132443]">{item.unit === 'USD' ? usd(item.value) : (fmt(item.value) || 0)}</span>{item.unit && item.unit !== 'USD' && <span className="ml-1.5 text-[15px] text-slate-600">{item.unit}</span>}</p>}
       {!item.empty_reason && <Change pct={item.change_pct} />}
-      {item.previous != null && !item.empty_reason && <p className="text-sm text-slate-500">Período anterior: {fmt(item.previous)}</p>}
+      {item.previous != null && !item.empty_reason && <p className="text-sm text-slate-500">Período anterior: {item.unit === 'USD' ? usd(item.previous) : fmt(item.previous)}</p>}
       <div className="mt-auto flex flex-wrap items-center gap-3 pt-3">
         <button type="button" onClick={() => setHelp((value) => !value)} aria-expanded={help} className="inline-flex min-h-10 items-center gap-1 text-sm font-semibold text-[#7A5F22]" data-testid="gs-help"><HelpCircle className="h-4 w-4" />¿Cómo se calcula?</button>
         {item.link && <Link to={item.link} className="text-sm font-semibold text-[#0879BE] underline">Ver en el módulo</Link>}
@@ -83,7 +84,43 @@ function SummarySection({ data }) {
   return (
     <div className="space-y-4">
       <Cards items={data.cards} />
-      <p className="rounded-xl border border-[#E8E5DE] bg-[#FBFAF7] p-3 text-[15px] text-slate-700">{data.finance_note}</p>
+      {data.finance_note && <p className="rounded-xl border border-[#E8E5DE] bg-[#FBFAF7] p-3 text-[15px] text-slate-700">{data.finance_note}</p>}
+    </div>
+  );
+}
+
+function FinanceSection({ data }) {
+  const kinds = Array.from(new Set(data.trend.flatMap((row) => Object.keys(row).filter((key) => !['bucket', 'label', 'total'].includes(key)))));
+  return (
+    <div className="space-y-4">
+      <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-[15px] text-amber-900" data-testid="gs-finance-privacy">{data.notes.privacy}</p>
+      <Cards items={data.cards} />
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <Panel title="Ingresos por concepto" note="Contribuciones del período por concepto, comparadas con el período anterior." testId="gs-finance-types">
+          <Table columns={[['label', 'Concepto'], ['amount', 'Este período', (row) => usd(row.amount)], ['previous', 'Período anterior', (row) => usd(row.previous)], ['change', 'Cambio', (row) => (row.change_pct == null ? '—' : `${row.change_pct > 0 ? '+' : ''}${row.change_pct} %`)]]} rows={data.by_type} empty="Aún no se han registrado contribuciones en este período." />
+        </Panel>
+        <Panel title="Gastos por categoría" note="Gastos aprobados o pagados con fecha en el período."><Bars rows={data.expenses_by_category.map((row) => ({ label: row.label, value: row.amount }))} color="#A35A00" empty="Aún no se han registrado gastos aprobados en este período." /></Panel>
+      </div>
+      <Panel title={`Tendencia por ${data.trend_unit}`} note="Contribuciones por concepto.">
+        <Table columns={[['label', data.trend_unit === 'mes' ? 'Mes' : 'Semana'], ...kinds.map((key) => [key, key, (row) => usd(row[key] || 0)]), ['total', 'Total', (row) => usd(row.total)]]} rows={data.trend} empty="Aún no se han registrado contribuciones en este período." />
+      </Panel>
+      <Panel title="Proyectos y campañas" note="Meta y presupuesto de cada proyecto de Finanzas; recaudado y gastado en toda su duración." testId="gs-projects">
+        <Table columns={[['name', 'Proyecto'], ['type', 'Tipo'], ['goal', 'Meta', (row) => usd(row.goal)], ['raised', 'Recaudado', (row) => `${usd(row.raised)}${row.goal_pct != null ? ` (${row.goal_pct} %)` : ''}`], ['budget', 'Presupuesto', (row) => usd(row.budget)], ['spent', 'Gastado', (row) => `${usd(row.spent)}${row.budget_pct != null ? ` (${row.budget_pct} %)` : ''}`]]} rows={data.projects} empty="Todavía no hay proyectos ni campañas registrados en Finanzas." />
+      </Panel>
+      <p className="text-sm text-slate-600">{data.notes.basis}</p>
+    </div>
+  );
+}
+
+function ActivitiesSection({ data }) {
+  const columns = [['title', 'Actividad'], ['type', 'Tipo'], ['starts_at', 'Fecha y hora'], ['registered', 'Inscritos'], ['attended', 'Asistentes'], ['volunteers', 'Voluntarios', (row) => (row.volunteers_needed ? `${row.volunteers} de ${row.volunteers_needed}` : row.volunteers)]];
+  return (
+    <div className="space-y-4">
+      <Cards items={data.cards} />
+      <Panel title="Por tipo de actividad" note="Actividades realizadas y asistentes en el período."><Table columns={[['label', 'Tipo'], ['activities', 'Actividades'], ['attended', 'Asistentes']]} rows={data.by_type} empty="No hay actividades en este período." /></Panel>
+      <Panel title="Actividades del período" testId="gs-activities-done"><Table columns={columns} rows={data.done} empty="No hay actividades programadas en este período." /></Panel>
+      <Panel title="Próximas actividades (30 días)"><Table columns={columns} rows={data.upcoming} empty="No hay actividades programadas en los próximos 30 días." /></Panel>
+      <p className="text-sm text-slate-600">{data.notes.projects}</p>
     </div>
   );
 }
@@ -138,6 +175,11 @@ function sheetsFor(section, data) {
   if (section === 'attendance') return [cards, { name: 'Por servicio', columns: [['label', 'Servicio'], ['sessions', 'Servicios'], ['attendance', 'Asistencias'], ['average', 'Promedio'], ['unique_people', 'Personas distintas']], rows: data.by_service },
     { name: 'Tendencia', columns: [['label', 'Semana del'], ['sunday', 'Domingo'], ['wednesday', 'Miércoles'], ['special', 'Actividades especiales'], ['cell', 'Células']], rows: data.trend },
     { name: 'Ausentes frecuentes', columns: [['name', 'Persona'], ['previous_attendance', 'Asistencias anteriores']], rows: data.frequent_absent }, { name: 'Invasiones', columns: [['name', 'Invasión'], ['invited', 'Invitados'], ['attended', 'Asistieron'], ['attendance_pct', 'Asistencia %']], rows: data.invasions }];
+  if (section === 'finance') return [cards, { name: 'Por concepto', columns: [['label', 'Concepto'], ['amount', 'Este período (USD)'], ['previous', 'Período anterior (USD)'], ['change_pct', 'Cambio %']], rows: data.by_type },
+    { name: 'Gastos por categoría', columns: [['label', 'Categoría'], ['amount', 'USD']], rows: data.expenses_by_category }, { name: 'Tendencia', columns: Object.keys(data.trend[0] || { label: '', total: 0 }).filter((key) => key !== 'bucket').map((key) => [key, key === 'label' ? 'Período' : key === 'total' ? 'Total (USD)' : `${key} (USD)`]), rows: data.trend },
+    { name: 'Proyectos', columns: [['name', 'Proyecto'], ['type', 'Tipo'], ['goal', 'Meta (USD)'], ['raised', 'Recaudado (USD)'], ['goal_pct', 'Recaudado %'], ['budget', 'Presupuesto (USD)'], ['spent', 'Gastado (USD)'], ['budget_pct', 'Gastado %']], rows: data.projects }];
+  if (section === 'activities') return [cards, { name: 'Realizadas', columns: [['title', 'Actividad'], ['type', 'Tipo'], ['starts_at', 'Fecha y hora'], ['registered', 'Inscritos'], ['attended', 'Asistentes'], ['volunteers', 'Voluntarios'], ['volunteers_needed', 'Voluntarios requeridos']], rows: data.done },
+    { name: 'Próximas', columns: [['title', 'Actividad'], ['type', 'Tipo'], ['starts_at', 'Fecha y hora'], ['registered', 'Inscritos']], rows: data.upcoming }];
   return [cards];
 }
 
@@ -202,6 +244,8 @@ export default function GlobalStatsPage() {
           {data && !data.error && data.section === 'summary' && <SummarySection data={data} />}
           {data && !data.error && data.section === 'consolidation' && <ConsolidationSection data={data} />}
           {data && !data.error && data.section === 'attendance' && <AttendanceSection data={data} />}
+          {data && !data.error && data.section === 'finance' && <FinanceSection data={data} />}
+          {data && !data.error && data.section === 'activities' && <ActivitiesSection data={data} />}
         </>}
       </div>
     </div>

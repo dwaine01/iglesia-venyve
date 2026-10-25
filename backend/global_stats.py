@@ -34,7 +34,20 @@ def sections_for(current_user: dict) -> dict:
     coordinator = is_general_coordinator(current_user)
     consolidation = has_capability(current_user, CONSOLIDATION_ASSIGN)
     return {"summary": pastoral or coordinator, "consolidation": pastoral or coordinator or consolidation,
-            "attendance": pastoral or coordinator or has_capability(current_user, OPERATIONS_REPORTS)}
+            "attendance": pastoral or coordinator or has_capability(current_user, OPERATIONS_REPORTS),
+            "finance": finance_allowed(current_user),
+            "activities": pastoral or coordinator or has_capability(current_user, OPERATIONS_REPORTS)}
+
+
+def finance_allowed(current_user: dict) -> bool:
+    """Mismo permiso del módulo Finanzas: autoridad pastoral, o el grupo de
+    privilegio de Finanzas + finance.read concedido explícitamente."""
+    from finance_engine import require_finance_read
+    try:
+        require_finance_read(current_user)
+        return True
+    except HTTPException:
+        return False
 
 
 def require_section(current_user: dict, section: str) -> None:
@@ -199,8 +212,15 @@ async def summary(period: Literal["today", "week", "month", "quarter", "year", "
         card("books", "Libros entregados", await books(p["start"], p["end"]), previous=await books(p["prev_start"], p["prev_end"]), unit="libros", definition="Libros entregados o prestados a personas en el período, según la bitácora de Librería (incluye entregas por conciliar).", source="Librería 360 (bitácora)", empty_reason="No se entregaron libros en este período.", link="/libreria/recorrido"),
         card("baptisms", "Bautismos", await baptisms(p["first"], p["last"]), previous=await baptisms(p["prev_first"], p["prev_last"]), unit="personas", definition="Personas marcadas como bautizadas con fecha de bautismo dentro del período.", source="Bautismos", empty_reason="No hay bautismos registrados con fecha en este período.", link="/bautismos"),
     ]
-    return {"period": period_out(p), "cards": cards, "finance_available": False,
-            "finance_note": "Los ingresos (diezmos, ofrendas, proyectos) se muestran en la sección Finanzas, solo con permiso de Finanzas."}
+    finance_ok = finance_allowed(current_user)
+    if finance_ok:
+        from finance_engine import audit
+        await audit(current_user["user_id"], "global_stats_finance_viewed", "global_stats", "summary", {"from": p["first"].isoformat(), "to": p["last"].isoformat()})
+        received_now = sum((await contributions_by_type(p["first"], p["last"])).values())
+        received_prev = sum((await contributions_by_type(p["prev_first"], p["prev_last"])).values())
+        cards.insert(4, card("received", "Ingresos recibidos", money(received_now), previous=money(received_prev), unit="USD", definition="Todas las contribuciones con fecha de recibido en el período (diezmos, ofrendas, proyectos y otros), sin las corregidas. Solo el total.", source="Finanzas · contribuciones", empty_reason="Aún no se han registrado contribuciones en este período.", link="/estadisticas?seccion=finance"))
+    return {"period": period_out(p), "cards": cards, "finance_available": finance_ok,
+            "finance_note": None if finance_ok else "Los ingresos (diezmos, ofrendas, proyectos) solo se muestran con permiso de Finanzas."}
 
 
 @router.get("/consolidation", response_model=dict)
@@ -325,3 +345,155 @@ async def invasion_attendance(p: dict, excluded: set) -> list[dict]:
         rows.append({"campaign_id": campaign["campaign_id"], "name": campaign.get("name"), "invited": len(participants), "attended": attended,
                      "attendance_pct": round(attended / len(participants) * 100) if participants else None, "by_day": [{"day": day, "attended": count} for day, count in sorted(days.items())]})
     return rows
+
+
+# ------------------------------------------------------------------ G2 · Finanzas (permiso propio + auditoría)
+TYPE_LABELS = {"tithe": "Diezmos", "offering": "Ofrendas", "donation": "Donaciones", "missions": "Misiones", "building": "Pro-Templo", "project": "Proyectos y campañas", "other": "Otros ingresos"}
+money = lambda cents: round((cents or 0) / 100, 2)  # noqa: E731
+
+
+async def contributions_by_type(first: date, last: date) -> dict:
+    """Igual que el reporte «contributions» de Finanzas: sin las corregidas, por fecha de recibido."""
+    totals: dict = defaultdict(int)
+    async for row in db.finance_contributions.aggregate([
+        {"$match": {"status": {"$ne": "corrected"}, "received_date": {"$gte": first.isoformat(), "$lte": last.isoformat()}}},
+        {"$unwind": "$allocations"},
+        {"$group": {"_id": {"$ifNull": ["$allocations.contribution_type", "$contribution_type"]}, "amount": {"$sum": "$allocations.amount_cents"}}}]):
+        totals[row["_id"] or "other"] += row["amount"]
+    return dict(totals)
+
+
+async def income_expense(first: date, last: date) -> dict:
+    """Igual que el reporte «income-expense» de Finanzas: asientos contabilizados por fecha contable."""
+    result = {"revenue": 0, "expense": 0}
+    async for row in db.finance_journal_entries.aggregate([
+        {"$match": {"status": "posted", "entry_date": {"$gte": first.isoformat(), "$lte": last.isoformat()}}}, {"$unwind": "$lines"},
+        {"$lookup": {"from": "finance_accounts", "localField": "lines.account_id", "foreignField": "account_id", "as": "account"}}, {"$unwind": "$account"},
+        {"$group": {"_id": "$account.account_type", "debit": {"$sum": "$lines.debit_cents"}, "credit": {"$sum": "$lines.credit_cents"}}}]):
+        if row["_id"] == "revenue":
+            result["revenue"] += row["credit"] - row["debit"]
+        elif row["_id"] == "expense":
+            result["expense"] += row["debit"] - row["credit"]
+    return result
+
+
+@router.get("/finance", response_model=dict)
+async def finance(period: Literal["today", "week", "month", "quarter", "year", "custom"] = "month", date_from: Optional[str] = None, date_to: Optional[str] = None,
+                  current_user: dict = Depends(get_current_user)):
+    """Diezmos, ofrendas, proyectos, gastos y balance: SOLO totales (nunca por
+    persona), con el mismo permiso del módulo Finanzas y auditoría de la consulta."""
+    if not finance_allowed(current_user):
+        raise HTTPException(status_code=403, detail="Las finanzas solo las ve la autoridad pastoral o quien tenga el permiso de Finanzas")
+    from finance_engine import audit
+    p = await resolve(period, date_from, date_to)
+    await audit(current_user["user_id"], "global_stats_finance_viewed", "global_stats", "finance", {"from": p["first"].isoformat(), "to": p["last"].isoformat()})
+    now_types, prev_types = await contributions_by_type(p["first"], p["last"]), await contributions_by_type(p["prev_first"], p["prev_last"])
+    books_now, books_prev = await income_expense(p["first"], p["last"]), await income_expense(p["prev_first"], p["prev_last"])
+    expenses_now: dict = defaultdict(int)
+    async for row in db.finance_expenses.aggregate([
+        {"$match": {"status": {"$in": ["approved", "payment_pending_posting", "paid"]}, "expense_date": {"$gte": p["first"].isoformat(), "$lte": p["last"].isoformat()}}},
+        {"$group": {"_id": {"$ifNull": ["$category", "Sin categoría"]}, "amount": {"$sum": "$total_cents"}}}]):
+        expenses_now[row["_id"] or "Sin categoría"] += row["amount"]
+    received_now, received_prev = sum(now_types.values()), sum(prev_types.values())
+    no_income = "Aún no se han registrado contribuciones en este período."
+    cards = [
+        card("tithes", "Diezmos", money(now_types.get("tithe")), previous=money(prev_types.get("tithe")), unit="USD", definition="Suma de las contribuciones registradas como Diezmo con fecha de recibido en el período (sin las corregidas). Solo total; nunca por persona.", source="Finanzas · contribuciones", empty_reason="Aún no se han registrado diezmos en este período.", link="/finanzas"),
+        card("offerings", "Ofrendas", money(now_types.get("offering")), previous=money(prev_types.get("offering")), unit="USD", definition="Suma de las contribuciones registradas como Ofrenda en el período.", source="Finanzas · contribuciones", empty_reason="Aún no se han registrado ofrendas en este período."),
+        card("projects", "Proyectos, campañas y Pro-Templo", money(now_types.get("project", 0) + now_types.get("building", 0)), previous=money(prev_types.get("project", 0) + prev_types.get("building", 0)), unit="USD", definition="Contribuciones a Proyecto/Campaña y Pro-Templo en el período.", source="Finanzas · contribuciones", empty_reason="Aún no se han registrado aportes a proyectos en este período."),
+        card("received", "Total recibido", money(received_now), previous=money(received_prev), unit="USD", definition="Todas las contribuciones del período (diezmos, ofrendas, donaciones, misiones, proyectos y otros).", source="Finanzas · contribuciones", empty_reason=no_income),
+        card("revenue_posted", "Ingresos contabilizados", money(books_now["revenue"]), previous=money(books_prev["revenue"]), unit="USD", definition="Ingresos de los asientos ya contabilizados con fecha contable en el período (igual que el reporte Ingresos y gastos de Finanzas).", source="Finanzas · libro diario", empty_reason="Aún no hay ingresos contabilizados en este período."),
+        card("expenses_posted", "Gastos contabilizados", money(books_now["expense"]), previous=money(books_prev["expense"]), unit="USD", definition="Gastos de los asientos contabilizados con fecha contable en el período.", source="Finanzas · libro diario", empty_reason="Aún no hay gastos contabilizados en este período."),
+        card("balance", "Balance del período", money(books_now["revenue"] - books_now["expense"]), previous=money(books_prev["revenue"] - books_prev["expense"]), unit="USD", definition="Ingresos contabilizados − gastos contabilizados del período.", source="Finanzas · libro diario", empty_reason="Aún no hay asientos contabilizados en este período."),
+    ]
+    # Tendencia: por semana (períodos de hasta 3 meses) o por mes.
+    by_month = p["days"] > 93
+    buckets: dict = defaultdict(lambda: defaultdict(int))
+    async for item in db.finance_contributions.find({"status": {"$ne": "corrected"}, "received_date": {"$gte": p["first"].isoformat(), "$lte": p["last"].isoformat()}}, {"_id": 0, "received_date": 1, "allocations": 1, "contribution_type": 1}):
+        day = date.fromisoformat(str(item["received_date"])[:10])
+        key = day.strftime("%Y-%m") if by_month else (day - timedelta(days=day.weekday())).isoformat()
+        for allocation in item.get("allocations") or []:
+            buckets[key][allocation.get("contribution_type") or item.get("contribution_type") or "other"] += allocation.get("amount_cents") or 0
+    trend = [{"bucket": key, "label": (f"{key[5:]}/{key[:4]}" if by_month else f"Semana del {int(key[8:])}/{int(key[5:7])}"), **{TYPE_LABELS.get(kind, kind): money(value) for kind, value in values.items()},
+              "total": money(sum(values.values()))} for key, values in sorted(buckets.items())]
+    # Proyectos (Finanzas): meta, presupuesto, recaudado y gastado (toda su vida).
+    projects = []
+    async for campaign in db.finance_campaigns.find({}, {"_id": 0}).sort("start_date", -1).limit(100):
+        cid = campaign["campaign_id"]
+        raised = 0
+        async for item in db.finance_contributions.find({"status": {"$ne": "corrected"}, "$or": [{"campaign_id": cid}, {"allocations.campaign_id": cid}]}, {"_id": 0, "campaign_id": 1, "allocations": 1}):
+            raised += sum(allocation.get("amount_cents") or 0 for allocation in item.get("allocations") or [] if (allocation.get("campaign_id") or item.get("campaign_id")) == cid)
+        spent = 0
+        async for row in db.finance_journal_entries.aggregate([{"$match": {"status": "posted", "lines.campaign_id": cid}}, {"$unwind": "$lines"}, {"$match": {"lines.campaign_id": cid}},
+                                                               {"$lookup": {"from": "finance_accounts", "localField": "lines.account_id", "foreignField": "account_id", "as": "account"}}, {"$unwind": "$account"},
+                                                               {"$match": {"account.account_type": "expense"}}, {"$group": {"_id": None, "debit": {"$sum": "$lines.debit_cents"}, "credit": {"$sum": "$lines.credit_cents"}}}]):
+            spent += row["debit"] - row["credit"]
+        goal, budget = campaign.get("goal_cents") or 0, campaign.get("budget_cents") or 0
+        projects.append({"campaign_id": cid, "name": campaign.get("name"), "type": {"campaign": "Campaña", "project": "Proyecto", "special_destination": "Destino especial"}.get(campaign.get("project_type"), "Campaña"),
+                         "status": campaign.get("status"), "goal": money(goal), "raised": money(raised), "goal_pct": round(raised / goal * 100) if goal else None,
+                         "budget": money(budget), "spent": money(spent), "budget_pct": round(spent / budget * 100) if budget else None, "start_date": campaign.get("start_date"), "end_date": campaign.get("end_date")})
+    return {"period": period_out(p), "cards": cards,
+            "by_type": [{"type": kind, "label": TYPE_LABELS.get(kind, kind), "amount": money(value), "previous": money(prev_types.get(kind)), "change_pct": change_pct(value, prev_types.get(kind))} for kind, value in sorted(now_types.items(), key=lambda item: -item[1])],
+            "expenses_by_category": [{"label": key, "amount": money(value)} for key, value in sorted(expenses_now.items(), key=lambda item: -item[1])],
+            "trend": trend, "trend_unit": "mes" if by_month else "semana", "projects": projects,
+            "notes": {"privacy": "Solo se muestran totales. Los diezmos de cada persona nunca aparecen en Estadísticas Globales.",
+                      "basis": "«Total recibido» cuenta las contribuciones por fecha de recibido; «Ingresos/Gastos contabilizados» salen del libro diario ya contabilizado, como en los reportes de Finanzas."}}
+
+
+# ------------------------------------------------------------------ G2 · Actividades (Operaciones)
+EVENT_TYPES = {"service": "Servicio", "conference": "Conferencia", "training": "Capacitación", "outreach": "Alcance", "meeting": "Reunión", "other": "Otra actividad"}
+
+
+@router.get("/activities", response_model=dict)
+async def activities(period: Literal["today", "week", "month", "quarter", "year", "custom"] = "month", date_from: Optional[str] = None, date_to: Optional[str] = None,
+                     current_user: dict = Depends(get_current_user)):
+    """Actividades de Operaciones: realizadas en el período (inscritos, asistentes,
+    voluntarios) y próximas 30 días. Mismas colecciones del módulo Operaciones."""
+    require_section(current_user, "activities")
+    p = await resolve(period, date_from, date_to)
+    excluded = await excluded_ids()
+    now = datetime.now(timezone.utc)
+    occurrences = await db.operation_event_occurrences.find({"starts_at": {"$gte": p["start"], "$lt": p["end"]}, "status": {"$ne": "cancelled"}}, {"_id": 0}).sort("starts_at", 1).to_list(2000)
+    upcoming = await db.operation_event_occurrences.find({"starts_at": {"$gte": now, "$lt": now + timedelta(days=30)}, "status": {"$ne": "cancelled"}}, {"_id": 0}).sort("starts_at", 1).to_list(200)
+    event_ids = {item["event_id"] for item in occurrences + upcoming}
+    events = {item["event_id"]: item async for item in db.operation_events.find({"event_id": {"$in": list(event_ids)}}, {"_id": 0, "event_id": 1, "title": 1, "event_type": 1, "location": 1, "status": 1})} if event_ids else {}
+    ids = [item["occurrence_id"] for item in occurrences + upcoming]
+
+    async def count_by(collection: str, match: dict, distinct_person: bool = True) -> dict:
+        out: dict = defaultdict(set if distinct_person else int)
+        async for item in db[collection].find({"occurrence_id": {"$in": ids}, **match}, {"_id": 0, "occurrence_id": 1, "person_id": 1}):
+            if item.get("person_id") in excluded:
+                continue
+            if distinct_person:
+                out[item["occurrence_id"]].add(item.get("person_id") or id(item))
+            else:
+                out[item["occurrence_id"]] += 1
+        return {key: (len(value) if distinct_person else value) for key, value in out.items()}
+    registered = await count_by("operation_registrations", {"status": {"$ne": "cancelled"}})
+    attended = await count_by("operation_checkins", {"status": "active"})
+    volunteers = await count_by("operation_volunteer_assignments", {"status": {"$in": ["invited", "confirmed"]}})
+    needed: dict = defaultdict(int)
+    async for shift in db.operation_shifts.find({"occurrence_id": {"$in": ids}}, {"_id": 0, "occurrence_id": 1, "required_volunteers": 1}):
+        needed[shift["occurrence_id"]] += shift.get("required_volunteers") or 0
+
+    def row(item: dict) -> dict:
+        event = events.get(item["event_id"]) or {}
+        starts = item["starts_at"] if item["starts_at"].tzinfo else item["starts_at"].replace(tzinfo=timezone.utc)
+        return {"occurrence_id": item["occurrence_id"], "title": event.get("title") or "Actividad", "type": EVENT_TYPES.get(event.get("event_type"), "Otra actividad"), "location": event.get("location"),
+                "starts_at": starts.astimezone(p["zone"]).strftime("%Y-%m-%d %H:%M"), "registered": registered.get(item["occurrence_id"], 0), "attended": attended.get(item["occurrence_id"], 0),
+                "volunteers": volunteers.get(item["occurrence_id"], 0), "volunteers_needed": needed.get(item["occurrence_id"], 0), "capacity": item.get("capacity")}
+    done = [row(item) for item in occurrences]
+    by_type: dict = defaultdict(lambda: {"activities": 0, "attended": 0})
+    for item in done:
+        by_type[item["type"]]["activities"] += 1
+        by_type[item["type"]]["attended"] += item["attended"]
+    total_needed = sum(item["volunteers_needed"] for item in done)
+    cards = [
+        card("activities", "Actividades realizadas", len(done), unit="actividades", definition="Fechas de actividades de Operaciones (servicios, conferencias, capacitaciones, alcances, reuniones) dentro del período, sin las canceladas.", source="Operaciones", empty_reason="No hay actividades programadas en este período.", link="/operaciones"),
+        card("attendance", "Asistentes a actividades", sum(item["attended"] for item in done), unit="asistencias", definition="Check-ins registrados en esas actividades (una persona por actividad).", source="Operaciones · check-in", empty_reason="Aún no se ha tomado asistencia en las actividades de este período."),
+        card("registered", "Inscritos", sum(item["registered"] for item in done), unit="inscripciones", definition="Inscripciones activas a esas actividades.", source="Operaciones · inscripciones", empty_reason="No hubo inscripciones en este período."),
+        card("volunteer_coverage", "Cobertura de voluntarios", round(sum(min(item["volunteers"], item["volunteers_needed"]) for item in done) / total_needed * 100) if total_needed else None, unit="%", definition="Voluntarios asignados ÷ voluntarios requeridos en los turnos de esas actividades.", source="Operaciones · turnos", empty_reason="No hay turnos de voluntarios con cupo definido en este período."),
+        card("upcoming", "Próximas actividades (30 días)", len(upcoming), unit="actividades", definition="Fechas de actividades programadas en los próximos 30 días.", source="Operaciones", empty_reason="No hay actividades programadas en los próximos 30 días."),
+    ]
+    return {"period": period_out(p), "cards": cards, "done": done, "upcoming": [row(item) for item in upcoming],
+            "by_type": [{"label": key, **value} for key, value in sorted(by_type.items(), key=lambda item: -item[1]["activities"])],
+            "notes": {"projects": "Los proyectos con meta y presupuesto están en Finanzas (solo con permiso de Finanzas). Operaciones no registra avance porcentual de proyectos."}}
