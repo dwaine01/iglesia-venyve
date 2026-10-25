@@ -23,6 +23,7 @@ import { LOGO_IGLESIA } from '../data/presentationData';
 import { BRAND } from '../config/brand';
 import { LeaderDeleteDialog } from '../components/LeaderDeleteDialog';
 import { isPastoralAuthority } from '../lib/accessControl';
+import { PresentReportLauncher } from '../components/invasions/PresentReportLauncher';
 
 export default function DashboardGeneralPage() {
   const { API, getAuthHeaders, user } = useAuth();
@@ -189,6 +190,9 @@ export default function DashboardGeneralPage() {
             </div>
           </div>
         </motion.div>
+
+        {/* Reporte de la última invasión → Modo Presentar (sin pegar enlaces). */}
+        <PresentReportLauncher />
 
         {/* Botón: Presentación Sistema Celular */}
         <motion.div

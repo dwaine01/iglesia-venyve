@@ -68,6 +68,7 @@ const LibraryTracePage = lazyPage(() => import('./pages/library/LibraryTracePage
 const MyWorkPage = lazyPage(() => import('./pages/MyWorkPage'));
 const InvasionPresentPage = lazyPage(() => import('./pages/InvasionPresentPage'));
 const MyWorkSupervisionPage = lazyPage(() => import('./pages/MyWorkSupervisionPage'));
+const PresentReportLauncherPage = lazyPage(() => import('./components/invasions/PresentReportLauncher'));
 const LibraryLabelsPage = lazyPage(() => import('./pages/library/LibraryLabelsPage'));
 const CampaignControlPage = lazyPage(() => import('./pages/campaign/CampaignControlPage'));
 const CampaignScreenPage = lazyPage(() => import('./pages/campaign/CampaignScreenPage'));
@@ -368,6 +369,7 @@ function App() {
             <Route path="grupo-frontal-pastoral" element={<CapabilityRoute allowed={canViewPastoralFrontGroup}><GrupoFrontalPastoralPage /></CapabilityRoute>} />
             <Route path="mis-estadisticas" element={<MisEstadisticasPage />} />
             {/* Reporte de invasión: el backend decide si es completo, personal o sin acceso. */}
+            <Route path="invasiones/reporte-pastora" element={<PresentReportLauncherPage />} />
             <Route path="invasiones/:campaignId/reporte" element={<InvasionReportPage />} />
             <Route path="invasiones/asistencia" element={<InvasionAttendancePage />} />
             <Route path="invasiones/:campaignId/asistencia" element={<InvasionAttendancePage />} />
