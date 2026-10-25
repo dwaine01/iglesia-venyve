@@ -43,14 +43,17 @@ admin_router = APIRouter(prefix="/api/visitors", tags=["visitors"])
 kiosk_router = APIRouter(prefix="/api/kiosk", tags=["visitor-kiosk"])
 
 TEXTS_ID = "visitor_texts"
-# Cada línea del texto es una frase en pantalla: 1.ª título, 2.ª subtítulo, las demás en bloques.
+# Cada línea del texto es una frase en pantalla: 1.ª título, 2.ª subtítulo, 3.ª la frase
+# PRINCIPAL (bloque destacado, siempre completa) y las demás, secundarias, al final.
+MAIN_PHRASE = "Esperamos que hagas de esta iglesia tu casa y de esta familia tu familia."
 DEFAULT_TEXTS = {
-    "welcome": "¡Bienvenido a Casa de Oración!\n¡Nos alegra que estés aquí!\nEsperamos que hagas de esta iglesia tu casa\ny de esta familia tu familia.\nQueremos conocerte y saber cómo podemos servirte.",
+    "welcome": "¡Bienvenido a Casa de Oración!\n¡Nos alegra que estés aquí!\n" + MAIN_PHRASE + "\nQueremos conocerte y saber cómo podemos servirte.",
     "privacy": "Usamos tus datos solo para darte la bienvenida y servirte mejor.\nNo los compartimos con nadie fuera de la iglesia.\nPuedes pedir que los corrijamos o borremos cuando quieras.",
     "confirmation": "¡Gracias por registrarte!\nYa eres parte de esta familia.\nSi necesitas algo, muestra este número a cualquier servidor de la iglesia.",
 }
 # Textos de la primera versión (un solo párrafo): si siguen sin editar, se usan los nuevos.
 LEGACY_TEXTS = {
+    "¡Bienvenido a Casa de Oración!\n¡Nos alegra que estés aquí!\nEsperamos que hagas de esta iglesia tu casa\ny de esta familia tu familia.\nQueremos conocerte y saber cómo podemos servirte.",
     "¡Bienvenido a Casa de Oración! Nos alegra que estés aquí. Esperamos que hagas de esta iglesia tu casa y de esta familia tu familia. Queremos conocerte y saber cómo podemos servirte.",
     "Usamos tus datos solo para darte la bienvenida, comunicarnos contigo si lo autorizas y servirte mejor. Los cuida un equipo autorizado de la iglesia; no los compartimos con nadie fuera de la iglesia. Tu nombre solo se anuncia o se muestra en pantallas si tú lo autorizas. Puedes pedir en cualquier momento que corrijamos o borremos tus datos.",
     "¡Gracias por registrarte! Ya eres parte de esta familia. Si necesitas algo, muestra este número a cualquier servidor de la iglesia.",
@@ -99,8 +102,13 @@ async def ensure_indexes() -> None:
 async def load_texts() -> dict:
     doc = await db.app_settings.find_one({"_id": TEXTS_ID}, {"_id": 0}) or {}
     pick = lambda key: doc.get(key) if doc.get(key) and doc.get(key) not in LEGACY_TEXTS else DEFAULT_TEXTS[key]  # noqa: E731
-    return {"welcome": pick("welcome"), "privacy": pick("privacy"), "privacy_version": (doc.get("privacy_version") or 1) + (1 if doc.get("privacy") in LEGACY_TEXTS else 0), "confirmation": pick("confirmation"),
+    return {"welcome": keep_main_phrase(pick("welcome")), "privacy": pick("privacy"), "privacy_version": (doc.get("privacy_version") or 1) + (1 if doc.get("privacy") in LEGACY_TEXTS else 0), "confirmation": pick("confirmation"),
             "updated_at": doc.get("updated_at"), "updated_by": doc.get("updated_by_name")}
+
+
+def keep_main_phrase(text: str) -> str:
+    """La frase principal nunca queda partida en dos líneas (se une si alguien la cortó)."""
+    return re.sub(r"tu casa\s*\n\s*y de esta familia", "tu casa y de esta familia", text)
 
 
 class TextsInput(BaseModel):
@@ -121,7 +129,7 @@ async def put_texts(payload: TextsInput, current_user: dict = Depends(get_curren
     require(current_user, VISITORS_TEXTS_MANAGE)
     current = await load_texts()
     version = current["privacy_version"] + (1 if payload.privacy.strip() != current["privacy"].strip() else 0)
-    await db.app_settings.update_one({"_id": TEXTS_ID}, {"$set": {"welcome": payload.welcome.strip(), "privacy": payload.privacy.strip(), "privacy_version": version,
+    await db.app_settings.update_one({"_id": TEXTS_ID}, {"$set": {"welcome": keep_main_phrase(payload.welcome.strip()), "privacy": payload.privacy.strip(), "privacy_version": version,
                                                                     "confirmation": payload.confirmation.strip(), "updated_at": now_utc(), "updated_by_user_id": current_user["user_id"],
                                                                     "updated_by_name": current_user.get("nombre")},
                                                            "$push": {"history": {"privacy_version": version, "privacy": payload.privacy.strip(), "at": now_utc(), "by": current_user["user_id"]}}}, upsert=True)

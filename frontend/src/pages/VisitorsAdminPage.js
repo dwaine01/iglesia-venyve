@@ -77,7 +77,7 @@ function Texts({ canEdit }) {
   );
   return (
     <div className="space-y-4 rounded-2xl border border-[#E8E5DE] bg-white p-4">
-      {area('welcome', 'Mensaje de bienvenida', 'Escribe una frase por línea: la primera es el título, la segunda el subtítulo y cada una de las demás se muestra en su propio bloque.', 6)}
+      {area('welcome', 'Mensaje de bienvenida', 'Una frase por línea. 1.ª: título. 2.ª: subtítulo. 3.ª: la frase principal, en un bloque destacado al centro (escríbela completa en una sola línea). Las demás se muestran más pequeñas, encima del botón «Iniciar registro».', 6)}
       {area('privacy', `Aviso de privacidad (versión ${texts.privacy_version})`, 'Corto, una frase por línea. Si lo cambias, sube la versión y cada registro guarda la versión que aceptó.', 5)}
       {area('confirmation', 'Mensaje de confirmación', 'Se muestra con el número de registro al terminar. Una frase por línea.', 3)}
       {canEdit && <button type="button" onClick={save} className="min-h-12 rounded-xl bg-[#132443] px-5 text-base font-semibold text-white" data-testid="visitors-texts-save">Guardar textos</button>}

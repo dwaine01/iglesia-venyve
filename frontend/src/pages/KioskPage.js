@@ -166,7 +166,7 @@ export default function KioskPage() {
         <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 44, height: 44, borderRadius: 999, border: '2px solid #E7D28D' }}><Church size={24} color="#E7D28D" aria-hidden /></span>
         {config && <span style={{ fontSize: 19, color: 'rgba(255,255,255,0.9)', textAlign: 'right' }}>{config.service.label}{pending ? ` · ${pending} registro(s) esperando internet` : ''}</span>}
       </header>
-      <main style={{ flex: 1, width: '100%', maxWidth: 860, margin: '0 auto', padding: '28px 24px 150px', boxSizing: 'border-box' }}>{children}</main>
+      <main style={{ flex: 1, width: '100%', maxWidth: step < 0 && !result ? 1040 : 860, margin: '0 auto', padding: 'clamp(14px, 3vh, 28px) 24px 150px', boxSizing: 'border-box' }}>{children}</main>
       {footer && <footer style={{ position: 'fixed', left: 0, right: 0, bottom: 0, background: '#fff', borderTop: `2px solid ${C.line}`, padding: 16, display: 'flex', justifyContent: 'space-between', gap: 12 }}>{footer}</footer>}
       {idle >= IDLE_WARN && step >= 0 && !result && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(20,33,61,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }} data-testid="kiosk-idle">
@@ -211,21 +211,29 @@ export default function KioskPage() {
 
   // ---------------------------------------------------------------- inicio
   if (step < 0) {
-    const [title, subtitle, ...lines] = phrases(config.texts.welcome);
+    // Composición: título y subtítulo arriba; la frase PRINCIPAL (3.ª línea) entera en
+    // un bloque destacado al centro; las demás, secundarias, justo encima del botón.
+    const [title, subtitle, main, ...closing] = phrases(config.texts.welcome);
+    const gap = 'clamp(10px, 2.4vh, 30px)';
     return shell(
-      <div style={{ textAlign: 'center', marginTop: 12 }} data-testid="kiosk-start">
-        <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 84, height: 84, borderRadius: 999, background: C.goldSoft, border: `3px solid ${C.gold}` }}><HeartHandshake size={44} color={C.goldDark} aria-hidden /></span>
-        <h1 style={{ fontSize: 'clamp(36px, 6vw, 54px)', margin: '22px 0 0', fontFamily: 'Spectral, Georgia, serif', lineHeight: 1.12, color: C.navy }} data-testid="kiosk-title">{title}</h1>
-        <Accent />
-        {subtitle && <p style={{ fontSize: 'clamp(26px, 4vw, 34px)', margin: 0, color: C.goldDark, fontWeight: 700 }} data-testid="kiosk-subtitle">{subtitle}</p>}
-        {lines.length > 0 && (
-          <div style={{ display: 'grid', gap: 14, maxWidth: 680, margin: '30px auto 0' }} data-testid="kiosk-phrases">
-            {lines.map((line) => <p key={line} style={{ margin: 0, fontSize: 'clamp(23px, 3.4vw, 28px)', lineHeight: 1.35, background: '#fff', border: `2px solid ${C.line}`, borderLeft: `6px solid ${C.gold}`, borderRadius: 18, padding: '16px 20px' }}>{line}</p>)}
-          </div>
+      <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap, paddingTop: 'clamp(0px, 1vh, 12px)' }} data-testid="kiosk-start">
+        <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 'clamp(44px, 7vh, 64px)', height: 'clamp(44px, 7vh, 64px)', borderRadius: 999, background: C.goldSoft, border: `3px solid ${C.gold}` }}><HeartHandshake size={34} color={C.goldDark} aria-hidden /></span>
+        <div>
+          <h1 style={{ fontSize: 'clamp(30px, min(5vw, 6.2vh), 50px)', margin: 0, fontFamily: 'Spectral, Georgia, serif', lineHeight: 1.12, color: C.navy }} data-testid="kiosk-title">{title}</h1>
+          {subtitle && <p style={{ fontSize: 'clamp(21px, min(3.2vw, 4vh), 30px)', margin: '8px 0 0', color: C.goldDark, fontWeight: 700 }} data-testid="kiosk-subtitle">{subtitle}</p>}
+        </div>
+        {main && (
+          <blockquote style={{ margin: 0, width: '100%', maxWidth: 940, boxSizing: 'border-box', background: '#fff', border: `3px solid ${C.gold}`, borderRadius: 28, padding: 'clamp(16px, 3.2vh, 36px) clamp(20px, 4vw, 44px)', boxShadow: '0 10px 30px rgba(20,33,61,0.10)', position: 'relative' }} data-testid="kiosk-main-phrase">
+            <span aria-hidden style={{ position: 'absolute', top: -3, left: '50%', transform: 'translateX(-50%)', width: 96, height: 6, borderRadius: 6, background: C.gold }} />
+            <p style={{ margin: 0, fontFamily: 'Spectral, Georgia, serif', fontWeight: 700, fontSize: 'clamp(26px, min(4.4vw, 5.4vh), 42px)', lineHeight: 1.25, color: C.navy, textWrap: 'balance', overflowWrap: 'break-word' }}>{main}</p>
+          </blockquote>
         )}
-        <button type="button" onClick={() => { setForm(emptyForm()); setStep(0); lastTouch.current = Date.now(); }} data-testid="kiosk-begin"
-          style={{ marginTop: 36, minHeight: 104, padding: '0 64px', borderRadius: 28, fontSize: 34, fontWeight: 800, background: C.gold, color: C.navy, border: 'none', boxShadow: '0 8px 24px rgba(20,33,61,0.25)' }}>Iniciar registro</button>
-        <p style={{ marginTop: 28, fontSize: 15, color: C.muted }}>{device}</p>
+        <div>
+          {closing.map((line) => <p key={line} style={{ margin: '0 0 6px', fontSize: 'clamp(20px, min(2.8vw, 3.4vh), 25px)', lineHeight: 1.35, color: C.muted }} data-testid="kiosk-closing">{line}</p>)}
+          <button type="button" onClick={() => { setForm(emptyForm()); setStep(0); lastTouch.current = Date.now(); }} data-testid="kiosk-begin"
+            style={{ marginTop: 'clamp(10px, 2vh, 22px)', minHeight: 'clamp(72px, 11vh, 104px)', padding: '0 clamp(28px, 7vw, 64px)', whiteSpace: 'nowrap', borderRadius: 28, fontSize: 'clamp(28px, 4.4vh, 34px)', fontWeight: 800, background: C.gold, color: C.navy, border: 'none', boxShadow: '0 8px 24px rgba(20,33,61,0.25)' }}>Iniciar registro</button>
+        </div>
+        <p style={{ margin: 0, fontSize: 15, color: C.muted }}>{device}</p>
       </div>,
     );
   }
