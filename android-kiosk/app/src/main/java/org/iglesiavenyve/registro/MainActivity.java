@@ -34,6 +34,8 @@ import android.view.ViewGroup;
 import android.view.ViewTreeObserver;
 import android.view.WindowManager;
 import android.webkit.SslErrorHandler;
+import android.webkit.ConsoleMessage;
+import android.webkit.RenderProcessGoneDetail;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
@@ -73,6 +75,9 @@ public class MainActivity extends Activity {
     static final String KEY_PIN_ON_OPEN = "pin_screen_on_open";
     static final long CORNER_HOLD_MS = 5000;
     static final long AUTO_RETRY_MS = 15000;
+    /** Si el registro no se dibuja en este tiempo, se avisa (nunca pantalla en blanco). */
+    static final long RENDER_CHECK_MS = 20000;
+    static final String DRAWN_SCRIPT = "(function(){return !!(document.querySelector('[data-testid=kiosk-page]')||document.querySelector('[data-testid=app-start-error]'));})()";
 
     private static final int NAVY = 0xFF14213D;
     private static final int BACKGROUND = 0xFFF7F5EF;
@@ -104,6 +109,14 @@ public class MainActivity extends Activity {
     private ConnectivityManager.NetworkCallback networkCallback;
     private int wrongPins;
     private long lockedUntil;
+    /** Últimos errores de la página (se muestran en el aviso para saber qué falló). */
+    final java.util.ArrayDeque<String> pageErrors = new java.util.ArrayDeque<>();
+    private final Runnable renderCheck = new Runnable() {
+        @Override
+        public void run() {
+            checkDrawn();
+        }
+    };
     private final Runnable autoRetry = new Runnable() {
         @Override
         public void run() {
@@ -255,7 +268,22 @@ public class MainActivity extends Activity {
             }
             client = new KioskClient();
             web.setWebViewClient(client);
-            web.setWebChromeClient(new WebChromeClient());
+            web.setWebChromeClient(new WebChromeClient() {
+                @Override
+                public boolean onConsoleMessage(ConsoleMessage message) {
+                    if (message.messageLevel() == ConsoleMessage.MessageLevel.ERROR) {
+                        String text = message.message() + " (" + message.sourceId().replaceAll(".*/", "") + ":" + message.lineNumber() + ")";
+                        Log.w(TAG, "Error de la página: " + text);
+                        synchronized (pageErrors) {
+                            pageErrors.addLast(text);
+                            while (pageErrors.size() > 3) {
+                                pageErrors.removeFirst();
+                            }
+                        }
+                    }
+                    return false;
+                }
+            });
             web.setOverScrollMode(View.OVER_SCROLL_NEVER);
             web.setOnLongClickListener(new View.OnLongClickListener() {
                 @Override
@@ -327,7 +355,12 @@ public class MainActivity extends Activity {
                 screen = "web";
                 String url = KioskPolicy.tabletUrl(prefs.getString(KEY_CODE, ""));
                 Log.i(TAG, "Abriendo " + KioskPolicy.hostOf(url));
+                synchronized (pageErrors) {
+                    pageErrors.clear();
+                }
                 web.loadUrl(url);
+                handler.removeCallbacks(renderCheck);
+                handler.postDelayed(renderCheck, RENDER_CHECK_MS);
         }
     }
 
@@ -360,8 +393,91 @@ public class MainActivity extends Activity {
         }
     }
 
+    /** ¿Se dibujó el registro? Si no (página en blanco, error de la página o el navegador no responde), se avisa. */
+    void checkDrawn() {
+        if (!"web".equals(screen) || offline || web == null) {
+            return;
+        }
+        final boolean[] answered = {false};
+        final Runnable noAnswer = () -> {
+            if (!answered[0] && "web".equals(screen)) {
+                showRenderProblem("el navegador interno no responde");
+            }
+        };
+        handler.postDelayed(noAnswer, 5000);
+        web.evaluateJavascript(DRAWN_SCRIPT, (value) -> {
+            answered[0] = true;
+            handler.removeCallbacks(noAnswer);
+            if (!"true".equals(value) && "web".equals(screen)) {
+                showRenderProblem("el registro no se dibujó");
+            } else {
+                Log.i(TAG, "Registro dibujado");
+            }
+        });
+    }
+
+    /** El navegador de la tableta abre el sitio pero no muestra el registro (por ejemplo, es muy viejo). */
+    void showRenderProblem(String reason) {
+        handler.removeCallbacks(renderCheck);
+        handler.removeCallbacks(autoRetry);
+        String errors;
+        synchronized (pageErrors) {
+            errors = pageErrors.isEmpty() ? "" : " · " + android.text.TextUtils.join(" | ", pageErrors);
+        }
+        String detail = reason + " · " + browserVersion() + " · app " + versionName() + errors;
+        Log.w(TAG, "Registro no visible: " + detail);
+        screen = "render_problem";
+        root.removeAllViews();
+        LinearLayout box = column();
+        box.setGravity(Gravity.CENTER);
+        int pad = dp(32);
+        box.setPadding(pad, pad, pad, pad);
+        Bitmap emblem = asset("emblema.png");
+        if (emblem != null) {
+            ImageView logo = new ImageView(this);
+            logo.setImageBitmap(emblem);
+            logo.setAdjustViewBounds(true);
+            box.addView(logo, new LinearLayout.LayoutParams(dp(200), ViewGroup.LayoutParams.WRAP_CONTENT));
+        }
+        box.addView(text("El registro no se pudo mostrar", 30, NAVY, true));
+        box.addView(text("The registration could not be displayed", 21, 0xFF8A6A1F, true));
+        box.addView(text("Toque «Reintentar». Si sigue igual, actualice el sistema de la tableta (Configuración › Opciones del dispositivo › Actualizaciones del sistema) o revise el código.", 19, MUTED, false));
+        Button retry = bigButton("Reintentar · Try again", true);
+        retry.setOnClickListener(view -> {
+            boolean fresh = web == null;  // si el navegador se cerró, showWeb crea uno y ya carga
+            showWeb();
+            if (!fresh) {
+                loadTablet();
+            }
+        });
+        LinearLayout.LayoutParams first = wide();
+        first.topMargin = dp(20);
+        box.addView(retry, first);
+        Button change = bigButton("Cambiar código · Change code", false);
+        change.setOnClickListener(view -> askPin(() -> showSetup(false)));
+        box.addView(change, wide());
+        box.addView(text("Detalle: " + detail, 15, MUTED, false));
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        scroll.addView(box);
+        root.addView(scroll, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        addAdminCorner();
+    }
+
+    /** Versión del navegador interno («Chrome/70.0…»), para el detalle. */
+    String browserVersion() {
+        try {
+            String agent = web != null ? web.getSettings().getUserAgentString() : "";
+            java.util.regex.Matcher match = java.util.regex.Pattern.compile("Chrome/[0-9.]+").matcher(agent);
+            return match.find() ? "navegador " + match.group() : "navegador sin versión";
+        } catch (RuntimeException error) {
+            return "navegador sin versión";
+        }
+    }
+
     void showOffline(String reason) {
         Log.w(TAG, "Sin conexión: " + reason);
+        handler.removeCallbacks(renderCheck);
         offline = true;
         if (web.getParent() == null) {
             attachWeb();
@@ -448,6 +564,18 @@ public class MainActivity extends Activity {
         @Override
         public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
             return !allow(request.getUrl().toString());
+        }
+
+        /** El proceso del navegador interno se cerró (memoria o fallo): se crea uno nuevo y se avisa. */
+        @TargetApi(26)
+        @Override
+        public boolean onRenderProcessGone(WebView view, RenderProcessGoneDetail detail) {
+            Log.w(TAG, "El navegador interno se cerró" + (detail.didCrash() ? " (falló)" : " (memoria)"));
+            root.removeView(view);
+            view.destroy();
+            web = null;
+            showRenderProblem(detail.didCrash() ? "el navegador interno falló" : "el navegador interno se cerró por falta de memoria");
+            return true;
         }
 
         @Override

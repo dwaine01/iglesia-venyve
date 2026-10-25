@@ -4,6 +4,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 import android.content.Context;
+import android.graphics.Bitmap;
 import android.os.SystemClock;
 import android.util.Log;
 
@@ -14,6 +15,8 @@ import androidx.test.platform.app.InstrumentationRegistry;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
+import java.io.File;
+import java.io.FileOutputStream;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -37,6 +40,21 @@ public class KioskOnDeviceTest {
         AtomicReference<String> value = new AtomicReference<>();
         scenario.onActivity(activity -> value.set(activity.web.getUrl()));
         return value.get();
+    }
+
+    /** Captura de pantalla para el informe (el script del emulador la descarga mientras la prueba espera). */
+    private static void saveScreenshot(Context context, String name) {
+        try {
+            Bitmap picture = InstrumentationRegistry.getInstrumentation().getUiAutomation().takeScreenshot();
+            File file = new File(context.getExternalFilesDir(null), name);
+            try (FileOutputStream output = new FileOutputStream(file)) {
+                picture.compress(Bitmap.CompressFormat.PNG, 100, output);
+            }
+            Log.i(TAG, "Captura guardada: " + file);
+            SystemClock.sleep(8000);
+        } catch (Exception error) {
+            Log.w(TAG, "No se pudo guardar la captura", error);
+        }
     }
 
     @Test
@@ -66,6 +84,8 @@ public class KioskOnDeviceTest {
                 drawn = evaluate(scenario, "(function(){return !!document.querySelector('[data-testid=kiosk-page]');})()");
             }
             Log.i(TAG, "Página abierta: " + url(scenario) + " · registro dibujado: " + drawn);
+            SystemClock.sleep(2000);
+            saveScreenshot(context, "registro-dibujado.png");
             assertEquals("el registro se dibujó", "true", drawn);
             assertTrue(url(scenario).startsWith("https://panel.iglesiavenyve.org/"));
 
