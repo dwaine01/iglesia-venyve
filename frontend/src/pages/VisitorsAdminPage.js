@@ -63,6 +63,28 @@ function Links() {
   );
 }
 
+// Tiempos de espera de la tableta, en minutos (el servidor los guarda en segundos).
+function KioskTimeouts({ canEdit }) {
+  const { API, getAuthHeaders } = useAuth();
+  const [values, setValues] = useState(null);
+  useEffect(() => { axios.get(`${API}/api/visitors/kiosk-settings`, getAuthHeaders()).then((response) => setValues(response.data)).catch(() => setValues(null)); }, [API, getAuthHeaders]);
+  if (!values) return null;
+  const fields = [['form_warn_seconds', 'Aviso «¿Sigues ahí?» en el formulario'], ['form_reset_seconds', 'Limpiar el formulario sin actividad'], ['start_reset_seconds', 'Refrescar la pantalla de inicio'], ['confirm_reset_seconds', 'Volver al inicio desde la confirmación']];
+  const save = async () => { try { setValues((await axios.put(`${API}/api/visitors/kiosk-settings`, values, getAuthHeaders())).data); toast.success('Tiempos guardados'); } catch (error) { toast.error(apiErrorMessage(error, 'No se pudieron guardar')); } };
+  return (
+    <div className="border-t border-[#EEECE6] pt-4" data-testid="visitors-timeouts">
+      <p className="text-[15px] font-semibold text-[#101D36]">Tiempos de espera de la tableta (minutos)</p>
+      <p className="text-sm text-slate-600">Cualquier toque o tecla reinicia el contador; nunca se borra mientras la persona escribe.</p>
+      <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">{fields.map(([key, label]) => (
+        <label key={key} className="text-[15px] font-semibold text-slate-700">{label}
+          <input type="number" min={key === 'confirm_reset_seconds' ? 0.25 : 1} step={0.25} disabled={!canEdit} value={Math.round((values[key] / 60) * 100) / 100} onChange={(event) => setValues((current) => ({ ...current, [key]: Math.round(Number(event.target.value) * 60) }))}
+            className="mt-1 block h-12 w-full rounded-lg border border-[#D9D4C7] px-3 text-base" data-testid={`visitors-timeout-${key}`} /></label>
+      ))}</div>
+      {canEdit && <button type="button" onClick={save} className="mt-3 min-h-12 rounded-xl border border-[#D9D4C7] px-4 text-base font-semibold">Guardar tiempos</button>}
+    </div>
+  );
+}
+
 function Texts({ canEdit }) {
   const { API, getAuthHeaders } = useAuth();
   const [texts, setTexts] = useState(null);
@@ -81,6 +103,7 @@ function Texts({ canEdit }) {
       {area('privacy', `Aviso de privacidad (versión ${texts.privacy_version})`, 'Corto, una frase por línea. Si lo cambias, sube la versión y cada registro guarda la versión que aceptó.', 5)}
       {area('confirmation', 'Mensaje de confirmación', 'Se muestra con el número de registro al terminar. Una frase por línea.', 3)}
       {canEdit && <button type="button" onClick={save} className="min-h-12 rounded-xl bg-[#132443] px-5 text-base font-semibold text-white" data-testid="visitors-texts-save">Guardar textos</button>}
+      <KioskTimeouts canEdit={canEdit} />
       <div className="border-t border-[#EEECE6] pt-4">
         <p className="text-[15px] font-semibold text-[#101D36]">Servicio o actividad de hoy</p>
         <p className="text-sm text-slate-600">El registro toma «Servicio del domingo» o «Servicio del miércoles» según el día. Para una actividad especial, escribe su nombre (vale solo por hoy).</p>
@@ -104,7 +127,7 @@ function Registrations() {
             <p className="text-lg font-semibold text-[#101D36]">{item.visitor_number} · {item.first_name} {item.last_name}{item.preferred_name !== item.first_name ? ` («${item.preferred_name}»)` : ''}</p>
             <p className="text-[15px] text-slate-700">{item.service.label} · {fmtDateTime(item.created_at)} · {item.device_name}</p>
             <p className={`text-[15px] font-semibold ${item.match_status === 'possible' ? 'text-amber-800' : 'text-emerald-800'}`}>{item.match_label}</p>
-            {item.contact?.phone && <p className="text-[15px] text-slate-700">Teléfono: {item.contact.phone}</p>}
+            {item.contact?.phone && <p className="text-[15px] text-slate-700">Teléfono: {item.contact.phone.replace(/^(\d{3})(\d{3})(\d{4})$/, '$1-$2-$3')}</p>}
             {item.requests.length > 0 && <p className="text-[15px] text-slate-700">Pide: {item.requests.join(', ')}{item.has_restricted ? ' · tiene notas confidenciales' : ''}</p>}
             <p className="text-sm text-slate-600">¿Podemos comunicarnos?: {item.consents.followup === true ? 'Sí' : item.consents.followup === false ? 'No' : 'No respondió'}</p>
             {item.person_id && <Link to={`/personas/${item.person_id}`} className="text-sm font-semibold text-[#0879BE] underline">Perfil 360</Link>}
