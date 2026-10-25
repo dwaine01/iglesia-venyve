@@ -8,7 +8,7 @@ import { canAccessOutreach, hasCapability, isGeneralCoordinator, isPastoralAutho
 import { AddVisitDialog } from '../outreach/AddVisitDialog';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../ui/dialog';
 
-const HOME_PATHS = ['/', '/dashboard', '/dashboard-general', '/procesos/dashboard'];
+const HOME_PATHS = ['/', '/dashboard', '/dashboard-general', '/procesos/dashboard', '/mi-trabajo'];
 const TYPING_TYPES = new Set(['checkbox', 'radio', 'button', 'submit', 'reset', 'range', 'file', 'color']);
 
 // El teclado en pantalla achica el viewport visual (o hay un campo de texto
@@ -96,7 +96,9 @@ export function MobileBottomNav({ isActiveMentor, menuOpen, onOpenMenu, onAddVis
   // Panorama de Consolidación (C3): pastoral, coordinador general y encargados.
   const consolidationViewer = isPastoralAuthority(user) || isGeneralCoordinator(user) || hasCapability(user, 'consolidation.assign');
   const consolidationItem = { key: 'consolidation', to: '/procesos/consolidacion', icon: Activity, label: 'Consolidación', active: path.startsWith('/procesos/consolidacion') };
-  const items = [{ key: 'home', to: '/', icon: Home, label: 'Inicio', active: HOME_PATHS.includes(path) }];
+  // MT2: «Inicio» del mentor activo = Mi Trabajo (la autoridad y coordinadores siguen con su panel).
+  const homeTo = isActiveMentor && !isPastoralAuthority(user) && !isGeneralCoordinator(user) ? '/mi-trabajo' : '/';
+  const items = [{ key: 'home', to: homeTo, icon: Home, label: 'Inicio', active: HOME_PATHS.includes(path) }];
   if (invasion || managed.length) {
     items.push({ key: 'invasion', icon: Footprints, label: 'Invasión', badge: invasion ? data?.pending_invitations : 0, onClick: onOpenInvasion,
       active: (path === '/mentoria/puerta-a-puerta' && !['pendientes', 'mapa'].includes(search.get('vista'))) || (onOutreach && search.get('tab') !== 'mapa') || (path === '/mi-perfil' && search.has('invasion')) || (path.startsWith('/invasiones/') && !onAttendance && !onProgram) || (!invasion && !consolidationViewer && path === '/procesos/consolidacion') });

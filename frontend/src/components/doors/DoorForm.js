@@ -16,7 +16,7 @@ const FOLLOWUP = [['yes', 'Sí'], ['no', 'No'], ['not_asked', 'No se preguntó']
 const NEXT_ACTIONS = ['Visitar de nuevo', 'Llamar por teléfono', 'Enviar mensaje', 'Invitar a la iglesia'];
 const LANGUAGES = [['es', 'Español'], ['en', 'Inglés'], ['other', 'Otro'], ['unknown', 'Desconocido']];
 
-const emptyVisit = () => ({ opened: null, contact_level: null, actions: [], books: {}, other_material_count: 0, followup: 'not_asked', followup_date: '', followup_next_action: 'Visitar de nuevo',
+const emptyVisit = () => ({ opened: null, contact_level: null, actions: [], books: {}, other_material_count: 0, followup: 'not_asked', followup_date: '', followup_next_action: 'Visitar de nuevo', outcome: null, return_date: '',
   language: null, language_other: '', impression: false, name: '', phone: '', note: '', shared: false, religion: '', origin: '', start_consolidation: false });
 
 // Botón grande de opción (táctil 48 px, estado visible también sin color).
@@ -77,6 +77,7 @@ export function DoorForm({ campaignId, street, books, household = null, onSaved 
   const save = async (addAnother) => {
     if (!household && !number.trim()) { toast.error('Escribe el número de la casa o edificio'); numberRef.current?.focus(); return; }
     if (visit.opened === null) { toast.error('Indica si abrieron'); return; }
+    if (visit.opened && visit.outcome === 'requested_return' && !visit.return_date) { toast.error('Indica la fecha en que pidieron que regreses'); return; }
     if (saving) return;
     setSaving(true);
     const opened = visit.opened;
@@ -87,6 +88,7 @@ export function DoorForm({ campaignId, street, books, household = null, onSaved 
       ...(opened ? {
         contact_level: visit.contact_level, actions: visit.actions, followup: visit.followup, followup_date: visit.followup === 'yes' && visit.followup_date ? visit.followup_date : null,
         followup_next_action: visit.followup === 'yes' ? visit.followup_next_action : null,
+        outcome: visit.outcome, return_date: visit.outcome === 'requested_return' ? visit.return_date : null,
         language: visit.language, language_other: visit.language === 'other' ? visit.language_other.trim() || null : null,
         language_basis: visit.language && visit.language !== 'unknown' ? (visit.impression ? 'impression' : 'confirmed') : null,
         shared_by_person: visit.shared, religion: visit.shared ? visit.religion.trim() || null : null, origin: visit.shared ? visit.origin.trim() || null : null,
@@ -169,6 +171,15 @@ export function DoorForm({ campaignId, street, books, household = null, onSaved 
           <div className="grid grid-cols-3 gap-2">{FOLLOWUP.map(([key, label]) => <Choice key={key} active={visit.followup === key} onClick={() => set({ followup: key })} testId={`door-followup-${key}`}>{label}</Choice>)}</div>
           {visit.followup === 'yes' && <div className="mt-2" data-testid="door-next-action"><Label>Próxima acción (responsable: tú)</Label><div className="grid grid-cols-2 gap-2">{NEXT_ACTIONS.map((action) => <Choice key={action} active={visit.followup_next_action === action} onClick={() => set({ followup_next_action: action })} testId={`door-next-action-${NEXT_ACTIONS.indexOf(action)}`}>{action}</Choice>)}</div></div>}
           {visit.followup === 'yes' && <label className="mt-2 block"><Label>Fecha (opcional)</Label><input type="date" value={visit.followup_date} onChange={(event) => set({ followup_date: event.target.value })} className="h-12 w-full rounded-lg border border-[#D9D4C7] px-3 text-base" data-testid="door-followup-date" /></label>}
+        </div>
+        <div data-testid="door-outcome">
+          <Label>¿Algo más de esta vivienda? (opcional)</Label>
+          <div className="grid grid-cols-2 gap-2">
+            <Choice active={visit.outcome === 'requested_return'} onClick={() => set({ outcome: visit.outcome === 'requested_return' ? null : 'requested_return' })} testId="door-outcome-return">Pidieron que regrese</Choice>
+            <Choice active={visit.outcome === 'no_more_visits'} onClick={() => set({ outcome: visit.outcome === 'no_more_visits' ? null : 'no_more_visits', return_date: '' })} tone="red" testId="door-outcome-no-more">No desean más visitas</Choice>
+          </div>
+          {visit.outcome === 'requested_return' && <label className="mt-2 block"><Label>¿Cuándo regresar?</Label><input type="date" value={visit.return_date} onChange={(event) => set({ return_date: event.target.value })} className="h-12 w-full rounded-lg border border-[#D9D4C7] px-3 text-base" data-testid="door-return-date" /></label>}
+          {visit.outcome === 'no_more_visits' && <p className="mt-1 text-sm text-slate-600">La vivienda sale de tus pendientes; su historial se conserva.</p>}
         </div>
         <div>
           <Label>Idioma</Label>

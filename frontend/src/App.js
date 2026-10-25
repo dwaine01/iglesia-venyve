@@ -5,7 +5,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import LoginPage from './pages/LoginPage';
 import AppLayout from './components/AppLayout';
 import AccessDeniedPage from './components/AccessDeniedPage';
-import { canManageDirectMembership, canManageBaptismEvents, canManageDedicationEvents, canViewCare, canViewFinanceModule, canViewFormation, canViewFrontGroups, canViewGeo, canViewLeadership, canViewLibraryModule, canManageLibraryInventory, canViewLibraryPurchaseOrders, canViewLibraryReports, canViewOperations, canAccessCampaignOperator, canAccessOutreach, canCreateOutreachCampaign, canViewPastoralFrontGroup, canViewProcesses, canViewCellular, canViewDoors, canViewDirectory, canManageInvitationCodes, canWriteEvangelismLog, canViewPresentationManual, hasAnyCapability, isPastoralAuthority } from './lib/accessControl';
+import { canManageDirectMembership, canManageBaptismEvents, canManageDedicationEvents, canViewCare, canViewFinanceModule, canViewFormation, canViewFrontGroups, canViewGeo, canViewLeadership, canViewLibraryModule, canManageLibraryInventory, canViewLibraryPurchaseOrders, canViewLibraryReports, canViewOperations, canAccessCampaignOperator, canAccessOutreach, canCreateOutreachCampaign, canViewPastoralFrontGroup, canViewProcesses, canViewCellular, canViewDoors, canViewDirectory, canManageInvitationCodes, canWriteEvangelismLog, canViewPresentationManual, hasAnyCapability, isGeneralCoordinator, isPastoralAuthority } from './lib/accessControl';
 import { useBoardAccess } from './hooks/useBoardAccess';
 import { useMentorAccess } from './hooks/useMentorAccess';
 import { lazyPage } from './lib/lazyPage';
@@ -65,6 +65,7 @@ const LibraryDeficitPage = lazyPage(() => import('./pages/library/LibraryDeficit
 const LibraryScanPage = lazyPage(() => import('./pages/library/LibraryScanPage'));
 const LibraryReportsPage = lazyPage(() => import('./pages/library/LibraryReportsPage'));
 const LibraryTracePage = lazyPage(() => import('./pages/library/LibraryTracePage'));
+const MyWorkPage = lazyPage(() => import('./pages/MyWorkPage'));
 const LibraryLabelsPage = lazyPage(() => import('./pages/library/LibraryLabelsPage'));
 const CampaignControlPage = lazyPage(() => import('./pages/campaign/CampaignControlPage'));
 const CampaignScreenPage = lazyPage(() => import('./pages/campaign/CampaignScreenPage'));
@@ -207,7 +208,11 @@ function SupervisionAccessRoute({ children }) {
 // Redirect to correct dashboard based on role
 function RoleDashboard() {
   const { user } = useAuth();
+  const mentor = useMentorAccess();
   if (isPastoralAuthority(user)) return <Navigate to="/dashboard-general" />;
+  // MT2: el mentor activo entra a «Mi Trabajo»; coordinadores generales siguen en su panel.
+  if (mentor.loading) return <PageSkeleton />;
+  if (mentor.isActiveMentor && !isGeneralCoordinator(user)) return <Navigate to="/mi-trabajo" replace />;
   if (!canViewProcesses(user)) return <Navigate to="/mi-perfil" replace />;
   if (user?.rol === 'persona') return <Navigate to="/procesos/dashboard" />;
   return <ProcessesDashboardPage />;
@@ -324,6 +329,7 @@ function App() {
             <Route path="libreria/reportes" element={<CapabilityRoute allowed={canViewLibraryReports}><LibraryReportsPage /></CapabilityRoute>} />
             {/* L3: cualquier cuenta entra; el backend muestra solo lo propio salvo a Librería/encargados. */}
             <Route path="libreria/recorrido" element={<LibraryTracePage />} />
+            <Route path="mi-trabajo" element={<MyWorkPage />} />
             <Route path="libreria/etiquetas" element={<CapabilityRoute allowed={canManageLibraryInventory}><LibraryLabelsPage /></CapabilityRoute>} />
             <Route path="campanas/ven-y-come/control" element={<CapabilityRoute allowed={canAccessCampaignOperator}><CampaignControlPage /></CapabilityRoute>} />
             <Route path="mentoria/visitas" element={<OutreachAccessRoute><OutreachPage /></OutreachAccessRoute>} />
