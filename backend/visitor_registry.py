@@ -205,8 +205,14 @@ async def load_links() -> dict:
             item["code"] = next(code for code in iter(new_code, None) if code not in taken)
         if item != (doc.get(kind) or {}):
             changes[kind] = item
+    for kind, item in changes.items():
+        # Solo se escribe si sigue faltando (dos pedidos a la vez no pueden dejar códigos distintos).
+        missing = {"$or": [{f"{kind}.code": {"$exists": False}}, {f"{kind}.code": None}, {f"{kind}.token": {"$exists": False}}]}
+        try:
+            await db.app_settings.update_one({"_id": LINKS_ID, **missing}, {"$set": {kind: item}}, upsert=True)
+        except DuplicateKeyError:
+            pass  # otro pedido lo creó al mismo tiempo: se usa el suyo
     if changes:
-        await db.app_settings.update_one({"_id": LINKS_ID}, {"$set": changes}, upsert=True)
         doc = await db.app_settings.find_one({"_id": LINKS_ID}, {"_id": 0})
     return doc
 
