@@ -159,12 +159,18 @@ def _is_admin(current_user: dict) -> bool:
 
 
 @router.get("/tree", response_model=dict)
-async def structure_tree(root: Optional[str] = None, period: str = "month", current_user: dict = Depends(get_current_user)):
+async def structure_tree(root: Optional[str] = None, period: str = "month", levels: int = 1, current_user: dict = Depends(get_current_user)):
     """«Mis ramas»: el árbol hacia ABAJO desde el grupo pedido (o el primero del
     usuario). Cada equipo (líder + colíder) muestra su grupo o «todavía no ha
     formado su grupo». Personas de cada rama sin contar dos veces; avance de la
     rama = mismo indicador del resumen del grupo. Nunca muestra ramas ajenas
-    ni hacia arriba (solo el nombre de su líder directo)."""
+    ni hacia arriba (solo el nombre de su líder directo).
+    Profundidad ILIMITADA, cargada por niveles: `levels` niveles de equipos
+    (1 por defecto); los grupos más abajo vienen resumidos (`teams` = None) y se
+    piden al expandir con `root=<ese grupo>`. Los totales de cada rama cuentan a
+    cada persona una sola vez aunque aparezca en dos ramas. Protección contra
+    ciclos: nunca se visita dos veces el mismo grupo."""
+    levels = max(0, min(levels, 50))
     from front_group_stats import goal_indicators, load_thresholds, person_metrics, resolve_period
     if root:
         root_group = await assert_explorable(root, current_user)
@@ -200,9 +206,12 @@ async def structure_tree(root: Optional[str] = None, period: str = "month", curr
     def person(pid: Optional[str]) -> Optional[dict]:
         return {"person_id": pid, "name": names.get(pid) or "Persona sin nombre"} if pid else None
 
-    def node(group: dict) -> dict:
+    visited: set[str] = set()
+
+    def node(group: dict, remaining: int) -> dict:
         gid = group["front_group_id"]
-        subtree = [gid] + [item["front_group_id"] for item in groups if gid in (item.get("ancestor_group_ids") or [])]
+        visited.add(gid)
+        subtree = [gid] + [item["front_group_id"] for item in groups if gid in (item.get("ancestor_group_ids") or []) and item["front_group_id"] != gid]
         branch_people = sorted({item["person_id"] for g in subtree for item in members_of.get(g, [])} - authorities)
         overall = goal_indicators(branch_people, metrics, thresholds, resolved)["overall_progress"] if branch_people else None
         progress = round(overall * 100) if overall is not None else None  # % como en el resumen del grupo
@@ -215,7 +224,14 @@ async def structure_tree(root: Optional[str] = None, period: str = "month", curr
             entry = {"pair_id": pair, "ids": [item["person_id"]]}
             if pair: by_pair[pair] = entry
             entries.append(entry)
-        children = children_of.get(gid, [])
+        # Ciclo en datos antiguos (un grupo colgado de sí mismo o de un descendiente): se corta.
+        children = [item for item in children_of.get(gid, []) if item["front_group_id"] not in visited]
+        visited.update(item["front_group_id"] for item in children)
+        expand = remaining > 0  # más abajo: resumido; se pide al expandir
+
+        def child_view(child: dict) -> Optional[dict]:
+            return node(child, remaining - 1) if expand else None
+
         used: set[str] = set()
         teams, individuals = [], []
         for entry in entries:
@@ -229,7 +245,7 @@ async def structure_tree(root: Optional[str] = None, period: str = "month", curr
             teams.append({"key": entry["pair_id"] or entry["ids"][0], "people": [person(pid) for pid in entry["ids"]],
                           "leader": person(child.get("primary_leader_person_id") if child else entry["ids"][0]),
                           "co_leader": person(child.get("co_leader_person_id") if child else (entry["ids"][1] if len(entry["ids"]) > 1 else None)),
-                          "status": status, "group": node(child) if child and status == "formed" else None,
+                          "status": status, "group": child_view(child) if child and status == "formed" else None,
                           "pending_group_id": child["front_group_id"] if child and status == "pending" else None,
                           "can_form": status != "formed" and can_form_under(gid, entry["ids"] + ([child.get("primary_leader_person_id")] if child else []))})
         for child in children:  # grupos de líderes que no están en la lista (designados aparte)
@@ -238,14 +254,16 @@ async def structure_tree(root: Optional[str] = None, period: str = "month", curr
             status = "pending" if child.get("status") == "pending_formation" else "formed"
             ids = [pid for pid in (child.get("primary_leader_person_id"), child.get("co_leader_person_id")) if pid]
             teams.append({"key": child["front_group_id"], "people": [person(pid) for pid in ids], "leader": person(child.get("primary_leader_person_id")), "co_leader": person(child.get("co_leader_person_id")),
-                          "status": status, "group": node(child) if status == "formed" else None, "pending_group_id": child["front_group_id"] if status == "pending" else None,
+                          "status": status, "group": child_view(child) if status == "formed" else None, "pending_group_id": child["front_group_id"] if status == "pending" else None,
                           "can_form": status == "pending" and can_form_under(gid, ids)})
-        return {"front_group_id": gid, "name": group.get("name") or (f"Grupo de {names.get(group.get('primary_leader_person_id'))}" if group.get("primary_leader_person_id") else "Grupo sin nombre"),
+        return {"front_group_id": gid, "level": (group.get("depth") or 0) + 1,
+                "name": group.get("name") or (f"Grupo de {names.get(group.get('primary_leader_person_id'))}" if group.get("primary_leader_person_id") else "Grupo sin nombre"),
                 "pastoral_main": bool(group.get("pastoral_main")), "leader": person(group.get("primary_leader_person_id")), "co_leader": person(group.get("co_leader_person_id")),
-                "people_direct": len(members), "people_branch": len(branch_people), "teams": teams, "individuals": individuals,
-                "teams_total": len(teams), "groups_formed": sum(1 for team in teams if team["status"] == "formed"), "progress": progress}
+                "people_direct": len(members), "people_branch": len(branch_people), "progress": progress,
+                "teams_total": len(teams), "groups_formed": sum(1 for team in teams if team["status"] == "formed"),
+                "loaded": expand, "teams": teams if expand else None, "individuals": individuals if expand else None}
 
-    tree = node(root_group)
+    tree = node(root_group, levels)
     parent = by_id.get(root_group.get("parent_group_id")) or (await db.front_groups.find_one({"front_group_id": root_group.get("parent_group_id")}, {"_id": 0}) if root_group.get("parent_group_id") else None)
     leader_id = (parent or {}).get("primary_leader_person_id")
     direct_leader = {"person_id": leader_id, "name": (await person_names([leader_id])).get(leader_id) or "Por definir"} if leader_id else None
