@@ -135,7 +135,7 @@ function FollowupCard({ item: initial, canManage, canRestricted }) {
             <p>Prefiere: {CONTACT[item.contact_method] || 'No indicó'}</p>
             {item.email && <p className="break-all">Correo: {item.email}</p>}
             {item.city && <p>Ciudad o zona: {item.city}</p>}
-            <p>Aceptó seguimiento: {item.consent_followup ? 'Sí' : 'No'}</p>
+            <p>¿Podemos comunicarnos?: {item.consent_followup === true ? 'Sí' : item.consent_followup === false ? 'No' : 'No respondió'}</p>
             {item.person_id && <Link to={`/personas/${item.person_id}`} className="font-semibold text-[#0879BE] underline">Ver Perfil 360</Link>}
           </div>
           {item.has_restricted && canRestricted && <Restricted item={item} />}

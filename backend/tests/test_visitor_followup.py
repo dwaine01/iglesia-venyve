@@ -7,7 +7,7 @@ import pytest
 from bson import ObjectId
 
 from tests.test_pastoral_front_group_5c import Fixture, server  # noqa: I001 — server primero
-from tests.test_visitor_registry import tablet, visitor
+from tests.test_visitor_registry import cleanup, tablet, visitor
 
 db = server.db
 
@@ -23,7 +23,7 @@ async def test_followup_assign_attempts_restricted_and_match_review():
         servant = await fx.account(server_pid, "persona")
         other = await fx.account(await fx.person(f"Otro{tag}"), "persona")
         manager = await fx.account(await fx.person(f"Gestor{tag}"), "persona", capabilities=["visitors.followup.manage"], permissions_mode="manual")
-        tablets = [await tablet(pastora, f"Tableta {tag}")]
+        tablets = [await tablet(pastora)]
         pad = tablets[0]
         counsel = (await pad.post("/api/kiosk/registrations", json=visitor(f"{tag}c", phone="5550201111", requests=["counseling_marriage", "prayer"], counseling_note="Privado"))).json()
         plain = (await pad.post("/api/kiosk/registrations", json=visitor(f"{tag}p", phone="5550202222", requests=["visit"]))).json()
@@ -71,16 +71,18 @@ async def test_followup_assign_attempts_restricted_and_match_review():
         assert (await manager.post(f"/api/visitors/registrations/{twin_doc['registration_id']}/resolve-match", json={"person_id": str(ObjectId())})).status_code == 422
         created = (await manager.post(f"/api/visitors/registrations/{twin_doc['registration_id']}/resolve-match", json={"create_new": True})).json()
         assert created["match_status"] == "created" and created["person_id"] not in twin_doc["possible_person_ids"]
+        assert created["person_id"] == twin_doc["person_id"]  # ya tenía su perfil en Persona 360
         assert (await manager.post(f"/api/visitors/registrations/{twin_doc['registration_id']}/resolve-match", json={"create_new": True})).status_code == 409
+        # «Sí, es esta persona»: se vincula a la existente y se retira el perfil provisional.
+        same = (await pad.post("/api/kiosk/registrations", json=visitor(f"{tag}p", last_name="Prueba Segunda", phone="5550202222"))).json()
+        same_doc = await db.visitor_registrations.find_one({"visitor_number": same["visitor_number"]}, {"_id": 0})
+        assert same_doc["match_status"] == "possible" and same_doc["person_id"]
+        target = next(pid for pid in same_doc["possible_person_ids"] if pid == regs[plain["visitor_number"]]["person_id"])
+        linked = (await manager.post(f"/api/visitors/registrations/{same_doc['registration_id']}/resolve-match", json={"person_id": target})).json()
+        assert linked["match_status"] == "linked" and linked["person_id"] == target
+        assert await db.persons.find_one({"_id": ObjectId(same_doc["person_id"])}) is None
     finally:
-        ids = [doc["registration_id"] async for doc in db.visitor_registrations.find({"name_key": {"$regex": tag}}, {"registration_id": 1})]
-        persons = [doc["person_id"] async for doc in db.visitor_registrations.find({"name_key": {"$regex": tag}, "person_id": {"$ne": None}}, {"person_id": 1})]
-        await db.visitor_registrations.delete_many({"registration_id": {"$in": ids}})
-        await db.visitor_restricted.delete_many({"registration_id": {"$in": ids}})
-        await db.visitor_locks.delete_many({"_id": {"$regex": tag}})
-        await db.persons.delete_many({"_id": {"$in": [ObjectId(pid) for pid in set(persons) if ObjectId.is_valid(pid)]}})
-        await db.person_contacts.delete_many({"person_id": {"$in": list(set(persons))}})
-        await db.visitor_devices.delete_many({"name": {"$regex": tag}})
+        await cleanup(tag)
         for client in tablets:
             await client.aclose()
         await fx.cleanup()
