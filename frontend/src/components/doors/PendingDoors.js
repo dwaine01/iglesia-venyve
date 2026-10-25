@@ -26,7 +26,7 @@ export function RevisitSheet({ household, books, onClose, onSaved }) {
   );
 }
 
-function ScheduleDialog({ household, onClose, onSaved }) {
+export function ScheduleDialog({ household, onClose, onSaved }) {
   const { API, getAuthHeaders } = useAuth();
   const [day, setDay] = useState('');
   const [note, setNote] = useState('');

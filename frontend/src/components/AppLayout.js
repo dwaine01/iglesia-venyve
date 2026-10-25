@@ -108,6 +108,7 @@ const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
     }
     if (isActiveMentor) {
       personaItems.push({ to: '/procesos/consolidacion/mi-panel', icon: ClipboardCheck, label: 'Mi Panel de Mentor', testId: 'nav-mentor-panel' });
+      personaItems.unshift({ to: '/mi-trabajo', icon: ClipboardCheck, label: 'Mi Trabajo', testId: 'nav-my-work' });
     }
     if (canViewFrontGroups(user)) {
       personaItems.push({ to: '/estructura-frontal', icon: Network, label: 'Estructura de mi rama', testId: 'nav-front-group-structure' });
@@ -160,6 +161,8 @@ const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
   }
   if (isActiveMentor) {
     items.push({ to: '/procesos/consolidacion/mi-panel', icon: ClipboardCheck, label: 'Mi Panel de Mentor', testId: 'nav-mentor-panel' });
+    // MT2: «Mi Trabajo» primero (inicio del mentor); Mi perfil y los demás módulos siguen igual.
+    items.unshift({ to: '/mi-trabajo', icon: ClipboardCheck, label: 'Mi Trabajo', testId: 'nav-my-work' });
   }
   if (canCreateOutreachCampaign(user)) {
     items.push({ to: '/admin/historial-borrados', icon: Trash2, label: 'Historial de Borrados', testId: 'nav-admin-deletions' });
@@ -217,6 +220,7 @@ const breadcrumbMap = {
   '/dashboard': 'Panel principal',
   '/dashboard-general': 'Panel General',
   '/mi-perfil': 'Mi perfil',
+  '/mi-trabajo': 'Mi Trabajo',
   '/grupo-frontal-pastoral': 'Grupo frontal principal',
   '/estructura-frontal': 'Estructura por niveles',
   '/mis-estadisticas': 'Mis estadísticas',

@@ -105,13 +105,14 @@ async def compute_summary(mentor: str, period: str, campaign_id: Optional[str]) 
         event_match["campaign_id"] = campaign_id
     if since:
         event_match["occurred_at"] = {"$gte": since}
-    houses = await db.outreach_visit_events.aggregate([
-        {"$match": event_match},
-        {"$group": {"_id": "$household_id", "opened": {"$max": {"$cond": [{"$or": [{"$eq": ["$opened", True]}, {"$in": ["$result", ["contacted", "refused"]]}]}, 1, 0]}},
-                    "conversed": {"$max": {"$cond": [{"$in": ["$contact_level", ["conversation", "invited_in"]]}, 1, 0]}}}},
-        {"$group": {"_id": None, "visited": {"$sum": 1}, "opened": {"$sum": "$opened"}, "conversed": {"$sum": "$conversed"}}},
-    ]).to_list(1)
-    figures = houses[0] if houses else {"visited": 0, "opened": 0, "conversed": 0}
+    # Viviendas del periodo (cada vivienda cuenta una vez; solo las que existen, igual que sus listados).
+    visited_ids = await db.outreach_visit_events.distinct("household_id", event_match)
+    opened_ids = await db.outreach_visit_events.distinct("household_id", {**event_match, "$or": [{"opened": True}, {"result": {"$in": ["contacted", "refused"]}}]})
+    conversed_ids = await db.outreach_visit_events.distinct("household_id", {**event_match, "contact_level": {"$in": ["conversation", "invited_in"]}})
+    live = {"archived": {"$ne": True}}
+    figures = {"visited": await db.outreach_households.count_documents({"household_id": {"$in": visited_ids}, **live}),
+               "opened": await db.outreach_households.count_documents({"household_id": {"$in": opened_ids}, **live}),
+               "conversed": await db.outreach_households.count_documents({"household_id": {"$in": conversed_ids}, **live})}
     pending_return = await db.outreach_households.count_documents({**base, "door_status": {"$in": PENDING_DOORS}})
     enrollment_query: dict = {"mentor_person_id": mentor, "process_key": "consolidation", "status": {"$in": ACTIVE_ENROLLMENT}}
     if campaign_id:
@@ -176,7 +177,7 @@ async def my_work_summary_list(metric: str, period: Literal["week", "invasion", 
         if metric == "opened":
             event_match["$or"] = [{"opened": True}, {"result": {"$in": ["contacted", "refused"]}}]
         house_ids = await db.outreach_visit_events.distinct("household_id", event_match)
-        query = {"household_id": {"$in": house_ids}}
+        query = {"household_id": {"$in": house_ids}, "archived": {"$ne": True}}
     elif metric == "pending_return":
         query = {**base, "door_status": {"$in": PENDING_DOORS}}
     else:
