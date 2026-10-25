@@ -113,8 +113,7 @@ const BoardMeetingDetailPage = lazyPage(() => import('./pages/board/BoardMeeting
 const BoardMinutesPage = lazyPage(() => import('./pages/board/BoardMinutesPage'));
 const MiPerfilPage = lazyPage(() => import('./pages/MiPerfilPage'));
 const MiGrupoFrontalPage = lazyPage(() => import('./pages/MiGrupoFrontalPage'));
-const GrupoFrontalPastoralPage = lazyPage(() => import('./pages/GrupoFrontalPastoralPage'));
-const EstructuraFrontalPage = lazyPage(() => import('./pages/EstructuraFrontalPage'));
+const GrupoFrontalPage = lazyPage(() => import('./pages/GrupoFrontalPage'));
 const MisEstadisticasPage = lazyPage(() => import('./pages/MisEstadisticasPage'));
 const GeoMapsPage = lazyPage(() => import('./pages/GeoMapsPage'));
 const InvasionReportPage = lazyPage(() => import('./pages/InvasionReportPage'));
@@ -240,7 +239,14 @@ function PersonProfileRoute({ children }) {
 function LegacyFrontGroupsRedirect() {
   const [searchParams] = useSearchParams();
   const groupId = searchParams.get('group');
-  return <Navigate to={groupId ? `/estructura-frontal/${groupId}` : '/estructura-frontal'} replace />;
+  return <Navigate to={groupId ? `/grupo-frontal?grupo=${groupId}&tab=ramas` : '/grupo-frontal?tab=ramas'} replace />;
+}
+
+// Enlaces antiguos (marcadores): «Estructura de grupos» y «Mi grupo frontal» de la pastora
+// abren ahora el único «Grupo Frontal» en la pestaña que corresponde.
+function LegacyStructureRedirect() {
+  const { groupId } = useParams();
+  return <Navigate to={groupId ? `/grupo-frontal?grupo=${groupId}&tab=ramas` : '/grupo-frontal?tab=ramas'} replace />;
 }
 
 function App() {
@@ -364,9 +370,10 @@ function App() {
             <Route path="presentacion" element={<CapabilityRoute allowed={canViewPresentationManual}><PresentacionHomePage /></CapabilityRoute>} />
             <Route path="mi-perfil" element={<MiPerfilPage />} />
             <Route path="mi-grupo-frontal/:groupId" element={<MiGrupoFrontalPage />} />
-            <Route path="estructura-frontal" element={<EstructuraFrontalPage />} />
-            <Route path="estructura-frontal/:groupId" element={<EstructuraFrontalPage />} />
-            <Route path="grupo-frontal-pastoral" element={<CapabilityRoute allowed={canViewPastoralFrontGroup}><GrupoFrontalPastoralPage /></CapabilityRoute>} />
+            <Route path="grupo-frontal" element={<GrupoFrontalPage />} />
+            <Route path="estructura-frontal" element={<LegacyStructureRedirect />} />
+            <Route path="estructura-frontal/:groupId" element={<LegacyStructureRedirect />} />
+            <Route path="grupo-frontal-pastoral" element={<Navigate to="/grupo-frontal" replace />} />
             <Route path="mis-estadisticas" element={<MisEstadisticasPage />} />
             {/* Reporte de invasión: el backend decide si es completo, personal o sin acceso. */}
             <Route path="invasiones/reporte-pastora" element={<PresentReportLauncherPage />} />
