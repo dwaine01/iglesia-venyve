@@ -12,7 +12,7 @@
 from datetime import timezone
 from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from access_control import VISITORS_WELCOME_OPERATE
@@ -80,9 +80,9 @@ async def service_label(state: dict) -> Optional[str]:
 
 # ------------------------------------------------------------------ pantalla (enlace)
 @screen_router.get("/welcome", response_model=dict)
-async def screen_welcome(x_link_token: Optional[str] = Header(default=None)):
+async def screen_welcome(request: Request, x_link_token: Optional[str] = Header(default=None)):
     """Lista blanca: solo id y nombre, en orden de llegada, sin los quitados."""
-    await link_access("screen", x_link_token)
+    link = await link_access("screen", x_link_token, request)
     state = await load_state()
     docs = await db.visitor_registrations.find({**await service_query(state), "welcome.hidden": {"$ne": True}}, {"_id": 0, "registration_id": 1, "first_name": 1, "last_name": 1, "welcome": 1, "visit.invited": 1, "visit.invited_by": 1,
                                                                                                          "status": 1, "updated_at": 1, "created_at": 1, "origin": 1}) \
@@ -90,7 +90,8 @@ async def screen_welcome(x_link_token: Optional[str] = Header(default=None)):
     docs = in_order(docs)
     reset = (await load_kiosk_settings())["form_reset_seconds"]
     # El nombre aparece apenas lo escribe (borrador), con «registrando…» mientras llena el resto.
-    return {"names": [{"id": doc["registration_id"], "name": shown_name(doc), "invited_by": shown_inviter(doc), "registering": registration_state(doc, reset) == "registering"} for doc in docs], "total": len(docs), "service_label": await service_label(state)}
+    return {"names": [{"id": doc["registration_id"], "name": shown_name(doc), "invited_by": shown_inviter(doc), "registering": registration_state(doc, reset) == "registering"} for doc in docs], "total": len(docs), "service_label": await service_label(state),
+            "short_path": f"/b/{link['code']}"}
 
 
 # ------------------------------------------------------------------ operador

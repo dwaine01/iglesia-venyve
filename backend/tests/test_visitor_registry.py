@@ -44,8 +44,13 @@ async def test_kiosk_link_numbers_idempotency_dedupe_and_permissions():
         assert (await mentor.get("/api/visitors/links")).status_code == 403
         assert (await mentor.get("/api/visitors/registrations")).status_code == 403
         links = (await pastora.get("/api/visitors/links")).json()["items"]
-        assert [item["kind"] for item in links] == ["tablet", "screen"] and links[0]["path"].startswith("/quiosco/") and links[1]["path"].startswith("/pantalla-bienvenida/")
-        assert len(links[0]["path"].rsplit("/", 1)[1]) >= 40
+        # Enlaces cortos: /r/CÓDIGO y /b/CÓDIGO, 8 caracteres sin 0/O ni 1/I/L.
+        assert [item["kind"] for item in links] == ["tablet", "screen"] and links[0]["path"].startswith("/r/") and links[1]["path"].startswith("/b/")
+        for item in links:
+            code = item["path"].rsplit("/", 1)[1]
+            assert len(code) == 8 and code == item["code"] and set(code) <= set("ABCDEFGHJKMNPQRSTUVWXYZ23456789")
+            assert len(item["legacy_path"].rsplit("/", 1)[1]) >= 40
+        assert links[0]["code"] != links[1]["code"]
         tablets = [await tablet(pastora) for _ in range(4)]
         # El enlace de tabletas solo lee textos y crea registros: nada del personal ni nombres.
         config = (await tablets[0].get("/api/kiosk/config")).json()
@@ -169,10 +174,24 @@ async def test_kiosk_link_numbers_idempotency_dedupe_and_permissions():
         assert codes[:12] == [201] * 12 and codes[12] == 429
 
         # Generar enlace nuevo: el anterior deja de funcionar en el acto.
+        # El enlace largo anterior sigue funcionando (y la página pasa a la dirección corta); el código vale en minúsculas o con guion.
+        legacy = links[0]["legacy_path"].rsplit("/", 1)[1]
+        longer = AsyncClient(transport=ASGITransport(app=server.app), base_url="http://test", headers={"X-Link-Token": legacy, "X-Forwarded-For": "10.9.9.9"})
+        tablets.append(longer)
+        assert (await longer.get("/api/kiosk/config")).json()["short_path"] == links[0]["path"]
+        typed = AsyncClient(transport=ASGITransport(app=server.app), base_url="http://test", headers={"X-Link-Token": f"{links[0]['code'][:4].lower()}-{links[0]['code'][4:].lower()}", "X-Forwarded-For": "10.9.9.8"})
+        tablets.append(typed)
+        assert (await typed.get("/api/kiosk/config")).status_code == 200
+        # Adivinar códigos: tras 30 intentos fallidos desde la misma conexión, se bloquea un rato.
+        guesser = AsyncClient(transport=ASGITransport(app=server.app), base_url="http://test", headers={"X-Forwarded-For": f"10.77.{uuid.uuid4().int % 250}.{uuid.uuid4().int % 250}"})
+        tablets.append(guesser)
+        codes = [(await guesser.get("/api/kiosk/config", headers={"X-Link-Token": f"ZZZZZZ{n:02d}"})).status_code for n in range(31)]
+        assert codes[:30] == [401] * 30 and codes[30] == 429
         old = tablets[0].headers["X-Link-Token"]
         rotated = (await pastora.post("/api/visitors/links/tablet/rotate")).json()
         assert rotated["path"].rsplit("/", 1)[1] != old
         assert (await tablets[0].post("/api/kiosk/registrations", json=visitor(f"{tag}rev"))).status_code == 401
+        assert (await longer.get("/api/kiosk/config")).status_code == 401  # el largo anterior también deja de funcionar
         tablets[0].headers.update({"X-Link-Token": rotated["path"].rsplit("/", 1)[1]})
         assert (await tablets[0].get("/api/kiosk/config")).status_code == 200
         # Textos editables con versión del aviso.

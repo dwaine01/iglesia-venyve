@@ -3,7 +3,7 @@ import axios from 'axios';
 import { useParams } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Maximize } from 'lucide-react';
 
-import { rememberedToken, useAppManifest } from '../lib/appManifest';
+import { adoptShortPath, rememberedToken, useAppManifest } from '../lib/appManifest';
 
 /* Pantalla de bienvenida (/pantalla-bienvenida/<enlace>), a pantalla completa:
  * un nombre a la vez, GRANDE, para leerlo en voz alta. La encargada avanza con la
@@ -29,7 +29,7 @@ export default function WelcomeScreenPage() {
     if (!token) return undefined;
     let alive = true;
     const load = () => axios.get(`${API}/api/screen/welcome`, { headers: { 'X-Link-Token': token }, timeout: 8000 })
-      .then((response) => { if (alive) { setView(response.data); setOffline(false); setLinkError(''); } })
+      .then((response) => { if (alive) { setView(response.data); setOffline(false); setLinkError(''); adoptShortPath('vv_screen_link', response.data.short_path); } })
       .catch((requestError) => { if (!alive) return; if (requestError?.response?.status === 401) setLinkError(requestError.response.data?.detail || 'Este enlace ya no funciona.'); else setOffline(true); });
     load();
     const timer = setInterval(load, 2500);

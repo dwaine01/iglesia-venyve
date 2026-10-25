@@ -1,9 +1,9 @@
 {
-  "id": "/pantalla-bienvenida/",
+  "id": "/b/",
   "name": "Bienvenida · Ven y Ve",
   "short_name": "Bienvenida",
-  "start_url": "/pantalla-bienvenida/?app=1",
-  "scope": "/pantalla-bienvenida",
+  "start_url": "/b/?app=1",
+  "scope": "/b/",
   "display": "fullscreen",
   "display_override": [
     "fullscreen",

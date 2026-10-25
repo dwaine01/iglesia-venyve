@@ -4,7 +4,7 @@ import { useParams } from 'react-router-dom';
 import { Check, HeartHandshake, Lock, Users, X } from 'lucide-react';
 
 import { enqueue, flush, pendingCount } from '../lib/kioskQueue';
-import { rememberedToken, useAppManifest } from '../lib/appManifest';
+import { adoptShortPath, rememberedToken, useAppManifest } from '../lib/appManifest';
 
 /* Quiosco de registro de visitantes (/quiosco/<enlace>). Un único enlace para
  * todas las tabletas: sin código, sin sesión. El enlace solo permite CREAR
@@ -178,7 +178,7 @@ export default function KioskPage() {
   // Textos y servicio de hoy. Un enlace viejo o equivocado muestra cómo pedir el nuevo.
   const loadConfig = useCallback(() => {
     if (!token) { setLinkError('Abra el enlace de tabletas que aparece en Registro de visitantes › Enlaces.'); return; }
-    axios.get(`${API}/api/kiosk/config`, { headers: { 'X-Link-Token': token, 'X-Tablet-Name': device } }).then((response) => { setConfig(response.data); setLinkError(''); })
+    axios.get(`${API}/api/kiosk/config`, { headers: { 'X-Link-Token': token, 'X-Tablet-Name': device } }).then((response) => { setConfig(response.data); setLinkError(''); adoptShortPath('vv_kiosk_link', response.data.short_path); })
       .catch((requestError) => { if (requestError?.response?.status === 401) setLinkError(requestError.response.data?.detail || 'Este enlace ya no funciona.'); });
   }, [token, device]);
   useEffect(() => { loadConfig(); const timer = setInterval(loadConfig, 10 * 60 * 1000); return () => clearInterval(timer); }, [loadConfig]);
