@@ -117,6 +117,7 @@ const InvasionAttendancePage = lazyPage(() => import('./pages/InvasionAttendance
 const InvasionProgramPage = lazyPage(() => import('./pages/InvasionProgramPage'));
 const DoorToDoorPage = lazyPage(() => import('./pages/DoorToDoorPage'));
 const InvasionHelpPage = lazyPage(() => import('./pages/InvasionHelpPage'));
+const RadioPage = lazyPage(() => import('./pages/RadioPage'));
 
 
 function ProtectedRoute({ children }) {
@@ -357,6 +358,7 @@ function App() {
             <Route path="invasiones/:campaignId/asistencia" element={<InvasionAttendancePage />} />
             <Route path="invasiones/:campaignId/programa" element={<InvasionProgramPage />} />
             <Route path="invasiones/:campaignId/ayuda" element={<InvasionHelpPage />} />
+            <Route path="invasiones/:campaignId/radio" element={<RadioPage />} />
             
             {/* Persona routes */}
             <Route path="mi-progreso" element={<Navigate to="/procesos/dashboard" replace />} />
