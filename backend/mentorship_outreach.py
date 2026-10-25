@@ -403,7 +403,8 @@ async def serialize_visits(visits: list[dict], current_user: dict) -> list[dict]
     person_ids = {v["person_id"] for v in visits if v.get("person_id")}
     mentor_ids = {v["mentor_person_id"] for v in visits if v.get("mentor_person_id")}
     campaign_ids = {v["campaign_id"] for v in visits if v.get("campaign_id")}
-    all_person_ids = list(person_ids | mentor_ids)
+    assigner_ids = {v["assigned_by_person_id"] for v in visits if v.get("assigned_by_person_id")}
+    all_person_ids = list(person_ids | mentor_ids | assigner_ids)
     valid_oids = [ObjectId(pid) for pid in all_person_ids if ObjectId.is_valid(pid)]
     people = await db.persons.find({"_id": {"$in": valid_oids}}, {"_id": 1, "nombre": 1, "apellido": 1}).to_list(len(valid_oids)) if valid_oids else []
     names = {str(p["_id"]): f"{p.get('nombre', '')} {p.get('apellido', '')}".strip() for p in people}
@@ -427,6 +428,8 @@ async def serialize_visits(visits: list[dict], current_user: dict) -> list[dict]
             "contact_name": contact_name,
             "mentor_person_id": visit.get("mentor_person_id"),
             "mentor_name": names.get(visit.get("mentor_person_id")),
+            "assigned_by_name": names.get(visit.get("assigned_by_person_id")) if visit.get("assigned_by_person_id") else None,
+            "assigned_at": visit.get("assigned_at").isoformat() if isinstance(visit.get("assigned_at"), datetime) else visit.get("assigned_at"),
             "mentor_lbs_qualified": visit.get("mentor_person_id") in lbs_qualified_ids,
             "campaign_id": visit.get("campaign_id"),
             "campaign_name": campaign_names.get(visit.get("campaign_id")),
@@ -1118,7 +1121,27 @@ async def create_visit(payload: VisitCreateInput, current_user: dict = Depends(g
     if payload.invasion_day:
         doc["invasion_day"] = payload.invasion_day.isoformat()
         await db.outreach_visits.update_one({"visit_id": doc["visit_id"]}, {"$set": {"invasion_day": doc["invasion_day"]}})
-    return (await serialize_visits([doc], current_user))[0]
+    notified = 0
+    if mentor_person_id != current_user.get("person_id"):
+        # «Asignar visita» de un líder: queda quién la asignó y el mentor recibe el aviso (campana y celular).
+        assigned = {"assigned_by_person_id": current_user.get("person_id"), "assigned_by_user_id": current_user["user_id"], "assigned_at": now_utc()}
+        doc.update(assigned)
+        await db.outreach_visits.update_one({"visit_id": doc["visit_id"]}, {"$set": assigned})
+        notified = await notify_visit_assigned(doc, current_user, "Te asignaron una visita")
+    item = (await serialize_visits([doc], current_user))[0]
+    item["mentor_notified"] = notified > 0
+    return item
+
+
+async def notify_visit_assigned(visit: dict, current_user: dict, title: str) -> int:
+    """Aviso al mentor (todas sus cuentas activas). Si no tiene cuenta, no hay a quién avisar (devuelve 0)."""
+    from portal_notifications import notify_persons
+    who = await person_display_name(visit.get("person_id")) if visit.get("person_id") else None
+    where = " · ".join(filter(None, [visit.get("address_line1"), visit.get("address_line2")])) or visit.get("contact_zone")
+    by = await person_display_name(current_user.get("person_id")) or current_user.get("nombre") or "un líder"
+    message = f"{who or visit.get('contact_name') or 'Persona por visitar'}{f' · {where}' if where else ''}. Asignada por {by}."
+    return await notify_persons([visit["mentor_person_id"]], "visit_assigned", f"{title}: {who or visit.get('contact_name') or 'persona por visitar'}", message,
+                                f"/mentoria/visitas?visita={visit['visit_id']}", {"visit_id": visit["visit_id"]})
 
 
 @router.get("/visits", response_model=dict)
@@ -1218,10 +1241,14 @@ async def transfer_visit(visit_id: str, payload: VisitTransferInput, current_use
     if not qualified:
         raise HTTPException(status_code=409, detail="El nuevo mentor no está capacitado para impartir LBS")
     previous_mentor = visit.get("mentor_person_id")
-    await db.outreach_visits.update_one({"visit_id": visit_id}, {"$set": {"mentor_person_id": payload.new_mentor_person_id, "updated_at": now_utc()}})
+    await db.outreach_visits.update_one({"visit_id": visit_id}, {"$set": {"mentor_person_id": payload.new_mentor_person_id, "updated_at": now_utc(),
+                                                                           "assigned_by_person_id": current_user.get("person_id"), "assigned_by_user_id": current_user["user_id"], "assigned_at": now_utc()}})
     await log_visit_history(visit_id, current_user, "mentor_transferred", {"from": previous_mentor, "to": payload.new_mentor_person_id, "reason": payload.reason})
     updated = await load_visit(visit_id)
-    return (await serialize_visits([updated], current_user))[0]
+    notified = await notify_visit_assigned(updated, current_user, "Te pasaron una visita") if payload.new_mentor_person_id != current_user.get("person_id") else 0
+    item = (await serialize_visits([updated], current_user))[0]
+    item["mentor_notified"] = notified > 0
+    return item
 
 
 async def open_consolidation_from_visit(visit: dict, person_id: str, current_user: dict, reason: str = "Inicia la Ley de las 7 Semanas desde una invasión") -> tuple[dict, bool]:

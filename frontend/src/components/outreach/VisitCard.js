@@ -43,7 +43,7 @@ const DECISION_LABELS = {
 const boolToTri = (value) => (value === true ? 'yes' : value === false ? 'no' : 'unspecified');
 const triToBool = (value) => (value === 'yes' ? true : value === 'no' ? false : null);
 
-export const VisitCard = ({ visit, canManage, onUpdated, onTransfer }) => {
+export const VisitCard = ({ visit, canManage, onUpdated, onTransfer, highlight = false }) => {
   const { API, getAuthHeaders } = useAuth();
   const [status, setStatus] = useState(visit.status);
   const [visitDate, setVisitDate] = useState(visit.visit_date || '');
@@ -128,7 +128,7 @@ export const VisitCard = ({ visit, canManage, onUpdated, onTransfer }) => {
 
   return (
     <>
-    <div className="rounded-xl border border-[#E8E5DE] bg-white p-4 shadow-sm" data-testid={`outreach-visit-card-${visit.visit_id}`}>
+    <div id={`visita-${visit.visit_id}`} className={`rounded-xl border bg-white p-4 shadow-sm ${highlight ? 'border-[#C8A951] ring-2 ring-[#C8A951]/50' : 'border-[#E8E5DE]'}`} data-testid={`outreach-visit-card-${visit.visit_id}`}>
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <p className="font-semibold text-[#101D36]" data-testid={`outreach-visit-name-${visit.visit_id}`}>{visit.contact_name || 'Sin nombre'}</p>
@@ -139,6 +139,7 @@ export const VisitCard = ({ visit, canManage, onUpdated, onTransfer }) => {
             {visit.household_id && <span data-testid={`outreach-visit-household-badge-${visit.visit_id}`}>· Hogar</span>}
             {canManage && visit.mentor_name && <span>· Mentor: {visit.mentor_name}</span>}
           </div>
+          {visit.assigned_by_name && <p className="mt-1 text-xs font-semibold text-[#9A7A2F]" data-testid={`outreach-visit-assigned-by-${visit.visit_id}`}>Asignada por {visit.assigned_by_name}{visit.assigned_at ? ` · ${new Date(visit.assigned_at).toLocaleDateString('es-US', { day: 'numeric', month: 'short' })}` : ''}</p>}
         </div>
         <div className="flex flex-col items-end gap-1">
           <Badge className={STATUS_COLORS[visit.status]} data-testid={`outreach-visit-status-badge-${visit.visit_id}`}>{STATUS_LABELS[visit.status]}</Badge>

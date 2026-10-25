@@ -111,6 +111,15 @@ async def person_name(person_id: Optional[str]) -> Optional[str]:
     return " ".join(part for part in [(person or {}).get("nombre"), (person or {}).get("apellido")] if part) or None
 
 
+@router.get("/my-badge", response_model=dict)
+async def get_my_mentor_badge(current_user: dict = Depends(get_current_user)):
+    """¿La persona de ESTA cuenta es mentor activo? Solo lo propio, sin permiso de perfiles:
+    con esto el menú muestra «Mi Trabajo» y «Mis Visitas» a cualquier mentor con insignia."""
+    person_id = current_user.get("person_id")
+    badge = await db.mentor_badges.find_one({"person_id": person_id, "active": True}, {"_id": 1}) if person_id else None
+    return {"person_id": person_id, "active": badge is not None}
+
+
 @router.get("/badge/{person_id}", response_model=dict)
 async def get_mentor_badge(person_id: str, current_user: dict = Depends(require_person_profile_user)):
     person_doc = await load_person(db, person_id)
