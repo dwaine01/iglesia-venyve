@@ -567,6 +567,8 @@ app.include_router(invasion_report_router)
 app.include_router(invasion_attendance_router)
 app.include_router(outreach_doors_router)
 from door_reports import router as door_reports_router
+from door_streets import router as door_streets_router, ensure_indexes as door_streets_ensure_indexes
+app.include_router(door_streets_router)
 app.include_router(door_reports_router)
 app.include_router(invasion_alerts_router)
 app.include_router(consolidation_leads_router)
@@ -779,6 +781,7 @@ async def startup():
     await invasion_prayer_ensure_indexes()
     await invasion_report_ensure_indexes()
     await outreach_doors_ensure_indexes()
+    await door_streets_ensure_indexes()
     await invasion_alerts_ensure_indexes()
     await consolidation_leads_ensure_indexes()
     await radio_ensure_indexes()
