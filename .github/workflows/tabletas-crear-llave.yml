@@ -1,0 +1,51 @@
+# Crea UNA vez la llave de firma de la app de tabletas y la guarda como secreto del
+# repositorio, sin mostrarla nunca (ni en el registro ni en el chat ni en el repositorio).
+# Necesita el secreto KIOSK_SECRETS_TOKEN: un token del dueño con permiso «Secrets:
+# lectura y escritura» solo para este repositorio (se borra al terminar).
+name: Tabletas · Crear llave de firma (una sola vez)
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmar:
+        description: 'Escriba CREAR para confirmar'
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  crear:
+    name: Crear la llave
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.KIOSK_SECRETS_TOKEN }}
+      CONFIRMAR: ${{ inputs.confirmar }}
+      REPO: ${{ github.repository }}
+    steps:
+      - name: Revisar antes de crear
+        run: |
+          if [ "$CONFIRMAR" != "CREAR" ]; then echo "::error::Escriba CREAR (en mayúsculas) para confirmar."; exit 1; fi
+          if [ -z "$GH_TOKEN" ]; then echo "::error::Falta el secreto KIOSK_SECRETS_TOKEN (paso 2 de las instrucciones)."; exit 1; fi
+          if ! names="$(gh secret list --repo "$REPO" --json name -q '.[].name')"; then
+            echo "::error::El token no tiene permiso «Secrets: lectura y escritura» en este repositorio."; exit 1
+          fi
+          if echo "$names" | grep -qx KIOSK_KEYSTORE_B64; then
+            echo "::error::Ya existe una llave final. No se crea otra: cambiarla obligaría a desinstalar y reinstalar la app en las tabletas."; exit 1
+          fi
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Crear la llave y guardarla como secreto (sin mostrarla)
+        run: |
+          set -euo pipefail
+          umask 077
+          PASS="$(openssl rand -hex 24)"
+          echo "::add-mask::$PASS"
+          keytool -genkeypair -keystore "$RUNNER_TEMP/llave.p12" -storetype PKCS12 -storepass "$PASS" -keypass "$PASS" \
+            -alias tabletas -keyalg RSA -keysize 4096 -validity 10000 -dname "CN=Registro Ven y Ve, O=Casa de Oracion Ven y Ve" >/dev/null 2>&1
+          base64 -w0 "$RUNNER_TEMP/llave.p12" | gh secret set KIOSK_KEYSTORE_B64 --repo "$REPO"
+          printf '%s' "$PASS" | gh secret set KIOSK_KEYSTORE_PASSWORD --repo "$REPO"
+          shred -u "$RUNNER_TEMP/llave.p12"
+          echo "Listo: la llave quedó guardada como secreto. Ahora borre el token (paso 5) y ejecute «Tabletas · APK»."

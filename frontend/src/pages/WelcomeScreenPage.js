@@ -4,6 +4,7 @@ import { useParams } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Maximize } from 'lucide-react';
 
 import { adoptShortPath, rememberedToken, useAppManifest } from '../lib/appManifest';
+import { API_BASE } from '../lib/apiBase';
 
 /* Pantalla de bienvenida (/pantalla-bienvenida/<enlace>), a pantalla completa:
  * un nombre a la vez, GRANDE, para leerlo en voz alta. La encargada avanza con la
@@ -11,7 +12,7 @@ import { adoptShortPath, rememberedToken, useAppManifest } from '../lib/appManif
  * enlace solo puede leer los nombres; quitar o corregir se hace en «Bienvenida en
  * vivo». ProPresenter o el operador pueden abrir esta misma página. */
 
-const API = process.env.REACT_APP_BACKEND_URL;
+const API = API_BASE;
 const C = { bg: '#0B1530', gold: '#E7C766', white: '#FFFFFF', soft: 'rgba(255,255,255,0.78)' };
 
 export default function WelcomeScreenPage() {

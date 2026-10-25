@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { useParams } from 'react-router-dom';
 import { BadgeCheck, BadgeX, CalendarDays, ShieldCheck } from 'lucide-react';
+import { API_BASE } from '../lib/apiBase';
 
 const statusCopy = {
   active: ['Carnet vigente', 'La membresía fue verificada por VEN Y VE 360.'],
@@ -12,7 +13,7 @@ const statusCopy = {
 
 export default function MembershipVerificationPage() {
   const { token } = useParams();
-  const API = process.env.REACT_APP_BACKEND_URL;
+  const API = API_BASE;
   const [result, setResult] = useState(null);
   useEffect(() => { axios.get(`${API}/api/public/membership/verify/${encodeURIComponent(token)}`).then((response) => setResult(response.data)).catch(() => setResult({ valid: false, status: 'invalid' })); }, [API, token]);
   if (!result) return <main className="flex min-h-screen items-center justify-center bg-[#EAF1F0]" data-testid="membership-verification-loading">Verificando carnet…</main>;

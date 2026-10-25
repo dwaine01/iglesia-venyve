@@ -1,0 +1,4 @@
+// App de las tabletas (envoltorio mínimo): solo el complemento de Android, sin librerías de terceros en la app.
+plugins {
+    id 'com.android.application' version '8.7.3' apply false
+}

@@ -1,0 +1,9 @@
+# Compilación (la hace GitHub) y llaves: nunca en el repositorio.
+.gradle/
+build/
+app/build/
+local.properties
+*.jks
+*.keystore
+*.p12
+*.apk

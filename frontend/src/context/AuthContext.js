@@ -1,9 +1,10 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
+import { API_BASE } from '../lib/apiBase';
 
 const AuthContext = createContext(null);
-const API = process.env.REACT_APP_BACKEND_URL;
-if (!API) throw new Error('REACT_APP_BACKEND_URL is required.');
+const API = API_BASE;
+if (!API) throw new Error('Falta la dirección del servidor (REACT_APP_BACKEND_URL).');
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);

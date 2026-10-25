@@ -7,8 +7,9 @@ import { SlideRenderer } from '../components/slides/SlideComponents';
 import { AlertCircle, Wifi, WifiOff } from 'lucide-react';
 import { useScreenZoom } from '../hooks/useScreenZoom';
 import { ScreenZoomControl } from '../components/ScreenZoomControl';
+import { API_BASE } from '../lib/apiBase';
 
-const API = process.env.REACT_APP_BACKEND_URL;
+const API = API_BASE;
 
 /**
  * Vista PUBLICA del espectador para la pantalla LED del auditorio

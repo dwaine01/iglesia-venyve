@@ -6,6 +6,7 @@ import { Check, HeartHandshake, Lock, Users, X } from 'lucide-react';
 import { enqueue, flush, pendingCount } from '../lib/kioskQueue';
 import { adoptShortPath, rememberedToken, useAppManifest } from '../lib/appManifest';
 import { KIOSK_TEXT, LANGUAGES } from '../lib/kioskI18n';
+import { API_BASE, API_SAME_ORIGIN, DIRECT_BACKEND_URL } from '../lib/apiBase';
 
 /* Quiosco de registro de visitantes (/quiosco/<enlace>). Un único enlace para
  * todas las tabletas: sin código, sin sesión. El enlace solo permite CREAR
@@ -13,7 +14,7 @@ import { KIOSK_TEXT, LANGUAGES } from '../lib/kioskI18n';
  * Nada del visitante se guarda en el navegador salvo, si falla el internet, en la
  * cola cifrada hasta enviarse. Reinicio por inactividad. */
 
-const API = process.env.REACT_APP_BACKEND_URL;
+const API = API_BASE;
 const NAME_KEY = 'vv_tablet_name';
 // Tiempos de espera por defecto (segundos); la administración los cambia y llegan en la configuración.
 const DEFAULT_TIMEOUTS = { form_warn_seconds: 240, form_reset_seconds: 300, start_reset_seconds: 600, confirm_reset_seconds: 60 };
@@ -208,19 +209,36 @@ export default function KioskPage() {
   const reset = useCallback(() => { setForm(emptyForm()); setStep(-1); setLang(null); setResult(null); setError(''); setSaving(false); window.scrollTo(0, 0); }, []);
 
   // Textos y servicio de hoy. Un enlace viejo o equivocado muestra cómo pedir el nuevo.
-  // ¿Por qué no llegó la configuración? Se prueba el servidor sin ningún dato para decirlo claro.
+  // ¿Por qué no llegó la configuración? Prueba automática: internet, el panel y el servidor (por el
+  // panel y, si aplica, directo), para saber qué falla sin adivinar.
   const diagnose = async (requestError, words) => {
-    const host = (() => { try { return new URL(API).host; } catch { return API; } })();
-    const detail = ` (servidor: ${host}; página: ${window.location.host}; código: ${requestError?.code || 'sin código'})`;
+    const host = (value) => { try { return new URL(value).host; } catch { return value || '—'; } };
+    const probe = (url, options = {}) => new Promise((resolve) => {
+      const timer = setTimeout(() => resolve(null), 7000);
+      fetch(url, { cache: 'no-store', ...options })
+        .then((response) => { clearTimeout(timer); resolve(response); })
+        .catch(() => { clearTimeout(timer); resolve(null); });
+    });
+    const stamp = Date.now();
+    const [internet, panel, server, direct] = await Promise.all([
+      probe(`https://www.gstatic.com/generate_204?t=${stamp}`, { mode: 'no-cors' }),
+      probe(`${window.location.origin}/manifest.json?t=${stamp}`),
+      probe(`${API_BASE}/api/kiosk/ping?t=${stamp}`),
+      API_SAME_ORIGIN && DIRECT_BACKEND_URL && host(DIRECT_BACKEND_URL) !== window.location.host ? probe(`${DIRECT_BACKEND_URL}/api/kiosk/ping?t=${stamp}`) : Promise.resolve(undefined),
+    ]);
+    const ok = (response) => !!response && (response.type === 'opaque' || response.ok);
+    const yes = (value) => (value ? 'sí' : 'no');
+    let version = 0;
+    if (ok(server)) { try { version = (await server.json()).kiosk_api || 0; } catch { version = 0; } }
+    const internetOk = ok(internet) || ok(panel) || ok(server);
+    const checks = [`Internet: ${yes(internetOk)}`, `Panel: ${yes(ok(panel))}`, `Servidor: ${yes(ok(server))}`];
+    if (direct !== undefined) checks.push(`Servidor directo: ${yes(ok(direct))}`);
+    const detail = ` · ${checks.join(' · ')} (servidor: ${host(API_BASE)}; página: ${window.location.host}; código: ${requestError?.code || 'sin código'})`;
     if (requestError?.code === 'ECONNABORTED') return `${words.slow}${detail}`;
-    try {
-      const ping = await axios.get(`${API}/api/kiosk/ping`, { timeout: 8000 });
-      if ((ping.data?.kiosk_api || 0) < 5) return `${words.outdated}${detail}`;
-      return `${words.blocked}${detail}`;
-    } catch (pingError) {
-      if (pingError?.response?.status === 404) return `${words.outdated}${detail}`;
-      return `${words.offlineServer}${detail}`;
-    }
+    if (ok(server)) return `${version < 5 ? words.outdated : words.blocked}${detail}`;
+    if (server && server.status === 404) return `${words.outdated}${detail}`;
+    if (internetOk && ok(panel)) return `${words.serverUnreachable}${detail}`;
+    return `${words.offlineServer}${detail}`;
   };
 
   const loadConfig = useCallback(() => {
@@ -232,8 +250,9 @@ export default function KioskPage() {
         const status = requestError?.response?.status;
         if (status === 401) { setLinkError(requestError.response.data?.detail || words.linkGone); return; }
         // Sin servidor (se está actualizando, sin internet, error): se dice y se reintenta solo, nunca se queda colgado.
-        if (status) setConfigProblem(words.serverError(status));
-        else diagnose(requestError, words).then(setConfigProblem);
+        // 502/503/504: el panel abrió pero no llegó al servidor; se prueba qué falla.
+        if (status && status < 502) setConfigProblem(words.serverError(status));
+        else diagnose(status ? { code: `HTTP ${status}` } : requestError, words).then(setConfigProblem);
         clearTimeout(retryTimer.current);
         retryTimer.current = setTimeout(loadConfig, 5000);
       });

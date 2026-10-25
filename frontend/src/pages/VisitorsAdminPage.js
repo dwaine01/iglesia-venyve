@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
 import { Link, useSearchParams } from 'react-router-dom';
 import QRCode from 'qrcode';
-import { ClipboardList, Copy, FileText, HeartHandshake, Link2, Loader2, Monitor, Tablet, TriangleAlert } from 'lucide-react';
+import { ClipboardList, Copy, Download, FileText, HeartHandshake, Link2, Loader2, Monitor, Tablet, TriangleAlert } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { useAuth } from '../context/AuthContext';
@@ -49,6 +49,44 @@ function LinkCard({ item, onRotate }) {
   );
 }
 
+// App de las tabletas Amazon Fire: GitHub la compila y la publica en «Releases» (el archivo no está en el repositorio).
+const TABLET_APP_REPO = 'dwaine01/iglesia-venyve';
+const TABLET_APP = {
+  final: { tag: 'tabletas', file: 'registro-venyve.apk' },
+  test: { tag: 'tabletas-prueba', file: 'registro-venyve-prueba.apk' },
+};
+const releaseUrl = ({ tag, file }) => `https://github.com/${TABLET_APP_REPO}/releases/download/${tag}/${file}`;
+
+function TabletApp() {
+  const [releases, setReleases] = useState({});
+  useEffect(() => {
+    Object.entries(TABLET_APP).forEach(([key, item]) => {
+      fetch(`https://api.github.com/repos/${TABLET_APP_REPO}/releases/tags/${item.tag}`)
+        .then((response) => (response.ok ? response.json() : null))
+        .then((data) => setReleases((current) => ({ ...current, [key]: data && (data.assets || []).some((asset) => asset.name === item.file) ? { name: data.name, date: data.published_at } : false })))
+        .catch(() => setReleases((current) => ({ ...current, [key]: null })));
+    });
+  }, []);
+  const final = releases.final;
+  const test = releases.test;
+  return (
+    <section className="space-y-3 rounded-2xl border border-[#E8E5DE] bg-white p-4 xl:col-span-2" data-testid="visitors-tablet-app">
+      <p className="text-lg font-semibold text-[#101D36]">App para las tabletas Amazon Fire</p>
+      <p className="text-[15px] text-slate-700">Abre solo el registro, en pantalla completa y sin barra de direcciones. Al instalarla se escribe el código de la tableta (el de arriba, después de «/r/»).</p>
+      <div className="flex flex-wrap items-center gap-3">
+        <a href={releaseUrl(TABLET_APP.final)} className={`inline-flex min-h-12 items-center gap-2 rounded-xl px-5 text-base font-semibold ${final === false ? 'pointer-events-none bg-slate-200 text-slate-500' : 'bg-[#132443] text-white'}`} aria-disabled={final === false} data-testid="visitors-tablet-app-download">
+          <Download className="h-5 w-5" aria-hidden />Descargar app de tabletas
+        </a>
+        {final && <span className="text-[15px] text-slate-600">{final.name}</span>}
+        {final === false && <span className="text-[15px] font-semibold text-amber-800">Todavía no hay versión final (falta crear la llave de firma).</span>}
+      </div>
+      {test !== false && (
+        <p className="text-[15px] text-slate-700">Versión de prueba: <a href={releaseUrl(TABLET_APP.test)} className="font-semibold text-[#0879BE] underline" data-testid="visitors-tablet-app-test">descargar «Registro Ven y Ve (prueba)»</a>{test ? ` · ${test.name}` : ''}. No se actualiza a la final: cuando instale la final, desinstale la de prueba.</p>
+      )}
+    </section>
+  );
+}
+
 function Links() {
   const { API, getAuthHeaders } = useAuth();
   const [items, setItems] = useState(null);
@@ -59,7 +97,8 @@ function Links() {
   return (
     <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
       {items.map((item) => <LinkCard key={item.kind} item={item} onRotate={rotate} />)}
-      <p className="text-[15px] text-slate-600 xl:col-span-2">Consejo: deja cada tableta fija en la página (iPad: Acceso Guiado; Android: fijar pantalla). Cada tableta se nombra sola (por ejemplo «Tableta 3F9A») para saber de dónde vino cada registro.</p>
+      <TabletApp />
+      <p className="text-[15px] text-slate-600 xl:col-span-2">Consejo: deja cada tableta fija en la página (iPad: Acceso Guiado; Amazon Fire y Android: la app de tabletas o «Fijar pantalla»). Cada tableta se nombra sola (por ejemplo «Tableta 3F9A») para saber de dónde vino cada registro.</p>
     </div>
   );
 }

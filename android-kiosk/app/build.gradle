@@ -1,0 +1,82 @@
+plugins {
+    id 'com.android.application'
+}
+
+// La llave final la pone GitHub desde sus secretos (nunca está en el repositorio).
+def keystorePath = System.getenv('KIOSK_KEYSTORE_PATH')
+def keystorePassword = System.getenv('KIOSK_KEYSTORE_PASSWORD')
+def hasReleaseKey = keystorePath && keystorePassword && file(keystorePath).exists()
+
+android {
+    namespace 'org.iglesiavenyve.registro'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'org.iglesiavenyve.registro'
+        // Fire OS 5 (Android 5.1) en adelante.
+        minSdk 22
+        targetSdk 34
+        versionCode((System.getenv('KIOSK_VERSION_CODE') ?: '1') as int)
+        versionName "1.0.${System.getenv('KIOSK_VERSION_CODE') ?: '1'}"
+        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+    }
+
+    signingConfigs {
+        if (hasReleaseKey) {
+            release {
+                storeFile file(keystorePath)
+                storePassword keystorePassword
+                keyAlias 'tabletas'
+                keyPassword keystorePassword
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            // APK de PRUEBA: otro identificador, así puede convivir con la app final y se desinstala aparte.
+            applicationIdSuffix '.prueba'
+            versionNameSuffix '-prueba'
+            resValue 'string', 'app_name', 'Registro Ven y Ve (prueba)'
+        }
+        release {
+            minifyEnabled false
+            resValue 'string', 'app_name', 'Registro Ven y Ve'
+            if (hasReleaseKey) {
+                signingConfig signingConfigs.release
+            }
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    testOptions {
+        unitTests {
+            includeAndroidResources = true
+            all {
+                testLogging {
+                    events 'passed', 'failed', 'skipped'
+                    showStandardStreams = true
+                    exceptionFormat 'full'
+                }
+            }
+        }
+    }
+
+    lint {
+        // El informe queda en los registros de GitHub; un aviso de estilo no detiene la compilación.
+        abortOnError false
+    }
+}
+
+dependencies {
+    // Solo para PRUEBAS (no van dentro del APK).
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.robolectric:robolectric:4.14.1'
+    androidTestImplementation 'androidx.test:runner:1.6.2'
+    androidTestImplementation 'androidx.test:core:1.6.1'
+    androidTestImplementation 'androidx.test.ext:junit:1.2.1'
+}
