@@ -9,7 +9,7 @@ import {
   LayoutDashboard, BookOpen, Map, Calendar, Users, BarChart3, LogOut, Menu, ChevronRight,
   Crown, Star, Trophy, Presentation, NotebookPen, KeyRound, IdCard, Church, Search, DatabaseZap,
   Activity, Award, BookHeart, Compass, GraduationCap, HeartHandshake, Network, RadioTower, DoorOpen, Gavel, Landmark, MapPinned,
-  PanelLeftClose, PanelLeftOpen, ShieldCheck, Droplets, Baby, Bus, Footprints, ClipboardCheck, Trash2, DatabaseBackup, UserCircle
+  PanelLeftClose, PanelLeftOpen, ShieldCheck, Droplets, Baby, Bus, Footprints, ClipboardCheck, Trash2, DatabaseBackup, UserCircle, UserPlus
 } from 'lucide-react';
 
 import { LOGO_IGLESIA } from '../data/presentationData';
@@ -37,6 +37,9 @@ const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
   // MT3: supervisar «Mi Trabajo» por mentor (coordinador general, pastoral, encargados de Consolidación).
   const supervision = isPastoralAuthority(user) || isGeneralCoordinator(user) || hasCapability(user, 'consolidation.assign')
     ? [{ to: '/mi-trabajo/supervision', icon: ClipboardCheck, label: 'Supervisar Mi Trabajo', testId: 'nav-my-work-supervision' }] : [];
+  // Registro de visitantes (tabletas de bienvenida): pastoral o con alguna capacidad visitors.*.
+  const visitors = isPastoralAuthority(user) || ['visitors.devices.manage', 'visitors.read', 'visitors.followup.manage', 'visitors.welcome.operate', 'visitors.texts.manage'].some((item) => hasCapability(user, item))
+    ? [{ to: '/visitantes', icon: UserPlus, label: 'Registro de visitantes', testId: 'nav-visitors' }] : [];
   // Invasiones › Reporte para la pastora (Modo Presentar sin pegar enlaces).
   const presentReport = { to: '/invasiones/reporte-pastora', icon: Presentation, label: 'Invasiones · Reporte para la pastora', testId: 'nav-present-report' };
   const BASE_PORTAL_ITEMS = [
@@ -84,7 +87,7 @@ const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
     if (isActiveMentor) {
       personItems.push({ to: '/procesos/consolidacion/mi-panel', icon: ClipboardCheck, label: 'Mi Panel de Mentor', testId: 'nav-mentor-panel' });
     }
-    return [...personItems, ...supervision];
+    return [...personItems, ...supervision, ...visitors];
   }
   
   if (rol === 'persona') {
@@ -121,7 +124,7 @@ const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
         personaItems.push({ to: '/mentoria/supervision', icon: BarChart3, label: 'Supervisión de mi Rama', testId: 'nav-supervision' });
       }
     }
-    return [...personaItems, ...supervision];
+    return [...personaItems, ...supervision, ...visitors];
   }
   
   // Default: lider
@@ -157,6 +160,7 @@ const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
     { to: '/bitacora', icon: NotebookPen, label: 'Bitácora Evangelística' },
     { to: '/presentacion', icon: Presentation, label: 'Manual de 7 Semanas' },
     ...(isGeneralCoordinator(user) || hasCapability(user, 'consolidation.assign') ? [{ to: '/estadisticas', icon: BarChart3, label: 'Estadísticas Globales' }] : []),
+    ...visitors,
   ];
   if (hasAnyCapability(user, ['core.access.manage'])) {
     items.splice(1, 0, { to: '/nucleo', icon: DatabaseZap, label: 'Gestión de accesos', testId: 'nav-core-governance' });
@@ -239,6 +243,7 @@ const breadcrumbMap = {
   '/bitacora': 'Bitácora Evangelística',
   '/codigos': 'Códigos de Invitación',
   '/estadisticas': 'Estadísticas Globales',
+  '/visitantes': 'Registro de visitantes',
   '/mis-estadisticas/manual': 'Mi progreso del Manual de 7 Semanas',
   '/directorio': 'Directorio de Talentos',
   '/ministerios': 'Ministerios',
