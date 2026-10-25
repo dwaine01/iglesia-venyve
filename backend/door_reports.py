@@ -38,10 +38,14 @@ def _add(target: dict, source: dict) -> None:
         target[key] += source.get(key, 0)
 
 
-async def door_report_data(campaign_id: str, mentor_person_id: Optional[str] = None) -> dict:
+async def door_report_data(campaign_id: str, mentor_person_id: Optional[str] = None, day: Optional[str] = None, zone=None, excluded=None) -> dict:
     """Totales + filas por mentor, equipo y calle. `mentor_person_id` limita al
-    trabajo de un mentor (su propio reporte)."""
-    authorities = await principal_authority_person_ids(db)
+    trabajo de un mentor (su propio reporte). `day` = solo esa jornada (día
+    local de la iglesia); `excluded` = personas que no cuentan (pastora, pruebas)."""
+    authorities = excluded if excluded is not None else await principal_authority_person_ids(db)
+    if day:
+        from report_period import local_day, report_zone
+        zone = zone or await report_zone()
     match: dict = {"campaign_id": campaign_id, "archived": {"$ne": True}}
     if mentor_person_id:
         match["mentor_person_id"] = mentor_person_id
@@ -55,8 +59,11 @@ async def door_report_data(campaign_id: str, mentor_person_id: Optional[str] = N
     visit_match = {"campaign_id": campaign_id, "archived": {"$ne": True}}
     if mentor_person_id:
         visit_match["mentor_person_id"] = mentor_person_id
-    visits = [visit for visit in await db.outreach_visits.find(visit_match, {"_id": 0, "visit_id": 1, "household_id": 1, "mentor_person_id": 1, "status": 1, "enrollment_id": 1}).to_list(20000)
+    visits = [visit for visit in await db.outreach_visits.find(visit_match, {"_id": 0, "visit_id": 1, "household_id": 1, "mentor_person_id": 1, "status": 1, "enrollment_id": 1, "created_at": 1}).to_list(20000)
               if visit.get("mentor_person_id") not in authorities]
+    if day:
+        events = [event for event in events if local_day(event.get("occurred_at"), zone) == day]
+        visits = [visit for visit in visits if local_day(visit.get("created_at"), zone) == day]
 
     events_of: dict[str, list] = defaultdict(list)
     for event in events:
@@ -90,6 +97,8 @@ async def door_report_data(campaign_id: str, mentor_person_id: Optional[str] = N
     for house in houses:
         house_events = sorted(events_of.get(house["household_id"], []), key=lambda item: str(item.get("occurred_at") or ""))
         people = people_of.get(house["household_id"], [])
+        if day and not house_events and not people:
+            continue  # en el reporte del día solo cuentan las viviendas trabajadas ese día
         row = _empty()
         if house_events:
             opened = any(event_opened(item) for item in house_events)
@@ -150,6 +159,8 @@ async def door_report_data(campaign_id: str, mentor_person_id: Optional[str] = N
         part_match["mentor_person_id"] = mentor_person_id
     sessions = [item async for doc in db.outreach_participations.find(part_match, {"_id": 0, "mentor_person_id": 1, "street_sessions": 1})
                 if doc.get("mentor_person_id") not in authorities for item in doc.get("street_sessions") or []]
+    if day:
+        sessions = [item for item in sessions if local_day(item.get("started_at"), zone) == day]
     timing = street_timing(sessions)
 
     def ordered(rows: list[dict]) -> list[dict]:

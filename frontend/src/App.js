@@ -66,6 +66,7 @@ const LibraryScanPage = lazyPage(() => import('./pages/library/LibraryScanPage')
 const LibraryReportsPage = lazyPage(() => import('./pages/library/LibraryReportsPage'));
 const LibraryTracePage = lazyPage(() => import('./pages/library/LibraryTracePage'));
 const MyWorkPage = lazyPage(() => import('./pages/MyWorkPage'));
+const InvasionPresentPage = lazyPage(() => import('./pages/InvasionPresentPage'));
 const MyWorkSupervisionPage = lazyPage(() => import('./pages/MyWorkSupervisionPage'));
 const LibraryLabelsPage = lazyPage(() => import('./pages/library/LibraryLabelsPage'));
 const CampaignControlPage = lazyPage(() => import('./pages/campaign/CampaignControlPage'));
@@ -260,6 +261,8 @@ function App() {
           <Route path="/presentacion/unirse" element={<PresentacionJoinPage />} />
           <Route path="/presentacion/imprimir" element={<PresentacionImprimirPage />} />
           <Route path="/campanas/ven-y-come/pantalla" element={<CampaignScreenPage />} />
+          {/* Modo Presentar del reporte: pantalla completa, sin menú (el backend valida el permiso). */}
+          <Route path="/invasiones/:campaignId/reporte/presentar" element={<ProtectedRoute><InvasionPresentPage /></ProtectedRoute>} />
           <Route path="/" element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
             <Route index element={<RoleDashboard />} />
             

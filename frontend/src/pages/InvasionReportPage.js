@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
-import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Download, FileSpreadsheet, Lock, Printer } from 'lucide-react';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { ArrowLeft, Download, FileSpreadsheet, Lock, MonitorPlay, Printer } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { useAuth } from '../context/AuthContext';
@@ -74,14 +74,16 @@ function BookDeliveries({ campaignId, books }) {
 
 export default function InvasionReportPage() {
   const { campaignId } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const dayIndex = Math.max(0, parseInt(searchParams.get('dia') || '0', 10) || 0);  // 0 = toda la semana
   const navigate = useNavigate();
   const { API, getAuthHeaders, user } = useAuth();
   const [report, setReport] = useState(null);
   const [error, setError] = useState('');
   const [closing, setClosing] = useState(false);
   const load = useCallback(() => {
-    axios.get(`${API}/api/invasions/${campaignId}/report`, getAuthHeaders()).then((response) => setReport(response.data)).catch((requestError) => setError(apiErrorMessage(requestError, 'No se pudo cargar el reporte')));
-  }, [API, getAuthHeaders, campaignId]);
+    axios.get(`${API}/api/invasions/${campaignId}/report`, { ...getAuthHeaders(), params: dayIndex ? { day_index: dayIndex } : {} }).then((response) => setReport(response.data)).catch((requestError) => setError(apiErrorMessage(requestError, 'No se pudo cargar el reporte')));
+  }, [API, getAuthHeaders, campaignId, dayIndex]);
   useEffect(() => { load(); }, [load]);
   const finalize = async () => {
     if (!window.confirm('¿Cerrar la invasión y generar el Reporte final? Las cifras quedarán congeladas.')) return;
@@ -110,12 +112,18 @@ export default function InvasionReportPage() {
         <button type="button" onClick={() => navigate(-1)} className="inline-flex min-h-10 items-center gap-1 text-sm text-slate-500 print:hidden"><ArrowLeft className="h-4 w-4" />Volver</button>
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#7A5F22]">Reporte de invasión</p>
         <h1 className="font-['Spectral'] text-3xl font-semibold text-[#101D36]">{s.name}</h1>
+        {report.period?.day && <p className="text-lg font-semibold text-[#7A5F22]" data-testid="report-day-title">Reporte del día {report.period.index} de {report.period.days_total} — {report.period.label}</p>}
         <p className="mt-1 flex flex-wrap items-center gap-2 text-sm">
           <span className={`rounded-full border px-3 py-0.5 text-xs font-semibold ${report.mode === 'final' ? 'border-[#101D36] bg-[#101D36] text-white' : 'border-amber-200 bg-amber-50 text-amber-800'}`} data-testid="report-mode">{report.mode === 'final' ? <><Lock className="mr-1 inline h-3 w-3" />Reporte final · {fmtDate(report.frozen_at)}</> : 'En curso · datos vivos'}</span>
           <span className="text-slate-500">{STATE[s.state] || s.state}</span>
         </p>
       </div>
       <div className="grid grid-cols-1 gap-2 sm:flex print:hidden">
+        {report.scope !== 'personal' && <select value={dayIndex} onChange={(event) => { const next = new URLSearchParams(searchParams); if (event.target.value === '0') next.delete('dia'); else next.set('dia', event.target.value); setSearchParams(next, { replace: true }); }} className="h-12 rounded-lg border border-[#D9D4C7] bg-white px-3 text-sm font-semibold text-[#101D36]" data-testid="report-period">
+          <option value="0">Toda la semana (acumulado)</option>
+          {(report.period?.days || []).map((item) => <option key={item.day} value={item.index}>Día {item.index} · {item.label}</option>)}
+        </select>}
+        {report.scope !== 'personal' && <button type="button" onClick={() => navigate(`/invasiones/${campaignId}/reporte/presentar?dia=${dayIndex || 1}`)} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg bg-[#132443] px-4 text-sm font-semibold text-white" data-testid="report-present"><MonitorPlay className="h-4 w-4" />Presentar en pantalla grande</button>}
         {report.scope !== 'personal' && <button type="button" onClick={exportExcel} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg border border-[#D9D4C7] bg-white px-4 text-sm font-semibold text-[#101D36]" data-testid="report-excel"><FileSpreadsheet className="h-4 w-4" />Excel</button>}
         <button type="button" onClick={() => window.print()} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg border border-[#D9D4C7] bg-white px-4 text-sm font-semibold text-[#101D36]" data-testid="report-print"><Printer className="h-4 w-4" />PDF / Imprimir</button>
         {report.can_finalize && <button type="button" onClick={finalize} disabled={closing} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg bg-[#101D36] px-4 text-sm font-semibold text-white" data-testid="report-finalize"><Lock className="h-4 w-4" />Cerrar invasión y generar reporte final</button>}

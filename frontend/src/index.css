@@ -140,3 +140,12 @@ html[data-keyboard="open"] .vv-fit {
 html[data-radio-ptt="on"] .overflow-y-auto[data-testid="app-page-scroll-container"] > * {
   padding-bottom: 6.5rem;
 }
+
+/* Modo Presentar (reporte en pantalla grande): en pantalla, una lámina; al imprimir, todas (una por página). */
+.present-print { display: none; }
+@media print {
+  .present-root { position: static !important; display: block !important; background: none !important; }
+  .present-stage, .present-ui { display: none !important; }
+  .present-print { display: block !important; }
+  .present-print > div { break-inside: avoid; }
+}
