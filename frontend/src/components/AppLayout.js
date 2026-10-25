@@ -16,6 +16,7 @@ import { LOGO_IGLESIA } from '../data/presentationData';
 import PortalNotificationsBell from './PortalNotificationsBell';
 import MobileBottomBar from './mobile/MobileBottomNav';
 import { HelpButton } from './invasions/HelpButton';
+import { RadioButton } from './invasions/RadioButton';
 import { InvasionTodayProvider } from '../context/InvasionTodayContext';
 import { ContextGuideButton } from './guides/ContextGuideButton';
 import { FloatingLibraryScanButton } from './library/FloatingLibraryScanButton';
@@ -396,6 +397,7 @@ export default function AppLayout() {
     if (path.startsWith('/invasiones/') && path.endsWith('/asistencia')) return 'Asistencia de invasión';
     if (path.startsWith('/invasiones/') && path.endsWith('/programa')) return 'Programa de invasión';
     if (path.startsWith('/invasiones/') && path.endsWith('/ayuda')) return 'Alertas de ayuda';
+    if (path.startsWith('/invasiones/') && path.endsWith('/radio')) return 'Radio';
     return 'Página';
   };
   const currentBreadcrumb = getBreadcrumb();
@@ -440,15 +442,16 @@ export default function AppLayout() {
             </Button>
 
             {/* Logo mini - solo mobile */}
-            <div className="flex items-center gap-2 lg:hidden shrink-0">
-              <div className="w-9 h-9 rounded-md bg-[#0F1A33] flex items-center justify-center p-0.5">
+            <div className="flex min-w-0 items-center gap-2 lg:hidden">
+              <div className="w-9 h-9 shrink-0 rounded-md bg-[#0F1A33] flex items-center justify-center p-0.5">
                 <img
                   src={LOGO_URL}
                   alt={BRAND.name}
                   className="w-full h-full object-contain logo-transparent"
                 />
               </div>
-              <span className="font-semibold text-sm text-foreground" style={{ fontFamily: 'Spectral, serif' }}>
+              {/* Se acorta (o se oculta en pantallas muy angostas) para dejar lugar a Radio y Ayuda. */}
+              <span className="min-w-0 truncate font-semibold text-sm text-foreground max-[359px]:hidden" style={{ fontFamily: 'Spectral, serif' }}>
                 {BRAND.name}
               </span>
             </div>
@@ -464,6 +467,7 @@ export default function AppLayout() {
             <div className="flex-1 sm:flex-initial sm:ml-auto flex items-center justify-end gap-1">
               {routeGuideKey && <ContextGuideButton moduleKey={routeGuideKey} compact />}
               {/* Botón rojo de ayuda: solo para participantes de una invasión activa hoy. */}
+              <RadioButton />
               <HelpButton />
               <PortalNotificationsBell />
             </div>
