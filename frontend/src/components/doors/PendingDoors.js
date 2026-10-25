@@ -92,7 +92,7 @@ export function PendingDoors({ campaignId, books, refreshKey, onChanged }) {
                     <p className="min-w-0 text-base font-semibold text-[#101D36]">{addressOf(item)}</p>
                     {status && <span className={`shrink-0 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${status.className}`}>{status.label}</span>}
                   </div>
-                  <p className="mt-1 text-sm text-slate-600">Último resultado: {item.last_result === 'opened' ? 'abrieron' : item.last_result === 'no_answer' ? 'no abrieron' : 'sin visitas'}{item.last_attempt_at ? ` · ${fmtDay(item.last_attempt_at)}` : ''} · {item.attempts_count || 0} intento(s)</p>
+                  <p className="mt-1 text-sm text-slate-600">Último resultado: {({ opened: 'abrieron', no_answer: 'no abrieron', requested_return: 'pidieron que regresen', no_more_visits: 'no desean más visitas' })[item.last_result] || 'sin visitas'}{item.last_attempt_at ? ` · ${fmtDay(item.last_attempt_at)}` : ''} · {item.attempts_count || 0} intento(s)</p>
                   {item.followup_date && <p className={`text-sm font-semibold ${item.overdue ? 'text-amber-800' : 'text-[#1d4ed8]'}`}>{item.overdue ? 'Atrasada · ' : 'Próxima visita · '}{fmtDay(item.followup_date)}{item.next_visit_note ? ` · ${item.next_visit_note}` : ''}</p>}
                   {data.scope === 'all' && <p className="text-xs text-slate-500">{[item.mentor_name || 'Sin mentor', item.team_name].filter(Boolean).join(' · ')}</p>}
                   {item.location_approx && <p className="flex items-center gap-1 text-xs text-slate-500"><MapPin className="h-3.5 w-3.5" />Ubicación aproximada (de la calle)</p>}

@@ -78,6 +78,10 @@ class AttemptInput(BaseModel):
     # L2: seguimiento con responsable y próxima acción (mismo modelo que Consolidación; no la inicia).
     followup_next_action: Optional[str] = Field(default=None, max_length=160)
     followup_responsible_person_id: Optional[str] = Field(default=None, max_length=80)
+    # MT1: resultados de la vivienda. «Solicitaron regresar» pide fecha; «No desean más visitas»
+    # la retira de pendientes (el historial se conserva).
+    outcome: Optional[Literal["requested_return", "no_more_visits"]] = None
+    return_date: Optional[date] = None
     language: Optional[Literal["es", "en", "other", "unknown"]] = None
     language_other: Optional[str] = Field(default=None, max_length=60)
     language_basis: Optional[Literal["confirmed", "impression"]] = None
@@ -94,6 +98,12 @@ class AttemptInput(BaseModel):
             raise ValueError("Religión u origen solo se registran si la persona lo compartió")
         if self.followup_date and self.followup != "yes":
             raise ValueError("Solo se programa seguimiento si la persona lo aceptó")
+        if self.outcome and not self.opened:
+            raise ValueError("Ese resultado solo se registra si abrieron")
+        if self.outcome == "requested_return" and not self.return_date:
+            raise ValueError("Indique la fecha en que pidieron que regresen")
+        if self.return_date and self.outcome != "requested_return":
+            raise ValueError("La fecha de regreso va con «Solicitaron regresar»")
         return self
 
 
@@ -236,7 +246,8 @@ async def set_visit_followup(visit_id: str, payload: FollowupInput, current_user
 async def refresh_door_status(household_id: str) -> None:
     """Estado derivado del historial completo (no se pierde ningún intento):
     sin respuesta → pendiente de nueva visita; abrieron → ya no está pendiente."""
-    events = await db.outreach_visit_events.find({"household_id": household_id, "is_draft": {"$ne": True}}, {"_id": 0, "opened": 1, "result": 1, "occurred_at": 1, "followup": 1, "followup_date": 1, "contact_level": 1, "books_total": 1}).sort("occurred_at", 1).to_list(500)
+    events = await db.outreach_visit_events.find({"household_id": household_id, "is_draft": {"$ne": True}}, {"_id": 0, "opened": 1, "result": 1, "occurred_at": 1, "followup": 1, "followup_date": 1, "contact_level": 1, "books_total": 1,
+                                                                                                         "outcome": 1, "return_date": 1}).sort("occurred_at", 1).to_list(500)
     household = await db.outreach_households.find_one({"household_id": household_id}, {"_id": 0, "next_visit_date": 1, "next_visit_set_at": 1}) or {}
     # Próxima visita programada a mano («Programar»/«Reprogramar»): vale si es posterior al último intento.
     manual = household.get("next_visit_date") if household.get("next_visit_set_at") and (not events or household["next_visit_set_at"] >= events[-1].get("occurred_at")) else None
@@ -247,12 +258,14 @@ async def refresh_door_status(household_id: str) -> None:
     last = events[-1]
     opened = event_opened(last)
     # Cada visita resuelve el pendiente anterior: solo cuenta el seguimiento del ÚLTIMO intento (o uno programado después).
-    followup_date = manual or (last.get("followup_date") if last.get("followup") == "yes" else None)
+    followup_date = manual or (last.get("return_date") if last.get("outcome") == "requested_return" else None) or (last.get("followup_date") if last.get("followup") == "yes" else None)
     status = "followup_scheduled" if followup_date else ("opened" if opened else "pending_revisit")
+    if last.get("outcome") == "no_more_visits" and not manual:
+        status, followup_date = "no_more_visits", None  # sale de pendientes; el historial queda
     await db.outreach_households.update_one({"household_id": household_id}, {"$set": {
         "attempts_count": len(events), "opened_ever": any(event_opened(item) for item in events), "door_status": status,
         "conversed_ever": any(item.get("contact_level") in CONVERSED for item in events), "books_total": sum(item.get("books_total") or 0 for item in events),
-        "last_result": "opened" if opened else "no_answer", "last_attempt_at": last.get("occurred_at"), "followup_date": followup_date,
+        "last_result": last.get("outcome") or ("opened" if opened else "no_answer"), "last_attempt_at": last.get("occurred_at"), "followup_date": followup_date,
     }})
 
 
@@ -296,6 +309,7 @@ async def record_attempt(household: dict, payload: AttemptInput, current_user: d
         "religion": ((payload.religion or "").strip() or None) if opened else None, "origin": ((payload.origin or "").strip() or None) if opened else None,
         "shared_by_person": bool(payload.shared_by_person and opened and (payload.religion or payload.origin)),
         "note": (payload.note or "").strip() or None, "is_draft": False, "client_request_id": payload.client_request_id,
+        "outcome": payload.outcome if opened else None, "return_date": payload.return_date.isoformat() if opened and payload.return_date else None,
         "occurred_at": now, "created_by_user_id": current_user["user_id"], "created_at": now, "source": "door_to_door",
         "street_session_id": street_session_id,
     }
