@@ -27,7 +27,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Literal, Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from bson import ObjectId
 from pymongo import ReturnDocument
@@ -273,11 +273,15 @@ async def rate_limit(key: str, limit: int, window_seconds: int = 60) -> None:
         raise HTTPException(status_code=429, detail="Demasiados registros seguidos desde esta tableta. Espere un minuto e intente de nuevo.")
 
 
-async def kiosk_device(request: Request, x_link_token: Optional[str] = Header(default=None), x_tablet_name: Optional[str] = Header(default=None)) -> dict:
-    """Tableta: solo el enlace de tabletas. Se identifica sola («Tableta 3F9A») para trazabilidad."""
-    link = await link_access("tablet", x_link_token, request)
-    name = x_tablet_name if x_tablet_name and TABLET_NAME.match(x_tablet_name) else "Tableta sin nombre"
-    return {"device_id": name, "name": name, "ip": client_ip(request), "short_path": f"{SHORT_PATHS['tablet']}/{link['code']}"}
+async def kiosk_device(request: Request, x_link_token: Optional[str] = Header(default=None), x_tablet_name: Optional[str] = Header(default=None),
+                       link: Optional[str] = Query(default=None, max_length=80), tablet: Optional[str] = Query(default=None, max_length=40)) -> dict:
+    """Tableta: solo el enlace de tabletas. Se identifica sola («Tableta 3F9A») para trazabilidad.
+    El código puede llegar en el encabezado o en la dirección (?link=…): así la lectura de la
+    configuración es un pedido «simple» que el navegador no necesita autorizar antes."""
+    item = await link_access("tablet", x_link_token or link, request)
+    tablet_name = x_tablet_name or tablet
+    name = tablet_name if tablet_name and TABLET_NAME.match(tablet_name) else "Tableta sin nombre"
+    return {"device_id": name, "name": name, "ip": client_ip(request), "short_path": f"{SHORT_PATHS['tablet']}/{item['code']}"}
 
 
 KIOSK_SETTINGS_ID = "visitor_kiosk_settings"
@@ -313,6 +317,15 @@ async def put_kiosk_settings(payload: KioskSettingsInput, current_user: dict = D
     await db.app_settings.update_one({"_id": KIOSK_SETTINGS_ID}, {"$set": {**payload.model_dump(), "updated_at": now_utc(), "updated_by": current_user["user_id"]}}, upsert=True)
     await audit("kiosk_settings_changed", current_user["user_id"], payload.model_dump())
     return await load_kiosk_settings()
+
+
+KIOSK_API_VERSION = 4  # sube cuando cambia lo que la tableta necesita del servidor
+
+
+@kiosk_router.get("/ping", response_model=dict)
+async def kiosk_ping():
+    """Diagnóstico de la tableta (sin datos ni permisos): ¿llega al servidor y es la versión nueva?"""
+    return {"ok": True, "kiosk_api": KIOSK_API_VERSION}
 
 
 @kiosk_router.get("/config", response_model=dict)

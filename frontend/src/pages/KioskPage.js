@@ -172,21 +172,40 @@ export default function KioskPage() {
   const [pending, setPending] = useState(0);
   const lastTouch = useRef(Date.now());
   const times = useMemo(() => ({ ...DEFAULT_TIMEOUTS, ...(config?.timeouts || {}) }), [config]);
-  const headers = { 'X-Link-Token': token || '', 'X-Tablet-Name': device };
+  // Pedidos «simples» (sin encabezados propios y con el cuerpo como texto): el navegador no necesita
+  // pedir permiso antes, algo que Silk de las tabletas Amazon Fire a veces no completa.
+  const linkParams = { link: token || '', tablet: device };
+  const simplePost = (path, body, timeout) => axios.post(`${API}${path}`, JSON.stringify(body), { params: linkParams, headers: { 'Content-Type': 'text/plain' }, timeout });
   const set = (key, value) => setForm((current) => ({ ...current, [key]: value }));
 
   const reset = useCallback(() => { setForm(emptyForm()); setStep(-1); setResult(null); setError(''); setSaving(false); window.scrollTo(0, 0); }, []);
 
   // Textos y servicio de hoy. Un enlace viejo o equivocado muestra cómo pedir el nuevo.
+  // ¿Por qué no llegó la configuración? Se prueba el servidor sin ningún dato para decirlo claro.
+  const diagnose = async (requestError) => {
+    const host = (() => { try { return new URL(API).host; } catch { return API; } })();
+    const detail = ` (servidor: ${host}; página: ${window.location.host}; código: ${requestError?.code || 'sin código'})`;
+    if (requestError?.code === 'ECONNABORTED') return `El servidor tardó demasiado en responder. Reintentando…${detail}`;
+    try {
+      const ping = await axios.get(`${API}/api/kiosk/ping`, { timeout: 8000 });
+      if ((ping.data?.kiosk_api || 0) < 4) return `El servidor todavía no tiene la versión nueva. Reintentando…${detail}`;
+      return `El servidor responde, pero este navegador bloqueó el pedido. Reintentando…${detail}`;
+    } catch (pingError) {
+      if (pingError?.response?.status === 404) return `El servidor todavía no tiene la versión nueva. Reintentando…${detail}`;
+      return `No hay conexión con el servidor. Revise el internet de la tableta. Reintentando…${detail}`;
+    }
+  };
+
   const loadConfig = useCallback(() => {
     if (!token) { setLinkError('Abra el enlace de tabletas que aparece en Registro de visitantes › Enlaces.'); return; }
-    axios.get(`${API}/api/kiosk/config`, { headers: { 'X-Link-Token': token, 'X-Tablet-Name': device }, timeout: 12000 })
+    axios.get(`${API}/api/kiosk/config`, { params: { link: token, tablet: device }, timeout: 12000 })
       .then((response) => { setConfig(response.data); setLinkError(''); setConfigProblem(''); adoptShortPath('vv_kiosk_link', response.data.short_path); })
       .catch((requestError) => {
         const status = requestError?.response?.status;
         if (status === 401) { setLinkError(requestError.response.data?.detail || 'Este enlace ya no funciona.'); return; }
         // Sin servidor (se está actualizando, sin internet, error): se dice y se reintenta solo, nunca se queda colgado.
-        setConfigProblem(status ? `El servidor respondió con un error (${status}). Reintentando…` : 'No hay conexión con el servidor. Reintentando…');
+        if (status) setConfigProblem(`El servidor respondió con un error (${status}). Reintentando…`);
+        else diagnose(requestError).then(setConfigProblem);
         clearTimeout(retryTimer.current);
         retryTimer.current = setTimeout(loadConfig, 5000);
       });
@@ -197,7 +216,7 @@ export default function KioskPage() {
   // inválido (400/422) se descarta; sin internet, límite o enlace viejo, se reintenta.
   const send = useCallback(async (payload) => {
     try {
-      return (await axios.post(`${API}/api/kiosk/registrations`, payload, { headers, timeout: 20000 })).data;
+      return (await simplePost('/api/kiosk/registrations', payload, 20000)).data;
     } catch (requestError) {
       const status = requestError?.response?.status;
       if (status === 400 || status === 422) { const permanent = new Error(requestError.response.data?.detail || 'Revise los datos'); permanent.permanent = true; throw permanent; }
@@ -260,7 +279,7 @@ export default function KioskPage() {
   // la persona abandona. No detiene a la persona (si falla, el registro final lo guarda igual).
   const saveDraft = () => {
     if (!config || !form.first_name.trim() || !form.last_name.trim()) return;
-    axios.post(`${API}/api/kiosk/registrations/draft`, buildPayload(), { headers, timeout: 8000 }).catch(() => {});
+    simplePost('/api/kiosk/registrations/draft', buildPayload(), 8000).catch(() => {});
   };
 
   const submit = async () => {
