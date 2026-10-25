@@ -1,4 +1,5 @@
 import React, { Suspense, useEffect, useState } from 'react';
+import axios from 'axios';
 import { Outlet, NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { prefetchPages } from '../lib/lazyPage';
@@ -32,14 +33,15 @@ const LOGO_URL = LOGO_IGLESIA;
 // Menu items by role
 const consolidationDetailMatch = (pathname) => /^\/procesos\/consolidacion\/(?!mi-panel$)[^/]+$/.test(pathname);
 
-const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
+const getNavItems = (user, boardAllowed = false, isActiveMentor = false, hasVisitorAssignments = false) => {
   const rol = user?.rol;
   // MT3: supervisar «Mi Trabajo» por mentor (coordinador general, pastoral, encargados de Consolidación).
   const supervision = isPastoralAuthority(user) || isGeneralCoordinator(user) || hasCapability(user, 'consolidation.assign')
     ? [{ to: '/mi-trabajo/supervision', icon: ClipboardCheck, label: 'Supervisar Mi Trabajo', testId: 'nav-my-work-supervision' }] : [];
   // Registro de visitantes (tabletas de bienvenida): pastoral o con alguna capacidad visitors.*.
   const visitors = isPastoralAuthority(user) || ['visitors.devices.manage', 'visitors.read', 'visitors.followup.manage', 'visitors.welcome.operate', 'visitors.texts.manage'].some((item) => hasCapability(user, item))
-    ? [{ to: '/visitantes', icon: UserPlus, label: 'Registro de visitantes', testId: 'nav-visitors' }] : [];
+    ? [{ to: '/visitantes', icon: UserPlus, label: 'Registro de visitantes', testId: 'nav-visitors' }]
+    : hasVisitorAssignments ? [{ to: '/visitantes?tab=seguimiento', icon: UserPlus, label: 'Mis visitantes asignados', testId: 'nav-visitors' }] : [];
   // Invasiones › Reporte para la pastora (Modo Presentar sin pegar enlaces).
   const presentReport = { to: '/invasiones/reporte-pastora', icon: Presentation, label: 'Invasiones · Reporte para la pastora', testId: 'nav-present-report' };
   const BASE_PORTAL_ITEMS = [
@@ -287,10 +289,29 @@ const breadcrumbMap = {
   '/junta/minutas': 'Libro de Minutas',
 };
 
+// ¿Tiene visitantes asignados para seguimiento? (una sola consulta por sesión)
+let visitorAssignmentsCache = { userId: null, promise: null };
+function useVisitorAssignments(user) {
+  const { API, getAuthHeaders } = useAuth();
+  const [value, setValue] = useState(false);
+  useEffect(() => {
+    if (!user?.id && !user?.user_id) return undefined;
+    const userId = user.id || user.user_id;
+    if (visitorAssignmentsCache.userId !== userId) {
+      visitorAssignmentsCache = { userId, promise: axios.get(`${API}/api/visitors/followup/mine-count`, getAuthHeaders()).then((response) => response.data.count > 0).catch(() => false) };
+    }
+    let alive = true;
+    visitorAssignmentsCache.promise.then((result) => { if (alive) setValue(result); });
+    return () => { alive = false; };
+  }, [API, getAuthHeaders, user?.id, user?.user_id]); // eslint-disable-line react-hooks/exhaustive-deps
+  return value;
+}
+
 function SidebarContent({ onClose, testIdPrefix = '', boardAllowed = false, isActiveMentor = false }) {
   const { user, logout } = useAuth();
   const location = useLocation();
-  const navItems = getNavItems(user, boardAllowed, isActiveMentor);
+  const hasVisitorAssignments = useVisitorAssignments(user);
+  const navItems = getNavItems(user, boardAllowed, isActiveMentor, hasVisitorAssignments);
 
   const getRolLabel = () => {
     if (isPastoralAuthority(user)) return 'Pastor (Acceso Maestro)';
