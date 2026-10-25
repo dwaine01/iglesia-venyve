@@ -61,6 +61,11 @@ Si algún día se perdiera la llave, borrar los secretos de GitHub, por ejemplo,
 
 Para **actualizar**, instale el APK final nuevo encima del anterior. Se conservan el código y el PIN.
 
+**Si la app dice «Este código ya no funciona»:** se generó un enlace nuevo en Visitantes › Enlaces. Toque «Cambiar código», escriba el PIN y luego el código nuevo (las letras después de `/r/`).
+- También se puede cambiar desde el menú de administrador: esquina superior izquierda 5 segundos › PIN › «Cambiar el código de la tableta».
+
+**«Sin conexión»** sale solo cuando la tableta no llega al sitio. Abajo, en letra pequeña, aparece el detalle técnico. Envíe una foto si no se resuelve.
+
 ## Para desarrolladores
 
 - Compilar: `gradle -p android-kiosk testDebugUnitTest assembleDebug` (Gradle 8.11 y JDK 17).

@@ -44,6 +44,20 @@ public class KioskPolicyTest {
     }
 
     @Test
+    public void serverAnswerTellsWhatToShow() {
+        assertEquals(KioskPolicy.Check.OK, KioskPolicy.classify(200));
+        assertEquals("código que ya no sirve", KioskPolicy.Check.CODE_INVALID, KioskPolicy.classify(401));
+        assertEquals(KioskPolicy.Check.TOO_MANY, KioskPolicy.classify(429));
+        assertEquals(KioskPolicy.Check.SERVER_ERROR, KioskPolicy.classify(502));
+        assertEquals("un 404 no bloquea: el registro decide", KioskPolicy.Check.OK, KioskPolicy.classify(404));
+        assertEquals("https://panel.iglesiavenyve.org/api/kiosk/config?link=ABCD2345", KioskPolicy.checkUrl("ABCD2345"));
+        String offline = KioskPolicy.offlineUrl("sin internet (HTTP 0)");
+        assertTrue(offline.startsWith(KioskPolicy.OFFLINE_PAGE + "#"));
+        expect(KioskPolicy.Decision.LOAD, offline);
+        assertEquals(KioskPolicy.OFFLINE_PAGE, KioskPolicy.offlineUrl(""));
+    }
+
+    @Test
     public void tabletCode() {
         assertEquals("ABCD2345", KioskPolicy.normalizeCode(" abcd-2345 "));
         assertTrue(KioskPolicy.validCode("ABCD2345"));

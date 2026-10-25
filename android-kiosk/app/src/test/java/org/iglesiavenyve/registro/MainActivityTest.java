@@ -14,6 +14,7 @@ import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.widget.EditText;
 
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -34,6 +35,26 @@ public class MainActivityTest {
         ShadowLog.stream = System.out;  // los registros «Permitido / BLOQUEADO» quedan en el log de GitHub
         prefs = RuntimeEnvironment.getApplication().getSharedPreferences(MainActivity.PREFS, Context.MODE_PRIVATE);
         prefs.edit().clear().commit();
+        MainActivity.checkerForTests = (code, detail) -> KioskPolicy.Check.OK;  // el servidor acepta el código
+    }
+
+    @After
+    public void tearDown() {
+        MainActivity.checkerForTests = null;
+    }
+
+    private static boolean hasText(View view, String value) {
+        if (view instanceof android.widget.TextView && ((android.widget.TextView) view).getText().toString().contains(value)) {
+            return true;
+        }
+        if (view instanceof ViewGroup) {
+            for (int index = 0; index < ((ViewGroup) view).getChildCount(); index++) {
+                if (hasText(((ViewGroup) view).getChildAt(index), value)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private MainActivity configured() {
@@ -80,10 +101,36 @@ public class MainActivityTest {
         MainActivity activity = configured();
         activity.client.onReceivedError(activity.web, -2, "net::ERR_INTERNET_DISCONNECTED", "https://panel.iglesiavenyve.org/r/ABCD2345?app=apk");
         assertTrue(activity.offline);
-        assertEquals(KioskPolicy.OFFLINE_PAGE, shadowOf(activity.web).getLastLoadedUrl());
+        assertTrue("«Sin conexión» con el detalle", shadowOf(activity.web).getLastLoadedUrl().startsWith(KioskPolicy.OFFLINE_PAGE + "#"));
         // «Reintentar» vuelve a abrir el registro.
         assertTrue(activity.client.shouldOverrideUrlLoading(activity.web, KioskPolicy.RETRY_URL));
         assertFalse(activity.offline);
+        assertEquals("https://panel.iglesiavenyve.org/r/ABCD2345?app=apk", shadowOf(activity.web).getLastLoadedUrl());
+    }
+
+    @Test
+    public void oldCodeShowsChangeCodeInsteadOfOffline() {
+        MainActivity.checkerForTests = (code, detail) -> { detail.append("HTTP 401"); return KioskPolicy.Check.CODE_INVALID; };
+        MainActivity activity = configured();
+        assertEquals("code_invalid", activity.screen);
+        assertFalse(activity.offline);
+        assertTrue(hasText(activity.root, "Este código ya no funciona") && hasText(activity.root, "This code no longer works"));
+        assertTrue(hasText(activity.root, "Cambiar código"));
+        assertNull("no se abre el registro con un código viejo", shadowOf(activity.web).getLastLoadedUrl());
+        System.out.println("CÓDIGO VIEJO → pantalla «Este código ya no funciona» con «Cambiar código»");
+    }
+
+    @Test
+    public void noNetworkShowsOfflineWithDetail() {
+        MainActivity.checkerForTests = (code, detail) -> { detail.append("no se encuentra panel.iglesiavenyve.org"); return KioskPolicy.Check.OFFLINE; };
+        MainActivity activity = configured();
+        assertEquals("offline", activity.screen);
+        assertTrue(activity.offline);
+        assertTrue(shadowOf(activity.web).getLastLoadedUrl().startsWith(KioskPolicy.OFFLINE_PAGE + "#"));
+        // Vuelve la red y el código sirve: abre el registro.
+        MainActivity.checkerForTests = (code, detail) -> KioskPolicy.Check.OK;
+        activity.loadTablet();
+        assertEquals("web", activity.screen);
         assertEquals("https://panel.iglesiavenyve.org/r/ABCD2345?app=apk", shadowOf(activity.web).getLastLoadedUrl());
     }
 

@@ -50,7 +50,13 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.io.IOException;
 import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.net.UnknownHostException;
+
+import javax.net.ssl.SSLException;
 
 /**
  * Registro Ven y Ve: abre SOLO el registro de visitantes de la tableta en pantalla
@@ -74,11 +80,21 @@ public class MainActivity extends Activity {
     private static final int BACKGROUND = 0xFFF7F5EF;
     private static final int MUTED = 0xFF475467;
 
+    /** Pregunta al servidor si el código sirve. Se cambia en las pruebas (sin red). */
+    interface CodeChecker {
+        KioskPolicy.Check check(String code, StringBuilder detail);
+    }
+
+    static CodeChecker checkerForTests;
+
     SharedPreferences prefs;
     FrameLayout root;
     WebView web;
     KioskClient client;
     boolean offline;
+    /** Qué muestra ahora: "web", "offline", "code_invalid" o "setup" (para las pruebas y los registros). */
+    String screen = "setup";
+    private int checkRound;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private ConnectivityManager.NetworkCallback networkCallback;
     private int wrongPins;
@@ -95,7 +111,7 @@ public class MainActivity extends Activity {
     private final Runnable openAdmin = new Runnable() {
         @Override
         public void run() {
-            askPin();
+            askPin(MainActivity.this::showAdminMenu);
         }
     };
 
@@ -242,27 +258,161 @@ public class MainActivity extends Activity {
                     return false;  // los campos de texto conservan pegar/seleccionar
                 }
             });
+            attachWeb();
             loadTablet();
+            return;
         }
-        root.addView(web, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        addAdminCorner();
+        attachWeb();
     }
 
+    private void attachWeb() {
+        root.removeAllViews();
+        root.addView(web, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        addAdminCorner();
+        screen = offline ? "offline" : "web";
+    }
+
+    /**
+     * Antes de abrir el registro se le pregunta al servidor si el código sirve. Así se
+     * distingue: código que ya no funciona (401) → «Cambiar código»; sin red → «Sin conexión»
+     * con el detalle; servidor con fallas (5xx) → «Sin conexión» con el detalle.
+     */
     void loadTablet() {
         handler.removeCallbacks(autoRetry);
         offline = false;
-        String url = KioskPolicy.tabletUrl(prefs.getString(KEY_CODE, ""));
-        Log.i(TAG, "Abriendo " + KioskPolicy.hostOf(url));
-        web.loadUrl(url);
+        final String code = prefs.getString(KEY_CODE, "");
+        final int round = ++checkRound;
+        if (checkerForTests != null) {  // pruebas: sin hilo ni red
+            StringBuilder detail = new StringBuilder();
+            onChecked(round, checkerForTests.check(code, detail), detail.toString());
+            return;
+        }
+        new Thread(() -> {
+            StringBuilder detail = new StringBuilder();
+            KioskPolicy.Check result = checkOnline(code, detail);
+            handler.post(() -> onChecked(round, result, detail.toString()));
+        }, "comprobar-codigo").start();
+    }
+
+    void onChecked(int round, KioskPolicy.Check result, String detail) {
+        if (round != checkRound || isFinishing()) {
+            return;  // ya hubo otro intento
+        }
+        Log.i(TAG, "Comprobación del código: " + result + (detail.isEmpty() ? "" : " (" + detail + ")"));
+        switch (result) {
+            case CODE_INVALID:
+                showCodeInvalid();
+                break;
+            case TOO_MANY:
+                showOffline("demasiados intentos con un código equivocado; espere 10 minutos · too many attempts, wait 10 minutes");
+                break;
+            case SERVER_ERROR:
+                showOffline("el servidor no responde bien (" + detail + ")");
+                break;
+            case CERTIFICATE:
+                showOffline("la tableta no acepta el certificado del sitio (" + detail + "): revise la fecha y la hora de la tableta");
+                break;
+            case OFFLINE:
+                showOffline("sin internet o sin acceso al sitio (" + detail + ")");
+                break;
+            default:
+                if (web.getParent() == null) {
+                    attachWeb();
+                }
+                screen = "web";
+                String url = KioskPolicy.tabletUrl(prefs.getString(KEY_CODE, ""));
+                Log.i(TAG, "Abriendo " + KioskPolicy.hostOf(url));
+                web.loadUrl(url);
+        }
+    }
+
+    /** La consulta real al servidor (en un hilo aparte). */
+    static KioskPolicy.Check checkOnline(String code, StringBuilder detail) {
+        HttpURLConnection connection = null;
+        try {
+            connection = (HttpURLConnection) new URL(KioskPolicy.checkUrl(code)).openConnection();
+            connection.setConnectTimeout(10000);
+            connection.setReadTimeout(10000);
+            connection.setUseCaches(false);
+            connection.setRequestProperty("Accept", "application/json");
+            int status = connection.getResponseCode();
+            detail.append("HTTP ").append(status);
+            return KioskPolicy.classify(status);
+        } catch (SSLException error) {
+            detail.append(error.getClass().getSimpleName());
+            return KioskPolicy.Check.CERTIFICATE;
+        } catch (UnknownHostException error) {
+            detail.append("no se encuentra ").append(KioskPolicy.HOST);
+            return KioskPolicy.Check.OFFLINE;
+        } catch (IOException | RuntimeException error) {
+            detail.append(error.getClass().getSimpleName());
+            return KioskPolicy.Check.OFFLINE;
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
+        }
     }
 
     void showOffline(String reason) {
         Log.w(TAG, "Sin conexión: " + reason);
         offline = true;
+        if (web.getParent() == null) {
+            attachWeb();
+        }
+        screen = "offline";
         web.stopLoading();
-        web.loadUrl(KioskPolicy.OFFLINE_PAGE);
+        web.loadUrl(KioskPolicy.offlineUrl(reason));
         handler.removeCallbacks(autoRetry);
         handler.postDelayed(autoRetry, AUTO_RETRY_MS);
+    }
+
+    /** El servidor responde, pero el código ya no sirve (se generó uno nuevo): se cambia aquí, con el PIN. */
+    void showCodeInvalid() {
+        handler.removeCallbacks(autoRetry);
+        offline = false;
+        screen = "code_invalid";
+        root.removeAllViews();
+        LinearLayout box = column();
+        box.setGravity(Gravity.CENTER);
+        int pad = dp(32);
+        box.setPadding(pad, pad, pad, pad);
+        Bitmap emblem = asset("emblema.png");
+        if (emblem != null) {
+            ImageView logo = new ImageView(this);
+            logo.setImageBitmap(emblem);
+            logo.setAdjustViewBounds(true);
+            box.addView(logo, new LinearLayout.LayoutParams(dp(200), ViewGroup.LayoutParams.WRAP_CONTENT));
+        }
+        box.addView(text("Este código ya no funciona", 32, NAVY, true));
+        box.addView(text("This code no longer works", 22, 0xFF8A6A1F, true));
+        box.addView(text("Pida el código nuevo a la administración (Visitantes › Enlaces) y cámbielo aquí.", 20, MUTED, false));
+        box.addView(text("Ask the church office for the new code and change it here.", 18, MUTED, false));
+        box.addView(text("Código actual: " + prefs.getString(KEY_CODE, ""), 16, MUTED, false));
+        Button change = bigButton("Cambiar código · Change code", true);
+        change.setOnClickListener(view -> askPin(() -> showSetup(false)));
+        LinearLayout.LayoutParams first = wide();
+        first.topMargin = dp(20);
+        box.addView(change, first);
+        Button retry = bigButton("Reintentar · Try again", false);
+        retry.setOnClickListener(view -> loadTablet());
+        box.addView(retry, wide());
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        scroll.addView(box);
+        root.addView(scroll, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        addAdminCorner();
+    }
+
+    private Button bigButton(String label, boolean primary) {
+        Button button = new Button(this);
+        button.setText(label);
+        button.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22);
+        button.setAllCaps(false);
+        button.setTextColor(primary ? Color.WHITE : NAVY);
+        button.setBackgroundColor(primary ? NAVY : Color.WHITE);
+        button.setPadding(dp(24), dp(16), dp(24), dp(16));
+        return button;
     }
 
     /** Lista blanca de dominio y página «Sin conexión». */
@@ -386,7 +536,7 @@ public class MainActivity extends Activity {
         root.addView(corner, new FrameLayout.LayoutParams(size, size, Gravity.TOP | Gravity.START));
     }
 
-    void askPin() {
+    void askPin(final Runnable onSuccess) {
         if (SystemClock.elapsedRealtime() < lockedUntil) {
             Toast.makeText(this, "Demasiados intentos. Espere un minuto.", Toast.LENGTH_LONG).show();
             return;
@@ -399,7 +549,7 @@ public class MainActivity extends Activity {
                     if (KioskPolicy.verifyPin(pin.getText().toString(), prefs.getString(KEY_PIN_SALT, null),
                             prefs.getInt(KEY_PIN_ITERATIONS, KioskPolicy.PIN_ITERATIONS), prefs.getString(KEY_PIN_HASH, null))) {
                         wrongPins = 0;
-                        showAdminMenu();
+                        onSuccess.run();
                     } else {
                         wrongPins++;
                         if (wrongPins >= 5) {
@@ -513,6 +663,7 @@ public class MainActivity extends Activity {
     /** Al instalar: el código de la tableta (Visitantes › Enlaces) y, la primera vez, el PIN. */
     void showSetup(final boolean askPin) {
         root.removeAllViews();
+        screen = "setup";
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
         LinearLayout box = column();
@@ -596,7 +747,13 @@ public class MainActivity extends Activity {
             cancel.setText("Cancelar");
             cancel.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22);
             cancel.setAllCaps(false);
-            cancel.setOnClickListener(view -> showWeb());
+            cancel.setOnClickListener(view -> {
+                boolean existing = web != null;
+                showWeb();
+                if (existing) {
+                    loadTablet();  // vuelve a comprobar el código
+                }
+            });
             box.addView(cancel, wide());
         }
         root.addView(scroll, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
