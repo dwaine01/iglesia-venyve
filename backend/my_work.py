@@ -373,13 +373,27 @@ async def today_totals(mentor_ids: list[str]) -> dict:
     return result
 
 
+async def scope_leader_branch(current_user: dict, mentor_person_id: str) -> str:
+    """Supervisión (como `scope_mentor`) o un líder viendo a un líder/colíder de
+    un grupo de SU rama hacia abajo (Grupo Frontal › Mis ramas)."""
+    if mentor_person_id == current_user.get("person_id") or can_supervise(current_user):
+        return scope_mentor(current_user, mentor_person_id)
+    from front_group_structure import explorable_ids, lead_group_ids
+    allowed = await explorable_ids(current_user)
+    mine = await lead_group_ids(current_user)
+    if allowed is None or await db.front_group_assignments.find_one({"person_id": mentor_person_id, "role": {"$in": ["leader", "co_leader"]}, "active": True,
+                                                                     "front_group_id": {"$in": [gid for gid in (allowed or set()) if gid not in mine]}}, {"_id": 1}):
+        return mentor_person_id
+    raise HTTPException(status_code=403, detail="Solo puede ver el trabajo de los líderes de su rama hacia abajo")
+
+
 @router.get("/leader-detail", response_model=dict)
 async def leader_detail(mentor_person_id: str, current_user: dict = Depends(get_current_user)):
     """Detalle del trabajo de un líder/mentor (Panel General › Entrar al Líder):
     resumen hoy / semana / total, su trabajo de hoy hora por hora, expedientes
     de Consolidación y asistencia a invasiones. Pendientes, personas, viviendas
     e inventario salen de los mismos endpoints de Mi Trabajo."""
-    mentor = scope_mentor(current_user, mentor_person_id)
+    mentor = await scope_leader_branch(current_user, mentor_person_id)
     row = (await mentor_work_rows([mentor]))[mentor]
     week = await compute_summary(mentor, "week", None)
     since, zone = await _today_start()

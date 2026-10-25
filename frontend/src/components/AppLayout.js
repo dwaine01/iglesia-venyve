@@ -46,8 +46,7 @@ const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
   if (isPastoralAuthority(user)) {
     const personItems = [
       ...BASE_PORTAL_ITEMS,
-      { to: '/grupo-frontal-pastoral', icon: Network, label: 'Mi grupo frontal', testId: 'nav-pastoral-front-group' },
-      { to: '/estructura-frontal', icon: Network, label: 'Estructura de grupos', testId: 'nav-front-group-structure' },
+      { to: '/grupo-frontal', icon: Network, label: 'Grupo Frontal', testId: 'nav-front-group' },
       { to: '/dashboard-general', icon: Crown, label: 'Panel General', end: true },
       { to: '/nucleo', icon: DatabaseZap, label: 'Gobierno del Núcleo', testId: 'nav-core-governance' },
       { to: '/procesos/dashboard', icon: Activity, label: 'Panel de Procesos', testId: 'nav-process-dashboard' },
@@ -117,7 +116,7 @@ const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
       personaItems.unshift({ to: '/mi-trabajo', icon: ClipboardCheck, label: 'Mi Trabajo', testId: 'nav-my-work' });
     }
     if (canViewFrontGroups(user)) {
-      personaItems.push({ to: '/estructura-frontal', icon: Network, label: 'Estructura de mi rama', testId: 'nav-front-group-structure' });
+      personaItems.push({ to: '/grupo-frontal', icon: Network, label: 'Grupo Frontal', testId: 'nav-front-group' });
       if (!canAccessOutreach(user, isActiveMentor)) {
         personaItems.push({ to: '/mentoria/supervision', icon: BarChart3, label: 'Supervisión de mi Rama', testId: 'nav-supervision' });
       }
@@ -128,7 +127,7 @@ const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
   // Default: lider
   const items = [
     ...BASE_PORTAL_ITEMS,
-    ...(canViewPastoralFrontGroup(user) ? [{ to: '/grupo-frontal-pastoral', icon: Network, label: 'Grupo de la pastora', testId: 'nav-pastoral-front-group' }, { to: '/estructura-frontal', icon: Network, label: 'Estructura de grupos', testId: 'nav-front-group-structure' }] : []),
+    ...((canViewPastoralFrontGroup(user) || canViewFrontGroups(user)) ? [{ to: '/grupo-frontal', icon: Network, label: 'Grupo Frontal', testId: 'nav-front-group' }] : []),
     { to: '/', icon: LayoutDashboard, label: 'Panel principal', end: true },
     { to: '/procesos/dashboard', icon: Activity, label: 'Panel de Procesos', testId: 'nav-process-dashboard' },
     { to: '/procesos/consolidacion', icon: Activity, label: 'Consolidación', testId: 'nav-consolidation', end: true, extraActiveMatch: consolidationDetailMatch },
@@ -141,7 +140,6 @@ const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
     { to: '/mentoria/visitas', icon: Footprints, label: 'Visitas e Invasiones', testId: 'nav-outreach' },
     { to: '/mentoria/supervision', icon: BarChart3, label: 'Supervisión de Invasiones', testId: 'nav-supervision' },
     ...(isGeneralCoordinator(user) ? [presentReport] : []),
-    ...(canViewPastoralFrontGroup(user) ? [] : [{ to: '/estructura-frontal', icon: Network, label: 'Estructura de mi rama', testId: 'nav-front-group-structure' }]),
     { to: '/liderazgo', icon: Award, label: 'Liderazgo', testId: 'nav-leadership' },
     { to: '/mapas', icon: MapPinned, label: 'Mapa 360', testId: 'nav-geo-maps' },
     { to: '/operaciones', icon: Calendar, label: 'Operaciones', testId: 'nav-operations' },
@@ -177,7 +175,7 @@ const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
   }
   items.push(...supervision);
   return items.filter((item) => (
-    (item.to !== '/estructura-frontal' || item.testId !== 'nav-front-group-structure' || canViewFrontGroups(user) || canViewPastoralFrontGroup(user))
+    (item.to !== '/grupo-frontal' || isPastoralAuthority(user) || canViewFrontGroups(user) || canViewPastoralFrontGroup(user))
   ) && (
     item.to !== '/libreria' || canViewLibraryModule(user)
   ) && (
@@ -231,8 +229,7 @@ const breadcrumbMap = {
   '/mi-trabajo': 'Mi Trabajo',
   '/mi-trabajo/supervision': 'Supervisar Mi Trabajo',
   '/invasiones/reporte-pastora': 'Reporte para la pastora',
-  '/grupo-frontal-pastoral': 'Grupo frontal principal',
-  '/estructura-frontal': 'Estructura por niveles',
+  '/grupo-frontal': 'Grupo Frontal',
   '/mis-estadisticas': 'Mis estadísticas',
   '/mi-progreso': 'Mi Progreso',
   '/presentacion': 'Manual de 7 Semanas',

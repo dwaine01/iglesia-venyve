@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 
 from access_control import (
     FRONT_GROUPS_MANAGE, FRONT_GROUPS_VIEW, MENTOR_QUALIFICATIONS_MANAGE,
-    has_capability, is_global_pastoral_authority,
+    has_capability, is_general_coordinator, is_global_pastoral_authority,
 )
 from front_group_tree import (
     build_tree, direct_assignments, group_in_scope as tree_group_in_scope, lineage_for_parent,
@@ -463,6 +463,11 @@ async def create_designation(parent_id: str, payload: DesignationCreate, current
     `parent_id`. Crea el grupo dependiente en el acto (status=pending_formation);
     'Conformar mi grupo' reutiliza ese MISMO grupo, nunca crea otro."""
     await assert_group_scope(parent_id, current_user, leader_required=True)
+    return await designate(parent_id, payload, current_user)
+
+
+async def designate(parent_id: str, payload: "DesignationCreate", current_user: dict) -> dict:
+    """Núcleo de la designación (el permiso lo valida quien llama)."""
     if payload.co_leader_person_id and payload.co_leader_person_id == payload.leader_person_id:
         raise HTTPException(status_code=422, detail="El líder y el colíder deben ser personas distintas")
     await load_person(payload.leader_person_id)
@@ -678,7 +683,10 @@ async def conform_group(group_id: str, payload: ConformGroup, current_user: dict
     group = await load_group(db, group_id)
     is_designated_leader = bool(current_user.get("person_id")) and await db.front_group_assignments.find_one({"front_group_id": group_id, "person_id": current_user.get("person_id"), "role": "leader", "active": True}, {"_id": 1})
     if not is_designated_leader and not is_global_pastoral_authority(current_user) and not has_capability(current_user, FRONT_GROUPS_MANAGE):
-        raise HTTPException(status_code=403, detail="Solo el líder designado de este grupo puede conformarlo")
+        # También su líder superior (lidera un grupo por encima) o el coordinador general.
+        from front_group_structure import leads_above
+        if not (is_general_coordinator(current_user) or await leads_above(group, current_user)):
+            raise HTTPException(status_code=403, detail="Solo el líder designado, su líder superior, la pastora o el coordinador general pueden formar este grupo")
     leader_person_id = group.get("primary_leader_person_id")
     if payload.co_leader_person_id:
         if payload.co_leader_person_id == leader_person_id:

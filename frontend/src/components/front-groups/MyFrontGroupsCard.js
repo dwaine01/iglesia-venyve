@@ -52,7 +52,7 @@ export function MyFrontGroupsCard() {
                   </dl>
                   {group.can_manage && <div className="mt-3 grid grid-cols-2 gap-2">
                     <Link to={`/mi-grupo-frontal/${group.front_group_id}`} className="inline-flex min-h-10 items-center justify-center rounded-md border border-[#D9CFB4] bg-white px-2 text-sm font-semibold text-[#7A5F22] hover:bg-[#FBF6EA]" data-testid={`administrar-grupo-${group.front_group_id}`}>Administrar</Link>
-                    <Link to={`/estructura-frontal/${group.front_group_id}`} className="inline-flex min-h-10 items-center justify-center rounded-md bg-[#101D36] px-2 text-sm font-semibold text-white" data-testid={`explorar-rama-${group.front_group_id}`}>Explorar mi rama</Link>
+                    <Link to={`/grupo-frontal?grupo=${group.front_group_id}&tab=ramas`} className="inline-flex min-h-10 items-center justify-center rounded-md bg-[#101D36] px-2 text-sm font-semibold text-white" data-testid={`explorar-rama-${group.front_group_id}`}>Mis ramas</Link>
                   </div>}
                 </>
               )}
@@ -60,6 +60,7 @@ export function MyFrontGroupsCard() {
           ))}
         </ul>
       ) : <p className="mt-2 text-sm text-slate-400">Aún no perteneces a ningún Grupo Frontal.</p>}
+      {groups.length > 0 && <Link to="/grupo-frontal" className="mt-3 inline-flex min-h-11 w-full items-center justify-center rounded-md border border-[#D9CFB4] bg-white text-sm font-semibold text-[#7A5F22]" data-testid="mi-perfil-abrir-grupo-frontal">Abrir Grupo Frontal (mi equipo y mis ramas)</Link>}
     </section>
   );
 }
