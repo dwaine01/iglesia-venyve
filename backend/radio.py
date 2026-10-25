@@ -19,8 +19,13 @@ sobre WebSocket en este mismo backend (sin servicios ni dependencias nuevas).
 - Limitación conocida (explicada en la pantalla): en iPhone, con la pantalla
   bloqueada o la app en segundo plano el navegador corta el audio; eso queda
   para R2 (app nativa).
-- Las salas viven en memoria: Railway corre un solo proceso de uvicorn. Si se
-  escala a varios, hará falta un canal compartido (p. ej. Redis)."""
+- Turno: uno a la vez, máx. 60 s; si el que habla deja de mandar audio 6 s
+  (se colgó, soltó tarde, perdió señal) o se desconecta, el turno se libera.
+- Varias pestañas de la misma cuenta: cuentan como una persona y la propia
+  voz nunca vuelve a las otras (sin eco).
+- Las salas viven en memoria: Railway corre un solo proceso de uvicorn
+  (Dockerfile.backend). Si se escala a varias instancias, hará falta un canal
+  compartido (p. ej. Redis): hoy cada instancia tendría su propia sala."""
 import asyncio
 import json
 import logging
@@ -41,6 +46,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/radio", tags=["radio"])
 
 MAX_TALK_SECONDS = 60
+TALK_IDLE_SECONDS = 6  # si el que tiene el turno no manda audio en 6 s (se colgó, soltó tarde, perdió señal), se libera
 VOICE_RETENTION_DAYS = 30
 MAX_VOICE_BYTES = 3 * 1024 * 1024
 MAX_VOICE_SECONDS = 90
@@ -115,24 +121,31 @@ class Room:
         self.members: dict[int, Member] = {}
         self.speaker: Optional[Member] = None
         self.speaker_since: Optional[datetime] = None
+        self.last_audio: Optional[datetime] = None
         self.timer: Optional[asyncio.Task] = None
 
     def presence(self) -> dict:
-        names = sorted({member.name for member in self.members.values()})
-        return {"type": "presence", "count": len(self.members), "names": names[:50],
+        # Personas, no pestañas: la misma cuenta en dos pestañas cuenta una vez.
+        people = {member.user_id: member.name for member in self.members.values()}
+        names = sorted(set(people.values()))
+        return {"type": "presence", "count": len(people), "names": names[:50],
                 "speaker": self.speaker.name if self.speaker else None}
 
     def broadcast(self, message, exclude: Optional[Member] = None) -> None:
         audio = isinstance(message, (bytes, bytearray))
         for member in list(self.members.values()):
-            if member is not exclude and (member.listen or not audio):
-                member.offer(message)
+            if member is exclude:
+                continue
+            # Tu propia voz nunca vuelve a tus otras pestañas/dispositivos con la misma cuenta (eco).
+            if audio and (not member.listen or (exclude is not None and member.user_id == exclude.user_id)):
+                continue
+            member.offer(message)
 
     async def start_talk(self, member: Member) -> bool:
         if self.speaker and self.speaker is not member:
             member.offer({"type": "busy", "speaker": self.speaker.name})
             return False
-        self.speaker, self.speaker_since = member, now_utc()
+        self.speaker, self.speaker_since, self.last_audio = member, now_utc(), now_utc()
         self.timer = asyncio.create_task(self._limit(member))
         member.offer({"type": "talk_granted", "max_seconds": MAX_TALK_SECONDS})
         self.broadcast({"type": "speaking", "name": member.name, "person_id": member.person_id}, exclude=member)
@@ -140,16 +153,26 @@ class Room:
         return True
 
     async def _limit(self, member: Member) -> None:
-        await asyncio.sleep(MAX_TALK_SECONDS)
-        if self.speaker is member:
-            member.offer({"type": "talk_limit"})
-            await self.end_talk(member)
+        """Máximo 60 s seguidos y liberación si deja de llegar audio (turno colgado)."""
+        while self.speaker is member:
+            await asyncio.sleep(0.5)
+            if self.speaker is not member:
+                return
+            now = now_utc()
+            if (now - self.speaker_since).total_seconds() >= MAX_TALK_SECONDS:
+                member.offer({"type": "talk_limit"})
+                await self.end_talk(member)
+                return
+            if self.last_audio and (now - self.last_audio).total_seconds() >= TALK_IDLE_SECONDS:
+                member.offer({"type": "talk_timeout"})
+                await self.end_talk(member)
+                return
 
     async def end_talk(self, member: Member) -> None:
         if self.speaker is not member:
             return
         started = self.speaker_since or now_utc()
-        self.speaker, self.speaker_since = None, None
+        self.speaker, self.speaker_since, self.last_audio = None, None, None
         if self.timer and self.timer is not asyncio.current_task():
             self.timer.cancel()
         self.timer = None
@@ -217,6 +240,7 @@ async def radio_socket(websocket: WebSocket, campaign_id: str, token: Optional[s
                 break
             if message.get("bytes") is not None:
                 if room.speaker is member:  # solo el que tiene el turno transmite
+                    room.last_audio = now_utc()
                     room.broadcast(message["bytes"], exclude=member)
                 continue
             try:
