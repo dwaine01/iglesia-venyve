@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 import { Link } from 'react-router-dom';
-import { CheckCircle2, Loader2, MapPin, Phone, Save, Sparkles } from 'lucide-react';
+import { BellRing, CheckCircle2, Loader2, MapPin, Phone, Save, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { useAuth } from '../../context/AuthContext';
@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Textarea } from '../ui/textarea';
 import { errorDetailText } from '../../lib/errorText';
 import { PersonMatchDialog } from './PersonMatchDialog';
+import { ToConsolidationDialog } from './ToConsolidationDialog';
 
 const STATUS_LABELS = {
   assigned: 'Asignado',
@@ -65,6 +66,7 @@ export const VisitCard = ({ visit, canManage, onUpdated, onTransfer, highlight =
   const [busy, setBusy] = useState(false);
 
   const [personMatch, setPersonMatch] = useState(null);
+  const [toConsolidation, setToConsolidation] = useState(null);
 
   const extractMatch = (error, action) => {
     const detail = error?.response?.data?.detail;
@@ -87,7 +89,7 @@ export const VisitCard = ({ visit, canManage, onUpdated, onTransfer, highlight =
         call_schedule: callSchedule === 'unspecified' ? null : callSchedule, note: note || null,
         ...overrides,
       }, getAuthHeaders());
-      toast.success('Informe actualizado');
+      toast.success(status === 'wants_followup' && !visit.enrollment_id ? 'Informe guardado. Quiere seguimiento: ya puede pasarla a Consolidación.' : 'Informe actualizado');
       setPersonMatch(null);
       if (onUpdated) onUpdated();
     } catch (error) {
@@ -125,6 +127,9 @@ export const VisitCard = ({ visit, canManage, onUpdated, onTransfer, highlight =
 
   const needsTransfer = visit.lbs_decision === 'needs_lbs' && !visit.mentor_lbs_qualified;
   const locked = Boolean(visit.read_only);
+  // «Pasar a Consolidación»: en cualquier visita sin expediente (no si no la encontraron o la rechazó).
+  const canConsolidate = !locked && !visit.enrollment_id && !['rejected', 'not_found'].includes(status);
+  const openConsolidation = () => setToConsolidation({ visit_id: visit.visit_id, name: visit.contact_name || 'esta persona', mentorName: visit.mentor_name, mentorPersonId: visit.mentor_person_id });
 
   return (
     <>
@@ -285,30 +290,35 @@ export const VisitCard = ({ visit, canManage, onUpdated, onTransfer, highlight =
         <Textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="Observaciones de la visita" disabled={locked} data-testid={`outreach-visit-note-input-${visit.visit_id}`} />
       </div>
 
+      {canConsolidate && status === 'wants_followup' && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border-2 border-emerald-300 bg-emerald-50 p-3 text-[15px] text-emerald-900" data-testid={`outreach-visit-followup-alert-${visit.visit_id}`}>
+          <span className="flex items-center gap-2 font-semibold"><BellRing className="h-5 w-5 shrink-0" />Quiere seguimiento: pásala a Consolidación para que no se pierda.</span>
+          <Button size="sm" onClick={openConsolidation} className="bg-emerald-700 hover:bg-emerald-800" data-testid={`outreach-visit-followup-alert-button-${visit.visit_id}`}><Sparkles className="h-4 w-4" />Pasar a Consolidación</Button>
+        </div>
+      )}
+
       <div className="mt-4 flex flex-wrap items-center gap-2">
         {!locked && (
           <Button size="sm" disabled={busy} onClick={() => save()} className="bg-[#132443]" data-testid={`outreach-visit-save-button-${visit.visit_id}`}>
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Guardar informe
           </Button>
         )}
-        {!locked && visit.status === 'wants_followup' && !visit.enrollment_id && (
-          <Button size="sm" variant="outline" disabled={busy} onClick={() => startSevenWeeks()} data-testid={`outreach-visit-start-seven-weeks-button-${visit.visit_id}`}>
-            <Sparkles className="h-4 w-4" /> Iniciar Ley de las 7 Semanas
+        {canConsolidate && (
+          <Button size="sm" disabled={busy} onClick={openConsolidation} className="bg-emerald-700 hover:bg-emerald-800" data-testid={`outreach-visit-to-consolidation-${visit.visit_id}`}>
+            <Sparkles className="h-4 w-4" /> Pasar a Consolidación
           </Button>
-        )}
-        {!locked && status === 'wants_followup' && visit.status !== 'wants_followup' && !visit.enrollment_id && (
-          <p className="text-xs text-slate-500" data-testid={`outreach-visit-unsaved-status-hint-${visit.visit_id}`}>Guarde el informe para poder iniciar la Ley de las 7 Semanas.</p>
         )}
         {visit.enrollment_id && (
           <Link to={`/procesos/consolidacion/${visit.enrollment_id}`} data-testid={`outreach-visit-seven-weeks-badge-${visit.visit_id}`}>
             <Badge variant="outline" className="cursor-pointer hover:bg-[#F6F4EF]">
-              <CheckCircle2 className="mr-1 h-3.5 w-3.5" />7 Semanas iniciada · Ver expediente
+              <CheckCircle2 className="mr-1 h-3.5 w-3.5" />En Consolidación · Ver expediente
             </Badge>
           </Link>
         )}
       </div>
     </div>
     <PersonMatchDialog match={personMatch} busy={busy} onPick={pickPersonMatch} onConfirmDistinct={confirmDistinctPerson} onClose={() => setPersonMatch(null)} />
+    <ToConsolidationDialog target={toConsolidation} onClose={() => setToConsolidation(null)} onDone={() => { if (onUpdated) onUpdated(); }} />
     </>
   );
 };

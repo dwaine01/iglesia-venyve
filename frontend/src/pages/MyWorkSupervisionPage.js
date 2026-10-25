@@ -7,6 +7,7 @@ import { useAuth } from '../context/AuthContext';
 import { apiErrorMessage } from '../lib/apiErrors';
 import MyWorkPage, { mentorLabel } from './MyWorkPage';
 import { LeaderWorkDetail } from '../components/LeaderWorkDetail';
+import { TransfersPanel } from '../components/outreach/TransfersPanel';
 
 /** MT3 · Supervisar «Mi Trabajo» por mentor (coordinador general, pastoral,
  * encargados de Consolidación): el mismo panel del mentor, en lectura, con
@@ -25,6 +26,7 @@ export default function MyWorkSupervisionPage() {
   const header = (
     <header className="space-y-2">
       <p className="flex items-center gap-1 text-xs font-semibold uppercase tracking-[0.2em] text-[#7A5F22]"><Eye className="h-4 w-4" />Supervisar Mi Trabajo</p>
+      <TransfersPanel mentors={mentors} />
       <select value={mentorId} onChange={(event) => { const next = new URLSearchParams(params); next.set('mentor', event.target.value); next.delete('vista'); setParams(next, { replace: true }); }}
         className="h-12 w-full rounded-lg border border-[#D9D4C7] bg-white px-3 text-lg font-semibold text-[#101D36]" data-testid="my-work-mentor-select">
         <option value="">Elige un mentor…</option>

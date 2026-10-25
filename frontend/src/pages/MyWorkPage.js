@@ -9,6 +9,8 @@ import { OUTREACH_CHANGED_EVENT } from '../context/InvasionTodayContext';
 import { apiErrorMessage } from '../lib/apiErrors';
 import { RevisitSheet, ScheduleDialog } from '../components/doors/PendingDoors';
 import { InvasionHousesMap } from '../components/outreach/InvasionHousesMap';
+import { ToConsolidationDialog } from '../components/outreach/ToConsolidationDialog';
+import { TransfersPanel } from '../components/outreach/TransfersPanel';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../components/ui/dialog';
 
 const FIGURES = [
@@ -129,7 +131,7 @@ function Chips({ options, value, onChange, counts = {}, testId }) {
 }
 
 // «Mis personas»: TODAS las que contactó o a las que entregó libro, con su estado.
-function PersonRow({ item, readOnly, onSchedule, onStart }) {
+function PersonRow({ item, readOnly, canConsolidate, onSchedule, onStart }) {
   return (
     <li className="rounded-2xl border border-[#E8E5DE] bg-white p-3 shadow-sm" data-testid="my-work-person">
       <div className="flex flex-wrap items-start justify-between gap-x-2 gap-y-1">
@@ -142,7 +144,7 @@ function PersonRow({ item, readOnly, onSchedule, onStart }) {
       {item.campaign_name && <p className="text-xs text-slate-500">Invasión de origen: {item.campaign_name}</p>}
       <div className="mt-2 grid grid-cols-2 gap-2">
         {!readOnly && item.can_schedule && <button type="button" onClick={() => onSchedule(item)} className="min-h-11 rounded-xl bg-[#132443] text-[15px] font-semibold text-white" data-testid="my-work-person-schedule">Programar</button>}
-        {!readOnly && item.can_start_consolidation && <button type="button" onClick={() => onStart(item)} className="min-h-11 rounded-xl border border-[#132443] bg-white text-[15px] font-semibold text-[#132443]" data-testid="my-work-person-start">Pasar a Consolidación</button>}
+        {canConsolidate && item.can_start_consolidation && <button type="button" onClick={() => onStart(item)} className="min-h-11 rounded-xl bg-emerald-700 text-[15px] font-semibold text-white" data-testid="my-work-person-start">Pasar a Consolidación</button>}
         {item.enrollment_id && <Link to={`/procesos/consolidacion/${item.enrollment_id}`} className="inline-flex min-h-11 items-center justify-center rounded-xl border border-[#D9D4C7] bg-white text-[15px] font-semibold text-[#101D36]">Expediente</Link>}
         {item.person_id && <Link to={`/personas/${item.person_id}`} className="inline-flex min-h-11 items-center justify-center rounded-xl border border-[#D9D4C7] bg-white text-[15px] font-semibold text-[#101D36]" data-testid="my-work-person-profile">Perfil</Link>}
       </div>
@@ -247,12 +249,6 @@ export default function MyWorkPage({ mentorPersonId = null, header = null, super
     } catch (error) { toast.error(apiErrorMessage(error, 'No se pudo reasignar')); }
   };
   const items = pending?.items || [];
-  const startConsolidation = async () => {
-    try {
-      await axios.post(`${API}/api/mentorship/outreach/visits/${startItem.visit_id}/start-seven-weeks`, {}, getAuthHeaders());
-      toast.success(`${startItem.title} pasó a Consolidación`); setStartItem(null); saved();
-    } catch (error) { toast.error(apiErrorMessage(error, 'No se pudo pasar a Consolidación')); }
-  };
 
   return (
     <div className="mx-auto w-full max-w-5xl space-y-4 p-4 sm:p-6" data-testid="my-work-page">
@@ -271,6 +267,7 @@ export default function MyWorkPage({ mentorPersonId = null, header = null, super
             <span className="min-w-0 flex-1"><span className="block text-lg font-semibold leading-6">Tienes {summary.assigned_visits} {summary.assigned_visits === 1 ? 'visita asignada' : 'visitas asignadas'}</span><span className="block text-sm text-slate-700">Toca para verlas con su dirección y quién te las asignó.</span></span>
           </Link>
         )}
+        {!mentorPersonId && <TransfersPanel onChanged={saved} />}
         <p className="rounded-xl bg-[#F4F6FA] p-3 text-[15px] text-[#101D36]" data-testid="my-work-message">{summary.message}</p>
         {summary.totals && <div className="grid grid-cols-3 gap-2" data-testid="my-work-totals">
           {[['houses_visited', 'viviendas visitadas', Home], ['people_contacted', 'personas contactadas', Users], ['books_delivered', 'libros entregados', BookOpen]].map(([key, label, Icon]) => (
@@ -297,7 +294,7 @@ export default function MyWorkPage({ mentorPersonId = null, header = null, super
         <Chips options={PEOPLE_FILTERS} value={peopleFilter} onChange={setPeopleFilter} counts={people?.counts ? { ...people.counts, all: Object.entries(people.counts).filter(([key]) => key !== 'no_next').reduce((sum, [, value]) => sum + value, 0) } : {}} testId="my-work-people-filter" />
         {!people ? <Loader2 className="mx-auto h-6 w-6 animate-spin text-slate-400" /> : people.items.length === 0
           ? <p className="rounded-xl border border-dashed border-slate-300 bg-white p-5 text-center text-base text-slate-600" data-testid="my-work-empty">Sin personas en este filtro.</p>
-          : <ul className="grid grid-cols-1 gap-2 lg:grid-cols-2">{people.items.map((item) => <PersonRow key={item.id} item={item} readOnly={readOnly} onSchedule={(value) => setFollowup({ visit_id: value.visit_id, title: value.title, next_action: value.next_action, due_date: value.due_date })} onStart={setStartItem} />)}</ul>}
+          : <ul className="grid grid-cols-1 gap-2 lg:grid-cols-2">{people.items.map((item) => <PersonRow key={item.id} item={item} readOnly={readOnly} canConsolidate={!readOnly || supervise} onSchedule={(value) => setFollowup({ visit_id: value.visit_id, title: value.title, next_action: value.next_action, due_date: value.due_date })} onStart={setStartItem} />)}</ul>}
       </div>}
       {view === 'viviendas' && !showMap && <Chips options={HOUSE_FILTERS} value={houseFilter} onChange={setHouseFilter} testId="my-work-houses-filter" />}
       {view === 'personas' ? null : view === 'viviendas' && !showMap ? (!houses ? <Loader2 className="mx-auto h-6 w-6 animate-spin text-slate-400" /> : houses.items.length === 0
@@ -327,12 +324,7 @@ export default function MyWorkPage({ mentorPersonId = null, header = null, super
       <RevisitSheet household={revisit} books={books} onClose={() => setRevisit(null)} onSaved={saved} />
       <ScheduleDialog household={schedule} onClose={() => setSchedule(null)} onSaved={saved} />
       <FollowupDialog item={followup} onClose={() => setFollowup(null)} onSaved={saved} />
-      <Dialog open={Boolean(startItem)} onOpenChange={(value) => { if (!value) setStartItem(null); }}>
-        <DialogContent className="vv-fit bg-white sm:max-w-md" data-testid="my-work-start-dialog">
-          <DialogHeader><DialogTitle>¿Pasar a {startItem?.title} a Consolidación?</DialogTitle><DialogDescription>Se inicia la Ley de las 7 Semanas contigo como mentor (igual que desde la visita).</DialogDescription></DialogHeader>
-          <div className="sticky-actions"><button type="button" onClick={startConsolidation} className="inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-[#132443] text-base font-semibold text-white" data-testid="my-work-start-confirm">Sí, pasar a Consolidación</button></div>
-        </DialogContent>
-      </Dialog>
+      <ToConsolidationDialog target={startItem ? { visit_id: startItem.visit_id, name: startItem.title } : null} onClose={() => setStartItem(null)} onDone={saved} />
     </div>
   );
 }
