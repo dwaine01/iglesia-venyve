@@ -937,6 +937,22 @@ async def discard_registration(registration_id: str, current_user: dict = Depend
     return {"ok": True}
 
 
+@admin_router.post("/registrations/{registration_id}/mark-test", response_model=dict)
+async def mark_test(registration_id: str, current_user: dict = Depends(get_current_user)):
+    """«Es una prueba: quitar»: el registro se marca como prueba y sale de la bienvenida y del
+    seguimiento (no se borra, queda auditado); su perfil de Persona 360 se retira si lo creó este
+    registro y nada más lo usa. Así las pruebas nunca se mezclan con los registros reales."""
+    require(current_user, VISITORS_FOLLOWUP_MANAGE)
+    doc = await load_registration(registration_id)
+    person_id = doc.get("person_id")
+    await db.visitor_registrations.update_one({"registration_id": registration_id}, {"$set": {"status": "discarded", "test_data": True, "welcome.hidden": True, "person_id": None,
+                                                                                            "test_marked_by": current_user["user_id"], "updated_at": now_utc()}})
+    if person_id:
+        await retire_provisional(person_id, doc, current_user)
+    await audit("registration_marked_test", current_user["user_id"], {"registration_id": registration_id, "person_id": person_id})
+    return {"ok": True}
+
+
 class TaskInput(BaseModel):
     done: bool
 

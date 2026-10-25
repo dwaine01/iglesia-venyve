@@ -124,7 +124,10 @@ function BirthdayPicker({ value, onChange }) {
     onChange(merged.year && merged.month && merged.day && Number(merged.day) <= max ? `${merged.year}-${merged.month}-${merged.day}` : '');
   };
   const thisYear = new Date().getFullYear();
-  const select = { ...inputStyle, appearance: 'auto', cursor: 'pointer' };
+  // Listas grandes para tableta: alto fijo de 64 px y letra de 22 px (iPad respeta el alto solo sin la apariencia nativa).
+  const select = { ...inputStyle, height: 64, minHeight: 64, fontSize: 22, padding: '0 44px 0 16px', appearance: 'none', WebkitAppearance: 'none', cursor: 'pointer',
+    backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='22' height='22' viewBox='0 0 24 24' fill='none' stroke='%23101D36' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\")",
+    backgroundRepeat: 'no-repeat', backgroundPosition: 'right 14px center' };
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.6fr 1.2fr', gap: 12 }} data-testid="kiosk-birth">
       <select value={draft.day} onChange={(event) => update('day', event.target.value)} aria-label="Día" style={select} data-testid="kiosk-birth-day"><option value="">Día</option>{Array.from({ length: 31 }, (_, index) => String(index + 1).padStart(2, '0')).map((item) => <option key={item} value={item}>{Number(item)}</option>)}</select>
@@ -138,6 +141,7 @@ const Accent = () => <span aria-hidden style={{ display: 'block', width: 88, hei
 // En horizontal los campos van en dos columnas para que todo quepa sin desplazar.
 const Section = ({ children, testId }) => <div className="vk-grid" data-testid={testId}>{children}</div>;
 const Wide = ({ children }) => <div className="vk-wide">{children}</div>;
+const EMBLEM = { src: '/emblema-iglesia.png', srcSet: '/emblema-iglesia.png 1x, /emblema-iglesia@2x.png 2x', alt: 'Casa de oración Ven y Ve' };
 const LOGO = { src: '/logo-iglesia.png', srcSet: '/logo-iglesia.png 1x, /logo-iglesia@2x.png 2x', alt: 'Primera Iglesia del Nazareno · Casa de oración Ven y Ve' };
 const KIOSK_CSS = `
   .vk-grid { display: grid; gap: clamp(12px, 2vh, 22px); align-content: start; }
@@ -275,8 +279,9 @@ export default function KioskPage() {
       background: C.bg, color: C.ink, fontFamily: 'Inter, system-ui, sans-serif', display: 'flex', flexDirection: 'column', userSelect: 'none' }} data-testid="kiosk-page" onContextMenu={(event) => event.preventDefault()}>
       <style>{KIOSK_CSS}</style>
       {/* Barra clara: el logo (letras verdes y azules) se ve nítido; en la bienvenida no se repite. */}
-      <header style={{ flex: '0 0 auto', background: '#fff', borderBottom: `2px solid ${C.gold}`, padding: '8px 24px', minHeight: 64, boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-        {!hideLogo ? <img {...LOGO} style={{ height: 48, width: 'auto' }} data-testid="kiosk-header-logo" /> : <span />}
+      <header style={{ flex: '0 0 auto', background: '#fff', borderBottom: `2px solid ${C.gold}`, padding: '8px 24px', minHeight: 70, boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+        {/* En la barra solo el emblema (óvalo con la cruz), legible; el logo completo va grande en la bienvenida. */}
+        {!hideLogo ? <img {...EMBLEM} style={{ height: 52, width: 'auto' }} data-testid="kiosk-header-logo" /> : <span />}
         {config && <span style={{ fontSize: 19, color: C.muted, textAlign: 'right' }}>{config.service.label}{pending ? ` · ${pending} registro(s) esperando internet` : ''}</span>}
       </header>
       <main className="vk-main" data-testid="kiosk-main" style={{ flex: '1 1 auto', minHeight: 0, overflowY: 'auto', overscrollBehavior: 'contain', touchAction: 'pan-y', WebkitOverflowScrolling: 'touch' }}>
@@ -385,7 +390,7 @@ export default function KioskPage() {
       <Field label="Ciudad" value={form.city} onChange={(value) => set('city', value)} testId="kiosk-city" />
       <label style={{ display: 'block' }}><Label>Código postal</Label><input inputMode="numeric" autoComplete="off" value={form.zip_code} onChange={(event) => set('zip_code', event.target.value.replace(/[^0-9-]/g, '').slice(0, 10))} style={inputStyle} data-testid="kiosk-zip" /></label>
       <Wide><Label>¿Cómo nos visitas hoy?</Label><Chips options={VISIT_MODES} value={form.visit_mode} onChange={(value) => set('visit_mode', value)} testId="kiosk-visit-mode" /></Wide>
-      <Wide><Label>Para tenerte presente el día de tu cumpleaños</Label><div style={{ maxWidth: 720 }}><BirthdayPicker value={form.birth_date} onChange={(value) => set('birth_date', value)} /></div></Wide></Section>,
+      <Wide><Label>Fecha de nacimiento</Label><p style={{ margin: '-4px 0 10px', fontSize: 19, color: C.muted }}>Para tenerte presente el día de tu cumpleaños</p><div style={{ maxWidth: 720 }}><BirthdayPicker value={form.birth_date} onChange={(value) => set('birth_date', value)} /></div></Wide></Section>,
     visita: <Section testId="kiosk-step-visita">{title('Tu visita')}
       <div><Label>¿Es tu primera vez con nosotros?</Label><Chips options={[[true, 'Primera vez'], [false, 'Ya los había visitado']]} value={form.first_visit} onChange={(value) => set('first_visit', value)} testId="kiosk-first-visit" /></div>
       <Field label="¿Quién te invitó?" value={form.invited_by} onChange={(value) => set('invited_by', value)} placeholder="Nombre de quien te invitó" testId="kiosk-invited-by" />
