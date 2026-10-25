@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { motion } from 'framer-motion';
 import { Loader2, Sparkles, TriangleAlert, UserCog, Users } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { translateTechnicalText } from '../lib/displayLabels';
 import { MyFrontGroupsCard } from '../components/front-groups/MyFrontGroupsCard';
@@ -62,6 +63,7 @@ export default function MisEstadisticasPage() {
         <MyFrontGroupsCard />
         {!stats.has_any_activity && <div className="flex items-start gap-2 rounded-xl border border-[#E8E5DE] bg-white p-4 text-sm text-slate-500" data-testid="mis-estadisticas-sin-actividad"><Sparkles className="mt-0.5 h-4 w-4 text-[#9A7A2F]" />Aún no tienes actividad registrada como mentor o líder.</div>}
         {stats.as_mentor && <Block icon={Users} title="Como mentor" subtitle="Tus visitas, hogares y consolidación" data={stats.as_mentor} testId="mis-estadisticas-mentor" />}
+        <Link to="/mis-estadisticas/manual" className="flex min-h-12 items-center justify-between rounded-xl border border-[#E8E5DE] bg-white px-4 text-[15px] font-semibold text-[#101D36]" data-testid="mis-estadisticas-manual">Mi progreso del Manual de 7 Semanas<span aria-hidden>›</span></Link>
         {stats.as_leader && <Block icon={UserCog} title="Como líder" subtitle={`Tu rama: ${stats.as_leader.led_group_count} grupo(s) que lideras y sus descendientes`} data={stats.as_leader} testId="mis-estadisticas-lider" />}
       </div>
     </div>
