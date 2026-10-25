@@ -149,6 +149,21 @@ function Answers({ item }) {
   );
 }
 
+// Pruebas hechas en las tabletas reales: se quitan para que no se mezclen con los registros de verdad.
+function MarkTest({ item, onChanged }) {
+  const { API, getAuthHeaders } = useAuth();
+  const mark = async () => {
+    if (!window.confirm(`¿Quitar el registro de ${item.name} por ser una prueba? Sale de la bienvenida y del seguimiento; no se borra y queda en el historial.`)) return;
+    try { await axios.post(`${API}/api/visitors/registrations/${item.registration_id}/mark-test`, {}, getAuthHeaders()); toast.success('Registro de prueba quitado'); onChanged?.(); }
+    catch (error) { toast.error(apiErrorMessage(error, 'No se pudo quitar')); }
+  };
+  return (
+    <div className="border-t border-[#EEECE6] pt-3">
+      <button type="button" onClick={mark} className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-[15px] font-semibold text-slate-700" data-testid="followup-mark-test">Es una prueba: quitar</button>
+    </div>
+  );
+}
+
 function IncompleteActions({ item, onDone, onChanged }) {
   const { API, getAuthHeaders } = useAuth();
   const finish = async () => {
@@ -209,6 +224,7 @@ function FollowupCard({ item: initial, canManage, canRestricted, onChanged }) {
           {canManage && ['incomplete', 'registering', 'manual'].includes(item.registration_state) && <IncompleteActions item={item} onDone={setItem} onChanged={onChanged} />}
           <Tasks item={item} onDone={setItem} canEdit={canManage || isAssignee} />
           <Answers item={item} />
+          {canManage && <MarkTest item={item} onChanged={onChanged} />}
           {canManage && item.match_status === 'possible' && <MatchReview item={item} onDone={setItem} />}
           {canManage && <AssignBox item={item} onDone={setItem} />}
           {(canManage || isAssignee) && <AttemptForm item={item} onDone={setItem} />}

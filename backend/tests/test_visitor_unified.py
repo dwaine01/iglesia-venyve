@@ -118,6 +118,15 @@ async def test_unified_form_steps_routing_summary_and_manual_names():
         fixed = (await pastora.post(f"/api/visitors/welcome/items/{end.json()['registration_id']}", json={"display_name": f"Manuel{tag} López"})).json()
         assert fixed["name"] == f"Manuel{tag} López"
         assert (await pastora.post(f"/api/visitors/registrations/{end.json()['registration_id']}/finish-incomplete")).json()["registration_state"] == "complete"
+        # «Es una prueba: quitar»: sale de la bienvenida y del seguimiento, y su perfil de Persona 360 se retira.
+        trial = await pad.post("/api/kiosk/registrations", json=visitor(f"{tag}trial", address="Calle Prueba 123"))
+        trial_doc = await db.visitor_registrations.find_one({"visitor_number": trial.json()["visitor_number"]}, {"_id": 0})
+        assert (await mentor.post(f"/api/visitors/registrations/{trial_doc['registration_id']}/mark-test")).status_code == 403
+        assert (await pastora.post(f"/api/visitors/registrations/{trial_doc['registration_id']}/mark-test")).status_code == 200
+        assert trial_doc["registration_id"] not in [item["id"] for item in (await tv.get("/api/screen/welcome")).json()["names"]]
+        assert trial_doc["registration_id"] not in [item["registration_id"] for item in (await pastora.get("/api/visitors/followup")).json()["items"]]
+        assert await db.persons.find_one({"_id": __import__("bson").ObjectId(trial_doc["person_id"])}) is None
+        assert (await db.visitor_registrations.find_one({"registration_id": trial_doc["registration_id"]}))["test_data"] is True
         # Un borrador de tableta abandonado también se completa o descarta (no mientras se llena).
         await db.visitor_registrations.update_one({"registration_id": nxt.json()["registration_id"]}, {"$set": {"updated_at": now_utc() - timedelta(minutes=30)}})
         assert (await pastora.post(f"/api/visitors/registrations/{nxt.json()['registration_id']}/discard")).status_code == 200
