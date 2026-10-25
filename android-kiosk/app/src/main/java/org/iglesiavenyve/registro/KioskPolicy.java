@@ -24,6 +24,9 @@ public final class KioskPolicy {
 
     public enum Decision { LOAD, RETRY, BLOCK }
 
+    /** Resultado de preguntarle al servidor si el código de la tableta sirve (antes de abrir el registro). */
+    public enum Check { OK, CODE_INVALID, TOO_MANY, SERVER_ERROR, CERTIFICATE, OFFLINE }
+
     private KioskPolicy() {
     }
 
@@ -81,6 +84,34 @@ public final class KioskPolicy {
             }
         }
         return true;
+    }
+
+    /** La misma consulta que hace el registro al abrir (solo lectura; un código equivocado responde 401). */
+    public static String checkUrl(String code) {
+        return "https://" + HOST + "/api/kiosk/config?link=" + code;
+    }
+
+    /** 401 = el código ya no sirve; 429 = muchos intentos; 5xx = el servidor falla; lo demás deja abrir el registro. */
+    public static Check classify(int status) {
+        if (status == 401) {
+            return Check.CODE_INVALID;
+        }
+        if (status == 429) {
+            return Check.TOO_MANY;
+        }
+        if (status >= 500) {
+            return Check.SERVER_ERROR;
+        }
+        return Check.OK;
+    }
+
+    /** Página «Sin conexión» con el detalle técnico (se muestra pequeño, para saber qué pasó). */
+    public static String offlineUrl(String detail) {
+        try {
+            return detail == null || detail.isEmpty() ? OFFLINE_PAGE : OFFLINE_PAGE + "#" + java.net.URLEncoder.encode(detail, "UTF-8");
+        } catch (java.io.UnsupportedEncodingException error) {
+            return OFFLINE_PAGE;
+        }
     }
 
     public static String tabletUrl(String code) {

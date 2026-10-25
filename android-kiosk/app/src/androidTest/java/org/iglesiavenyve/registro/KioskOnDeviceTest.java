@@ -40,7 +40,18 @@ public class KioskOnDeviceTest {
     }
 
     @Test
+    public void realServerSaysAnOldCodeNoLongerWorks() {
+        // Consulta REAL al panel (por el mismo dominio): un código que no existe responde 401.
+        StringBuilder detail = new StringBuilder();
+        KioskPolicy.Check result = MainActivity.checkOnline("PRUEBA23", detail);
+        Log.i(TAG, "Código PRUEBA23 en el servidor real: " + result + " (" + detail + ")");
+        assertEquals(KioskPolicy.Check.CODE_INVALID, result);
+    }
+
+    @Test
     public void opensThePanelAndNeverAnotherSite() {
+        // Para probar la lista blanca se abre el registro aunque el código de prueba no exista.
+        MainActivity.checkerForTests = (code, detail) -> KioskPolicy.Check.OK;
         Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
         String salt = KioskPolicy.newSalt();
         // Código de prueba (no existe en el servidor: la página muestra «necesita el enlace nuevo»).
@@ -70,6 +81,8 @@ public class KioskOnDeviceTest {
             after = url(scenario);
             Log.i(TAG, "Después de intentar abrir google.com: " + after);
             assertTrue("sigue en el panel: " + after, after.startsWith("https://panel.iglesiavenyve.org/"));
+        } finally {
+            MainActivity.checkerForTests = null;
         }
     }
 }
