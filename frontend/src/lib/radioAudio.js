@@ -78,8 +78,9 @@ export async function openMicrophone(context, onChunk) {
   };
 }
 
-/** Reproduce fragmentos PCM16 16 kHz en orden, con ~150 ms de colchón. */
-export function createPlayer(context) {
+/** Reproduce fragmentos PCM16 16 kHz en orden, con ~150 ms de colchón.
+ * `output` = nodo de salida (volumen/silencio → <audio> real); por omisión, los parlantes. */
+export function createPlayer(context, output = context.destination) {
   let playhead = 0;
   return {
     play(arrayBuffer) {
@@ -90,7 +91,7 @@ export function createPlayer(context) {
       const buffer = context.createBuffer(1, samples.length, context.sampleRate);
       buffer.copyToChannel ? buffer.copyToChannel(samples, 0) : buffer.getChannelData(0).set(samples);
       const node = context.createBufferSource();
-      node.buffer = buffer; node.connect(context.destination);
+      node.buffer = buffer; node.connect(output);
       const now = context.currentTime;
       if (playhead < now + 0.03) playhead = now + 0.15; // colchón al empezar o tras un corte
       node.start(playhead);
@@ -101,7 +102,7 @@ export function createPlayer(context) {
 }
 
 /** Sonido corto de aviso (alguien empezó a hablar / te dieron el turno). */
-export function beep(context, frequency = 880, duration = 0.12) {
+export function beep(context, frequency = 880, duration = 0.12, output = context.destination) {
   try {
     const oscillator = context.createOscillator();
     const gain = context.createGain();
@@ -109,10 +110,46 @@ export function beep(context, frequency = 880, duration = 0.12) {
     gain.gain.setValueAtTime(0.0001, context.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.25, context.currentTime + 0.01);
     gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + duration);
-    oscillator.connect(gain); gain.connect(context.destination);
+    oscillator.connect(gain); gain.connect(output);
     oscillator.start(); oscillator.stop(context.currentTime + duration + 0.02);
   } catch (error) { /* sin audio disponible */ }
 }
+
+/** Salida de audio para el radio global: volumen/silencio y, si se puede, un
+ * <audio> real (Android Chrome sigue sonando con la app en segundo plano o la
+ * pantalla apagada mientras haya un medio reproduciéndose). */
+export function createOutput(context) {
+  const gain = context.createGain();
+  let element = null;
+  try {
+    if (!context.createMediaStreamDestination) throw new Error('sin MediaStreamDestination');
+    const destination = context.createMediaStreamDestination();
+    gain.connect(destination);
+    element = new Audio();
+    element.setAttribute('playsinline', ''); element.autoplay = true;
+    element.srcObject = destination.stream;
+  } catch (error) {
+    gain.connect(context.destination);
+    element = null;
+  }
+  return {
+    node: gain,
+    element,
+    // Debe llamarse dentro de un toque del usuario la primera vez.
+    async start() {
+      if (!element) return true;
+      try { await element.play(); return true; } catch (error) {
+        // Sin <audio> (bloqueado): directo a los parlantes.
+        try { gain.disconnect(); } catch (disconnectError) { /* nada */ }
+        gain.connect(context.destination); element = null; return false;
+      }
+    },
+    setVolume(value) { gain.gain.setTargetAtTime(Math.max(0, Math.min(1, value)), context.currentTime, 0.02); },
+    close() { try { element?.pause(); if (element) element.srcObject = null; } catch (error) { /* nada */ } },
+  };
+}
+
+export const isIOS = () => /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
 /** Mensaje de voz: WAV PCM16 16 kHz (se reproduce igual en iPhone y Android). */
 export function encodeWav(chunks) {

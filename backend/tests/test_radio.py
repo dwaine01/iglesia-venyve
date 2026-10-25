@@ -80,6 +80,16 @@ async def test_radio_channel_floor_audio_log_voice_messages_and_purge():
             await ws_col.send(b"\x00" * 640)
             with pytest.raises(asyncio.TimeoutError):
                 await recv_until(ws_ana, "bytes", timeout=0.8)
+            # Oyente con audio bloqueado/silenciado: sabe quién habla pero no recibe audio (ahorra datos).
+            await ws_col.send(json.dumps({"type": "listen", "on": False}))
+            await asyncio.sleep(0.2)
+            await ws_ana.send(chunk)
+            with pytest.raises(asyncio.TimeoutError):
+                await recv_until(ws_col, "bytes", timeout=0.8)
+            await ws_col.send(json.dumps({"type": "listen", "on": True}))
+            await asyncio.sleep(0.2)
+            await ws_ana.send(chunk)
+            assert await recv_until(ws_col, "bytes") == chunk
             await ws_ana.send(json.dumps({"type": "ptt_end"}))
             assert (await recv_until(ws_col, "stopped"))["name"].startswith("Ana")
             # Ahora Colab sí puede hablar.
