@@ -59,6 +59,7 @@ export default function LibraryMyInventoryPage() {
   return <main className="min-h-screen bg-[#F4F1EA] px-4 py-6 sm:px-8" data-testid="library-my-inventory-page">
     <div className="mx-auto max-w-5xl space-y-6">
       <header><Link to="/libreria" className="text-sm text-[#0879BE]">← Librería 360</Link><h1 className="font-serif text-3xl text-[#132443]">Mi inventario de Librería</h1></header>
+      <Link to="/libreria/recorrido" className="inline-flex min-h-11 items-center rounded-lg border border-[#132443] px-4 text-sm font-semibold text-[#132443]" data-testid="link-my-trace">Ver a quién entregué mis libros</Link>
       <MyLedgerBalance />
       {(isManager || hasCapability(user, 'library.reports.read')) && <ReconciliationPanel canReconcile={isManager} />}
 

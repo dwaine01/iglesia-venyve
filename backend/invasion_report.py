@@ -309,6 +309,11 @@ async def _help_alerts(campaign_id: str) -> dict:
     return await help_summary(campaign_id)
 
 
+async def _books_trace(campaign_id: str) -> dict:
+    from library_trace import campaign_books_summary
+    return await campaign_books_summary(campaign_id)
+
+
 async def _door_data(campaign_id: str) -> dict:
     from door_reports import door_report_data
     return await door_report_data(campaign_id)
@@ -457,6 +462,8 @@ async def compute_report(campaign: dict) -> dict:
         "help_alerts": await _help_alerts(campaign["campaign_id"]),
         # Lo que mostraba el "Informe" anterior: libros asignados/entregados por mentor.
         "books": [row for row in await campaign_book_rows(campaign) if row["mentor_person_id"] not in authorities],
+        # L3: libros entregados (bitácora), con destinatario y con seguimiento.
+        "books_trace": await _books_trace(campaign_id),
         "followup": {key: value for key, value in followup.items() if key != "unattended_items"},
         "goals": goals,
         "comparison": await comparison_section(campaign, key_figures),
