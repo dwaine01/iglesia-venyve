@@ -51,6 +51,13 @@ let webpackConfig = {
         ],
       };
 
+      // Tabletas viejas (Fire OS 5): sin `import(...)` literal en el código final (ver el cargador).
+      webpackConfig.module.rules.unshift({
+        test: /[\\/]node_modules[\\/]react-router[\\/]dist[\\/].*\.m?js$/,
+        enforce: 'pre',
+        use: [{ loader: path.resolve(__dirname, 'plugins/legacy-dynamic-import-loader.js') }],
+      });
+
       // Add health check plugin to webpack if enabled
       if (config.enableHealthCheck && healthPluginInstance) {
         webpackConfig.plugins.push(healthPluginInstance);

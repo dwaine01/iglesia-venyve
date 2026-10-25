@@ -71,7 +71,9 @@
     "production": [
       ">0.2%",
       "not dead",
-      "not op_mini all"
+      "not op_mini all",
+      "chrome >= 51",
+      "android >= 51"
     ],
     "development": [
       "last 1 chrome version",

@@ -1,3 +1,5 @@
+// Primero: funciones que faltan en navegadores viejos (tabletas Amazon Fire con Fire OS 5).
+import "@/lib/legacyPolyfills";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import "@/index.css";

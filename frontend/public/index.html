@@ -36,6 +36,26 @@
     <body>
         <noscript>You need to enable JavaScript to run this app.</noscript>
         <div id="root"></div>
+        <!-- Nunca pantalla en blanco: si la app no arranca (navegador muy viejo o un error), a los
+             15 segundos se muestra un aviso con el detalle. ES5 a propósito (funciona en cualquier navegador). -->
+        <script>
+          (function () {
+            var errores = [];
+            window.addEventListener("error", function (e) { errores.push((e && e.message) || "error"); });
+            window.addEventListener("unhandledrejection", function (e) { errores.push("promesa: " + ((e && e.reason && e.reason.message) || e.reason)); });
+            setTimeout(function () {
+              var root = document.getElementById("root");
+              if (!root || root.children.length) return;
+              var chrome = (navigator.userAgent.match(/Chrome\/[0-9.]+/) || ["navegador desconocido"])[0];
+              root.innerHTML = '<div style="font-family:sans-serif;max-width:640px;margin:12vh auto;padding:24px;text-align:center;color:#101D36" data-testid="app-start-error">' +
+                '<h1 style="font-size:30px;margin:0 0 8px">La página no pudo abrirse</h1>' +
+                '<p style="font-size:20px;color:#8A6A1F;margin:0 0 16px">The page could not open</p>' +
+                '<p style="font-size:19px;color:#475467">Actualice el sistema de la tableta (Configuración › Opciones del dispositivo › Actualizaciones del sistema) e intente de nuevo.</p>' +
+                '<p><a href="" style="display:inline-block;margin-top:16px;padding:18px 32px;border-radius:18px;background:#C8A951;color:#14213D;font-size:24px;font-weight:bold;text-decoration:none">Reintentar · Try again</a></p>' +
+                '<p style="font-size:14px;color:#667085;margin-top:24px">Detalle: ' + chrome + (errores.length ? " · " + String(errores.slice(0, 3).join(" | ")).replace(/</g, "&lt;") : "") + "</p></div>";
+            }, 15000);
+          })();
+        </script>
         <!--
       This HTML file is a template.
       If you open it directly in the browser, you will see an empty page.
