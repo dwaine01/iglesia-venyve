@@ -24,7 +24,7 @@ El doble toque no duplica: la misma `client_request_id` devuelve lo ya guardado.
 import logging
 import re
 import unicodedata
-from datetime import date
+from datetime import date, datetime, timezone
 from typing import Literal, Optional
 from uuid import uuid4
 
@@ -616,26 +616,71 @@ async def migrate_legacy_visits() -> dict:
         }}, upsert=True)
         created_households += int(result.upserted_id is not None)
         event_id = None
-        if visit.get("status") != "assigned":  # "asignada" sin visitar todavía no es un intento
-            event_id = f"mig-{visit['visit_id']}"
-            opened = visit.get("status") in {"visited", "wants_followup", "rejected"}
-            result = await db.outreach_visit_events.update_one({"visit_event_id": event_id}, {"$setOnInsert": {
-                "_id": event_id, "visit_event_id": event_id, "household_id": household_id, "campaign_id": visit["campaign_id"],
-                "mentor_person_id": visit.get("mentor_person_id"), "result": "contacted" if opened else "no_answer", "opened": opened,
-                "contact_level": None, "actions": ["book"] if visit.get("received_mcd") or visit.get("received_npt") else [],
-                "books": [], "books_total": int(bool(visit.get("received_mcd"))) + int(bool(visit.get("received_npt"))), "other_material_count": 0,
-                "followup": "yes" if visit.get("status") == "wants_followup" else "not_asked", "followup_date": None,
-                "note": None, "is_draft": False, "client_request_id": f"migration:{visit['visit_id']}", "migrated": True,
-                "occurred_at": when, "created_by_user_id": visit.get("created_by_user_id"), "created_at": when, "source": "migration",
-            }}, upsert=True)
-            created_events += int(result.upserted_id is not None)
+        books = await visit_books(visit)
+        if visit.get("status") != "assigned" or books:  # "asignada" sin visitar todavía no es un intento (salvo que entregó libro)
+            event_id, created = await migration_event(visit, household_id, books)
+            created_events += int(created)
         await db.outreach_visits.update_one({"visit_id": visit["visit_id"], "household_id": None}, {"$set": {"household_id": household_id, "visit_event_id": event_id or visit.get("visit_event_id")}})
+    # Visitas ya con vivienda pero sin intento, que sí entregaron libro (p. ej. quedaron
+    # «asignadas» aunque el mentor entregó el MCD): reciben su intento, una sola vez.
+    async for visit in db.outreach_visits.find({"household_id": {"$nin": [None, ""]}, "visit_event_id": {"$in": [None, ""]}, "campaign_id": {"$nin": [None, ""]}, "archived": {"$ne": True}}, {"_id": 0}):
+        books = await visit_books(visit)
+        if not books and visit.get("status") == "assigned":
+            continue
+        if await db.outreach_visit_events.count_documents({"household_id": visit["household_id"], "is_draft": {"$ne": True}}, limit=1):
+            continue  # la vivienda ya tiene su historial: no se agrega otro intento
+        event_id, created = await migration_event(visit, visit["household_id"], books)
+        created_events += int(created)
+        await db.outreach_visits.update_one({"visit_id": visit["visit_id"], "visit_event_id": {"$in": [None, ""]}}, {"$set": {"visit_event_id": event_id}})
+        await refresh_door_status(visit["household_id"])
     # Estado de puerta para viviendas anteriores (derivado; no cambia sus datos).
     refreshed = 0
     async for household in db.outreach_households.find({"$or": [{"attempts_count": {"$exists": False}}, {"conversed_ever": {"$exists": False}}]}, {"_id": 0, "household_id": 1}):
         await refresh_door_status(household["household_id"])
         refreshed += 1
     return {"households": created_households, "events": created_events, "refreshed": refreshed}
+
+
+async def visit_books(visit: dict) -> int:
+    """Libros entregados en esa visita (marcas de la visita o la bitácora de Librería)."""
+    marked = int(bool(visit.get("received_mcd") or visit.get("mcd_delivery_movement_id"))) + int(bool(visit.get("received_npt") or visit.get("npt_delivery_movement_id")))
+    person_id = visit.get("converted_person_id") or visit.get("person_id")
+    query = [{"visit_id": visit["visit_id"]}]
+    mentor_user = await db.users.find_one({"person_id": visit.get("mentor_person_id")}, {"_id": 1}) if visit.get("mentor_person_id") else None
+    if person_id and mentor_user:
+        query.append({"person_id": person_id, "from_holder.type": "user", "from_holder.id": str(mentor_user["_id"])})
+    logged = 0
+    async for movement in db.library_movements.find({"$or": query, "movement_type": {"$in": ["DELIVERY", "LOAN", "DELIVERY_PENDING"]}, "is_reversal": {"$ne": True}}, {"_id": 0, "quantity": 1}):
+        logged += movement.get("quantity") or 1
+    return max(marked, logged)
+
+
+async def migration_event(visit: dict, household_id: str, books: int) -> tuple[str, bool]:
+    """Intento determinista `mig-<visit_id>` (idempotente: nunca se duplica)."""
+    event_id = f"mig-{visit['visit_id']}"
+    opened = visit.get("status") in {"visited", "wants_followup", "rejected"} or books > 0
+    when = _aware_dt(visit.get("visit_date")) or visit.get("created_at") or now_utc()
+    result = await db.outreach_visit_events.update_one({"visit_event_id": event_id}, {"$setOnInsert": {
+        "_id": event_id, "visit_event_id": event_id, "household_id": household_id, "campaign_id": visit["campaign_id"],
+        "mentor_person_id": visit.get("mentor_person_id"), "result": "contacted" if opened else "no_answer", "opened": opened,
+        "contact_level": None, "actions": ["book"] if books else [],
+        "books": [], "books_total": books, "other_material_count": 0,
+        "followup": "yes" if visit.get("status") == "wants_followup" else "not_asked", "followup_date": None,
+        "note": None, "is_draft": False, "client_request_id": f"migration:{visit['visit_id']}", "migrated": True,
+        "occurred_at": when, "created_by_user_id": visit.get("created_by_user_id"), "created_at": when, "source": "migration",
+    }}, upsert=True)
+    return event_id, result.upserted_id is not None
+
+
+def _aware_dt(value):
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    if isinstance(value, str) and len(value) >= 10:
+        try:
+            return datetime.fromisoformat(f"{value[:10]}T16:00:00+00:00")  # fecha sin hora: mediodía local (América)
+        except ValueError:
+            return None
+    return None
 
 
 async def ensure_indexes() -> None:
