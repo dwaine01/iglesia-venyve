@@ -18,6 +18,8 @@ import MobileBottomBar from './mobile/MobileBottomNav';
 import { HelpButton } from './invasions/HelpButton';
 import { RadioButton } from './invasions/RadioButton';
 import { InvasionTodayProvider } from '../context/InvasionTodayContext';
+import { RadioProvider } from '../context/RadioContext';
+import { RadioBanner, RadioPTT } from './invasions/RadioDock';
 import { ContextGuideButton } from './guides/ContextGuideButton';
 import { FloatingLibraryScanButton } from './library/FloatingLibraryScanButton';
 import { resolveRouteGuide } from './guides/guideRouteMap';
@@ -412,6 +414,7 @@ export default function AppLayout() {
 
   return (
     <InvasionTodayProvider>
+    <RadioProvider>
     <div className="app-shell-height flex overflow-hidden bg-background print:block print:h-auto print:overflow-visible">
       {/* Desktop Sidebar */}
       {(!isMapRoute || mapSidebarOpen) && <aside className="hidden lg:flex lg:w-64 lg:flex-col border-r border-border bg-card" data-testid="desktop-sidebar" data-print-hide>
@@ -474,14 +477,18 @@ export default function AppLayout() {
           </div>
         </div>
 
+        {/* Radio global: quién habla / activar audio, en cualquier pantalla. */}
+        <RadioBanner />
         <div className={`min-h-0 flex-1 ${isMapRoute ? 'overflow-hidden' : 'overflow-y-auto'}`} data-testid="app-page-scroll-container">
           <Suspense fallback={<PageSkeleton />}><Outlet /></Suspense>
         </div>
         {/* Barra inferior tipo app (solo < 1024 px): ocupa su propio espacio, no tapa el contenido. */}
         <MobileBottomBar isActiveMentor={mentorAccess.isActiveMentor} menuOpen={mobileOpen} onOpenMenu={() => setMobileOpen(true)} />
         <div data-print-hide><FloatingLibraryScanButton /></div>
+        <RadioPTT />
       </main>
     </div>
+    </RadioProvider>
     </InvasionTodayProvider>
   );
 }

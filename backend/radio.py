@@ -10,8 +10,15 @@ sobre WebSocket en este mismo backend (sin servicios ni dependencias nuevas).
   y cuándo (`radio_talk_log`).
 - «Mensaje de voz» explícito: se guarda en GridFS (bucket `radio_messages`)
   y se borra solo a los 30 días.
-- Limitación conocida (explicada en la pantalla): con la pantalla bloqueada o
-  la app en segundo plano el navegador corta el audio; eso queda para R2.
+- Conexión global: la app se conecta al entrar (en cualquier pantalla). Un
+  oyente sin audio activo (bloqueado o silenciado) avisa `listen: false` y no
+  recibe audio (ahorra datos); sí recibe quién habla.
+- Con la app cerrada: aviso push «Fulano está hablando en el radio» a los
+  participantes no conectados (solo si el dueño activa push; como máximo uno
+  cada 5 minutos por canal).
+- Limitación conocida (explicada en la pantalla): en iPhone, con la pantalla
+  bloqueada o la app en segundo plano el navegador corta el audio; eso queda
+  para R2 (app nativa).
 - Las salas viven en memoria: Railway corre un solo proceso de uvicorn. Si se
   escala a varios, hará falta un canal compartido (p. ej. Redis)."""
 import asyncio
@@ -81,6 +88,7 @@ class Member:
         self.name = name
         self.queue: asyncio.Queue = asyncio.Queue(maxsize=QUEUE_LIMIT)
         self.sender: Optional[asyncio.Task] = None
+        self.listen = True  # False = audio bloqueado o silenciado: no se le manda audio
 
     def offer(self, item) -> None:
         try:
@@ -115,8 +123,9 @@ class Room:
                 "speaker": self.speaker.name if self.speaker else None}
 
     def broadcast(self, message, exclude: Optional[Member] = None) -> None:
+        audio = isinstance(message, (bytes, bytearray))
         for member in list(self.members.values()):
-            if member is not exclude:
+            if member is not exclude and (member.listen or not audio):
                 member.offer(message)
 
     async def start_talk(self, member: Member) -> bool:
@@ -127,6 +136,7 @@ class Room:
         self.timer = asyncio.create_task(self._limit(member))
         member.offer({"type": "talk_granted", "max_seconds": MAX_TALK_SECONDS})
         self.broadcast({"type": "speaking", "name": member.name, "person_id": member.person_id}, exclude=member)
+        await push_speaking(self, member)
         return True
 
     async def _limit(self, member: Member) -> None:
@@ -151,6 +161,27 @@ class Room:
 
 
 ROOMS: dict[str, Room] = {}
+PUSH_EVERY = timedelta(minutes=5)
+_last_push: dict[str, datetime] = {}
+
+
+async def push_speaking(room: Room, member: Member) -> None:
+    """Push (sin aviso en la campana) a los del canal que no están conectados."""
+    last = _last_push.get(room.campaign_id)
+    if last and now_utc() - last < PUSH_EVERY:
+        return
+    _last_push[room.campaign_id] = now_utc()
+    try:
+        from push_notifications import send_push_background
+        campaign = await db.outreach_campaigns.find_one({"campaign_id": room.campaign_id}, {"_id": 0, "assigned_mentor_ids": 1})
+        person_ids = set(await db.invasion_participants.distinct("person_id", {"campaign_id": room.campaign_id, "status": {"$ne": "declined"}})) | set((campaign or {}).get("assigned_mentor_ids") or [])
+        connected = {item.user_id for item in room.members.values()}
+        users = [str(doc["_id"]) async for doc in db.users.find({"person_id": {"$in": list(person_ids)}, "is_active": {"$ne": False}}, {"_id": 1})]
+        recipients = [user_id for user_id in users if user_id not in connected]
+        if recipients:
+            send_push_background(recipients, "Radio de la invasión", f"{member.name} está hablando en el radio", f"/invasiones/{room.campaign_id}/radio")
+    except Exception:  # noqa: BLE001 — el aviso nunca frena el turno
+        logger.warning("radio: no se pudo enviar el aviso push", exc_info=True)
 
 
 def room_for(campaign_id: str) -> Room:
@@ -189,8 +220,9 @@ async def radio_socket(websocket: WebSocket, campaign_id: str, token: Optional[s
                     room.broadcast(message["bytes"], exclude=member)
                 continue
             try:
-                kind = json.loads(message.get("text") or "{}").get("type")
-            except ValueError:
+                parsed = json.loads(message.get("text") or "{}")
+                kind = parsed.get("type")
+            except (ValueError, AttributeError):
                 continue
             if kind == "ptt_start":
                 await room.start_talk(member)
@@ -198,6 +230,8 @@ async def radio_socket(websocket: WebSocket, campaign_id: str, token: Optional[s
                 await room.end_talk(member)
             elif kind == "ping":
                 member.offer({"type": "pong"})
+            elif kind == "listen":
+                member.listen = bool(parsed.get("on", True))
     except WebSocketDisconnect:
         pass
     except Exception:  # noqa: BLE001 — una conexión rota nunca tumba el canal
