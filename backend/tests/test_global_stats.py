@@ -29,7 +29,8 @@ async def test_global_stats_permissions_consolidation_and_attendance():
             assert (await mentor.get(f"/api/global-stats/{path}")).status_code == 403
         assert (await lead.get("/api/global-stats/consolidation")).status_code == 200
         assert (await lead.get("/api/global-stats/summary")).status_code == 403
-        assert (await pastora.get("/api/global-stats/access")).json()["sections"] == {"summary": True, "consolidation": True, "attendance": True, "finance": True, "activities": True}
+        sections = (await pastora.get("/api/global-stats/access")).json()["sections"]
+        assert all(sections[key] for key in ("summary", "consolidation", "attendance", "finance", "activities", "invasions", "books", "groups", "education"))
 
         # Consolidación: mismas cifras que el panorama del módulo.
         stats = (await pastora.get("/api/global-stats/consolidation", params={"period": "year"})).json()

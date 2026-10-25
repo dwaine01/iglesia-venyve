@@ -16,6 +16,7 @@ from collections import Counter, defaultdict
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Literal, Optional
 
+from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException
 
 from access_control import CONSOLIDATION_ASSIGN, OPERATIONS_REPORTS, has_capability, is_general_coordinator, is_global_pastoral_authority
@@ -36,7 +37,8 @@ def sections_for(current_user: dict) -> dict:
     return {"summary": pastoral or coordinator, "consolidation": pastoral or coordinator or consolidation,
             "attendance": pastoral or coordinator or has_capability(current_user, OPERATIONS_REPORTS),
             "finance": finance_allowed(current_user),
-            "activities": pastoral or coordinator or has_capability(current_user, OPERATIONS_REPORTS)}
+            "activities": pastoral or coordinator or has_capability(current_user, OPERATIONS_REPORTS),
+            "invasions": pastoral or coordinator, "books": pastoral or coordinator, "groups": pastoral or coordinator, "education": pastoral or coordinator}
 
 
 def finance_allowed(current_user: dict) -> bool:
@@ -497,3 +499,154 @@ async def activities(period: Literal["today", "week", "month", "quarter", "year"
     return {"period": period_out(p), "cards": cards, "done": done, "upcoming": [row(item) for item in upcoming],
             "by_type": [{"label": key, **value} for key, value in sorted(by_type.items(), key=lambda item: -item[1]["activities"])],
             "notes": {"projects": "Los proyectos con meta y presupuesto están en Finanzas (solo con permiso de Finanzas). Operaciones no registra avance porcentual de proyectos."}}
+
+
+# ------------------------------------------------------------------ G3 · Invasiones (mismo cálculo del Reporte de invasión)
+@router.get("/invasions", response_model=dict)
+async def invasions(period: Literal["today", "week", "month", "quarter", "year", "custom"] = "month", date_from: Optional[str] = None, date_to: Optional[str] = None,
+                    current_user: dict = Depends(get_current_user)):
+    require_section(current_user, "invasions")
+    from invasion_report import compute_report
+    p = await resolve(period, date_from, date_to)
+    rows = []
+    async for campaign in db.outreach_campaigns.find({"start_date": {"$lte": p["last"].isoformat()}, "archived": {"$ne": True}}, {"_id": 0}).sort("start_date", -1).limit(60):
+        if (campaign.get("end_date") or campaign.get("start_date") or "") < p["first"].isoformat():
+            continue
+        report = await compute_report(campaign)
+        k = report["summary"]["key_figures"]
+        rows.append({"campaign_id": campaign["campaign_id"], "name": campaign.get("name"), "start_date": campaign.get("start_date"), "end_date": campaign.get("end_date"),
+                     "houses_visited": k.get("houses_visited") or 0, "people_reached": k.get("people_reached") or 0, "wants_followup": k.get("wants_followup") or 0,
+                     "to_consolidation": k.get("to_consolidation") or 0, "books": (report.get("books_trace") or {}).get("delivered") or 0,
+                     "attended": k.get("attended") or 0, "participants": k.get("participants") or 0, "attendance_pct": k.get("attendance_pct"),
+                     "report": f"/invasiones/{campaign['campaign_id']}/reporte", "present": f"/invasiones/{campaign['campaign_id']}/reporte/presentar?dia=1"})
+        if len(rows) >= 12:
+            break
+    total = lambda key: sum(row[key] for row in rows)  # noqa: E731
+    none = "No hubo invasiones en este período."
+    cards = [
+        card("invasions", "Invasiones", len(rows), unit="invasiones", definition="Invasiones cuyas fechas caen, aunque sea en parte, dentro del período (máximo 12 más recientes).", source="Invasiones", empty_reason=none, link="/mentoria/visitas"),
+        card("houses", "Viviendas visitadas", total("houses_visited"), unit="viviendas", definition="Suma de las viviendas visitadas de cada invasión, con el mismo cálculo del Reporte de invasión (cada vivienda cuenta una vez por invasión).", source="Reporte de invasión", empty_reason=none),
+        card("people", "Personas alcanzadas", total("people_reached"), unit="personas", definition="Suma de las personas registradas en cada invasión (sin cuentas de prueba).", source="Reporte de invasión", empty_reason=none),
+        card("followup", "Quieren seguimiento", total("wants_followup"), unit="personas", definition="Personas que aceptaron que un mentor las vuelva a contactar.", source="Reporte de invasión", empty_reason=none),
+        card("consolidation", "Pasaron a Consolidación", total("to_consolidation"), unit="personas", definition="Personas de esas invasiones a las que se les abrió el proceso de 7 Semanas.", source="Reporte de invasión", empty_reason="Todavía no se ha pasado a ninguna persona a Consolidación."),
+        card("books", "Libros entregados", total("books"), unit="libros", definition="Libros entregados en esas invasiones según la bitácora de Librería.", source="Reporte de invasión · bitácora", empty_reason=none),
+    ]
+    return {"period": period_out(p), "cards": cards, "items": rows,
+            "notes": {"compare": "Cada fila usa el mismo cálculo del Reporte de invasión de esa invasión (semana completa). El enlace «Presentar» abre el Modo Presentar."}}
+
+
+# ------------------------------------------------------------------ G3 · Libros (bitácora L1)
+@router.get("/books", response_model=dict)
+async def books_section(period: Literal["today", "week", "month", "quarter", "year", "custom"] = "month", date_from: Optional[str] = None, date_to: Optional[str] = None,
+                        current_user: dict = Depends(get_current_user)):
+    require_section(current_user, "books")
+    from library_ledger import ledger_balances
+    from mentorship_outreach import person_display_name
+    p = await resolve(period, date_from, date_to)
+    balances = await ledger_balances()
+    user_ids = {key[0] for key in balances}
+    users = {str(doc["_id"]): doc.get("person_id") async for doc in db.users.find({"_id": {"$in": [*user_ids, *[ObjectId(item) for item in user_ids if ObjectId.is_valid(item)]]}}, {"person_id": 1})}
+    per_user: dict = defaultdict(lambda: {"received": 0, "delivered": 0, "available": 0})
+    for (user_id, _book), row in balances.items():
+        item = per_user[user_id]
+        item["received"] += row.get("received", 0) + row.get("transferred_in", 0)
+        item["delivered"] += row.get("delivered", 0) + row.get("pending_delivered", 0)
+        item["available"] += max(row.get("balance", 0), 0)
+    by_mentor = []
+    for user_id, item in per_user.items():
+        if not (item["received"] or item["delivered"]):
+            continue
+        by_mentor.append({"name": await person_display_name(users.get(user_id)) if users.get(user_id) else "Cuenta sin persona", **item})
+    by_mentor.sort(key=lambda row: -row["delivered"])
+    delivered_period: dict = defaultdict(int)
+    total_period = 0
+    async for item in db.library_movements.find({"movement_type": {"$in": ["DELIVERY", "LOAN", "DELIVERY_PENDING"]}, "is_reversal": {"$ne": True}, "occurred_at": {"$gte": p["start"], "$lt": p["end"]}}, {"_id": 0, "quantity": 1, "campaign_id": 1}):
+        quantity = item.get("quantity") or 1
+        total_period += quantity
+        delivered_period[item.get("campaign_id")] += quantity
+    names = {doc["campaign_id"]: doc.get("name") async for doc in db.outreach_campaigns.find({"campaign_id": {"$in": [key for key in delivered_period if key]}}, {"_id": 0, "campaign_id": 1, "name": 1})}
+    by_campaign = sorted(({"name": names.get(key) or ("Fuera de invasiones" if not key else "Invasión"), "delivered": value} for key, value in delivered_period.items()), key=lambda row: -row["delivered"])
+    central = 0
+    async for holding in db.library_holdings.find({"holder_type": "warehouse"}, {"_id": 0, "quantity_on_hand": 1}):
+        central += holding.get("quantity_on_hand") or 0
+    cards = [
+        card("delivered", "Libros entregados en el período", total_period, unit="libros", definition="Entregas y préstamos a personas en el período, según la bitácora (incluye entregas por conciliar).", source="Librería 360 · bitácora", empty_reason="No se entregaron libros en este período.", link="/libreria/recorrido"),
+        card("mentors_available", "En manos de los mentores", sum(item["available"] for item in by_mentor), unit="libros", definition="Saldo de los mentores: recibidos − entregados − devueltos, calculado de la bitácora (hoy).", source="Librería 360 · bitácora", empty_reason="Ningún mentor tiene libros asignados."),
+        card("central", "En el inventario central", central, unit="libros", definition="Existencias del almacén central de Librería (hoy).", source="Librería 360 · inventario", empty_reason="El inventario central está vacío."),
+        card("mentors", "Mentores con libros", len(by_mentor), unit="mentores", definition="Cuentas que han recibido o entregado libros.", source="Librería 360 · bitácora", empty_reason="Ningún mentor ha recibido libros."),
+    ]
+    return {"period": period_out(p), "cards": cards, "by_mentor": by_mentor, "by_campaign": by_campaign,
+            "notes": {"balances": "Recibidos, entregados y disponibles de cada mentor salen de la misma bitácora que «Mi inventario» y el Recorrido de libros (toda la historia)."}}
+
+
+# ------------------------------------------------------------------ G3 · Grupos Frontales y liderazgo
+@router.get("/groups", response_model=dict)
+async def groups_section(period: Literal["today", "week", "month", "quarter", "year", "custom"] = "month", date_from: Optional[str] = None, date_to: Optional[str] = None,
+                         current_user: dict = Depends(get_current_user)):
+    require_section(current_user, "groups")
+    from front_group_structure import structure_tree
+    from mentorship_outreach import person_display_name
+    p = await resolve(period, date_from, date_to)
+    excluded = await excluded_ids()
+    active_groups = await db.front_groups.count_documents({"status": "active"})
+    pending = await db.front_groups.count_documents({"status": "pending_formation"})
+    people = set(await db.front_group_assignments.distinct("person_id", {"active": True})) - excluded
+    leaders = set(await db.front_group_assignments.distinct("person_id", {"active": True, "role": {"$in": ["leader", "co_leader"]}})) - excluded
+    worked = set(await db.outreach_visit_events.distinct("mentor_person_id", {"occurred_at": {"$gte": p["start"], "$lt": p["end"]}, "is_draft": {"$ne": True}}))
+    worked |= set(await db.outreach_visits.distinct("mentor_person_id", {"created_at": {"$gte": p["start"], "$lt": p["end"]}}))
+    worked |= set(await db.process_enrollments.distinct("mentor_person_id", {"updated_at": {"$gte": p["start"], "$lt": p["end"]}, "process_key": "consolidation"}))
+    idle_ids = sorted(leaders - worked)
+    idle = [{"person_id": pid, "name": await person_display_name(pid) or "Líder"} for pid in idle_ids[:80]]
+    idle.sort(key=lambda row: row["name"])
+    tree = await structure_tree(root=None, period="month", levels=1, current_user=current_user)
+    root = tree.get("root") or {}
+    branches = [{"name": f"{team['group']['name']}" if team.get("group") else f"Equipo de {team['leader']['name'] if team.get('leader') else 'líder por definir'}",
+                 "leader": (team.get("leader") or {}).get("name"), "status": {"formed": "Grupo formado", "pending": "Por formar", "not_designated": "Todavía no ha formado su grupo"}[team["status"]],
+                 "people": (team.get("group") or {}).get("people_branch") or 0, "progress": (team.get("group") or {}).get("progress"), "leader_person_id": (team.get("leader") or {}).get("person_id")}
+                for team in (root.get("teams") or [])]
+    cards = [
+        card("groups", "Grupos Frontales formados", active_groups, unit="grupos", definition="Grupos Frontales activos en todo el árbol.", source="Grupos Frontales", empty_reason="Todavía no hay Grupos Frontales formados.", link="/grupo-frontal?tab=ramas"),
+        card("pending", "Grupos por formar", pending, unit="grupos", definition="Equipos ya designados cuyo líder todavía no ha formado su grupo.", source="Grupos Frontales", empty_reason="No hay grupos pendientes de formar."),
+        card("people", "Personas en la estructura", len(people), unit="personas", definition="Personas distintas que pertenecen a algún Grupo Frontal (cada persona cuenta una vez). No incluye a la pastora.", source="Grupos Frontales", empty_reason="Todavía no hay personas en los Grupos Frontales."),
+        card("leaders", "Líderes y colíderes", len(leaders), unit="personas", definition="Personas que lideran o colideran algún grupo.", source="Grupos Frontales", empty_reason="Todavía no hay líderes designados."),
+        card("idle", "Líderes sin actividad en el período", len(idle_ids), unit="líderes", definition="Líderes y colíderes sin visitas, contactos registrados ni movimiento en sus expedientes de Consolidación durante el período.", source="Grupos Frontales + Invasiones + Consolidación", empty_reason="Todos los líderes registraron actividad en el período."),
+    ]
+    return {"period": period_out(p), "cards": cards, "root": {"name": root.get("name"), "people_branch": root.get("people_branch"), "progress": root.get("progress")} if root else None,
+            "branches": branches, "idle_leaders": idle,
+            "notes": {"branches": "Ramas del primer nivel del árbol (mismo cálculo de «Mis ramas»: personas sin contar dos veces y avance del mes).", "work": "«Ver el trabajo del líder» abre su detalle de hoy, semana y total."}}
+
+
+# ------------------------------------------------------------------ G3 · Educación, bautismos, niños, formación, células y radio
+@router.get("/education", response_model=dict)
+async def education(period: Literal["today", "week", "month", "quarter", "year", "custom"] = "month", date_from: Optional[str] = None, date_to: Optional[str] = None,
+                    current_user: dict = Depends(get_current_user)):
+    require_section(current_user, "education")
+    p = await resolve(period, date_from, date_to)
+    first, last = p["first"].isoformat(), p["last"].isoformat()
+    discipleship_active = await db.process_enrollments.count_documents({"process_key": "discipleship", "status": "active"})
+    discipleship_new = await db.process_enrollments.count_documents({"process_key": "discipleship", "created_at": {"$gte": p["start"], "$lt": p["end"]}})
+    discipleship_done = await db.process_enrollments.count_documents({"process_key": "discipleship", "status": "completed", "completed_at": {"$gte": p["start"], "$lt": p["end"]}})
+    baptized = await db.person_baptisms.count_documents({"baptized": True, "baptism_date": {"$gte": first, "$lte": last}})
+    candidates = await db.person_baptisms.count_documents({"baptized": {"$ne": True}, "status": {"$in": ["pending", "scheduled", "candidate"]}})
+    dedications = await db.person_dedications.count_documents({"completed": True, "dedication_date": {"$gte": first, "$lte": last}})
+    formation_active = await db.formation_enrollments.count_documents({"status": {"$in": ["active", "enrolled", "in_progress"]}})
+    certificates = await db.formation_certificate_issuances.count_documents({"issued_at": {"$gte": p["start"], "$lt": p["end"]}})
+    meetings = await db.cell_meetings.count_documents({"scheduled_at": {"$gte": p["start"], "$lt": p["end"]}})
+    conversions = 0
+    async for meeting in db.cell_meetings.find({"scheduled_at": {"$gte": p["start"], "$lt": p["end"]}}, {"_id": 0, "conversion_person_ids": 1}):
+        conversions += len(meeting.get("conversion_person_ids") or [])
+    radio_messages = await db.radio_voice_messages.count_documents({"created_at": {"$gte": p["start"], "$lt": p["end"]}})
+    cards = [
+        card("discipleship_active", "En Educación / Discipulado", discipleship_active, unit="personas", definition="Expedientes de Discipulado activos hoy.", source="Educación / Discipulado", empty_reason="No hay personas activas en Discipulado.", link="/procesos/discipulado"),
+        card("discipleship_new", "Iniciaron Discipulado", discipleship_new, unit="personas", definition="Expedientes de Discipulado abiertos en el período.", source="Educación / Discipulado", empty_reason="Nadie inició Discipulado en este período."),
+        card("discipleship_done", "Terminaron Discipulado", discipleship_done, unit="personas", definition="Expedientes de Discipulado completados en el período.", source="Educación / Discipulado", empty_reason="Nadie terminó Discipulado en este período."),
+        card("baptized", "Bautizados", baptized, unit="personas", definition="Personas marcadas como bautizadas con fecha de bautismo en el período.", source="Bautismos", empty_reason="No hay bautismos con fecha en este período.", link="/bautismos"),
+        card("candidates", "Candidatos a bautismo", candidates, unit="personas", definition="Personas en lista de bautismo que todavía no se han bautizado (hoy).", source="Bautismos", empty_reason="No hay candidatos pendientes."),
+        card("dedications", "Presentación de niños", dedications, unit="niños", definition="Presentaciones de niños completadas con fecha en el período.", source="Presentación de Niños", empty_reason="No hay presentaciones de niños en este período.", link="/presentaciones"),
+        card("formation_active", "Personas en Formación", formation_active, unit="matrículas", definition="Matrículas activas en programas de Formación (hoy).", source="Formación", empty_reason="No hay matrículas activas en Formación.", link="/formacion"),
+        card("certificates", "Certificados de Formación", certificates, unit="certificados", definition="Certificados de Formación emitidos en el período.", source="Formación", empty_reason="No se emitieron certificados en este período."),
+        card("cell_meetings", "Reuniones de células", meetings, unit="reuniones", definition="Reuniones de célula programadas en el período.", source="Sistema Celular", empty_reason="No hay reuniones de célula en este período.", link="/celulas/dashboard"),
+        card("cell_conversions", "Decisiones de fe en células", conversions, unit="personas", definition="Personas marcadas como conversión en las reuniones de célula del período.", source="Sistema Celular", empty_reason="No se registraron decisiones de fe en células en este período."),
+        card("radio", "Mensajes de voz en el radio", radio_messages, unit="mensajes", definition="Mensajes de voz grabados en el radio de las invasiones durante el período.", source="Radio", empty_reason="No hubo mensajes de voz en el radio en este período."),
+    ]
+    return {"period": period_out(p), "cards": cards}
