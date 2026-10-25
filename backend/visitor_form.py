@@ -24,6 +24,8 @@ VISIT_MODES = {"nearby": "Vive cerca de la iglesia", "other_city": "Viene de otr
 CHRISTIAN = {"yes": "Sí", "on_way": "Estoy en camino", "not_yet": "No todavía"}
 ACCEPT_JESUS = {"today": "Hoy", "another_day": "Otro día"}
 MARITAL = {"single": "Soltero o soltera", "married": "Casado o casada", "other": "Otro"}
+SEX = {"female": "Femenino", "male": "Masculino"}
+LANGUAGE = {"es": "Español", "en": "Inglés (English): contactarle en inglés"}
 CONTACT = {"call": "Llamada", "text": "Mensaje de texto", "whatsapp": "WhatsApp", "email": "Correo electrónico"}
 
 # Área → a quién le toca (se muestra en la tarea).
@@ -42,8 +44,10 @@ def phone_text(digits: Optional[str]) -> Optional[str]:
 MONTHS = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
 
 
-def birthday_text(value: Optional[str]) -> Optional[str]:
-    """«9 de julio de 1985»."""
+def birthday_text(value: Optional[str], day: Optional[int] = None, month: Optional[int] = None) -> Optional[str]:
+    """«9 de julio de 1985», o «9 de julio» si no dio el año."""
+    if not value and day and month and 1 <= month <= 12:
+        return f"{day} de {MONTHS[month - 1]}"
     try:
         year, month, day = (int(part) for part in (value or "").split("-"))
         return f"{day} de {MONTHS[month - 1]} de {year}"
@@ -111,14 +115,17 @@ def answers(doc: dict, restricted_ok: bool) -> list[dict]:
     if not restricted_ok and any(item in RESTRICTED_REQUESTS for item in requests):
         shown_requests.append("Pedido confidencial (lo atiende el equipo pastoral)")
     address = ", ".join(part for part in [contact.get("address"), contact.get("city"), contact.get("zip_code")] if part)
-    birth = birthday_text(contact.get("birth_date"))
+    birth = birthday_text(contact.get("birth_date"), contact.get("birth_day"), contact.get("birth_month"))
+    new_in_area = visit.get("new_in_area")
     children = household.get("children") or []
     legacy_family = [f"{item.get('name')}{' (' + item['relation'] + ')' if item.get('relation') else ''}" for item in doc.get("family") or [] if item.get("name")]
     sections = [
-        ("Nombre", [("Nombre completo", f"{doc.get('first_name', '')} {doc.get('last_name', '')}".strip()), ("Le gusta que le llamen", (doc.get("welcome") or {}).get("preferred_name"))]),
+        ("Nombre", [("Nombre completo", f"{doc.get('first_name', '')} {doc.get('last_name', '')}".strip()), ("Le gusta que le llamen", (doc.get("welcome") or {}).get("preferred_name")),
+                    ("Sexo", SEX.get((doc.get("profile") or {}).get("sex"))), ("Idioma preferido", LANGUAGE.get(doc.get("language") or "es"))]),
         ("Contacto", [("Teléfono", phone_text(contact.get("phone"))), ("Correo electrónico", contact.get("email")),
                       ("Cómo prefiere que le contacten", ", ".join(CONTACT.get(item, item) for item in contact.get("methods") or []) or None)]),
-        ("Dónde vive", [("Dirección", address or None), ("Cómo nos visita hoy", VISIT_MODES.get(visit.get("visit_mode"))), ("Cumpleaños", birth)]),
+        ("Dónde vive", [("Dirección", address or None), ("Es nuevo en esta área", yes_no(new_in_area)),
+                        ("Cómo nos visita hoy", VISIT_MODES.get(visit.get("visit_mode"))), ("Cumpleaños", birth)]),
         ("Su visita", [("Visita", None if visit.get("first_visit") is None else ("Primera vez" if visit.get("first_visit") else "Ya nos había visitado")),
                        ("Le invitó", (doc.get("welcome") or {}).get("invited_by_display") or (doc.get("welcome") or {}).get("invited_by") or visit.get("invited_by")), ("Cómo se enteró", visit.get("how_heard"))]),
         ("Su fe", [("¿Es cristiano o cristiana?", CHRISTIAN.get(faith.get("christian"))), ("Quiere aceptar a Jesús como su Salvador", ACCEPT_JESUS.get(faith.get("accept_jesus"))),

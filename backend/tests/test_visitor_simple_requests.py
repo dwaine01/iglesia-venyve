@@ -21,7 +21,7 @@ async def test_kiosk_and_screen_accept_simple_requests():
     try:
         pastora = await fx.account(await fx.person(f"Pastora{tag}"), "pastora")
         code, screen_code = await link(pastora, "tablet"), await link(pastora, "screen")
-        assert (await client.get("/api/kiosk/ping")).json() == {"ok": True, "kiosk_api": 4}
+        assert (await client.get("/api/kiosk/ping")).json() == {"ok": True, "kiosk_api": 5}
         params = {"link": code.lower(), "tablet": "Tableta 5A5A"}
         config = await client.get("/api/kiosk/config", params=params)
         assert config.status_code == 200 and config.json()["device_name"] == "Tableta 5A5A" and config.json()["short_path"] == f"/r/{code}"

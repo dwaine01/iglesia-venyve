@@ -170,6 +170,9 @@ def build_header(
         for field in ("fecha_nacimiento", "genero", "estado_civil"):
             if person.get(field):
                 header[field] = person[field]
+        # Cumpleaños sin año (registro de visitantes): solo día y mes; la edad no se calcula.
+        if not person.get("fecha_nacimiento") and person.get("cumpleanos_dia") and person.get("cumpleanos_mes"):
+            header["cumpleanos"] = {"dia": person["cumpleanos_dia"], "mes": person["cumpleanos_mes"]}
 
     if has_capability(current_user, PERSON_CONTACTS_READ) and contacts:
         primary_contact = next(
