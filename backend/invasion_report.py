@@ -309,6 +309,11 @@ async def _help_alerts(campaign_id: str) -> dict:
     return await help_summary(campaign_id)
 
 
+async def _door_data(campaign_id: str) -> dict:
+    from door_reports import door_report_data
+    return await door_report_data(campaign_id)
+
+
 async def compute_report(campaign: dict) -> dict:
     """Todas las secciones con datos vivos (lo que se congela al cerrar)."""
     campaign_id = campaign["campaign_id"]
@@ -444,6 +449,8 @@ async def compute_report(campaign: dict) -> dict:
             "by_sector": sorted(({"sector": key, **value, "coverage_pct": round(value["visited"] / value["houses"] * 100) if value["houses"] else None} for key, value in by_sector.items()), key=lambda item: -item["people"]),
             "results": results,
             "attempts_by_result": [{"result": key, "label": RESULT_LABELS.get(key, key), "total": value} for key, value in attempts_by_result.items() if key],
+            # Puerta a puerta (tramo 4): viviendas vs intentos, libros, abrieron/no abrieron, pendientes; por mentor, equipo y calle.
+            "doors": await _door_data(campaign_id),
         },
         "ranking": {"mentors": mentor_rows, "teams": teams},
         "prayer": prayer_report(prayer) if prayer else None,

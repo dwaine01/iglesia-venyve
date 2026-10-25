@@ -8,22 +8,14 @@ import { useAuth } from '../context/AuthContext';
 import { apiErrorMessage } from '../lib/apiErrors';
 import { InvasionHousesMap } from '../components/outreach/InvasionHousesMap';
 import { LessonsBlock, RecommendationsBlock } from '../components/invasions/ReportRecommendations';
+import { downloadCsv } from '../lib/csv';
+import { DoorReport } from '../components/doors/DoorReport';
 import { COLORS, ChartCard, Donut, GoalBar, HBars, Lines, PALETTE, VBars, semaphoreStyle } from '../components/invasions/reportCharts';
 
 const STATE = { upcoming: 'Próxima', active: 'En curso', finished: 'Terminada (sin cerrar)', closed: 'Cerrada' };
 const fmtDate = (iso) => (iso ? new Date(`${iso.slice(0, 10)}T12:00:00`).toLocaleDateString('es', { day: 'numeric', month: 'short', year: 'numeric' }) : '—');
 const pct = (value) => (value == null ? 'Sin datos' : `${value}%`);
 const ratio = (part, total) => (total ? Math.round((part / total) * 100) : null);
-
-// CSV por sección (Excel lo abre directo; BOM para acentos).
-function downloadCsv(filename, rows) {
-  if (!rows?.length) { toast.message('No hay datos para exportar'); return; }
-  const headers = Object.keys(rows[0]);
-  const escape = (value) => { const text = value == null ? '' : String(value); return /[",\n;]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text; };
-  const csv = [headers.join(','), ...rows.map((row) => headers.map((key) => escape(row[key])).join(','))].join('\n');
-  const url = URL.createObjectURL(new Blob([`﻿${csv}`], { type: 'text/csv;charset=utf-8' }));
-  const link = document.createElement('a'); link.href = url; link.download = filename; link.click(); URL.revokeObjectURL(url);
-}
 
 function Section({ title, children, csv, className = '', testId }) {
   return (
@@ -222,6 +214,10 @@ export default function InvasionReportPage() {
           </div>
           <p className="mb-1 mt-3 text-sm font-semibold">Detalle por sector</p>
           <Table columns={[['sector', 'Sector'], ['houses', 'Casas'], ['visited', 'Visitadas'], ['coverage_pct', 'Cobertura', (row) => pct(row.coverage_pct)], ['people', 'Personas']]} rows={field.by_sector} />
+          {field.doors && <div className="mt-5" data-testid="report-doors">
+            <p className="mb-2 text-base font-semibold text-[#101D36]">Puerta a puerta: viviendas, intentos y libros</p>
+            <DoorReport campaignId={campaignId} data={field.doors} live={report.mode !== 'final'} fileTag={s.name.replace(/\s+/g, '-')} />
+          </div>}
         </Section>
 
         <Section title="4. Seguimiento y Consolidación" className="xl:col-span-2" testId="report-followup" csv={() => downloadCsv(`seguimiento-${s.name}.csv`, [...follow.first_contact.map((row) => ({ indicador: `Primer contacto ${row.bucket}`, total: row.total })), ...follow.routes.map((row) => ({ indicador: `Llegaron a ${row.route}`, total: row.total })), { indicador: 'Pasaron a Consolidación', total: follow.to_consolidation }, { indicador: 'Con mentor asignado', total: follow.assigned_mentor }, { indicador: 'Transferidas', total: follow.transferred }, { indicador: `Sin atender > ${follow.unattended_hours} h`, total: follow.unattended }])}>
