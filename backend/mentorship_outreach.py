@@ -576,6 +576,8 @@ async def deliver_outreach_book(visit: dict, sku: str, target_person_id: str, cu
     return await deliver_from_mentor_to_person(
         sku, visit["mentor_person_id"], target_person_id, current_user["user_id"],
         campaign_id=visit.get("campaign_id"), process_key=OUTREACH_PROCESS_KEY, notes="Entrega en visita de invasión",
+        idempotency_key=f"visit:{visit['visit_id']}:{sku}",
+        links={"visit_id": visit["visit_id"], "household_id": visit.get("household_id"), "visit_event_id": visit.get("visit_event_id")},
     )
 
 

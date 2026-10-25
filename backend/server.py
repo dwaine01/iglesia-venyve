@@ -567,6 +567,8 @@ app.include_router(invasion_report_router)
 app.include_router(invasion_attendance_router)
 app.include_router(outreach_doors_router)
 from door_reports import router as door_reports_router
+from library_ledger import router as library_ledger_router, startup_migration as library_ledger_migration
+app.include_router(library_ledger_router)
 from enrollment_cleanup import router as enrollment_cleanup_router, ensure_indexes as enrollment_cleanup_ensure_indexes
 app.include_router(enrollment_cleanup_router)
 from door_streets import router as door_streets_router, ensure_indexes as door_streets_ensure_indexes
@@ -785,6 +787,7 @@ async def startup():
     await outreach_doors_ensure_indexes()
     await door_streets_ensure_indexes()
     await enrollment_cleanup_ensure_indexes()
+    asyncio.create_task(library_ledger_migration())  # vínculos y pendientes de libros (idempotente, en segundo plano)
     await invasion_alerts_ensure_indexes()
     await consolidation_leads_ensure_indexes()
     await radio_ensure_indexes()
