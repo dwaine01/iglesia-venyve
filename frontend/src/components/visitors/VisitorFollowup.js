@@ -112,7 +112,29 @@ function Restricted({ item }) {
   );
 }
 
-function FollowupCard({ item: initial, canManage, canRestricted }) {
+function IncompleteActions({ item, onDone, onChanged }) {
+  const { API, getAuthHeaders } = useAuth();
+  const finish = async () => {
+    try { onDone((await axios.post(`${API}/api/visitors/registrations/${item.registration_id}/finish-incomplete`, {}, getAuthHeaders())).data); toast.success('Pasado a Persona 360'); }
+    catch (error) { toast.error(apiErrorMessage(error, 'No se pudo completar')); }
+  };
+  const discard = async () => {
+    if (!window.confirm(`¿Descartar el registro de ${item.name}? No se borra: queda oculto y en el historial.`)) return;
+    try { await axios.post(`${API}/api/visitors/registrations/${item.registration_id}/discard`, {}, getAuthHeaders()); toast.success('Registro descartado'); onChanged?.(); }
+    catch (error) { toast.error(apiErrorMessage(error, 'No se pudo descartar')); }
+  };
+  return (
+    <div className="space-y-2 rounded-xl border-2 border-rose-200 bg-rose-50 p-3" data-testid="followup-incomplete">
+      <p className="text-[15px] font-semibold text-rose-900">{item.registration_state === 'registering' ? 'La persona está llenando el formulario ahora mismo.' : 'La persona dejó el formulario a medias: solo tenemos su nombre.'}</p>
+      <div className="flex flex-wrap gap-2">
+        <button type="button" onClick={finish} className="min-h-11 rounded-lg bg-[#132443] px-3 text-[15px] font-semibold text-white" data-testid="followup-finish">Completar: pasar a Persona 360</button>
+        <button type="button" onClick={discard} className="min-h-11 rounded-lg border border-rose-300 bg-white px-3 text-[15px] font-semibold text-rose-800" data-testid="followup-discard">Descartar</button>
+      </div>
+    </div>
+  );
+}
+
+function FollowupCard({ item: initial, canManage, canRestricted, onChanged }) {
   const { user } = useAuth();
   const [item, setItem] = useState(initial);
   const [open, setOpen] = useState(false);
@@ -125,7 +147,10 @@ function FollowupCard({ item: initial, canManage, canRestricted }) {
             <p className="text-lg font-semibold text-[#101D36]">{item.name}{item.preferred_name && !item.name.startsWith(item.preferred_name) ? ` («${item.preferred_name}»)` : ''}</p>
             <p className="text-[15px] text-slate-600">{item.visitor_number} · {item.service.label} · {fmtDate(item.service.date)}{item.first_visit ? ' · Primera visita' : ''}</p>
           </div>
-          <span className={`rounded-full px-3 py-1 text-sm font-semibold ${STATUS_STYLE[item.status] || ''}`} data-testid="followup-status">{item.status_label}</span>
+          <span className="flex flex-wrap gap-1">
+            {item.registration_state_label && <span className={`rounded-full px-3 py-1 text-sm font-semibold ${item.registration_state === 'incomplete' ? 'bg-rose-100 text-rose-900' : 'bg-violet-100 text-violet-900'}`} data-testid="followup-state">{item.registration_state_label}</span>}
+            <span className={`rounded-full px-3 py-1 text-sm font-semibold ${STATUS_STYLE[item.status] || ''}`} data-testid="followup-status">{item.status_label}</span>
+          </span>
         </div>
         <p className="mt-1 text-[15px] text-slate-700">{item.assigned_name ? `Asignado a ${item.assigned_name}` : 'Sin asignar'}{item.requests.length ? ` · Pide: ${item.requests.join(', ')}` : ''}</p>
         {item.match_status === 'possible' && <p className="text-[15px] font-semibold text-amber-800">{item.match_label}</p>}
@@ -143,6 +168,7 @@ function FollowupCard({ item: initial, canManage, canRestricted }) {
             {item.person_id && <Link to={`/personas/${item.person_id}`} className="font-semibold text-[#0879BE] underline">Ver Perfil 360</Link>}
           </div>
           {item.has_restricted && canRestricted && <Restricted item={item} />}
+          {canManage && ['incomplete', 'registering'].includes(item.registration_state) && <IncompleteActions item={item} onDone={setItem} onChanged={onChanged} />}
           {canManage && item.match_status === 'possible' && <MatchReview item={item} onDone={setItem} />}
           {canManage && <AssignBox item={item} onDone={setItem} />}
           {(canManage || isAssignee) && <AttemptForm item={item} onDone={setItem} />}
@@ -164,12 +190,13 @@ export default function VisitorFollowup() {
   const [day, setDay] = useState('');
   const [kind, setKind] = useState('');
   const [status, setStatus] = useState('');
+  const [onlyIncomplete, setOnlyIncomplete] = useState(false);
   const [data, setData] = useState(null);
   const load = useCallback(() => {
     setData(null);
-    axios.get(`${API}/api/visitors/followup`, { ...getAuthHeaders(), params: { ...(day ? { service_date: day } : {}), ...(kind ? { service_kind: kind } : {}), ...(status ? { status } : {}) } })
+    axios.get(`${API}/api/visitors/followup`, { ...getAuthHeaders(), params: { ...(day ? { service_date: day } : {}), ...(kind ? { service_kind: kind } : {}), ...(status ? { status } : {}), ...(onlyIncomplete ? { state: 'incomplete' } : {}) } })
       .then((response) => setData(response.data)).catch((error) => { toast.error(apiErrorMessage(error, 'No se pudo cargar el seguimiento')); setData({ items: [], counts: [] }); });
-  }, [API, getAuthHeaders, day, kind, status]);
+  }, [API, getAuthHeaders, day, kind, status, onlyIncomplete]);
   useEffect(() => { load(); }, [load]);
   return (
     <div className="space-y-3" data-testid="visitors-followup">
@@ -180,12 +207,13 @@ export default function VisitorFollowup() {
       </div>
       <div className="flex flex-wrap gap-2">{SERVICES.map(([value, label]) => <button key={value || 'all'} type="button" onClick={() => setKind(value)} className={chip(kind === value)} data-testid={`followup-service-${value || 'all'}`}>{label}</button>)}</div>
       {data?.counts && <div className="flex flex-wrap gap-2">
-        <button type="button" onClick={() => setStatus('')} className={chip(status === '')}>Todos</button>
+        <button type="button" onClick={() => { setStatus(''); setOnlyIncomplete(false); }} className={chip(status === '' && !onlyIncomplete)}>Todos</button>
+        <button type="button" onClick={() => setOnlyIncomplete(!onlyIncomplete)} className={chip(onlyIncomplete)} data-testid="followup-filter-incomplete">Incompletos{onlyIncomplete ? '' : `: ${data.incomplete || 0}`}</button>
         {data.counts.map((count) => <button key={count.status} type="button" onClick={() => setStatus(count.status)} className={chip(status === count.status)} data-testid={`followup-filter-${count.status}`}>{count.label}{status ? '' : `: ${count.count}`}</button>)}
       </div>}
       {!data ? <Loader2 className="mx-auto h-6 w-6 animate-spin text-slate-400" /> : data.items.length === 0
         ? <p className="rounded-xl bg-white p-4 text-[15px] text-slate-600">No hay visitantes con estos filtros.</p>
-        : <ul className="grid grid-cols-1 gap-3 xl:grid-cols-2">{data.items.map((item) => <FollowupCard key={item.registration_id} item={item} canManage={data.can_manage} canRestricted={data.can_restricted} />)}</ul>}
+        : <ul className="grid grid-cols-1 gap-3 xl:grid-cols-2">{data.items.map((item) => <FollowupCard key={item.registration_id} item={item} canManage={data.can_manage} canRestricted={data.can_restricted} onChanged={load} />)}</ul>}
     </div>
   );
 }

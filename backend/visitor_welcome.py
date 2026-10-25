@@ -4,7 +4,7 @@
   del servicio. Sin emparejar ni iniciar sesión.
 - Por decisión de la iglesia todo visitante registrado entra a la lista; el
   operador puede quitar cualquiera (sin borrar el registro) o corregirlo.
-- LISTA BLANCA: la pantalla recibe solo {id, nombre, invitado por}; nunca teléfonos,
+- LISTA BLANCA: la pantalla recibe solo {id, nombre, invitado por, registrando}; nunca teléfonos,
   direcciones, fechas, oración ni consejería. Los familiares que acompañan
   (incluidos menores) NO se muestran.
 - La encargada avanza y retrocede en la propia pantalla (flechas o botones);
@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 
 from access_control import VISITORS_WELCOME_OPERATE
 from server import db, get_current_user
-from visitor_registry import audit, current_service, link_access, now_utc, require
+from visitor_registry import audit, current_service, link_access, load_kiosk_settings, now_utc, registration_state, require
 
 operator_router = APIRouter(prefix="/api/visitors/welcome", tags=["visitor-welcome"])
 screen_router = APIRouter(prefix="/api/screen", tags=["visitor-screen"])
@@ -67,9 +67,12 @@ async def screen_welcome(x_link_token: Optional[str] = Header(default=None)):
     """Lista blanca: solo id y nombre, en orden de llegada, sin los quitados."""
     await link_access("screen", x_link_token)
     state = await load_state()
-    docs = await db.visitor_registrations.find({**await service_query(state), "welcome.hidden": {"$ne": True}}, {"_id": 0, "registration_id": 1, "first_name": 1, "last_name": 1, "welcome": 1, "visit.invited": 1, "visit.invited_by": 1}) \
+    docs = await db.visitor_registrations.find({**await service_query(state), "welcome.hidden": {"$ne": True}}, {"_id": 0, "registration_id": 1, "first_name": 1, "last_name": 1, "welcome": 1, "visit.invited": 1, "visit.invited_by": 1,
+                                                                                                         "status": 1, "updated_at": 1, "created_at": 1}) \
         .sort("created_at", 1).to_list(500)
-    return {"names": [{"id": doc["registration_id"], "name": shown_name(doc), "invited_by": shown_inviter(doc)} for doc in docs], "total": len(docs), "service_label": await service_label(state)}
+    reset = (await load_kiosk_settings())["form_reset_seconds"]
+    # El nombre aparece apenas lo escribe (borrador), con «registrando…» mientras llena el resto.
+    return {"names": [{"id": doc["registration_id"], "name": shown_name(doc), "invited_by": shown_inviter(doc), "registering": registration_state(doc, reset) == "registering"} for doc in docs], "total": len(docs), "service_label": await service_label(state)}
 
 
 # ------------------------------------------------------------------ operador
@@ -77,14 +80,15 @@ def operator_item(doc: dict) -> dict:
     """Lista blanca del panel: nombre y número (sin contacto ni pedidos)."""
     return {"registration_id": doc["registration_id"], "visitor_number": doc["visitor_number"], "name": shown_name(doc), "default_name": default_name(doc),
             "corrected": bool((doc.get("welcome") or {}).get("display_name")), "hidden": bool((doc.get("welcome") or {}).get("hidden")), "service_label": doc["service"]["label"],
-            "invited_by": shown_inviter(doc), "default_invited_by": default_inviter(doc), "invited_corrected": bool((doc.get("welcome") or {}).get("invited_by_display"))}
+            "invited_by": shown_inviter(doc), "default_invited_by": default_inviter(doc), "invited_corrected": bool((doc.get("welcome") or {}).get("invited_by_display")),
+            "registering": registration_state(doc) == "registering"}
 
 
 @operator_router.get("", response_model=dict)
 async def operator_view(current_user: dict = Depends(get_current_user)):
     require(current_user, VISITORS_WELCOME_OPERATE)
     state = await load_state()
-    docs = await db.visitor_registrations.find(await service_query(state), {"_id": 0}).sort("created_at", 1).to_list(500)
+    docs = await db.visitor_registrations.find({**await service_query(state), "status": {"$nin": ["discarded", "merged"]}}, {"_id": 0}).sort("created_at", 1).to_list(500)
     await audit("welcome_viewed", current_user["user_id"], {"count": len(docs)})
     return {"items": [operator_item(doc) for doc in docs], "state": state, "today": await current_service(), "service_label": await service_label(state)}
 

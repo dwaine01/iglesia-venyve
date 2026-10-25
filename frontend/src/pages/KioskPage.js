@@ -4,6 +4,7 @@ import { useParams } from 'react-router-dom';
 import { Check, HeartHandshake, Lock, Users } from 'lucide-react';
 
 import { enqueue, flush, pendingCount } from '../lib/kioskQueue';
+import { rememberedToken, useAppManifest } from '../lib/appManifest';
 
 /* Quiosco de registro de visitantes (/quiosco/<enlace>). Un único enlace para
  * todas las tabletas: sin código, sin sesión. El enlace solo permite CREAR
@@ -33,7 +34,7 @@ const REQUESTS = [['prayer', 'Oración'], ['visit', 'Una visita'], ['info', 'Inf
   ['counseling_family', 'Consejería familiar'], ['support_child', 'Apoyo para un hijo o familiar'], ['other_help', 'Otro tipo de ayuda']];
 // Pasos en orden; «notas» solo aparece si eligió oración, consejería o ayuda (así ninguna pantalla necesita desplazarse).
 const needsNotes = (requests) => requests.some((item) => item === 'prayer' || item.startsWith('counseling') || ['support_child', 'other_help'].includes(item));
-const stepOrder = (form) => ['aviso', 'nombre', 'contacto', 'como', 'visita', 'familia', 'servir', ...(needsNotes(form.requests) ? ['notas'] : []), 'seguimiento', 'revisar'];
+const stepOrder = (form) => ['aviso', 'nombre', 'cumple', 'contacto', 'como', 'visita', 'familia', 'servir', ...(needsNotes(form.requests) ? ['notas'] : []), 'seguimiento', 'revisar'];
 
 const emptyForm = () => ({
   idempotency_key: (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`).replace(/[^a-zA-Z0-9-]/g, '') + Date.now().toString(36),
@@ -147,7 +148,10 @@ const KIOSK_CSS = `
 `;
 
 export default function KioskPage() {
-  const { token } = useParams();
+  const params = useParams();
+  // El enlace se guarda en la tableta: el acceso directo «Registro» abre /quiosco sin el enlace.
+  const [token] = useState(() => rememberedToken('vv_kiosk_link', params.token));
+  useAppManifest('/manifest-registro.json', 'Registro');
   const [device] = useState(tabletName);
   const [config, setConfig] = useState(null);
   const [linkError, setLinkError] = useState('');
@@ -191,6 +195,17 @@ export default function KioskPage() {
     return () => { clearInterval(timer); window.removeEventListener('online', tick); };
   }, [token, send]);
 
+  // Cada paso empieza arriba (el centro es lo único que se desplaza).
+  useEffect(() => { document.querySelector('[data-testid=kiosk-main]')?.scrollTo(0, 0); }, [step, result]);
+
+  // Sin desplazamiento ni rebote del documento mientras está el quiosco.
+  useEffect(() => {
+    const root = document.documentElement; const body = document.body;
+    const before = [root.style.overflow, root.style.overscrollBehavior, body.style.overflow, body.style.overscrollBehavior, root.style.height, body.style.height];
+    root.style.overflow = 'hidden'; root.style.overscrollBehavior = 'none'; body.style.overflow = 'hidden'; body.style.overscrollBehavior = 'none'; root.style.height = '100%'; body.style.height = '100%';
+    return () => { [root.style.overflow, root.style.overscrollBehavior, body.style.overflow, body.style.overscrollBehavior, root.style.height, body.style.height] = before; };
+  }, []);
+
   // Modo quiosco: el botón «atrás» no sale de la página.
   useEffect(() => {
     window.history.pushState(null, '', window.location.href);
@@ -211,6 +226,14 @@ export default function KioskPage() {
     }, 1000);
     return () => { clearInterval(timer); ['pointerdown', 'keydown', 'touchstart', 'input', 'change', 'scroll'].forEach((name) => window.removeEventListener(name, touch, { capture: true })); };
   }, [step, result, reset, times, loadConfig]);
+
+  // Al continuar después del nombre: borrador en el servidor para que el nombre aparezca YA en la
+  // bienvenida de la pastora. No detiene a la persona (si falla, el registro final lo crea igual).
+  const saveDraft = () => {
+    if (!config) return;
+    axios.post(`${API}/api/kiosk/registrations/draft`, { idempotency_key: form.idempotency_key, first_name: form.first_name.trim(), last_name: form.last_name.trim(),
+      preferred_name: form.preferred_name.trim() || null, privacy_version: config.texts.privacy_version, privacy_accepted: true, website: form.website || null }, { headers, timeout: 8000 }).catch(() => {});
+  };
 
   const submit = async () => {
     setSaving(true); setError('');
@@ -236,15 +259,20 @@ export default function KioskPage() {
   const missingContact = form.consent_followup === true && !phoneDigits(form.phone) && !form.email.trim();
   const canNext = () => (stepKey === 'nombre' ? form.first_name.trim() && form.last_name.trim() : stepKey === 'seguimiento' ? !missingContact : true);
   const shell = (children, footer = null, hideLogo = false) => (
-    <div style={{ minHeight: '100vh', background: C.bg, color: C.ink, fontFamily: 'Inter, system-ui, sans-serif', display: 'flex', flexDirection: 'column', userSelect: 'none' }} data-testid="kiosk-page" onContextMenu={(event) => event.preventDefault()}>
+    // Pantalla fija de app: encabezado y botones nunca se mueven; solo el centro se desplaza si de verdad no cabe.
+    // Alto = área visible (visualViewport), así el teclado no empuja el encabezado fuera de vista.
+    <div style={{ position: 'fixed', left: 0, right: 0, top: 'var(--vv-top, 0px)', height: 'var(--vvh, 100dvh)', overflow: 'hidden', overscrollBehavior: 'none', touchAction: 'manipulation',
+      background: C.bg, color: C.ink, fontFamily: 'Inter, system-ui, sans-serif', display: 'flex', flexDirection: 'column', userSelect: 'none' }} data-testid="kiosk-page" onContextMenu={(event) => event.preventDefault()}>
       <style>{KIOSK_CSS}</style>
       {/* Barra clara: el logo (letras verdes y azules) se ve nítido; en la bienvenida no se repite. */}
-      <header style={{ background: '#fff', borderBottom: `2px solid ${C.gold}`, padding: '8px 24px', minHeight: 64, boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+      <header style={{ flex: '0 0 auto', background: '#fff', borderBottom: `2px solid ${C.gold}`, padding: '8px 24px', minHeight: 64, boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
         {!hideLogo ? <img {...LOGO} style={{ height: 48, width: 'auto' }} data-testid="kiosk-header-logo" /> : <span />}
         {config && <span style={{ fontSize: 19, color: C.muted, textAlign: 'right' }}>{config.service.label}{pending ? ` · ${pending} registro(s) esperando internet` : ''}</span>}
       </header>
-      <main style={{ flex: 1, width: '100%', maxWidth: hideLogo || result ? 1040 : 1120, margin: '0 auto', padding: `clamp(14px, 3vh, 28px) 24px ${footer ? 120 : 24}px`, boxSizing: 'border-box' }}>{children}</main>
-      {footer && <footer style={{ position: 'fixed', left: 0, right: 0, bottom: 0, background: '#fff', borderTop: `2px solid ${C.line}`, padding: 16, display: 'flex', justifyContent: 'space-between', gap: 12 }}>{footer}</footer>}
+      <main className="vk-main" data-testid="kiosk-main" style={{ flex: '1 1 auto', minHeight: 0, overflowY: 'auto', overscrollBehavior: 'contain', touchAction: 'pan-y', WebkitOverflowScrolling: 'touch' }}>
+        <div style={{ width: '100%', maxWidth: hideLogo || result ? 1040 : 1120, minHeight: '100%', margin: '0 auto', padding: 'clamp(14px, 3vh, 28px) 24px 24px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column' }}>{children}</div>
+      </main>
+      {footer && <footer style={{ flex: '0 0 auto', background: '#fff', borderTop: `2px solid ${C.line}`, padding: 16, display: 'flex', justifyContent: 'space-between', gap: 12 }}>{footer}</footer>}
       {idle >= times.form_warn_seconds && step >= 0 && !result && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(20,33,61,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }} data-testid="kiosk-idle">
           <div style={{ background: '#fff', borderRadius: 24, padding: 32, maxWidth: 560, textAlign: 'center' }}>
@@ -272,7 +300,7 @@ export default function KioskPage() {
   if (result) {
     const extra = phrases(result.confirmation).filter((line) => !/^¡?gracias/i.test(line));
     return shell(
-      <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 'calc(100vh - 140px)' }} data-testid="kiosk-confirmation">
+      <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1 }} data-testid="kiosk-confirmation">
         <p style={{ fontSize: 'clamp(34px, min(5.4vw, 6.4vh), 50px)', fontWeight: 700, margin: 0, fontFamily: 'Spectral, Georgia, serif', lineHeight: 1.15, color: C.navy }}>¡Gracias, {result.greeting_name}!</p>
         <Accent />
         {result.offline
@@ -294,7 +322,7 @@ export default function KioskPage() {
     // secundarias, justo encima del botón.
     const [title, subtitle, main, ...closing] = phrases(config.texts.welcome);
     return shell(
-      <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 'calc(100vh - 140px)' }} data-testid="kiosk-start">
+      <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1 }} data-testid="kiosk-start">
         <img {...LOGO} style={{ width: 'min(420px, 62vw)', maxHeight: '22vh', objectFit: 'contain' }} data-testid="kiosk-logo" />
         <h1 style={{ fontSize: 'clamp(28px, min(4.4vw, 5vh), 42px)', margin: 'clamp(12px, 2.4vh, 26px) 0 0', fontFamily: 'Spectral, Georgia, serif', fontWeight: 600, lineHeight: 1.12, color: C.navy }} data-testid="kiosk-title">{title}</h1>
         {subtitle && <p style={{ fontSize: 'clamp(21px, min(3vw, 3.6vh), 28px)', margin: '6px 0 0', color: C.goldDark, fontWeight: 700 }} data-testid="kiosk-subtitle">{subtitle}</p>}
@@ -317,7 +345,7 @@ export default function KioskPage() {
     <>
       <Big kind="secondary" onClick={() => (step === 0 ? reset() : setStep(step - 1))} testId="kiosk-back">{step === 0 ? 'Cancelar' : 'Atrás'}</Big>
       {step < order.length - 1
-        ? <Big onClick={() => { if (step === 0) set('privacy_accepted', true); setStep(step + 1); }} disabled={!canNext()} testId="kiosk-next">{step === 0 ? 'Acepto y continuar' : 'Siguiente'}</Big>
+        ? <Big onClick={() => { if (step === 0) set('privacy_accepted', true); if (stepKey === 'nombre') saveDraft(); setStep(step + 1); }} disabled={!canNext()} testId="kiosk-next">{step === 0 ? 'Acepto y continuar' : 'Siguiente'}</Big>
         : <Big onClick={submit} disabled={saving} testId="kiosk-submit">{saving ? 'Guardando…' : 'Terminar registro'}</Big>}
     </>
   );
@@ -340,10 +368,12 @@ export default function KioskPage() {
       <Field label="Nombre" value={form.first_name} onChange={(value) => set('first_name', value)} testId="kiosk-first-name" />
       <Field label="Apellido" value={form.last_name} onChange={(value) => set('last_name', value)} testId="kiosk-last-name" />
       <Field label="¿Cómo te gusta que te llamen?" value={form.preferred_name} onChange={(value) => set('preferred_name', value)} placeholder="Ej.: Toño" testId="kiosk-preferred" />
-      <div><Label>Para tenerte presente el día de tu cumpleaños</Label><BirthdayPicker value={form.birth_date} onChange={(value) => set('birth_date', value)} /></div>
+
       {/* Campo trampa: invisible para personas; los robots lo llenan. */}
       <input type="text" name="website" value={form.website} onChange={(event) => set('website', event.target.value)} tabIndex={-1} autoComplete="off" aria-hidden="true"
         style={{ position: 'absolute', left: '-10000px', width: 1, height: 1, opacity: 0 }} data-testid="kiosk-website" /></Section>,
+    cumple: <Section testId="kiosk-step-cumple">{title('Para tenerte presente el día de tu cumpleaños')}
+      <Wide><div style={{ maxWidth: 720 }}><BirthdayPicker value={form.birth_date} onChange={(value) => set('birth_date', value)} /></div></Wide></Section>,
     contacto: <Section testId="kiosk-step-contacto">{title('¿Cómo te contactamos?')}
       <label style={{ display: 'block' }}><Label>Teléfono</Label><input type="tel" inputMode="numeric" autoComplete="off" value={formatPhone(form.phone)} onChange={(event) => set('phone', phoneDigits(event.target.value))} placeholder="555-123-4567" style={inputStyle} data-testid="kiosk-phone" /></label>
       <Field label="Correo electrónico" type="email" value={form.email} onChange={(value) => set('email', value)} testId="kiosk-email" />

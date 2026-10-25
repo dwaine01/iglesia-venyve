@@ -415,7 +415,8 @@ async def create_registration(payload: RegistrationInput, device: dict = Depends
     await ensure_indexes()
     texts = await load_texts()
     existing = await db.visitor_registrations.find_one({"idempotency_key": payload.idempotency_key}, {"_id": 0})
-    if existing:
+    draft = existing if existing and existing.get("status") in ("draft", "completing") else None
+    if existing and not draft:
         return kiosk_reply(existing, True, texts)
     if not payload.privacy_accepted:
         raise HTTPException(status_code=422, detail="Para registrarte necesitamos que aceptes el aviso de privacidad")
@@ -429,7 +430,7 @@ async def create_registration(payload: RegistrationInput, device: dict = Depends
         await audit("bot_blocked", f"device:{device['device_id']}", {"ip": device["ip"]})
         return {"visitor_number": "V-0000-000000", "greeting_name": payload.first_name.strip(), "confirmation": texts["confirmation"], "duplicate": False}
     from person_matching import normalize_phone, normalize_text
-    service = await current_service()
+    service = draft["service"] if draft else await current_service()
     phone_norm = normalize_phone(payload.phone)
     name_key = normalize_text(f"{payload.first_name} {payload.last_name}")
     # La misma persona dos veces en el mismo servicio (otra tableta, incluso al mismo
@@ -442,12 +443,22 @@ async def create_registration(payload: RegistrationInput, device: dict = Depends
             import asyncio
             for _ in range(30):
                 same = await db.visitor_registrations.find_one({"service.date": service["date"], "contact.phone_normalized": phone_norm, "name_key": name_key}, {"_id": 0})
+                if same and same["registration_id"] == (draft or {}).get("registration_id"):
+                    if same.get("status") == "complete":
+                        return kiosk_reply(same, True, texts)  # doble toque al terminar un borrador
+                    await asyncio.sleep(0.2)
+                    continue
                 if same:
+                    if draft:
+                        # La misma persona ya quedó registrada en otra tableta: el borrador se une a ese registro.
+                        await db.visitor_registrations.update_one({"registration_id": draft["registration_id"]}, {"$set": {"status": "merged", "merged_into": same["registration_id"], "welcome.hidden": True, "updated_at": now_utc()}})
                     await audit("registration_repeat", f"device:{device['device_id']}", {"registration_id": same["registration_id"]})
                     return kiosk_reply(same, True, texts)
                 await asyncio.sleep(0.2)
             raise HTTPException(status_code=409, detail="Ya se está guardando un registro igual; intente de nuevo en unos segundos")
     try:
+        if draft:
+            return await complete_draft(draft, payload, device, service, phone_norm, name_key, texts)
         return await insert_registration(payload, device, service, phone_norm, name_key, texts)
     except BaseException:
         if lock_id:
@@ -455,19 +466,120 @@ async def create_registration(payload: RegistrationInput, device: dict = Depends
         raise
 
 
-async def insert_registration(payload: "RegistrationInput", device: dict, service: dict, phone_norm: Optional[str], name_key: str, texts: dict) -> dict:
+class DraftInput(BaseModel):
+    idempotency_key: str = Field(min_length=16, max_length=120)
+    first_name: str = Field(min_length=1, max_length=80)
+    last_name: str = Field(min_length=1, max_length=80)
+    preferred_name: Optional[str] = Field(default=None, max_length=80)
+    privacy_version: int = Field(ge=1)
+    privacy_accepted: bool
+    website: Optional[str] = Field(default=None, max_length=200)
+
+
+def draft_doc(payload: DraftInput, device: dict, service: dict, name_key: str, number: str) -> dict:
+    """Borrador: SOLO nombre y servicio; el resto llega al terminar. Ya entra a la bienvenida."""
+    now = now_utc()
+    registration_id = str(uuid4())
+    return {
+        "_id": registration_id, "registration_id": registration_id, "idempotency_key": payload.idempotency_key, "visitor_number": number, "status": "draft",
+        "device_id": device["device_id"], "device_name": device["name"], "service": service, "name_key": name_key,
+        "person_id": None, "match_status": "pending", "possible_person_ids": [],
+        "first_name": payload.first_name.strip(), "last_name": payload.last_name.strip(),
+        "welcome": {"preferred_name": (payload.preferred_name or "").strip() or payload.first_name.strip(), "display_name": None, "approved": False, "hidden": False, "invited_by": None, "invited_by_display": None},
+        "contact": {"phone": None, "phone_normalized": None, "email": None, "methods": [], "city": None, "address": None, "birth_date": None},
+        "visit": {"first_visit": None, "invited": None, "invited_by": None, "invited_by_person_id": None, "visit_mode": None, "other_church": None, "other_church_name": None, "how_heard": None},
+        "family": [], "requests": [], "has_restricted": False, "consents": {"followup": None},
+        "privacy": {"version": payload.privacy_version, "accepted_at": now},
+        "followup": {"status": "pending", "assigned_person_id": None, "results": []},
+        "test_data": False, "created_at": now, "updated_at": now,
+    }
+
+
+@kiosk_router.post("/registrations/draft", response_model=dict)
+async def save_draft(payload: DraftInput, device: dict = Depends(kiosk_device)):
+    """Al escribir el nombre: el borrador aparece YA en la bienvenida. La tableta no recibe nada más."""
+    await ensure_indexes()
+    if not payload.privacy_accepted:
+        raise HTTPException(status_code=422, detail="Para registrarte necesitamos que aceptes el aviso de privacidad")
+    await rate_limit(f"draft:{device['name']}:{device['ip']}", 20)
+    if (payload.website or "").strip():
+        await audit("bot_blocked", f"device:{device['device_id']}", {"ip": device["ip"], "draft": True})
+        return {"ok": True}
+    from person_matching import normalize_text
+    name_key = normalize_text(f"{payload.first_name} {payload.last_name}")
+    names = {"first_name": payload.first_name.strip(), "last_name": payload.last_name.strip(), "name_key": name_key,
+             "welcome.preferred_name": (payload.preferred_name or "").strip() or payload.first_name.strip(), "updated_at": now_utc()}
+    existing = await db.visitor_registrations.find_one({"idempotency_key": payload.idempotency_key}, {"_id": 0, "registration_id": 1, "status": 1})
+    if existing:
+        if existing.get("status") == "draft":
+            # Volvió atrás y corrigió su nombre: se actualiza el mismo borrador.
+            await db.visitor_registrations.update_one({"registration_id": existing["registration_id"], "status": "draft"}, {"$set": names})
+        return {"ok": True}
+    service = await current_service()
+    # Misma persona, misma tableta, mismo servicio (p. ej. la tableta se reinició): se retoma su borrador.
+    again = await db.visitor_registrations.find_one({"service.date": service["date"], "name_key": name_key, "device_name": device["name"], "status": "draft"}, {"_id": 0, "registration_id": 1})
+    if again:
+        try:
+            await db.visitor_registrations.update_one({"registration_id": again["registration_id"], "status": "draft"}, {"$set": {**names, "idempotency_key": payload.idempotency_key}})
+            return {"ok": True}
+        except DuplicateKeyError:
+            return {"ok": True}
+    doc = draft_doc(payload, device, service, name_key, await next_number(datetime.now(timezone.utc).year))
+    try:
+        await db.visitor_registrations.insert_one(doc)
+    except DuplicateKeyError:
+        return {"ok": True}  # doble toque: ya existe
+    await audit("registration_draft", f"device:{device['device_id']}", {"registration_id": doc["registration_id"], "visitor_number": doc["visitor_number"]})
+    return {"ok": True}
+
+
+async def complete_draft(draft: dict, payload: "RegistrationInput", device: dict, service: dict, phone_norm: Optional[str], name_key: str, texts: dict) -> dict:
+    """«Terminar registro» ACTUALIZA el borrador creado al escribir el nombre (mismo número; nunca otro registro)."""
+    claimed = await db.visitor_registrations.update_one({"registration_id": draft["registration_id"], "status": "draft"}, {"$set": {"status": "completing", "updated_at": now_utc()}})
+    if not claimed.modified_count:
+        # Doble toque: el otro envío ya lo está completando.
+        import asyncio
+        for _ in range(40):
+            done = await db.visitor_registrations.find_one({"registration_id": draft["registration_id"]}, {"_id": 0})
+            if done.get("status") not in ("draft", "completing"):
+                return kiosk_reply(done, True, texts)
+            await asyncio.sleep(0.15)
+        raise HTTPException(status_code=409, detail="Ya se está guardando este registro; intente de nuevo en unos segundos")
+    try:
+        fields = await registration_fields(payload, device, service, phone_norm, name_key)
+    except BaseException:
+        await db.visitor_registrations.update_one({"registration_id": draft["registration_id"], "status": "completing"}, {"$set": {"status": "draft"}})
+        raise
+    # Lo que el encargado ya corrigió o quitó en la bienvenida se respeta.
+    welcome = {**fields["welcome"], "display_name": draft["welcome"].get("display_name"), "hidden": draft["welcome"].get("hidden", False),
+               "invited_by_display": draft["welcome"].get("invited_by_display")}
+    now = now_utc()
+    await db.visitor_registrations.update_one({"registration_id": draft["registration_id"]},
+                                              {"$set": {**fields, "welcome": welcome, "status": "complete", "completed_at": now, "updated_at": now}})
+    doc = await db.visitor_registrations.find_one({"registration_id": draft["registration_id"]}, {"_id": 0})
+    await save_restricted(doc, payload, now)
+    await audit("registration_completed", f"device:{device['device_id']}", {"registration_id": doc["registration_id"], "visitor_number": doc["visitor_number"], "match_status": doc["match_status"]})
+    return kiosk_reply(doc, False, texts)
+
+
+async def save_restricted(doc: dict, payload: "RegistrationInput", now: datetime) -> None:
+    if doc.get("has_restricted"):
+        await db.visitor_restricted.replace_one({"_id": doc["registration_id"]}, {"_id": doc["registration_id"], "registration_id": doc["registration_id"], "prayer_request": payload.prayer_request,
+                                                                                 "counseling_note": payload.counseling_note, "needs_note": payload.needs_note, "created_at": now}, upsert=True)
+
+
+async def registration_fields(payload: "RegistrationInput", device: dict, service: dict, phone_norm: Optional[str], name_key: str) -> dict:
+    """Todos los datos del formulario completo (para un registro nuevo o para completar un borrador)."""
     match = await link_person(payload, device)
     methods = list(dict.fromkeys(payload.contact_methods or ([payload.contact_method] if payload.contact_method and payload.contact_method != "none" else [])))
     inviter = await resolve_inviter(payload.invited_by) if payload.invited and (payload.invited_by or "").strip() else None
     if payload.invited and (payload.invited_by or "").strip() and not inviter:
         inviter = {"person_id": None, "name": " ".join(payload.invited_by.split())}
     now = now_utc()
-    registration_id = str(uuid4())
     requests = [item for item in payload.requests if item in REQUEST_KEYS]
     # Solo un «No» explícito (o «prefiero no recibir seguimiento») lo saca del seguimiento.
     wants_followup = payload.consent_followup is not False and "no_followup" not in requests
-    doc = {
-        "_id": registration_id, "registration_id": registration_id, "idempotency_key": payload.idempotency_key, "visitor_number": None,
+    return {
         "device_id": device["device_id"], "device_name": device["name"], "service": service, "name_key": name_key,
         "person_id": match["person_id"], "match_status": match["match_status"], "possible_person_ids": match["candidates"] if match["match_status"] == "possible" else [],
         "first_name": payload.first_name.strip(), "last_name": payload.last_name.strip(),
@@ -488,9 +600,16 @@ async def insert_registration(payload: "RegistrationInput", device: dict, servic
         "consents": {"followup": payload.consent_followup},
         "privacy": {"version": payload.privacy_version, "accepted_at": now},
         "followup": {"status": "pending" if wants_followup else "not_requested", "assigned_person_id": None, "results": []},
-        "test_data": False, "created_at": now, "started_at": payload.started_at,
+        "test_data": False, "started_at": payload.started_at,
     }
-    doc["visitor_number"] = await next_number(datetime.now(timezone.utc).year)
+
+
+async def insert_registration(payload: "RegistrationInput", device: dict, service: dict, phone_norm: Optional[str], name_key: str, texts: dict) -> dict:
+    fields = await registration_fields(payload, device, service, phone_norm, name_key)
+    now = now_utc()
+    registration_id = str(uuid4())
+    doc = {"_id": registration_id, "registration_id": registration_id, "idempotency_key": payload.idempotency_key, **fields, "status": "complete", "created_at": now, "updated_at": now,
+           "completed_at": now, "visitor_number": await next_number(datetime.now(timezone.utc).year)}
     try:
         await db.visitor_registrations.insert_one(doc)
     except DuplicateKeyError:
@@ -498,10 +617,8 @@ async def insert_registration(payload: "RegistrationInput", device: dict, servic
         if same:
             return kiosk_reply(same, True, texts)
         raise
-    if doc["has_restricted"]:
-        await db.visitor_restricted.insert_one({"_id": registration_id, "registration_id": registration_id, "prayer_request": payload.prayer_request, "counseling_note": payload.counseling_note,
-                                                "needs_note": payload.needs_note, "created_at": now})
-    await audit("registration_created", f"device:{device['device_id']}", {"registration_id": registration_id, "visitor_number": doc["visitor_number"], "match_status": match["match_status"]})
+    await save_restricted(doc, payload, now)
+    await audit("registration_created", f"device:{device['device_id']}", {"registration_id": registration_id, "visitor_number": doc["visitor_number"], "match_status": doc["match_status"]})
     return kiosk_reply(doc, False, texts)
 
 
@@ -556,6 +673,19 @@ OUTCOMES = {"reached": "Se habló con la persona", "no_answer": "No contestó", 
             "wants_more": "Quiere más información o acompañamiento", "declined": "Prefiere no recibir seguimiento", "other": "Otro resultado"}
 
 
+STATE_LABELS = {"registering": "Registrándose ahora", "incomplete": "Incompleto", "complete": None, "discarded": "Descartado", "merged": "Unido a otro registro"}
+
+
+def registration_state(doc: dict, form_reset_seconds: int = 300) -> str:
+    """Borrador reciente = «registrándose»; si la persona lo dejó a medias, «incompleto»."""
+    status = doc.get("status") or "complete"
+    if status in ("draft", "completing"):
+        updated = doc.get("updated_at") or doc.get("created_at")
+        updated = updated if updated is None or updated.tzinfo else updated.replace(tzinfo=timezone.utc)
+        return "registering" if updated and (now_utc() - updated).total_seconds() < form_reset_seconds + 60 else "incomplete"
+    return status
+
+
 def followup_view(doc: dict, current_user: dict, names: dict) -> dict:
     """Lo necesario para dar seguimiento. Consejería y necesidades: el tipo de pedido
     solo lo ve quien tiene el permiso restringido; el resto ve «Pedido confidencial»."""
@@ -574,7 +704,8 @@ def followup_view(doc: dict, current_user: dict, names: dict) -> dict:
             "status": followup.get("status", "pending"), "status_label": FOLLOWUP_LABELS.get(followup.get("status", "pending")),
             "assigned_person_id": followup.get("assigned_person_id"), "assigned_name": names.get(followup.get("assigned_person_id")) if followup.get("assigned_person_id") else None,
             "attempts": [{**item, "at": item["at"].isoformat() if isinstance(item.get("at"), datetime) else item.get("at"), "kind_label": ATTEMPT_KINDS.get(item.get("kind")), "outcome_label": OUTCOMES.get(item.get("outcome"))}
-                         for item in followup.get("results") or []], "consent_followup": doc["consents"]["followup"]}
+                         for item in followup.get("results") or []], "consent_followup": doc["consents"]["followup"],
+            "registration_state": registration_state(doc), "registration_state_label": STATE_LABELS.get(registration_state(doc))}
 
 
 async def names_for(docs: list) -> dict:
@@ -592,10 +723,11 @@ def is_assignee(doc: dict, current_user: dict) -> bool:
 
 @admin_router.get("/followup", response_model=dict)
 async def followup_list(service_date: Optional[str] = None, service_kind: Optional[str] = None, status: Optional[str] = None, mine: bool = False,
-                        current_user: dict = Depends(get_current_user)):
-    """Seguimiento por servicio y fecha. Quien no administra el seguimiento solo ve lo que le asignaron."""
+                        state: Optional[Literal["incomplete", "registering", "complete"]] = None, current_user: dict = Depends(get_current_user)):
+    """Seguimiento por servicio y fecha. Quien no administra el seguimiento solo ve lo que le asignaron.
+    Los registros a medias («Incompleto») también aparecen, para completarlos o descartarlos."""
     manager = can(current_user, VISITORS_FOLLOWUP_MANAGE)
-    query: dict = {}
+    query: dict = {"status": {"$nin": ["discarded", "merged"]}}
     if service_date:
         query["service.date"] = service_date
     if service_kind:
@@ -607,6 +739,9 @@ async def followup_list(service_date: Optional[str] = None, service_kind: Option
             return {"items": [], "can_manage": False}
         query["followup.assigned_person_id"] = current_user["person_id"]
     docs = await db.visitor_registrations.find(query, {"_id": 0}).sort("created_at", -1).to_list(500)
+    incomplete = sum(1 for doc in docs if registration_state(doc) == "incomplete")
+    if state:
+        docs = [doc for doc in docs if registration_state(doc) == state]
     names = await names_for(docs)
     counts: dict = {}
     for doc in docs:
@@ -614,7 +749,7 @@ async def followup_list(service_date: Optional[str] = None, service_kind: Option
         counts[key] = counts.get(key, 0) + 1
     await audit("followup_viewed", current_user["user_id"], {"service_date": service_date, "count": len(docs)})
     return {"items": [followup_view(doc, current_user, names) for doc in docs], "can_manage": manager, "can_restricted": can(current_user, VISITORS_RESTRICTED_READ),
-            "counts": [{"status": key, "label": FOLLOWUP_LABELS[key], "count": counts.get(key, 0)} for key in FOLLOWUP_LABELS]}
+            "counts": [{"status": key, "label": FOLLOWUP_LABELS[key], "count": counts.get(key, 0)} for key in FOLLOWUP_LABELS], "incomplete": incomplete}
 
 
 @admin_router.get("/followup/mine-count", response_model=dict)
@@ -707,6 +842,39 @@ async def set_followup_status(registration_id: str, payload: ReopenInput, curren
     await db.visitor_registrations.update_one({"registration_id": registration_id}, {"$set": {"followup.status": payload.status, "followup.updated_at": now_utc()}})
     await audit("followup_status", current_user["user_id"], {"registration_id": registration_id, "status": payload.status})
     return await followup_reply(registration_id, current_user)
+
+
+@admin_router.post("/registrations/{registration_id}/finish-incomplete", response_model=dict)
+async def finish_incomplete(registration_id: str, current_user: dict = Depends(get_current_user)):
+    """El equipo completa un registro que quedó a medias: se pasa a Persona 360 con su nombre
+    (misma búsqueda de duplicados; lo dudoso queda como «posible coincidencia»)."""
+    require(current_user, VISITORS_FOLLOWUP_MANAGE)
+    doc = await load_registration(registration_id)
+    if registration_state(doc) not in ("incomplete", "registering"):
+        raise HTTPException(status_code=409, detail="Este registro ya está completo")
+    from types import SimpleNamespace
+    person = SimpleNamespace(first_name=doc["first_name"], last_name=doc["last_name"], phone=None, email=None, birth_date=None, idempotency_key=doc["idempotency_key"])
+    match = await link_person(person, {"device_id": f"staff:{current_user['user_id']}"})
+    result = await db.visitor_registrations.update_one({"registration_id": registration_id, "status": {"$in": ["draft", "completing"]}},
+                                                       {"$set": {"status": "complete", "completed_at": now_utc(), "completed_by_staff": current_user["user_id"], "updated_at": now_utc(),
+                                                                 "person_id": match["person_id"], "match_status": match["match_status"],
+                                                                 "possible_person_ids": match["candidates"] if match["match_status"] == "possible" else []}})
+    if not result.modified_count:
+        raise HTTPException(status_code=409, detail="Este registro ya está completo")
+    await audit("incomplete_finished", current_user["user_id"], {"registration_id": registration_id, "match_status": match["match_status"]})
+    return await followup_reply(registration_id, current_user)
+
+
+@admin_router.post("/registrations/{registration_id}/discard", response_model=dict)
+async def discard_registration(registration_id: str, current_user: dict = Depends(get_current_user)):
+    """Descartar un registro incompleto (p. ej. una prueba): no se borra, queda oculto y auditado."""
+    require(current_user, VISITORS_FOLLOWUP_MANAGE)
+    doc = await load_registration(registration_id)
+    if registration_state(doc) not in ("incomplete", "registering"):
+        raise HTTPException(status_code=409, detail="Solo se descartan registros incompletos")
+    await db.visitor_registrations.update_one({"registration_id": registration_id}, {"$set": {"status": "discarded", "welcome.hidden": True, "discarded_by": current_user["user_id"], "updated_at": now_utc()}})
+    await audit("registration_discarded", current_user["user_id"], {"registration_id": registration_id})
+    return {"ok": True}
 
 
 class ResolveMatchInput(BaseModel):
