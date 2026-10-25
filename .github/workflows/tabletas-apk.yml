@@ -43,6 +43,14 @@ jobs:
           path: ~/.android/debug.keystore
           key: tabletas-llave-prueba-v1
 
+      - name: Certificado del panel (diagnóstico)
+        continue-on-error: true
+        run: |
+          echo | openssl s_client -connect panel.iglesiavenyve.org:443 -servername panel.iglesiavenyve.org -showcerts 2>/dev/null > chain.txt
+          awk '/BEGIN CERT/{n++} {print > ("cert" n ".pem")}' chain.txt
+          for file in cert*.pem; do [ -s "$file" ] && grep -q BEGIN "$file" && openssl x509 -in "$file" -noout -subject -issuer -enddate -ext authorityInfoAccess 2>/dev/null; echo ---; done
+          rm -f chain.txt cert*.pem
+
       - name: Pruebas (reglas y Android simulado)
         run: gradle -p android-kiosk --no-daemon testDebugUnitTest
 

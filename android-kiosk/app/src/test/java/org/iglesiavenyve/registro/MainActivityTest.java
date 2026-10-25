@@ -41,6 +41,32 @@ public class MainActivityTest {
     @After
     public void tearDown() {
         MainActivity.checkerForTests = null;
+        MainActivity.leafVerifierForTests = null;
+    }
+
+    @SuppressWarnings("deprecation")
+    private static android.net.http.SslError sslError(String url) {
+        return new android.net.http.SslError(android.net.http.SslError.SSL_UNTRUSTED, new android.net.http.SslCertificate("panel", "Let's Encrypt", "01/01/2026", "01/01/2027"), url);
+    }
+
+    @Test
+    public void oldAndroidCertificateIsVerifiedByTheAppOnlyForThePanel() {
+        MainActivity activity = configured();
+        // Panel: la app verifica la cadena (aquí simulada como válida) y continúa.
+        MainActivity.leafVerifierForTests = (leaf) -> true;
+        android.webkit.SslErrorHandler ok = org.robolectric.shadow.api.Shadow.newInstanceOf(android.webkit.SslErrorHandler.class);
+        activity.client.onReceivedSslError(activity.web, ok, sslError("https://panel.iglesiavenyve.org/r/ABCD2345?app=apk"));
+        assertTrue(shadowOf(ok).wasProceedCalled());
+        // Si no valida: se rechaza y sale «Sin conexión» con el detalle.
+        MainActivity.leafVerifierForTests = (leaf) -> false;
+        android.webkit.SslErrorHandler bad = org.robolectric.shadow.api.Shadow.newInstanceOf(android.webkit.SslErrorHandler.class);
+        activity.client.onReceivedSslError(activity.web, bad, sslError("https://panel.iglesiavenyve.org/"));
+        assertTrue(shadowOf(bad).wasCancelCalled() && activity.offline);
+        // Otro sitio: nunca se continúa (ni se intenta verificar).
+        MainActivity.leafVerifierForTests = (leaf) -> { throw new AssertionError("no debe verificar otro sitio"); };
+        android.webkit.SslErrorHandler other = org.robolectric.shadow.api.Shadow.newInstanceOf(android.webkit.SslErrorHandler.class);
+        activity.client.onReceivedSslError(activity.web, other, sslError("https://otro-sitio.com/"));
+        assertTrue(shadowOf(other).wasCancelCalled() && !shadowOf(other).wasProceedCalled());
     }
 
     private static boolean hasText(View view, String value) {
