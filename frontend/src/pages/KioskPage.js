@@ -282,7 +282,7 @@ export default function KioskPage() {
   }, [token, send]);
 
   // Cada paso empieza arriba (el centro es lo único que se desplaza).
-  useEffect(() => { document.querySelector('[data-testid=kiosk-main]')?.scrollTo(0, 0); }, [step, result, lang]);
+  useEffect(() => { const main = document.querySelector('[data-testid=kiosk-main]'); if (main) main.scrollTop = 0; }, [step, result, lang]);
 
   // Sin desplazamiento ni rebote del documento mientras está el quiosco.
   useEffect(() => {

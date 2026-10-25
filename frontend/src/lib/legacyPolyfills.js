@@ -95,6 +95,50 @@ if (typeof Promise !== 'undefined') {
   ))));
 }
 
+// Chrome 61: scrollTo/scrollBy en elementos y con { top, left } (antes tumbaba el registro de las tabletas).
+if (typeof Element !== 'undefined') {
+  const scrollArgs = (args, element) => {
+    const first = args[0];
+    if (first && typeof first === 'object') {
+      return [first.left === undefined ? element.scrollLeft : first.left, first.top === undefined ? element.scrollTop : first.top];
+    }
+    return [Number(first) || 0, Number(args[1]) || 0];
+  };
+  define(Element.prototype, 'scrollTo', function (...args) {
+    const [left, top] = scrollArgs(args, this);
+    this.scrollLeft = left;
+    this.scrollTop = top;
+  });
+  define(Element.prototype, 'scrollBy', function (...args) {
+    const first = args[0];
+    const left = first && typeof first === 'object' ? first.left || 0 : Number(first) || 0;
+    const top = first && typeof first === 'object' ? first.top || 0 : Number(args[1]) || 0;
+    this.scrollLeft += left;
+    this.scrollTop += top;
+  });
+}
+if (typeof window !== 'undefined' && typeof window.scrollTo === 'function' && !('scrollBehavior' in document.documentElement.style)) {
+  const nativeScrollTo = window.scrollTo.bind(window);
+  window.scrollTo = (first, second) => {
+    if (first && typeof first === 'object') {
+      nativeScrollTo(first.left === undefined ? window.pageXOffset : first.left, first.top === undefined ? window.pageYOffset : first.top);
+    } else {
+      nativeScrollTo(Number(first) || 0, Number(second) || 0);
+    }
+  };
+}
+
+// Chrome 92: identificadores para no duplicar envíos.
+if (typeof window !== 'undefined' && window.crypto && typeof window.crypto.getRandomValues === 'function' && typeof window.crypto.randomUUID !== 'function') {
+  window.crypto.randomUUID = () => {
+    const bytes = window.crypto.getRandomValues(new Uint8Array(16));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40; // eslint-disable-line no-bitwise
+    bytes[8] = (bytes[8] & 0x3f) | 0x80; // eslint-disable-line no-bitwise
+    const hex = Array.from(bytes, (byte) => (`0${byte.toString(16)}`).slice(-2)).join('');
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+  };
+}
+
 // Chrome 64: los menús y ventanas lo usan para medir. Sin él, se mide una vez al observar.
 if (typeof window !== 'undefined' && typeof window.ResizeObserver !== 'function') {
   window.ResizeObserver = class LegacyResizeObserver {
