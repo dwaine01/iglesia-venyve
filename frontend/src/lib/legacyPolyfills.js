@@ -22,6 +22,13 @@ define(Object, 'fromEntries', (entries) => {
   Array.from(entries, (pair) => { result[pair[0]] = pair[1]; return null; });
   return result;
 });
+// Chrome 54: axios lo usa al cargarse; sin esto el panel no arranca en Android 7 / Fire OS 5.
+define(Object, 'getOwnPropertyDescriptors', (object) => {
+  const result = {};
+  const keys = Object.getOwnPropertyNames(object).concat(Object.getOwnPropertySymbols ? Object.getOwnPropertySymbols(object) : []);
+  keys.forEach((key) => { result[key] = Object.getOwnPropertyDescriptor(object, key); });
+  return result;
+});
 define(Object, 'hasOwn', (object, key) => Object.prototype.hasOwnProperty.call(object, key));
 
 const pad = (value, length, filler, atStart) => {
@@ -40,6 +47,20 @@ define(String.prototype, 'trimEnd', function () { return String(this).replace(/\
 define(String.prototype, 'replaceAll', function (search, replacement) {
   if (search instanceof RegExp) return String(this).replace(search, replacement);
   return String(this).split(String(search)).join(typeof replacement === 'function' ? replacement(String(search)) : String(replacement));
+});
+
+define(String.prototype, 'matchAll', function (pattern) {
+  const flags = pattern.flags === undefined ? 'g' : (pattern.flags.indexOf('g') < 0 ? `${pattern.flags}g` : pattern.flags);
+  const regex = new RegExp(pattern.source, flags);
+  const text = String(this);
+  const found = [];
+  let match = regex.exec(text);
+  while (match) {
+    found.push(match);
+    if (match[0] === '') regex.lastIndex += 1;
+    match = regex.exec(text);
+  }
+  return found[Symbol.iterator]();
 });
 
 const at = function (index) {
@@ -72,6 +93,27 @@ if (typeof Promise !== 'undefined') {
   define(Promise, 'allSettled', (items) => Promise.all(Array.from(items, (item) => Promise.resolve(item).then(
     (value) => ({ status: 'fulfilled', value }), (reason) => ({ status: 'rejected', reason }),
   ))));
+}
+
+// Chrome 64: los menús y ventanas lo usan para medir. Sin él, se mide una vez al observar.
+if (typeof window !== 'undefined' && typeof window.ResizeObserver !== 'function') {
+  window.ResizeObserver = class LegacyResizeObserver {
+    constructor(callback) { this.callback = callback; this.items = []; }
+
+    observe(target) {
+      this.items.push(target);
+      setTimeout(() => {
+        if (this.items.indexOf(target) < 0) return;
+        const rect = target.getBoundingClientRect();
+        const box = [{ inlineSize: rect.width, blockSize: rect.height }];
+        this.callback([{ target, contentRect: rect, borderBoxSize: box, contentBoxSize: box }], this);
+      }, 0);
+    }
+
+    unobserve(target) { this.items = this.items.filter((item) => item !== target); }
+
+    disconnect() { this.items = []; }
+  };
 }
 
 if (typeof window !== 'undefined' && typeof window.queueMicrotask !== 'function') {
