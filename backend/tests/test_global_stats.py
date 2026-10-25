@@ -29,7 +29,7 @@ async def test_global_stats_permissions_consolidation_and_attendance():
             assert (await mentor.get(f"/api/global-stats/{path}")).status_code == 403
         assert (await lead.get("/api/global-stats/consolidation")).status_code == 200
         assert (await lead.get("/api/global-stats/summary")).status_code == 403
-        assert (await pastora.get("/api/global-stats/access")).json()["sections"] == {"summary": True, "consolidation": True, "attendance": True}
+        assert (await pastora.get("/api/global-stats/access")).json()["sections"] == {"summary": True, "consolidation": True, "attendance": True, "finance": True, "activities": True}
 
         # Consolidación: mismas cifras que el panorama del módulo.
         stats = (await pastora.get("/api/global-stats/consolidation", params={"period": "year"})).json()
@@ -84,7 +84,7 @@ async def test_global_stats_permissions_consolidation_and_attendance():
 
         summary = (await pastora.get("/api/global-stats/summary", params=params)).json()
         keys = {item["key"]: item for item in summary["cards"]}
-        assert keys["active_people"]["value"] == 3 and keys["service_average"]["value"] == 1.5 and summary["finance_available"] is False
+        assert keys["active_people"]["value"] == 3 and keys["service_average"]["value"] == 1.5 and summary["finance_available"] is True and "received" in keys
         assert (await pastora.get("/api/global-stats/summary", params={"period": "custom", "date_from": "2026-02-01", "date_to": "2026-01-01"})).status_code == 422
     finally:
         await db.person_attendance.delete_many({"_id": {"$in": inserted}})
