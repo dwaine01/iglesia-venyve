@@ -43,7 +43,7 @@ public class KioskOnDeviceTest {
     public void realServerSaysAnOldCodeNoLongerWorks() {
         // Consulta REAL al panel (por el mismo dominio): un código que no existe responde 401.
         StringBuilder detail = new StringBuilder();
-        KioskPolicy.Check result = MainActivity.checkOnline("PRUEBA23", detail);
+        KioskPolicy.Check result = MainActivity.checkOnline(InstrumentationRegistry.getInstrumentation().getTargetContext(), "PRUEBA23", detail);
         Log.i(TAG, "Código PRUEBA23 en el servidor real: " + result + " (" + detail + ")");
         assertEquals(KioskPolicy.Check.CODE_INVALID, result);
     }

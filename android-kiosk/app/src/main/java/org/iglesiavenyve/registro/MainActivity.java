@@ -50,10 +50,8 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import java.io.IOException;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
-import java.net.URL;
 import java.net.UnknownHostException;
 
 import javax.net.ssl.SSLException;
@@ -86,6 +84,13 @@ public class MainActivity extends Activity {
     }
 
     static CodeChecker checkerForTests;
+
+    /** Verifica el certificado que recibió el navegador interno. Se cambia en las pruebas. */
+    interface LeafVerifier {
+        boolean verify(byte[] leaf);
+    }
+
+    static LeafVerifier leafVerifierForTests;
 
     SharedPreferences prefs;
     FrameLayout root;
@@ -289,7 +294,7 @@ public class MainActivity extends Activity {
         }
         new Thread(() -> {
             StringBuilder detail = new StringBuilder();
-            KioskPolicy.Check result = checkOnline(code, detail);
+            KioskPolicy.Check result = checkOnline(getApplicationContext(), code, detail);
             handler.post(() -> onChecked(round, result, detail.toString()));
         }, "comprobar-codigo").start();
     }
@@ -327,10 +332,11 @@ public class MainActivity extends Activity {
     }
 
     /** La consulta real al servidor (en un hilo aparte). */
-    static KioskPolicy.Check checkOnline(String code, StringBuilder detail) {
+    static KioskPolicy.Check checkOnline(Context context, String code, StringBuilder detail) {
         HttpURLConnection connection = null;
         try {
-            connection = (HttpURLConnection) new URL(KioskPolicy.checkUrl(code)).openConnection();
+            // Con las raíces incluidas: así una tableta con Android viejo también acepta el certificado.
+            connection = ChurchTrust.open(context, KioskPolicy.checkUrl(code));
             connection.setConnectTimeout(10000);
             connection.setReadTimeout(10000);
             connection.setUseCaches(false);
@@ -344,7 +350,7 @@ public class MainActivity extends Activity {
         } catch (UnknownHostException error) {
             detail.append("no se encuentra ").append(KioskPolicy.HOST);
             return KioskPolicy.Check.OFFLINE;
-        } catch (IOException | RuntimeException error) {
+        } catch (Exception error) {
             detail.append(error.getClass().getSimpleName());
             return KioskPolicy.Check.OFFLINE;
         } finally {
@@ -478,10 +484,40 @@ public class MainActivity extends Activity {
             }
         }
 
+        /**
+         * Android viejo no trae la raíz de Let's Encrypt: solo para el panel, la app verifica ella
+         * misma la cadena completa (ver ChurchTrust) y continúa si el certificado es el mismo.
+         * Cualquier otro sitio o un certificado que no valida se rechaza.
+         */
         @Override
-        public void onReceivedSslError(WebView view, SslErrorHandler sslHandler, SslError error) {
-            sslHandler.cancel();  // nunca se acepta un certificado inválido
-            showOffline("certificado inválido");
+        public void onReceivedSslError(WebView view, final SslErrorHandler sslHandler, SslError error) {
+            if (error == null || KioskPolicy.decide(error.getUrl()) != KioskPolicy.Decision.LOAD || !("https://" + KioskPolicy.HOST).equalsIgnoreCase(KioskPolicy.hostOf(error.getUrl()))) {
+                sslHandler.cancel();
+                return;
+            }
+            final byte[] leaf = ChurchTrust.leafBytes(error.getCertificate());
+            if (ChurchTrust.alreadyVerified(leaf)) {
+                sslHandler.proceed();
+                return;
+            }
+            if (leafVerifierForTests != null) {  // pruebas: sin hilo ni red
+                applySslResult(sslHandler, leafVerifierForTests.verify(leaf));
+                return;
+            }
+            new Thread(() -> {
+                final boolean ok = ChurchTrust.verifyPanelLeaf(getApplicationContext(), leaf);
+                handler.post(() -> applySslResult(sslHandler, ok));
+            }, "verificar-certificado").start();
+        }
+
+        private void applySslResult(SslErrorHandler sslHandler, boolean ok) {
+            Log.i(TAG, "Certificado del panel verificado por la app: " + (ok ? "sí" : "no"));
+            if (ok) {
+                sslHandler.proceed();
+            } else {
+                sslHandler.cancel();
+                showOffline("certificado no válido para " + KioskPolicy.HOST + ": revise la fecha y la hora de la tableta");
+            }
         }
     }
 
