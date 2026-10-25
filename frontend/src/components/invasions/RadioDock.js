@@ -54,6 +54,12 @@ export function RadioPTT() {
   const keyboard = useKeyboardOpen();
   const [bottom, setBottom] = useState(() => { try { return Number(localStorage.getItem(POSITION_KEY)) || 0; } catch (error) { return 0; } });
   const drag = useRef(null);
+  const visible = Boolean(radio?.channel && radio.prefs.enabled && radio.status !== 'error' && radio.status !== 'off' && !location.pathname.endsWith('/radio'));
+  // Espacio extra al final de la página para que ningún botón quede atrapado bajo el micrófono.
+  useEffect(() => {
+    if (visible) document.documentElement.dataset.radioPtt = 'on'; else delete document.documentElement.dataset.radioPtt;
+    return () => { delete document.documentElement.dataset.radioPtt; };
+  }, [visible]);
   if (!radio?.channel || !radio.prefs.enabled || radio.status === 'error' || radio.status === 'off' || keyboard || location.pathname.endsWith('/radio')) return null;
   const talking = radio.talk === 'talking';
   const othersSpeaking = radio.speaker && !talking;

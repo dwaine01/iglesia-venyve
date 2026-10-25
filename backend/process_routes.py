@@ -375,14 +375,26 @@ async def update_cycle(cycle_id: str, payload: CycleUpdate, current_user: dict =
 
 
 @router.get("/enrollments", response_model=ItemList)
-async def list_enrollments(process_key: Optional[str] = None, cycle_id: Optional[str] = None, status_filter: Optional[str] = None, current_user: dict = Depends(require_read)):
-    query = {}
+async def list_enrollments(process_key: Optional[str] = None, cycle_id: Optional[str] = None, status_filter: Optional[str] = None, unique_person: bool = False, current_user: dict = Depends(require_read)):
+    # Los archivados (limpieza de duplicados) no se listan salvo que se pidan.
+    query = {"status": {"$ne": "archived"}}
     if process_key: query["process_key"] = process_key
     if cycle_id: query["cycle_id"] = cycle_id
     if status_filter: query["status"] = status_filter
     query = await scoped_enrollment_query(current_user, query)
     docs = await db.process_enrollments.find(query, {"_id": 0}).sort("updated_at", -1).to_list(10000)
-    return {"items": await enrich_enrollments_bulk(docs), "total": len(docs)}
+    history = {}
+    if unique_person:
+        # Una tarjeta por persona y proceso; `history_count` = expedientes anteriores.
+        from enrollment_cleanup import representatives
+        chosen, history = representatives(docs)
+        keep = {item["enrollment_id"] for item in chosen}
+        docs = [item for item in docs if item["enrollment_id"] in keep]
+    items = await enrich_enrollments_bulk(docs)
+    if unique_person:
+        for item in items:
+            item["history_count"] = history.get(item.get("enrollment_id"), 0)
+    return {"items": items, "total": len(docs)}
 
 
 @router.post("/enrollments", status_code=status.HTTP_201_CREATED, response_model=dict)
@@ -699,8 +711,10 @@ async def update_alert_rule(rule_key: str, payload: AlertRuleUpdate, current_use
 
 @router.get("/dashboard", response_model=dict)
 async def dashboard(current_user: dict = Depends(require_read)):
-    await evaluate_alerts(db); query = await scoped_enrollment_query(current_user, {})
+    await evaluate_alerts(db); query = await scoped_enrollment_query(current_user, {"status": {"$ne": "archived"}})
     enrollments = await db.process_enrollments.find(query, {"_id": 0}).to_list(10000); now = now_utc()
+    from enrollment_cleanup import representatives
+    enrollments, _ = representatives(enrollments)  # un expediente por persona y proceso
     metrics = {"total": len({item["person_id"] for item in enrollments}), "on_sla": 0, "due_soon": 0, "overdue": 0, "without_responsible": 0, "without_next_action": 0, "completed": 0, "stalled": 0}
     by_stage = {}; progress_values = []
     # Rendimiento: la etapa actual de cada expediente en una sola consulta.
