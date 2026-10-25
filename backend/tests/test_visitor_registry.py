@@ -50,6 +50,9 @@ async def test_kiosk_link_numbers_idempotency_dedupe_and_permissions():
         # El enlace de tabletas solo lee textos y crea registros: nada del personal ni nombres.
         config = (await tablets[0].get("/api/kiosk/config")).json()
         assert config["texts"]["welcome"].startswith("¡Bienvenido a Casa de Oración!") and "\n" in config["texts"]["welcome"] and config["service"]["label"]
+        # La frase principal llega COMPLETA, exacta y en una sola línea.
+        main = "Esperamos que hagas de esta iglesia tu casa y de esta familia tu familia."
+        assert main in config["texts"]["welcome"].split("\n")
         assert (await tablets[0].get("/api/visitors/registrations")).status_code in (401, 403)
         assert (await tablets[0].get("/api/screen/welcome")).status_code == 401
         stranger = AsyncClient(transport=ASGITransport(app=server.app), base_url="http://test")
@@ -145,6 +148,10 @@ async def test_kiosk_link_numbers_idempotency_dedupe_and_permissions():
         texts = (await pastora.get("/api/visitors/texts")).json()
         updated = (await pastora.put("/api/visitors/texts", json={"welcome": texts["welcome"], "privacy": texts["privacy"] + " Versión de prueba.", "confirmation": texts["confirmation"]})).json()
         assert updated["privacy_version"] == texts["privacy_version"] + 1
+        # Aunque alguien la corte en dos líneas al editar, se guarda entera.
+        split = texts["welcome"].replace("tu casa y de esta familia", "tu casa\ny de esta familia")
+        saved = (await pastora.put("/api/visitors/texts", json={"welcome": split, "privacy": texts["privacy"], "confirmation": texts["confirmation"]})).json()
+        assert main in saved["welcome"].split("\n")
         await pastora.put("/api/visitors/texts", json={"welcome": texts["welcome"], "privacy": texts["privacy"], "confirmation": texts["confirmation"]})
     finally:
         await cleanup(tag)
