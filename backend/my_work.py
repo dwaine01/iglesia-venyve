@@ -653,7 +653,8 @@ async def people_rows(mentor: str, campaign_id: Optional[str] = None) -> list[di
         row["status_label"] = label
         # Programar = seguimiento de la visita; Pasar a Consolidación = «Iniciar 7 Semanas» (visita con seguimiento aceptado).
         row["can_schedule"] = bool(row["visit_id"]) and row["status"] != "consolidation"
-        row["can_start_consolidation"] = bool(row["visit_id"]) and row["status"] == "followup" and row["visit_status"] == "wants_followup"
+        # «Pasar a Consolidación» desde cualquier visita hecha o pendiente (no si no la encontraron o la rechazó).
+        row["can_start_consolidation"] = bool(row["visit_id"]) and row["status"] != "consolidation" and row["visit_status"] not in ("rejected", "not_found")
         items.append(row)
     order = {"contacted": 0, "followup": 1, "consolidation": 2}
     items.sort(key=lambda row: (order[row["status"]], row["due_date"] or "9999", row["title"]))
@@ -709,3 +710,83 @@ async def my_work_households(state: Literal["pending", "visited", "all"] = "all"
     rows.sort(key=lambda row: not row["pending"])
     limit = max(1, min(limit, 200))
     return {"total": len(rows), "items": serialize(rows[offset:offset + limit])}
+
+
+# ------------------------------------------------------------------ transferencias de Consolidación
+class TransferDecision(BaseModel):
+    mentor_person_id: Optional[str] = Field(default=None, max_length=80)  # equipo: el encargado elige el mentor
+    reason: Optional[str] = Field(default=None, max_length=300)
+
+
+@router.get("/transfers", response_model=dict)
+async def my_transfers(current_user: dict = Depends(get_current_user)):
+    """Personas que te quieren transferir (y, a quien supervisa, las pedidas al equipo de Consolidación)."""
+    me = current_user.get("person_id")
+    targets = [{"transfer_request.to_person_id": me}] if me else []
+    if can_supervise(current_user):
+        targets.append({"transfer_request.to_team": True})
+    if not targets:
+        return {"items": []}
+    items = []
+    async for enrollment in db.process_enrollments.find({"transfer_request.status": "pending", "$or": targets}, {"_id": 0}).sort("transfer_request.requested_at", 1):
+        request = enrollment["transfer_request"]
+        origin = enrollment.get("origin") or {}
+        items.append({"enrollment_id": enrollment["enrollment_id"], "person_id": enrollment["person_id"], "person_name": await person_display_name(enrollment["person_id"]) or "Persona",
+                      "to_team": bool(request.get("to_team")), "from_mentor_name": await person_display_name(request.get("from_mentor_person_id")),
+                      "requested_by_name": await person_display_name(request.get("requested_by_person_id")), "requested_at": request.get("requested_at"), "note": request.get("note"),
+                      "campaign_name": origin.get("campaign_name"), "address": origin.get("address"), "books": origin.get("books") or []})
+    return {"items": serialize(items)}
+
+
+async def _pending_transfer(enrollment_id: str, current_user: dict) -> tuple[dict, dict]:
+    enrollment = await db.process_enrollments.find_one({"enrollment_id": enrollment_id}, {"_id": 0})
+    request = (enrollment or {}).get("transfer_request") or {}
+    if request.get("status") != "pending":
+        raise HTTPException(status_code=404, detail="No hay una transferencia pendiente para esta persona")
+    if not (request.get("to_person_id") == current_user.get("person_id") or can_supervise(current_user)):
+        raise HTTPException(status_code=403, detail="Esta transferencia es para otra persona")
+    return enrollment, request
+
+
+@router.post("/transfers/{enrollment_id}/accept", response_model=dict)
+async def accept_transfer(enrollment_id: str, payload: Optional[TransferDecision] = None, current_user: dict = Depends(get_current_user)):
+    """Aceptar: la persona pasa al nuevo mentor (con historial). Quien la visitó sigue como «Contactado por»."""
+    from consolidation_service import assert_mentor_eligible, assign_mentor
+    from portal_notifications import notify_persons, notify_users
+    payload = payload or TransferDecision()
+    enrollment, request = await _pending_transfer(enrollment_id, current_user)
+    target = request.get("to_person_id") or payload.mentor_person_id
+    if not target:
+        raise HTTPException(status_code=422, detail="Elija el mentor que le dará seguimiento")
+    await assert_mentor_eligible(db, target)
+    name = await person_display_name(enrollment["person_id"]) or "La persona"
+    await assign_mentor(db, enrollment, target, current_user["user_id"], payload.reason or "Transferencia aceptada desde «Pasar a Consolidación»", transfer=True)
+    now = datetime.now(timezone.utc)
+    await db.process_enrollments.update_one({"enrollment_id": enrollment_id}, {"$set": {"transfer_request.status": "accepted", "transfer_request.decided_at": now,
+                                                                                        "transfer_request.decided_by_user_id": current_user["user_id"], "transfer_request.to_person_id": target,
+                                                                                        "mentor_transfer_required": False, "updated_at": now}})
+    target_name = await person_display_name(target)
+    if target != current_user.get("person_id"):
+        await notify_persons([target], "consolidation_transfer_assigned", f"Te asignaron a {name}", "Ahora le das seguimiento en Consolidación.", f"/procesos/consolidacion/{enrollment_id}",
+                             {"enrollment_id": enrollment_id})
+    if request.get("requested_by_user_id"):
+        await notify_users([request["requested_by_user_id"]], "consolidation_transfer_accepted", f"Transferencia aceptada: {name}", f"{target_name or 'El nuevo mentor'} ahora le da seguimiento.",
+                           f"/procesos/consolidacion/{enrollment_id}", {"enrollment_id": enrollment_id})
+    return {"accepted": True, "enrollment_id": enrollment_id, "mentor_person_id": target, "mentor_name": target_name}
+
+
+@router.post("/transfers/{enrollment_id}/decline", response_model=dict)
+async def decline_transfer(enrollment_id: str, payload: Optional[TransferDecision] = None, current_user: dict = Depends(get_current_user)):
+    """No puede recibirla: sigue con el mentor que la visitó y se avisa a quien la pidió."""
+    from portal_notifications import notify_users
+    payload = payload or TransferDecision()
+    enrollment, request = await _pending_transfer(enrollment_id, current_user)
+    now = datetime.now(timezone.utc)
+    await db.process_enrollments.update_one({"enrollment_id": enrollment_id}, {"$set": {"transfer_request.status": "declined", "transfer_request.decided_at": now,
+                                                                                        "transfer_request.decided_by_user_id": current_user["user_id"], "transfer_request.decline_reason": payload.reason,
+                                                                                        "mentor_transfer_required": False, "updated_at": now}})
+    name = await person_display_name(enrollment["person_id"]) or "La persona"
+    if request.get("requested_by_user_id"):
+        await notify_users([request["requested_by_user_id"]], "consolidation_transfer_declined", f"Transferencia no aceptada: {name}",
+                           f"Sigue con su mentor actual.{f' Motivo: {payload.reason}' if payload.reason else ''}", f"/procesos/consolidacion/{enrollment_id}", {"enrollment_id": enrollment_id})
+    return {"declined": True, "enrollment_id": enrollment_id}

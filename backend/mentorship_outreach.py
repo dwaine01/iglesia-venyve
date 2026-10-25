@@ -221,6 +221,16 @@ class VisitTransferInput(BaseModel):
     reason: Optional[str] = Field(default=None, max_length=500)
 
 
+class ToConsolidationInput(BaseModel):
+    """«Pasar a Consolidación»: quién le dará seguimiento. Sin `transfer_to`, el mentor que la
+    visitó; «team» = el equipo de Consolidación (el encargado elige mentor); o un mentor."""
+    transfer_to: Optional[str] = Field(default=None, max_length=80)
+    note: Optional[str] = Field(default=None, max_length=600)
+    person_id: Optional[str] = None
+    confirm_distinct_person: bool = False
+    distinct_reason: Optional[str] = Field(default=None, max_length=400)
+
+
 class StartSevenWeeksInput(BaseModel):
     """Igual idea que `VisitReportInput`: resolver la Persona 360 sin crear
     ni fusionar en silencio cuando hay una coincidencia fuerte/posible."""
@@ -1251,7 +1261,8 @@ async def transfer_visit(visit_id: str, payload: VisitTransferInput, current_use
     return item
 
 
-async def open_consolidation_from_visit(visit: dict, person_id: str, current_user: dict, reason: str = "Inicia la Ley de las 7 Semanas desde una invasión") -> tuple[dict, bool]:
+async def open_consolidation_from_visit(visit: dict, person_id: str, current_user: dict, reason: str = "Inicia la Ley de las 7 Semanas desde una invasión",
+                                        entry_mode: str = "invasion") -> tuple[dict, bool]:
     """Abre (o reutiliza) el expediente de Consolidación de la persona con el
     mentor de la visita y lo vincula a la visita. Mismo mecanismo para
     «Iniciar 7 Semanas» y para «Asignar a <mentor>» desde el Perfil 360."""
@@ -1282,7 +1293,7 @@ async def open_consolidation_from_visit(visit: dict, person_id: str, current_use
     if created_enrollment:
         # Puerta "invasion": S1 (oración) y S2 (invasión/contacto) ya se vivieron
         # con la campaña, así que el expediente abre completo y listo para MCD.
-        await configure_entry_stages(db, enrollment, "invasion", current_user["user_id"], mentor_person_id=mentor_person_id)
+        await configure_entry_stages(db, enrollment, entry_mode, current_user["user_id"], mentor_person_id=mentor_person_id)
         enrollment = await db.process_enrollments.find_one({"enrollment_id": enrollment["enrollment_id"]}, {"_id": 0})
         await assign_mentor(db, enrollment, mentor_person_id, current_user["user_id"], reason)
     now = now_utc()
@@ -1317,6 +1328,86 @@ async def start_seven_weeks(visit_id: str, background_tasks: BackgroundTasks, cu
     enriched["enrollment_created"] = created_enrollment
     enriched["person_created"] = created_person
     return enriched
+
+
+async def consolidation_watchers() -> list[str]:
+    """Pastora/pastor y quienes asignan en Consolidación (para avisarles)."""
+    from access_control import CONSOLIDATION_ASSIGN, has_capability, is_global_pastoral_authority
+    return [str(user["_id"]) async for user in db.users.find({"is_active": {"$ne": False}}, {"password": 0})
+            if is_global_pastoral_authority(user) or has_capability(user, CONSOLIDATION_ASSIGN)]
+
+
+@router.post("/visits/{visit_id}/to-consolidation", response_model=dict)
+async def visit_to_consolidation(visit_id: str, background_tasks: BackgroundTasks, payload: Optional[ToConsolidationInput] = None, current_user: dict = Depends(get_current_user)):
+    """«Pasar a Consolidación» en un toque: abre el expediente (etapa «Nuevo y seguimiento»)
+    vinculado a su Persona 360 y a la visita (origen: invasión, vivienda, quién la visitó,
+    libros y nota). Si ya tiene expediente, NO crea otro: avisa y devuelve el existente.
+    Opcional: «Transferir a» el equipo de Consolidación o a otro mentor (queda pendiente
+    hasta que lo acepten; el mentor que la visitó sigue como «Contactado por»)."""
+    from my_work import can_supervise
+    payload = payload or ToConsolidationInput()
+    visit = await load_visit(visit_id)
+    mine = visit.get("mentor_person_id") == current_user.get("person_id")
+    if not (is_outreach_leader(current_user) or can_supervise(current_user) or (mine and await can_use_outreach(current_user))):
+        raise HTTPException(status_code=403, detail="Solo el mentor que la visitó, un líder o quien supervisa Consolidación puede pasarla")
+    name = await person_display_name(visit.get("converted_person_id") or visit.get("person_id")) or visit.get("contact_name") or "La persona"
+    if visit.get("enrollment_id"):
+        existing = await db.process_enrollments.find_one({"enrollment_id": visit["enrollment_id"]}, {"_id": 0, "enrollment_id": 1})
+        if existing:
+            return {"already": True, "created": False, "enrollment_id": existing["enrollment_id"], "person_name": name,
+                    "message": f"{name} ya está en Consolidación. Se abre su expediente."}
+    if visit.get("status") in ("rejected", "not_found"):
+        raise HTTPException(status_code=409, detail="La visita dice que la persona no fue encontrada o no quiso la visita: cambie el estado en el informe si sí aceptó")
+    target = payload.transfer_to if payload.transfer_to not in (None, "", "me") else None
+    if target and target != "team":
+        if not ObjectId.is_valid(target) or not await is_active_mentor(target):
+            raise HTTPException(status_code=422, detail="Elija un mentor activo para transferirla")
+        if target == visit["mentor_person_id"]:
+            target = None
+    await assert_mentor_eligible(db, visit["mentor_person_id"])
+    now = now_utc()
+    # Quien pasa a Consolidación aceptó seguimiento (aunque el informe no se hubiera guardado aún).
+    if visit.get("status") != "wants_followup" or not visit.get("followup_accepted"):
+        await db.outreach_visits.update_one({"visit_id": visit_id}, {"$set": {"status": "wants_followup", "followup_accepted": True, "visit_date": visit.get("visit_date") or now.date().isoformat(), "updated_at": now}})
+        visit = await load_visit(visit_id)
+    person_id, created_person = await resolve_or_create_target_person(visit, current_user, payload.person_id, payload.confirm_distinct_person, payload.distinct_reason)
+    await sync_visit_address_to_person(visit, person_id, current_user, background_tasks)
+    enrollment, created = await open_consolidation_from_visit(visit, person_id, current_user, "Pasó a Consolidación desde su visita", entry_mode="visitor_followup")
+    name = await person_display_name(person_id) or name
+    if not created:
+        return {"already": True, "created": False, "enrollment_id": enrollment["enrollment_id"], "person_name": name,
+                "message": f"{name} ya tenía un expediente de Consolidación abierto: se vinculó a esta visita y se abre ese expediente."}
+    household = await db.outreach_households.find_one({"household_id": visit.get("household_id")}, {"_id": 0, "address_line1": 1, "address_line2": 1}) if visit.get("household_id") else None
+    campaign = await db.outreach_campaigns.find_one({"campaign_id": visit.get("campaign_id")}, {"_id": 0, "name": 1}) if visit.get("campaign_id") else None
+    origin = {"type": "visit", "visit_id": visit_id, "campaign_id": visit.get("campaign_id"), "campaign_name": (campaign or {}).get("name"), "household_id": visit.get("household_id"),
+              "address": " · ".join(filter(None, [(household or visit).get("address_line1"), (household or visit).get("address_line2")])) or visit.get("contact_zone"),
+              "contacted_by_person_id": visit["mentor_person_id"], "contacted_by_name": await person_display_name(visit["mentor_person_id"]),
+              "books": [label for flag, label in (("received_mcd", "Mi conexión con Dios"), ("received_npt", "Nací para triunfar")) if visit.get(flag)],
+              "note": "\n".join(filter(None, [visit.get("note"), payload.note])) or None, "passed_by_user_id": current_user["user_id"], "passed_at": now}
+    update: dict = {"origin": origin, "updated_at": now}
+    receiver_name = None
+    if target:
+        receiver_name = "el equipo de Consolidación" if target == "team" else await person_display_name(target)
+        update.update({"transfer_request": {"status": "pending", "to_person_id": None if target == "team" else target, "to_team": target == "team", "from_mentor_person_id": visit["mentor_person_id"],
+                                            "requested_by_user_id": current_user["user_id"], "requested_by_person_id": current_user.get("person_id"), "requested_at": now, "note": payload.note},
+                       "mentor_transfer_required": True})
+    await db.process_enrollments.update_one({"enrollment_id": enrollment["enrollment_id"]}, {"$set": update})
+    from portal_notifications import notify_persons, notify_users
+    by = await person_display_name(current_user.get("person_id")) or current_user.get("nombre") or "Un líder"
+    link = f"/procesos/consolidacion/{enrollment['enrollment_id']}"
+    if target == "team":
+        await notify_users(await consolidation_watchers(), "consolidation_transfer_request", f"Transferencia pendiente: {name}",
+                           f"{by} pasó a {name} a Consolidación y pide que el equipo le asigne mentor. Asígnelo en Supervisar Mi Trabajo.", "/mi-trabajo/supervision", {"enrollment_id": enrollment["enrollment_id"]})
+    elif target:
+        await notify_persons([target], "consolidation_transfer_request", f"Te quieren pasar a {name}",
+                             f"{by} pasó a {name} a Consolidación y te lo quiere transferir. Acepta o responde en Mi Trabajo.", "/mi-trabajo", {"enrollment_id": enrollment["enrollment_id"]})
+    where = f" en {origin['campaign_name']}" if origin["campaign_name"] else ""
+    await notify_users(await consolidation_watchers(), "consolidation_new_from_visit", f"{name} pasó a Consolidación",
+                       f"Desde su visita{where}. Mentor que la visitó: {origin['contacted_by_name'] or 'sin nombre'}.", link, {"enrollment_id": enrollment["enrollment_id"]})
+    return {"already": False, "created": True, "enrollment_id": enrollment["enrollment_id"], "person_name": name, "person_created": created_person,
+            "transfer_pending_to": receiver_name,
+            "message": f"{name} pasó a Consolidación." + ((" La transferencia al equipo de Consolidación queda pendiente hasta que el encargado le asigne mentor." if target == "team"
+                                                          else f" La transferencia a {receiver_name} queda pendiente hasta que la acepte.") if target else "")}
 
 
 async def load_household(household_id: str) -> dict:
