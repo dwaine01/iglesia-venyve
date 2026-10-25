@@ -12,7 +12,7 @@
 from datetime import timezone
 from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from access_control import VISITORS_WELCOME_OPERATE
@@ -80,9 +80,10 @@ async def service_label(state: dict) -> Optional[str]:
 
 # ------------------------------------------------------------------ pantalla (enlace)
 @screen_router.get("/welcome", response_model=dict)
-async def screen_welcome(request: Request, x_link_token: Optional[str] = Header(default=None)):
-    """Lista blanca: solo id y nombre, en orden de llegada, sin los quitados."""
-    link = await link_access("screen", x_link_token, request)
+async def screen_welcome(request: Request, x_link_token: Optional[str] = Header(default=None), code: Optional[str] = Query(default=None, alias="link", max_length=80)):
+    """Lista blanca: solo id y nombre, en orden de llegada, sin los quitados. El código puede llegar en la
+    dirección (?link=…) para que sea un pedido «simple» (sin autorización previa del navegador)."""
+    link = await link_access("screen", x_link_token or code, request)
     state = await load_state()
     docs = await db.visitor_registrations.find({**await service_query(state), "welcome.hidden": {"$ne": True}}, {"_id": 0, "registration_id": 1, "first_name": 1, "last_name": 1, "welcome": 1, "visit.invited": 1, "visit.invited_by": 1,
                                                                                                          "status": 1, "updated_at": 1, "created_at": 1, "origin": 1}) \

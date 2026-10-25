@@ -64,6 +64,25 @@ async def restore_forwarded_cors_origin(request: Request, call_next):
     return response
 
 
+class KioskPlainJson:
+    """Tabletas y pantalla de bienvenida: envían sus datos como texto (pedido «simple», sin la consulta
+    previa de permisos que algunos navegadores como Silk de Amazon Fire no completan); aquí se leen como JSON."""
+
+    def __init__(self, app):  # Starlette lo construye con app=…
+        self.inner = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and scope.get("method") == "POST" and scope.get("path", "").startswith("/api/kiosk/"):
+            content_type = dict(scope.get("headers") or []).get(b"content-type", b"")
+            if content_type.startswith(b"text/plain"):
+                headers = [(key, value) for key, value in scope["headers"] if key != b"content-type"] + [(b"content-type", b"application/json")]
+                scope = {**scope, "headers": headers}
+        await self.inner(scope, receive, send)
+
+
+app.add_middleware(KioskPlainJson)
+
+
 # Respuestas JSON comprimidas (listas grandes de personas, grupos, mapas).
 # Solo comprime si el navegador lo acepta y la respuesta supera 1 KB.
 app.add_middleware(GZipMiddleware, minimum_size=1024)
