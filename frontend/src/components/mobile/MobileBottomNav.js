@@ -4,7 +4,7 @@ import { Activity, CalendarDays, ChevronRight, ClipboardCheck, ClipboardList, Fo
 
 import { useAuth } from '../../context/AuthContext';
 import { OUTREACH_CHANGED_EVENT, useInvasionToday } from '../../context/InvasionTodayContext';
-import { canAccessOutreach, hasCapability, isPastoralAuthority } from '../../lib/accessControl';
+import { canAccessOutreach, hasCapability, isGeneralCoordinator, isPastoralAuthority } from '../../lib/accessControl';
 import { AddVisitDialog } from '../outreach/AddVisitDialog';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../ui/dialog';
 
@@ -63,10 +63,10 @@ function Item({ to, icon: Icon, label, active, badge, testId, onClick }) {
     <>
       <span className={`absolute inset-x-4 top-0 h-[3px] rounded-b-full ${active ? 'bg-[#132443]' : 'bg-transparent'}`} aria-hidden />
       <span className="relative"><Icon className="h-6 w-6" strokeWidth={active ? 2.4 : 2} /><Badge count={badge} testId={`${testId}-badge`} /></span>
-      <span className="max-w-full truncate text-[13px] leading-4">{label}</span>
+      <span className={`max-w-full truncate leading-4 ${label.length > 11 ? 'text-[10px] tracking-tight min-[380px]:text-[11px]' : 'text-[13px]'}`}>{label}</span>
     </>
   );
-  const className = `relative flex min-h-[56px] min-w-0 flex-col items-center justify-center gap-1 px-1 ${active ? 'font-semibold text-[#132443]' : 'text-slate-500'}`;
+  const className = `relative flex min-h-[56px] min-w-0 flex-col items-center justify-center gap-1 px-0.5 ${active ? 'font-semibold text-[#132443]' : 'text-slate-500'}`;
   if (onClick) return <button type="button" onClick={onClick} className={className} data-testid={testId} aria-current={active ? 'page' : undefined}>{body}</button>;
   return <NavLink to={to} className={className} data-testid={testId} aria-current={active ? 'page' : undefined}>{body}</NavLink>;
 }
@@ -93,13 +93,16 @@ export function MobileBottomNav({ isActiveMentor, menuOpen, onOpenMenu, onAddVis
   const onAttendance = /^\/invasiones\/(asistencia|[^/]+\/asistencia)$/.test(path);
   const onProgram = /^\/invasiones\/[^/]+\/programa$/.test(path);
 
+  // Panorama de Consolidación (C3): pastoral, coordinador general y encargados.
+  const consolidationViewer = isPastoralAuthority(user) || isGeneralCoordinator(user) || hasCapability(user, 'consolidation.assign');
+  const consolidationItem = { key: 'consolidation', to: '/procesos/consolidacion', icon: Activity, label: 'Consolidación', active: path.startsWith('/procesos/consolidacion') };
   const items = [{ key: 'home', to: '/', icon: Home, label: 'Inicio', active: HOME_PATHS.includes(path) }];
   if (invasion || managed.length) {
     items.push({ key: 'invasion', icon: Footprints, label: 'Invasión', badge: invasion ? data?.pending_invitations : 0, onClick: onOpenInvasion,
-      active: (path === '/mentoria/puerta-a-puerta' && !['pendientes', 'mapa'].includes(search.get('vista'))) || (onOutreach && search.get('tab') !== 'mapa') || (path === '/mi-perfil' && search.has('invasion')) || (path.startsWith('/invasiones/') && !onAttendance && !onProgram) || (!invasion && path === '/procesos/consolidacion') });
-  } else if (hasCapability(user, 'consolidation.assign') && !isPastoralAuthority(user)) {
-    // Encargados de Consolidación: acceso directo al módulo (Mi perfil sigue en «Más»).
-    items.push({ key: 'consolidation', to: '/procesos/consolidacion', icon: Activity, label: 'Consolidación', active: path.startsWith('/procesos/consolidacion') });
+      active: (path === '/mentoria/puerta-a-puerta' && !['pendientes', 'mapa'].includes(search.get('vista'))) || (onOutreach && search.get('tab') !== 'mapa') || (path === '/mi-perfil' && search.has('invasion')) || (path.startsWith('/invasiones/') && !onAttendance && !onProgram) || (!invasion && !consolidationViewer && path === '/procesos/consolidacion') });
+  } else if (consolidationViewer) {
+    // Acceso directo al módulo (Mi perfil sigue en «Más»).
+    items.push(consolidationItem);
   } else {
     items.push({ key: 'profile', to: '/mi-perfil', icon: UserCircle, label: 'Mi perfil', active: path === '/mi-perfil' });
   }
@@ -107,7 +110,8 @@ export function MobileBottomNav({ isActiveMentor, menuOpen, onOpenMenu, onAddVis
   if (managed.length) {
     // Con "+" caben 5: Programa queda dentro de Invasión y de Asistencia.
     items.push({ key: 'attendance', to: `/invasiones/${programTarget.campaign_id}/asistencia`, icon: ClipboardCheck, label: 'Asistencia', active: onAttendance });
-    if (!canAdd) items.push({ key: 'program', to: `/invasiones/${programTarget.campaign_id}/programa`, icon: ClipboardList, label: 'Programa', active: onProgram });
+    // Sin "+": el 4.º lugar es Consolidación para quien ve el panorama (Programa sigue en Invasión y Asistencia).
+    if (!canAdd) items.push(consolidationViewer ? consolidationItem : { key: 'program', to: `/invasiones/${programTarget.campaign_id}/programa`, icon: ClipboardList, label: 'Programa', active: onProgram });
   } else if (outreach && invasion) {
     // Con invasión activa hoy: «Casas» abre los pendientes del puerta a puerta (lista y mapa).
     const today = current || data?.active?.[0];
