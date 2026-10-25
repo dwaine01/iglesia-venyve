@@ -1,0 +1,75 @@
+package org.iglesiavenyve.registro;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
+
+import android.content.Context;
+import android.os.SystemClock;
+import android.util.Log;
+
+import androidx.test.core.app.ActivityScenario;
+import androidx.test.ext.junit.runners.AndroidJUnit4;
+import androidx.test.platform.app.InstrumentationRegistry;
+
+import org.junit.Test;
+import org.junit.runner.RunWith;
+
+import java.util.concurrent.atomic.AtomicReference;
+
+/**
+ * En un emulador de Android real (GitHub): la app abre el panel de la iglesia, la
+ * página del registro funciona en su navegador interno y no se puede ir a otro sitio.
+ */
+@RunWith(AndroidJUnit4.class)
+public class KioskOnDeviceTest {
+    private static final String TAG = "RegistroVenyVePrueba";
+
+    private static String evaluate(ActivityScenario<MainActivity> scenario, String script) {
+        AtomicReference<String> value = new AtomicReference<>();
+        scenario.onActivity(activity -> activity.web.evaluateJavascript(script, value::set));
+        for (int tries = 0; tries < 50 && value.get() == null; tries++) {
+            SystemClock.sleep(100);
+        }
+        return value.get();
+    }
+
+    private static String url(ActivityScenario<MainActivity> scenario) {
+        AtomicReference<String> value = new AtomicReference<>();
+        scenario.onActivity(activity -> value.set(activity.web.getUrl()));
+        return value.get();
+    }
+
+    @Test
+    public void opensThePanelAndNeverAnotherSite() {
+        Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        String salt = KioskPolicy.newSalt();
+        // Código de prueba (no existe en el servidor: la página muestra «necesita el enlace nuevo»).
+        context.getSharedPreferences(MainActivity.PREFS, Context.MODE_PRIVATE).edit().clear().putString(MainActivity.KEY_CODE, "PRUEBA23")
+                .putString(MainActivity.KEY_PIN_SALT, salt).putInt(MainActivity.KEY_PIN_ITERATIONS, 1000)
+                .putString(MainActivity.KEY_PIN_HASH, KioskPolicy.hashPin("2468", salt, 1000)).commit();
+        try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
+            // La página del registro se dibuja en el navegador interno (React funciona en este WebView).
+            String drawn = "false";
+            for (int tries = 0; tries < 60 && !"true".equals(drawn); tries++) {
+                SystemClock.sleep(1000);
+                drawn = evaluate(scenario, "(function(){return !!document.querySelector('[data-testid=kiosk-page]');})()");
+            }
+            Log.i(TAG, "Página abierta: " + url(scenario) + " · registro dibujado: " + drawn);
+            assertEquals("el registro se dibujó", "true", drawn);
+            assertTrue(url(scenario).startsWith("https://panel.iglesiavenyve.org/"));
+
+            // Intento de ir a otro sitio desde la página: se bloquea y sigue en el panel.
+            evaluate(scenario, "window.location.href='https://example.com/'; 'ok'");
+            SystemClock.sleep(5000);
+            String after = url(scenario);
+            Log.i(TAG, "Después de intentar abrir example.com: " + after);
+            assertTrue("sigue en el panel: " + after, after.startsWith("https://panel.iglesiavenyve.org/"));
+
+            evaluate(scenario, "window.open('https://www.google.com/'); 'ok'");
+            SystemClock.sleep(4000);
+            after = url(scenario);
+            Log.i(TAG, "Después de intentar abrir google.com: " + after);
+            assertTrue("sigue en el panel: " + after, after.startsWith("https://panel.iglesiavenyve.org/"));
+        }
+    }
+}

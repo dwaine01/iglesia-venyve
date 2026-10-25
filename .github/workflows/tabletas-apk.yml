@@ -1,0 +1,184 @@
+# App de las tabletas Amazon Fire (carpeta android-kiosk). GitHub la compila y la prueba;
+# en main la publica en «Releases». Ninguna llave ni contraseña está en el repositorio:
+# la llave final llega desde los secretos KIOSK_KEYSTORE_B64 y KIOSK_KEYSTORE_PASSWORD.
+name: Tabletas · APK
+
+on:
+  push:
+    branches: [main, 'claude/**']
+    paths: ['android-kiosk/**', '.github/workflows/tabletas-apk.yml']
+  pull_request:
+    paths: ['android-kiosk/**', '.github/workflows/tabletas-apk.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tabletas-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  KIOSK_VERSION_CODE: ${{ github.run_number }}
+
+jobs:
+  compilar:
+    name: Compilar y probar
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      # La llave de PRUEBA (depuración) se guarda entre compilaciones para que un APK de
+      # prueba nuevo se pueda instalar encima del anterior.
+      - name: Llave de prueba (depuración)
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: tabletas-llave-prueba-v1
+
+      - name: Pruebas (reglas y Android simulado)
+        run: gradle -p android-kiosk --no-daemon testDebugUnitTest
+
+      - name: Compilar el APK de PRUEBA
+        run: gradle -p android-kiosk --no-daemon assembleDebug lintDebug
+
+      - name: Preparar la llave final (si el dueño ya la creó)
+        id: llave
+        env:
+          KEYSTORE_B64: ${{ secrets.KIOSK_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            umask 077
+            printf '%s' "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/tabletas.jks"
+            echo "hay=si" >> "$GITHUB_OUTPUT"
+          else
+            echo "hay=no" >> "$GITHUB_OUTPUT"
+            echo "::notice::Todavía no hay llave final: solo se compila el APK de prueba. Para crearla, use el flujo «Tabletas · Crear llave de firma»."
+          fi
+
+      - name: Compilar el APK FINAL (firmado con la llave del dueño)
+        if: steps.llave.outputs.hay == 'si'
+        env:
+          KIOSK_KEYSTORE_PATH: ${{ runner.temp }}/tabletas.jks
+          KIOSK_KEYSTORE_PASSWORD: ${{ secrets.KIOSK_KEYSTORE_PASSWORD }}
+        run: gradle -p android-kiosk --no-daemon assembleRelease
+
+      - name: Revisar los APK (nombre, permisos y firma)
+        run: |
+          set -e
+          TOOLS="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
+          mkdir -p apk
+          cp android-kiosk/app/build/outputs/apk/debug/app-debug.apk apk/registro-venyve-prueba.apk
+          if [ -f android-kiosk/app/build/outputs/apk/release/app-release.apk ]; then
+            cp android-kiosk/app/build/outputs/apk/release/app-release.apk apk/registro-venyve.apk
+          fi
+          for file in apk/*.apk; do
+            echo "== $file ($(du -h "$file" | cut -f1))"
+            "$TOOLS/aapt" dump badging "$file" | grep -E "^(package|application-label|sdkVersion|targetSdkVersion|uses-permission)"
+            "$TOOLS/apksigner" verify --print-certs "$file" | grep -E "Signer #1 certificate (DN|SHA-256)"
+          done
+
+      - name: Borrar la llave de este equipo
+        if: always()
+        run: rm -f "$RUNNER_TEMP/tabletas.jks"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: registro-venyve-prueba
+          path: apk/registro-venyve-prueba.apk
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: steps.llave.outputs.hay == 'si'
+        with:
+          name: registro-venyve
+          path: apk/registro-venyve.apk
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: informes-de-pruebas
+          path: |
+            android-kiosk/app/build/reports/
+            android-kiosk/app/build/test-results/
+          if-no-files-found: ignore
+
+  emulador:
+    name: Probar en un emulador Android
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Activar la aceleración del emulador
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      # Android 11 (como Fire OS 8), con su navegador interno de fábrica.
+      - name: Abrir el registro y comprobar la lista blanca
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          arch: x86_64
+          target: default
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            gradle -p android-kiosk --no-daemon connectedDebugAndroidTest || (adb logcat -d -s RegistroVenyVe:I RegistroVenyVePrueba:I chromium:I; exit 1)
+            adb logcat -d -s RegistroVenyVe:I RegistroVenyVePrueba:I
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: informe-emulador
+          path: android-kiosk/app/build/reports/androidTests/
+          if-no-files-found: ignore
+
+  publicar:
+    name: Publicar en Releases
+    needs: [compilar, emulador]
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: registro-venyve*
+          path: apk
+          merge-multiple: true
+      - name: Publicar
+        run: |
+          set -e
+          VERSION="1.0.${KIOSK_VERSION_CODE}"
+          publish() {  # etiqueta, archivo, título, notas, opciones
+            tag="$1"; file="$2"; title="$3"; notes="$4"; shift 4
+            if ! gh release view "$tag" --repo "$REPO" >/dev/null 2>&1; then
+              gh release create "$tag" --repo "$REPO" --target "$GITHUB_SHA" --title "$title" --notes "$notes" "$@"
+            fi
+            gh release upload "$tag" "$file" --repo "$REPO" --clobber
+            gh release edit "$tag" --repo "$REPO" --title "$title" --notes "$notes"
+          }
+          publish tabletas-prueba apk/registro-venyve-prueba.apk "App de tabletas · PRUEBA $VERSION" \
+            "APK de PRUEBA (llave de depuración), versión $VERSION, commit $GITHUB_SHA. Se instala como «Registro Ven y Ve (prueba)». NO se puede actualizar a la app final: cuando esté la final, desinstale esta." --prerelease
+          if [ -f apk/registro-venyve.apk ]; then
+            publish tabletas apk/registro-venyve.apk "App de tabletas $VERSION" \
+              "App final «Registro Ven y Ve», versión $VERSION, firmada con la llave de la iglesia. Para actualizar, instálela encima de la anterior." --latest
+          else
+            echo "::notice::Sin llave final todavía: solo se publicó el APK de prueba."
+          fi
