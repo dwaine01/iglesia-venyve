@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { CalendarDays, ChevronRight, ClipboardCheck, ClipboardList, Footprints, Home, MapPinned, Menu, Plus, UserCircle } from 'lucide-react';
+import { Activity, CalendarDays, ChevronRight, ClipboardCheck, ClipboardList, Footprints, Home, MapPinned, Menu, Plus, UserCircle } from 'lucide-react';
 
 import { useAuth } from '../../context/AuthContext';
 import { OUTREACH_CHANGED_EVENT, useInvasionToday } from '../../context/InvasionTodayContext';
-import { canAccessOutreach } from '../../lib/accessControl';
+import { canAccessOutreach, hasCapability, isPastoralAuthority } from '../../lib/accessControl';
 import { AddVisitDialog } from '../outreach/AddVisitDialog';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../ui/dialog';
 
@@ -97,6 +97,9 @@ export function MobileBottomNav({ isActiveMentor, menuOpen, onOpenMenu, onAddVis
   if (invasion || managed.length) {
     items.push({ key: 'invasion', icon: Footprints, label: 'Invasión', badge: invasion ? data?.pending_invitations : 0, onClick: onOpenInvasion,
       active: (path === '/mentoria/puerta-a-puerta' && !['pendientes', 'mapa'].includes(search.get('vista'))) || (onOutreach && search.get('tab') !== 'mapa') || (path === '/mi-perfil' && search.has('invasion')) || (path.startsWith('/invasiones/') && !onAttendance && !onProgram) || (!invasion && path === '/procesos/consolidacion') });
+  } else if (hasCapability(user, 'consolidation.assign') && !isPastoralAuthority(user)) {
+    // Encargados de Consolidación: acceso directo al módulo (Mi perfil sigue en «Más»).
+    items.push({ key: 'consolidation', to: '/procesos/consolidacion', icon: Activity, label: 'Consolidación', active: path.startsWith('/procesos/consolidacion') });
   } else {
     items.push({ key: 'profile', to: '/mi-perfil', icon: UserCircle, label: 'Mi perfil', active: path === '/mi-perfil' });
   }
