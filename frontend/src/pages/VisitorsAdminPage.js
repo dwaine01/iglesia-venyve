@@ -31,17 +31,18 @@ function LinkCard({ item, onRotate }) {
   return (
     <section className="rounded-2xl border border-[#E8E5DE] bg-white p-4" data-testid={`visitors-link-${item.kind}`}>
       <h3 className="flex items-center gap-2 font-['Spectral'] text-xl font-semibold text-[#101D36]">{tablet ? <Tablet className="h-5 w-5 text-[#9A7A2F]" /> : <Monitor className="h-5 w-5 text-[#9A7A2F]" />}{item.label}</h3>
-      <p className="mt-1 text-[15px] text-slate-700">{tablet ? 'Uno solo para todas las tabletas: ábrelo en cada tableta y queda lista, sin código ni sesión. Solo permite crear registros.' : 'Para la pantalla o televisor de la pastora (también ProPresenter). Solo muestra los nombres, uno a la vez.'}</p>
+      <p className="mt-1 text-[15px] text-slate-700">{tablet ? 'Uno solo para todas las tabletas: ábrelo en cada tableta y queda lista, sin contraseña ni sesión. Solo permite crear registros.' : 'Para la pantalla o televisor de la pastora (también ProPresenter). Solo muestra los nombres, uno a la vez.'}</p>
       <div className="mt-3 flex flex-wrap items-start gap-4">
         {qr ? <img src={qr} alt={`Código QR del ${item.label.toLowerCase()}`} className="h-44 w-44 rounded-lg border border-[#E8E5DE]" data-testid={`visitors-link-qr-${item.kind}`} /> : <div className="h-44 w-44 rounded-lg bg-slate-100" />}
         <div className="min-w-0 flex-1 space-y-2">
-          <p className="break-all rounded-lg bg-[#F8F6F0] p-3 font-mono text-[15px] text-[#14213D]" data-testid={`visitors-link-url-${item.kind}`}>{url}</p>
+          <p className="break-all rounded-lg bg-[#F8F6F0] p-3 font-mono text-lg font-semibold text-[#14213D]" data-testid={`visitors-link-url-${item.kind}`}>{url}</p>
+          <p className="text-[15px] text-slate-700">Código para escribirlo a mano: <b className="font-mono text-xl tracking-[0.15em] text-[#14213D]" data-testid={`visitors-link-code-${item.kind}`}>{item.code}</b> <span className="text-sm text-slate-500">(sin 0, O, 1, I ni L)</span></p>
           <div className="flex flex-wrap gap-2">
             <button type="button" onClick={() => navigator.clipboard?.writeText(url).then(() => toast.success('Enlace copiado')).catch(() => toast.error('No se pudo copiar; mantén presionado el enlace para copiarlo'))} className="inline-flex min-h-12 items-center gap-2 rounded-xl bg-[#132443] px-5 text-base font-semibold text-white" data-testid={`visitors-link-copy-${item.kind}`}><Copy className="h-4 w-4" />Copiar</button>
             <a href={url} target="_blank" rel="noreferrer" className="inline-flex min-h-12 items-center rounded-xl border border-[#D9D4C7] px-4 text-base font-semibold text-[#101D36]">Abrir</a>
             <button type="button" onClick={rotate} className="min-h-12 rounded-xl border border-red-200 px-4 text-base font-semibold text-red-700" data-testid={`visitors-link-rotate-${item.kind}`}>Generar enlace nuevo</button>
           </div>
-          <p className="text-sm text-slate-600">Úsalo solo si el enlace se compartió fuera de la iglesia: el anterior deja de funcionar.</p>
+          <p className="text-sm text-slate-600">Úsalo solo si el enlace se compartió fuera de la iglesia: el anterior deja de funcionar. El enlace largo de antes sigue sirviendo y pasa solo a este enlace corto, hasta que generes uno nuevo.</p>
         </div>
       </div>
     </section>

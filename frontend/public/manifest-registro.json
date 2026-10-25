@@ -1,9 +1,9 @@
 {
-  "id": "/quiosco/",
+  "id": "/r/",
   "name": "Registro de visitantes · Ven y Ve",
   "short_name": "Registro",
-  "start_url": "/quiosco/?app=1",
-  "scope": "/quiosco",
+  "start_url": "/r/?app=1",
+  "scope": "/r/",
   "display": "fullscreen",
   "display_override": [
     "fullscreen",

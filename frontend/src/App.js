@@ -267,6 +267,11 @@ function App() {
           <Route path="/verificar/bautismo/:token" element={<BaptismVerificationPage />} />
           <Route path="/verificar/presentacion/:token" element={<DedicationVerificationPage />} />
           {/* Quiosco de visitantes: sin menú ni sesión de personal (token de la tableta). */}
+          {/* Enlaces cortos de visitantes: /r/CÓDIGO (tabletas) y /b/CÓDIGO (pantalla de bienvenida). */}
+          <Route path="/r" element={<KioskPage />} />
+          <Route path="/r/:token" element={<KioskPage />} />
+          <Route path="/b" element={<WelcomeScreenPage />} />
+          <Route path="/b/:token" element={<WelcomeScreenPage />} />
           <Route path="/quiosco" element={<KioskPage />} />
           <Route path="/quiosco/:token" element={<KioskPage />} />
           <Route path="/pantalla-bienvenida" element={<WelcomeScreenPage />} />

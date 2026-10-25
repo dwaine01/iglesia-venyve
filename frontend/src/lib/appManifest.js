@@ -18,10 +18,17 @@ export function useAppManifest(manifest, title) {
   }, [manifest, title]);
 }
 
-/** Enlace del dispositivo: el de la dirección (y se guarda) o, si se abrió el acceso directo, el guardado. */
+/** Tras conectar BIEN: guarda el código corto en el equipo (para el acceso directo) y, si se abrió
+ * con el enlace largo anterior, pasa a la dirección corta sin recargar. */
+export function adoptShortPath(key, shortPath) {
+  if (!shortPath) return;
+  try { localStorage.setItem(key, shortPath.split('/').pop()); } catch { /* sin almacenamiento */ }
+  if (window.location.pathname !== shortPath) window.history.replaceState(window.history.state, '', `${shortPath}${window.location.search}`);
+}
+
+/** Enlace del dispositivo: el de la dirección o, si se abrió el acceso directo, el guardado en el equipo. */
 export function rememberedToken(key, token) {
-  try {
-    if (token) { localStorage.setItem(key, token); return token; }
-    return localStorage.getItem(key) || '';
-  } catch { return token || ''; }
+  // Solo se lee: se guarda al conectar bien (así un código mal escrito no borra el bueno).
+  if (token) return token;
+  try { return localStorage.getItem(key) || ''; } catch { return ''; }
 }

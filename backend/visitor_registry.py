@@ -176,22 +176,44 @@ async def set_service_today(payload: ServiceInput, current_user: dict = Depends(
 # ------------------------------------------------------------------ enlaces (tabletas y pantalla)
 LINKS_ID = "visitor_links"
 LINK_KINDS = {"tablet": "Enlace de tabletas", "screen": "Enlace de pantalla de bienvenida"}
-LINK_PATHS = {"tablet": "/quiosco", "screen": "/pantalla-bienvenida"}
+LINK_PATHS = {"tablet": "/quiosco", "screen": "/pantalla-bienvenida"}  # enlace largo anterior (sigue funcionando hasta «Generar enlace nuevo»)
+SHORT_PATHS = {"tablet": "/r", "screen": "/b"}
+# Código corto: fácil de escribir y de dictar, sin letras ni números que se confunden (0/O, 1/I/L).
+CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
+CODE_LENGTH = 8
 TABLET_NAME = re.compile(r"^Tableta [0-9A-F]{4}$")
 
 
+def new_code() -> str:
+    return "".join(secrets.choice(CODE_ALPHABET) for _ in range(CODE_LENGTH))
+
+
+def normalize_code(value: Optional[str]) -> str:
+    return re.sub(r"[^A-Z0-9]", "", (value or "").upper())
+
+
 async def load_links() -> dict:
-    """Dos enlaces únicos con un token largo e impredecible (se crean la primera vez)."""
+    """Dos enlaces: código corto impredecible (31^8 combinaciones) + el token largo anterior."""
     doc = await db.app_settings.find_one({"_id": LINKS_ID}, {"_id": 0}) or {}
-    missing = {kind: {"token": secrets.token_urlsafe(32), "created_at": now_utc(), "created_by": None} for kind in LINK_KINDS if not (doc.get(kind) or {}).get("token")}
-    if missing:
-        await db.app_settings.update_one({"_id": LINKS_ID}, {"$set": missing}, upsert=True)
+    changes = {}
+    for kind in LINK_KINDS:
+        item = dict(doc.get(kind) or {})
+        if not item.get("token"):
+            item.update({"token": secrets.token_urlsafe(32), "created_at": now_utc(), "created_by": None})
+        if not item.get("code"):
+            taken = {(doc.get(other) or {}).get("code") for other in LINK_KINDS} | {(changes.get(other) or {}).get("code") for other in LINK_KINDS}
+            item["code"] = next(code for code in iter(new_code, None) if code not in taken)
+        if item != (doc.get(kind) or {}):
+            changes[kind] = item
+    if changes:
+        await db.app_settings.update_one({"_id": LINKS_ID}, {"$set": changes}, upsert=True)
         doc = await db.app_settings.find_one({"_id": LINKS_ID}, {"_id": 0})
     return doc
 
 
 def link_view(kind: str, item: dict) -> dict:
-    return {"kind": kind, "label": LINK_KINDS[kind], "path": f"{LINK_PATHS[kind]}/{item['token']}", "created_at": item["created_at"].isoformat() if item.get("created_at") else None}
+    return {"kind": kind, "label": LINK_KINDS[kind], "path": f"{SHORT_PATHS[kind]}/{item['code']}", "code": item["code"], "legacy_path": f"{LINK_PATHS[kind]}/{item['token']}",
+            "created_at": item["created_at"].isoformat() if item.get("created_at") else None}
 
 
 @admin_router.get("/links", response_model=dict)
@@ -204,19 +226,30 @@ async def get_links(current_user: dict = Depends(get_current_user)):
 
 @admin_router.post("/links/{kind}/rotate", response_model=dict)
 async def rotate_link(kind: Literal["tablet", "screen"], current_user: dict = Depends(get_current_user)):
-    """Enlace nuevo (por si se filtró): el anterior deja de funcionar en el acto."""
+    """Enlace nuevo (por si se filtró): el código corto Y el enlace largo anteriores dejan de funcionar en el acto."""
     require(current_user, VISITORS_DEVICES_MANAGE)
-    await load_links()
-    item = {"token": secrets.token_urlsafe(32), "created_at": now_utc(), "created_by": current_user["user_id"]}
+    links = await load_links()
+    taken = {(links.get(other) or {}).get("code") for other in LINK_KINDS}
+    item = {"token": secrets.token_urlsafe(32), "code": next(code for code in iter(new_code, None) if code not in taken), "created_at": now_utc(), "created_by": current_user["user_id"]}
     await db.app_settings.update_one({"_id": LINKS_ID}, {"$set": {kind: item}})
     await audit("link_rotated", current_user["user_id"], {"kind": kind})
     return link_view(kind, item)
 
 
-async def link_access(kind: str, token: Optional[str]) -> None:
+async def link_access(kind: str, token: Optional[str], request: Optional[Request] = None) -> dict:
+    """Vale el código corto (sin importar mayúsculas, espacios o guiones) o el enlace largo anterior.
+    Muchos intentos fallidos desde la misma conexión se bloquean un rato (no se puede adivinar)."""
     links = await load_links()
-    if not token or not hmac.compare_digest(token, links[kind]["token"]):
-        raise HTTPException(status_code=401, detail="Este enlace ya no funciona. Pida el enlace nuevo a la administración.")
+    item = links[kind]
+    given = (token or "").strip()
+    if given and (hmac.compare_digest(given, item["token"]) or hmac.compare_digest(normalize_code(given), item["code"])):
+        return item
+    if request is not None:
+        try:
+            await rate_limit(f"linkfail:{client_ip(request)}", 30, 600)
+        except HTTPException:
+            raise HTTPException(status_code=429, detail="Demasiados intentos con un enlace equivocado. Espere unos minutos.")
+    raise HTTPException(status_code=401, detail="Este enlace ya no funciona. Pida el enlace nuevo a la administración.")
 
 
 def client_ip(request: Request) -> str:
@@ -236,9 +269,9 @@ async def rate_limit(key: str, limit: int, window_seconds: int = 60) -> None:
 
 async def kiosk_device(request: Request, x_link_token: Optional[str] = Header(default=None), x_tablet_name: Optional[str] = Header(default=None)) -> dict:
     """Tableta: solo el enlace de tabletas. Se identifica sola («Tableta 3F9A») para trazabilidad."""
-    await link_access("tablet", x_link_token)
+    link = await link_access("tablet", x_link_token, request)
     name = x_tablet_name if x_tablet_name and TABLET_NAME.match(x_tablet_name) else "Tableta sin nombre"
-    return {"device_id": name, "name": name, "ip": client_ip(request)}
+    return {"device_id": name, "name": name, "ip": client_ip(request), "short_path": f"{SHORT_PATHS['tablet']}/{link['code']}"}
 
 
 KIOSK_SETTINGS_ID = "visitor_kiosk_settings"
@@ -282,7 +315,9 @@ async def kiosk_config(device: dict = Depends(kiosk_device)):
     texts = await load_texts()
     return {"device_name": device["name"], "service": await current_service(),
             "texts": {"welcome": texts["welcome"], "privacy": texts["privacy"], "privacy_version": texts["privacy_version"], "confirmation": texts["confirmation"]},
-            "timeouts": await load_kiosk_settings()}
+            "timeouts": await load_kiosk_settings(),
+            # Dirección corta de esta tableta: si se abrió con el enlace largo anterior, la página pasa a la corta.
+            "short_path": device["short_path"]}
 
 
 class FamilyMember(BaseModel):

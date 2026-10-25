@@ -10,7 +10,7 @@ from tests.test_pastoral_front_group_5c import Fixture, server  # noqa: I001 —
 from tests.test_visitor_registry import cleanup, link, tablet, visitor
 
 db = server.db
-SCREEN_KEYS = {"names", "total", "service_label"}
+SCREEN_KEYS = {"names", "total", "service_label", "short_path"}
 ITEM_KEYS = {"registration_id", "visitor_number", "name", "default_name", "corrected", "hidden", "service_label", "invited_by", "default_invited_by", "invited_corrected", "registering", "manual"}
 
 
