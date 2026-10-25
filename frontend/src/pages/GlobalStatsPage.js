@@ -1,11 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import { Link, useSearchParams } from 'react-router-dom';
-import { ArrowDownRight, ArrowUpRight, BarChart3, CalendarCheck, CalendarDays, FileSpreadsheet, HelpCircle, Landmark, Loader2, Minus, Printer, Sprout, TriangleAlert } from 'lucide-react';
+import { ArrowDownRight, ArrowUpRight, BarChart3, BookOpen, CalendarCheck, CalendarDays, FileSpreadsheet, Footprints, GraduationCap, HelpCircle, Landmark, Loader2, Minus, MonitorPlay, Network, Printer, Sprout, TriangleAlert } from 'lucide-react';
 
 import { useAuth } from '../context/AuthContext';
 import { apiErrorMessage } from '../lib/apiErrors';
 import { downloadXlsx } from '../lib/xlsx';
+import { StatsPresenter, unitText } from '../components/StatsPresenter';
+import { LeaderWorkDetail } from '../components/LeaderWorkDetail';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../components/ui/dialog';
 
 /* Centro de Estadísticas Globales (G1): resumen de la iglesia, Consolidación y
  * asistencia. Cada cifra sale de la misma fuente que su módulo (el backend lo
@@ -13,7 +16,7 @@ import { downloadXlsx } from '../lib/xlsx';
  * datos dice por qué. La pastora no cuenta en participación. */
 
 const PERIODS = [['today', 'Hoy'], ['week', 'Semana'], ['month', 'Mes'], ['quarter', 'Trimestre'], ['year', 'Año'], ['custom', 'Rango']];
-const SECTIONS = [['summary', 'Resumen de la iglesia', BarChart3], ['consolidation', 'Consolidación', Sprout], ['attendance', 'Asistencia', CalendarCheck], ['finance', 'Finanzas', Landmark], ['activities', 'Proyectos y actividades', CalendarDays]];
+const SECTIONS = [['summary', 'Resumen de la iglesia', BarChart3], ['consolidation', 'Consolidación', Sprout], ['attendance', 'Asistencia', CalendarCheck], ['finance', 'Finanzas', Landmark], ['activities', 'Proyectos y actividades', CalendarDays], ['invasions', 'Invasiones', Footprints], ['books', 'Libros', BookOpen], ['groups', 'Grupos Frontales', Network], ['education', 'Educación y procesos', GraduationCap]];
 const SERVICES = [['all', 'Todos'], ['sunday', 'Domingo'], ['wednesday', 'Miércoles'], ['special', 'Actividades especiales'], ['cell', 'Células']];
 const fmt = (value) => (value == null ? '' : typeof value === 'number' ? value.toLocaleString('es') : value);
 const usd = (value) => (value == null ? '—' : value.toLocaleString('es-US', { style: 'currency', currency: 'USD' }));
@@ -33,7 +36,7 @@ function StatCard({ item }) {
       <p className="text-[15px] font-semibold text-[#101D36]">{item.label}</p>
       {item.empty_reason
         ? <p className="mt-2 text-[15px] text-slate-600" data-testid="gs-empty-reason">{item.empty_reason}</p>
-        : <p className="mt-1"><span className="text-4xl font-bold text-[#132443]">{item.unit === 'USD' ? usd(item.value) : (fmt(item.value) || 0)}</span>{item.unit && item.unit !== 'USD' && <span className="ml-1.5 text-[15px] text-slate-600">{item.unit}</span>}</p>}
+        : <p className="mt-1"><span className="text-4xl font-bold text-[#132443]">{item.unit === 'USD' ? usd(item.value) : (fmt(item.value) || 0)}</span>{item.unit && item.unit !== 'USD' && <span className="ml-1.5 text-[15px] text-slate-600">{unitText(item.value, item.unit)}</span>}</p>}
       {!item.empty_reason && <Change pct={item.change_pct} />}
       {item.previous != null && !item.empty_reason && <p className="text-sm text-slate-500">Período anterior: {item.unit === 'USD' ? usd(item.previous) : fmt(item.previous)}</p>}
       <div className="mt-auto flex flex-wrap items-center gap-3 pt-3">
@@ -112,6 +115,53 @@ function FinanceSection({ data }) {
   );
 }
 
+function InvasionsSection({ data }) {
+  return (
+    <div className="space-y-4">
+      <Cards items={data.cards} />
+      <Panel title="Comparar invasiones" note={data.notes.compare} testId="gs-invasions">
+        <Table columns={[['name', 'Invasión'], ['houses_visited', 'Viviendas visitadas'], ['people_reached', 'Personas alcanzadas'], ['wants_followup', 'Quieren seguimiento'], ['to_consolidation', 'Pasaron a Consolidación'], ['books', 'Libros'],
+          ['attendance', 'Asistencia', (row) => (row.participants ? `${row.attended} de ${row.participants}${row.attendance_pct != null ? ` (${row.attendance_pct} %)` : ''}` : '—')],
+          ['links', 'Ver', (row) => <span className="flex flex-wrap gap-2"><Link to={row.report} className="font-semibold text-[#0879BE] underline">Reporte</Link><Link to={row.present} className="font-semibold text-[#0879BE] underline">Presentar</Link></span>]]} rows={data.items} empty="No hubo invasiones en este período." />
+      </Panel>
+    </div>
+  );
+}
+
+function BooksSection({ data }) {
+  return (
+    <div className="space-y-4">
+      <Cards items={data.cards} />
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <Panel title="Por mentor" note={data.notes.balances} testId="gs-books-mentors"><Table columns={[['name', 'Mentor'], ['received', 'Recibidos'], ['delivered', 'Entregados'], ['available', 'Disponibles']]} rows={data.by_mentor} empty="Ningún mentor ha recibido libros." /></Panel>
+        <Panel title="Entregados por invasión (en el período)"><Bars rows={data.by_campaign.map((row) => ({ label: row.name, value: row.delivered }))} color="#A35A00" empty="No se entregaron libros en este período." /></Panel>
+      </div>
+    </div>
+  );
+}
+
+function GroupsSection({ data }) {
+  const [work, setWork] = useState(null);
+  return (
+    <div className="space-y-4">
+      <Cards items={data.cards} />
+      <Panel title={data.root ? `Ramas de ${data.root.name}` : 'Ramas del árbol'} note={data.notes.branches} testId="gs-branches">
+        <Table columns={[['name', 'Rama'], ['leader', 'Líder'], ['status', 'Estado'], ['people', 'Personas en la rama'], ['progress', 'Avance', (row) => (row.progress == null ? '—' : `${row.progress} %`)],
+          ['work', 'Trabajo', (row) => (row.leader_person_id ? <button type="button" onClick={() => setWork({ person_id: row.leader_person_id, name: row.leader })} className="font-semibold text-[#0879BE] underline">Ver el trabajo del líder</button> : '—')]]} rows={data.branches} empty="Todavía no hay equipos en el grupo de la pastora." />
+        <Link to="/grupo-frontal?tab=ramas" className="mt-3 inline-flex min-h-11 items-center text-[15px] font-semibold text-[#0879BE] underline">Abrir el árbol completo (Mis ramas)</Link>
+      </Panel>
+      <Panel title="Líderes sin actividad en el período" note={data.notes.work} testId="gs-idle">
+        {data.idle_leaders.length === 0 ? <p className="text-[15px] text-slate-600">Todos los líderes registraron actividad en el período.</p> : (
+          <ul className="grid grid-cols-1 gap-1 sm:grid-cols-2">{data.idle_leaders.map((row) => <li key={row.person_id} className="flex items-center justify-between gap-2 rounded-lg border border-[#F1EFEA] px-3 py-2 text-[15px]"><span>{row.name}</span><button type="button" onClick={() => setWork(row)} className="text-sm font-semibold text-[#0879BE] underline">Ver su trabajo</button></li>)}</ul>
+        )}
+      </Panel>
+      <Dialog open={Boolean(work)} onOpenChange={(value) => { if (!value) setWork(null); }}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto bg-white sm:max-w-4xl"><DialogHeader><DialogTitle>Trabajo de {work?.name}</DialogTitle><DialogDescription>Hoy, esta semana y total.</DialogDescription></DialogHeader>{work && <LeaderWorkDetail mentorPersonId={work.person_id} />}</DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
 function ActivitiesSection({ data }) {
   const columns = [['title', 'Actividad'], ['type', 'Tipo'], ['starts_at', 'Fecha y hora'], ['registered', 'Inscritos'], ['attended', 'Asistentes'], ['volunteers', 'Voluntarios', (row) => (row.volunteers_needed ? `${row.volunteers} de ${row.volunteers_needed}` : row.volunteers)]];
   return (
@@ -178,6 +228,9 @@ function sheetsFor(section, data) {
   if (section === 'finance') return [cards, { name: 'Por concepto', columns: [['label', 'Concepto'], ['amount', 'Este período (USD)'], ['previous', 'Período anterior (USD)'], ['change_pct', 'Cambio %']], rows: data.by_type },
     { name: 'Gastos por categoría', columns: [['label', 'Categoría'], ['amount', 'USD']], rows: data.expenses_by_category }, { name: 'Tendencia', columns: Object.keys(data.trend[0] || { label: '', total: 0 }).filter((key) => key !== 'bucket').map((key) => [key, key === 'label' ? 'Período' : key === 'total' ? 'Total (USD)' : `${key} (USD)`]), rows: data.trend },
     { name: 'Proyectos', columns: [['name', 'Proyecto'], ['type', 'Tipo'], ['goal', 'Meta (USD)'], ['raised', 'Recaudado (USD)'], ['goal_pct', 'Recaudado %'], ['budget', 'Presupuesto (USD)'], ['spent', 'Gastado (USD)'], ['budget_pct', 'Gastado %']], rows: data.projects }];
+  if (section === 'invasions') return [cards, { name: 'Invasiones', columns: [['name', 'Invasión'], ['start_date', 'Inicio'], ['end_date', 'Fin'], ['houses_visited', 'Viviendas visitadas'], ['people_reached', 'Personas alcanzadas'], ['wants_followup', 'Quieren seguimiento'], ['to_consolidation', 'Pasaron a Consolidación'], ['books', 'Libros'], ['attended', 'Asistieron'], ['participants', 'Invitados']], rows: data.items }];
+  if (section === 'books') return [cards, { name: 'Por mentor', columns: [['name', 'Mentor'], ['received', 'Recibidos'], ['delivered', 'Entregados'], ['available', 'Disponibles']], rows: data.by_mentor }, { name: 'Por invasión', columns: [['name', 'Invasión'], ['delivered', 'Entregados']], rows: data.by_campaign }];
+  if (section === 'groups') return [cards, { name: 'Ramas', columns: [['name', 'Rama'], ['leader', 'Líder'], ['status', 'Estado'], ['people', 'Personas'], ['progress', 'Avance %']], rows: data.branches }, { name: 'Líderes sin actividad', columns: [['name', 'Líder']], rows: data.idle_leaders }];
   if (section === 'activities') return [cards, { name: 'Realizadas', columns: [['title', 'Actividad'], ['type', 'Tipo'], ['starts_at', 'Fecha y hora'], ['registered', 'Inscritos'], ['attended', 'Asistentes'], ['volunteers', 'Voluntarios'], ['volunteers_needed', 'Voluntarios requeridos']], rows: data.done },
     { name: 'Próximas', columns: [['title', 'Actividad'], ['type', 'Tipo'], ['starts_at', 'Fecha y hora'], ['registered', 'Inscritos']], rows: data.upcoming }];
   return [cards];
@@ -189,6 +242,7 @@ export default function GlobalStatsPage() {
   const [access, setAccess] = useState(null);
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
+  const [presenting, setPresenting] = useState(false);
   const period = PERIODS.some(([key]) => key === params.get('periodo')) ? params.get('periodo') : 'month';
   const service = params.get('servicio') || 'all';
   const [range, setRange] = useState({ from: params.get('desde') || '', to: params.get('hasta') || '' });
@@ -235,6 +289,7 @@ export default function GlobalStatsPage() {
             <div className="ml-auto flex flex-wrap gap-2">
               <button type="button" onClick={exportExcel} disabled={!data || data.error} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-[#D9D4C7] bg-white px-3 text-[15px] font-semibold text-[#101D36] disabled:opacity-50" data-testid="gs-excel"><FileSpreadsheet className="h-4 w-4" />Excel de esta sección</button>
               <button type="button" onClick={() => window.print()} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-[#D9D4C7] bg-white px-3 text-[15px] font-semibold text-[#101D36]"><Printer className="h-4 w-4" />PDF</button>
+              <button type="button" onClick={() => setPresenting(true)} disabled={!data || data.error} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-[#C8A951] px-3 text-[15px] font-bold text-[#14213D] disabled:opacity-50" data-testid="gs-present"><MonitorPlay className="h-4 w-4" />Presentar</button>
             </div>
           </div>
           {data?.period && <p className="text-[15px] text-slate-700" data-testid="gs-period-label">{data.period.label}: del {fmtDate(data.period.from)} al {fmtDate(data.period.to)} · comparado con el {fmtDate(data.period.previous_from)} al {fmtDate(data.period.previous_to)}. No incluye a la pastora ni las cuentas de prueba en participación.</p>}
@@ -246,6 +301,11 @@ export default function GlobalStatsPage() {
           {data && !data.error && data.section === 'attendance' && <AttendanceSection data={data} />}
           {data && !data.error && data.section === 'finance' && <FinanceSection data={data} />}
           {data && !data.error && data.section === 'activities' && <ActivitiesSection data={data} />}
+          {data && !data.error && data.section === 'invasions' && <InvasionsSection data={data} />}
+          {data && !data.error && data.section === 'books' && <BooksSection data={data} />}
+          {data && !data.error && data.section === 'groups' && <GroupsSection data={data} />}
+          {data && !data.error && data.section === 'education' && <Cards items={data.cards} />}
+          {presenting && data && !data.error && <StatsPresenter title={SECTIONS.find(([key]) => key === section)?.[1] || 'Estadísticas'} periodText={`${data.period.label}: del ${fmtDate(data.period.from)} al ${fmtDate(data.period.to)}`} cards={data.cards} onClose={() => setPresenting(false)} />}
         </>}
       </div>
     </div>
