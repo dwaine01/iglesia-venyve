@@ -9,7 +9,8 @@ export const useMentorAccess = () => {
   useEffect(() => {
     let active = true;
     if (!user?.person_id) { setState({ loading: false, isActiveMentor: false }); return undefined; }
-    axios.get(`${API}/api/mentorship/badge/${user.person_id}`, getAuthHeaders())
+    // Insignia PROPIA (no exige permiso de perfiles: una cuenta «persona» que es mentor también la lee).
+    axios.get(`${API}/api/mentorship/my-badge`, getAuthHeaders())
       .then((response) => { if (active) setState({ loading: false, isActiveMentor: Boolean(response.data?.active) }); })
       .catch(() => { if (active) setState({ loading: false, isActiveMentor: false }); });
     return () => { active = false; };

@@ -35,13 +35,16 @@ export default function OutreachPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get('tab');
   const invasionParam = searchParams.get('invasion');
-  const [activeTab, setActiveTab] = useState(tabParam || (isLeader && !invasionParam ? 'panel' : 'mis-visitas'));
+  // Desde el aviso «Te asignaron una visita» o la tarjeta de Mi Trabajo: abre esa visita / las asignadas.
+  const visitParam = searchParams.get('visita');
+  const stateParam = searchParams.get('estado');
+  const [activeTab, setActiveTab] = useState(tabParam || (isLeader && !invasionParam && !visitParam ? 'panel' : 'mis-visitas'));
   const { current: invasionToday } = useInvasionToday();
   // Barra inferior móvil: "Casas" abre el mapa y "Invasión" la lista propia.
   useEffect(() => {
     if (tabParam) setActiveTab(tabParam);
-    else if (invasionParam) setActiveTab('mis-visitas');
-  }, [tabParam, invasionParam]);
+    else if (invasionParam || visitParam) setActiveTab('mis-visitas');
+  }, [tabParam, invasionParam, visitParam]);
   const changeTab = (value) => {
     setActiveTab(value);
     if (tabParam) { const next = new URLSearchParams(searchParams); next.delete('tab'); setSearchParams(next, { replace: true }); }
@@ -52,7 +55,7 @@ export default function OutreachPage() {
   const [mentorOptions, setMentorOptions] = useState([]);
   const [availableByCampaign, setAvailableByCampaign] = useState({});
   const [poolVersion, setPoolVersion] = useState(0);
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState(stateParam === 'assigned' && !visitParam ? 'assigned' : 'all');
   const [loading, setLoading] = useState(true);
   const [addOpen, setAddOpen] = useState(false);
   const [addHouseholdOpen, setAddHouseholdOpen] = useState(false);
@@ -98,6 +101,11 @@ export default function OutreachPage() {
   }, [loadMyVisits, loadCampaigns]);
 
   const filteredVisits = statusFilter === 'all' ? myVisits : myVisits.filter((item) => item.status === statusFilter);
+  useEffect(() => {
+    if (!visitParam || !myVisits.length) return;
+    const card = document.getElementById(`visita-${visitParam}`);
+    if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [visitParam, myVisits]);
   const myCampaigns = campaigns.filter((item) => item.my_participation_status);
   // Mapa: el líder ve todas las invasiones; el mentor las suyas; el encargado las que encarga (el backend filtra las casas).
   const mapCampaigns = campaigns.filter((item) => item.status !== 'closed' && (isLeader || item.my_participation_status || [item.general_lead_person_id, item.logistics_lead_person_id].includes(user?.person_id)));
@@ -167,7 +175,7 @@ export default function OutreachPage() {
           ) : (
             <div className="space-y-3">
               {filteredVisits.map((visit) => (
-                <VisitCard key={`${visit.visit_id}-${visit.updated_at}`} visit={visit} canManage={false} onUpdated={loadMyVisits} onTransfer={setTransferVisit} />
+                <VisitCard key={`${visit.visit_id}-${visit.updated_at}`} visit={visit} canManage={false} onUpdated={loadMyVisits} onTransfer={setTransferVisit} highlight={visit.visit_id === visitParam} />
               ))}
             </div>
           )}

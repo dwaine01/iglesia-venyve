@@ -16,7 +16,7 @@ const NO_CAMPAIGN = '__none__';
 // `defaultCampaignId` + `invasionDay`: la invasión activa de hoy queda
 // seleccionada y fija; solo cambia si la persona toca "Cambiar" a conciencia.
 export const AddVisitDialog = ({ open, onOpenChange, campaigns, mentorOptions, forcedMentorId, onCreated, defaultCampaignId = '', invasionDay = null, invasionLabel = '' }) => {
-  const { API, getAuthHeaders } = useAuth();
+  const { API, getAuthHeaders, user } = useAuth();
   const [contactType, setContactType] = useState('new');
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -56,7 +56,7 @@ export const AddVisitDialog = ({ open, onOpenChange, campaigns, mentorOptions, f
     if (contactType === 'new' && !name.trim()) { toast.error('Escriba el nombre del contacto'); return; }
     setSaving(true);
     try {
-      await axios.post(`${API}/api/mentorship/outreach/visits`, {
+      const response = await axios.post(`${API}/api/mentorship/outreach/visits`, {
         contact_type: contactType,
         person_id: contactType === 'existing' ? selectedPerson.person_id : null,
         contact_name: contactType === 'new' ? name.trim() : null,
@@ -66,7 +66,12 @@ export const AddVisitDialog = ({ open, onOpenChange, campaigns, mentorOptions, f
         invasion_day: campaignId && campaignId === defaultCampaignId ? invasionDay : null,
         mentor_person_id: mentorId || null,
       }, getAuthHeaders());
-      toast.success('Visita agregada');
+      const mentor = (mentorOptions || []).find((item) => item.person_id === mentorId);
+      if (mentor && mentorId !== user?.person_id) {
+        // Se le avisa al mentor (campana y celular); sin cuenta 360 no hay a quién avisar.
+        if (response.data.mentor_notified) toast.success(`Visita asignada. ${mentor.name} recibió el aviso en su cuenta 360.`);
+        else toast.warning(`Visita asignada a ${mentor.name}, pero no tiene cuenta 360 activa: avísele usted por teléfono.`);
+      } else toast.success('Visita agregada');
       reset();
       onOpenChange(false);
       if (onCreated) onCreated();

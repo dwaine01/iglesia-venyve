@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import { Link, useSearchParams } from 'react-router-dom';
-import { BookOpen, CalendarClock, ClipboardList, DoorOpen, Home, Info, Loader2, Map as MapIcon, MessageCircle, Sprout, UserCheck, Users } from 'lucide-react';
+import { BookOpen, CalendarClock, ClipboardList, DoorOpen, Footprints, Home, Info, Loader2, Map as MapIcon, MapPin, MessageCircle, Phone, Sprout, UserCheck, Users } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { useAuth } from '../context/AuthContext';
@@ -81,8 +81,9 @@ function PendingCard({ item, onRevisit, onSchedule, onFollowup, readOnly = false
     <li className={`rounded-2xl border bg-white p-3 shadow-sm ${selected ? 'border-[#132443] ring-2 ring-[#132443]/20' : 'border-[#E8E5DE]'}`} data-testid={`my-work-item-${item.kind}`}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="flex items-center gap-1.5 text-base font-semibold text-[#101D36]">{item.kind === 'household' ? <Home className="h-4 w-4 shrink-0 text-[#9A7A2F]" /> : <UserCheck className="h-4 w-4 shrink-0 text-[#9A7A2F]" />}<span className="truncate">{item.title}</span></p>
-          {item.subtitle && <p className="truncate text-sm text-slate-600">{item.kind === 'person' ? `Etapa: ${item.subtitle}` : item.subtitle}</p>}
+          <p className="flex items-center gap-1.5 text-base font-semibold text-[#101D36]">{item.kind === 'household' ? <Home className="h-4 w-4 shrink-0 text-[#9A7A2F]" /> : item.kind === 'assigned_visit' ? <Footprints className="h-4 w-4 shrink-0 text-[#9A7A2F]" /> : <UserCheck className="h-4 w-4 shrink-0 text-[#9A7A2F]" />}<span className="truncate">{item.title}</span></p>
+          {item.kind === 'assigned_visit' && <p className="text-xs font-semibold uppercase tracking-wide text-[#9A7A2F]">Visita asignada</p>}
+          {item.subtitle && <p className="truncate text-sm text-slate-600">{item.kind === 'person' ? `Etapa: ${item.subtitle}` : item.kind === 'assigned_visit' ? <><MapPin className="mr-1 inline h-3.5 w-3.5" />{item.subtitle}</> : item.subtitle}</p>}
           <p className="text-sm text-slate-600">Última atención: {item.last_at ? fmtDay(item.last_at) : '—'}{item.last_result ? ` · ${item.last_result}` : ''}</p>
           <p className="text-sm font-semibold text-[#132443]">Próximo: {item.next_action}{item.due_date ? ` · ${fmtDay(item.due_date)}` : ''}</p>
           {item.campaign_name && <p className="text-xs text-slate-500">Invasión de origen: {item.campaign_name}</p>}
@@ -97,6 +98,11 @@ function PendingCard({ item, onRevisit, onSchedule, onFollowup, readOnly = false
         {item.kind === 'contact' && <>
           <button type="button" onClick={() => onFollowup(item)} className="min-h-11 rounded-xl bg-[#132443] text-[15px] font-semibold text-white" data-testid="my-work-contact">Registrar contacto</button>
           <button type="button" onClick={() => onFollowup(item)} className="min-h-11 rounded-xl border border-[#D9D4C7] bg-white text-[15px] font-semibold text-[#101D36]">Reprogramar</button>
+        </>}
+        {item.kind === 'assigned_visit' && <>
+          <Link to={`/mentoria/visitas?visita=${item.visit_id}`} className="inline-flex min-h-11 items-center justify-center rounded-xl bg-[#132443] text-[15px] font-semibold text-white" data-testid="my-work-open-visit">Abrir la visita</Link>
+          {item.phone ? <a href={`tel:${item.phone}`} className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-[#D9D4C7] bg-white text-[15px] font-semibold text-[#101D36]"><Phone className="h-4 w-4" />Llamar</a>
+            : item.person_id ? <Link to={`/personas/${item.person_id}`} className="inline-flex min-h-11 items-center justify-center rounded-xl border border-[#D9D4C7] bg-white text-[15px] font-semibold text-[#101D36]">Perfil</Link> : null}
         </>}
         {item.kind === 'person' && <>
           <Link to={`/procesos/consolidacion/${item.enrollment_id}`} className="inline-flex min-h-11 items-center justify-center rounded-xl bg-[#132443] text-[15px] font-semibold text-white" data-testid="my-work-progress">Registrar avance</Link>
@@ -258,6 +264,13 @@ export default function MyWorkPage({ mentorPersonId = null, header = null, super
       </div>
 
       {summary && <>
+        {/* Acceso directo: las visitas que le asignaron (también llegan como aviso en la campana). */}
+        {!readOnly && summary.assigned_visits > 0 && (
+          <Link to="/mentoria/visitas?tab=mis-visitas&estado=assigned" className="flex min-h-[64px] items-center gap-3 rounded-xl border-2 border-[#C8A951] bg-[#FBF6E7] p-3 text-[#101D36]" data-testid="my-work-assigned-card">
+            <Footprints className="h-7 w-7 shrink-0 text-[#9A7A2F]" />
+            <span className="min-w-0 flex-1"><span className="block text-lg font-semibold leading-6">Tienes {summary.assigned_visits} {summary.assigned_visits === 1 ? 'visita asignada' : 'visitas asignadas'}</span><span className="block text-sm text-slate-700">Toca para verlas con su dirección y quién te las asignó.</span></span>
+          </Link>
+        )}
         <p className="rounded-xl bg-[#F4F6FA] p-3 text-[15px] text-[#101D36]" data-testid="my-work-message">{summary.message}</p>
         {summary.totals && <div className="grid grid-cols-3 gap-2" data-testid="my-work-totals">
           {[['houses_visited', 'viviendas visitadas', Home], ['people_contacted', 'personas contactadas', Users], ['books_delivered', 'libros entregados', BookOpen]].map(([key, label, Icon]) => (

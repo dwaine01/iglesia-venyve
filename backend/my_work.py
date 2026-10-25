@@ -127,6 +127,7 @@ async def compute_summary(mentor: str, period: str, campaign_id: Optional[str]) 
         started_query["converted_at"] = {"$gte": since}
     started = await db.outreach_visits.count_documents(started_query)
     pending = await pending_items(mentor, campaign_id, zone)
+    assigned_visits = sum(1 for item in pending if item["kind"] == "assigned_visit")
     today_count = sum(1 for item in pending if item["bucket"] == "today")
     overdue = sum(1 for item in pending if item["bucket"] == "overdue")
     mentor_user = await db.users.find_one({"person_id": mentor}, {"_id": 1})
@@ -148,7 +149,7 @@ async def compute_summary(mentor: str, period: str, campaign_id: Optional[str]) 
     return {"mentor_person_id": mentor, "period": period, "campaign_id": campaign_id, "period_start": since.isoformat() if since else None,
             "figures": {"visited": figures["visited"], "opened": figures["opened"], "conversed": figures["conversed"], "pending_return": pending_return,
                         "people_to_attend": enrollments + contacts, "started_consolidation": started},
-            "today": today_count, "overdue": overdue, "message": message, "notices": notices, "totals": totals}
+            "today": today_count, "overdue": overdue, "assigned_visits": assigned_visits, "message": message, "notices": notices, "totals": totals}
 
 
 @router.get("/summary", response_model=dict)
@@ -214,6 +215,8 @@ def _bucket(day: Optional[str], today: str, undated: str) -> str:
 
 
 BUCKET_ORDER = {"overdue": 0, "today": 1, "upcoming": 2, "no_date": 3}
+# Visita registrada o asignada que aún no se hizo (sin seguimiento aceptado ni Consolidación).
+ASSIGNED_VISIT = {"status": "assigned", "enrollment_id": {"$in": [None, ""]}, "followup_accepted": {"$ne": True}}
 
 
 async def pending_items(mentor: str, campaign_id: Optional[str], zone: ZoneInfo) -> list[dict]:
@@ -243,6 +246,18 @@ async def pending_items(mentor: str, campaign_id: Optional[str], zone: ZoneInfo)
                       "last_at": visit.get("visit_date") or visit.get("updated_at"), "last_result": "Aceptó seguimiento", "next_action": visit.get("next_action") or "Dar seguimiento",
                       "due_date": day, "bucket": _bucket(day, today, "no_date"), "campaign_id": visit.get("campaign_id"), "visit_id": visit["visit_id"],
                       "household_id": visit.get("household_id"), "person_id": visit.get("converted_person_id") or visit.get("person_id")})
+    # Visitas asignadas que todavía no se hicieron («Asignar visita» de un líder o anotadas por el mentor).
+    async for visit in db.outreach_visits.find({**ASSIGNED_VISIT, **base}, {"_id": 0, "visit_id": 1, "contact_name": 1, "contact_zone": 1, "contact_phone": 1, "person_id": 1, "campaign_id": 1,
+                                                                            "address_line1": 1, "address_line2": 1, "invasion_day": 1, "assigned_by_person_id": 1, "assigned_at": 1, "created_at": 1}):
+        name = await person_display_name(visit.get("person_id")) if visit.get("person_id") else None
+        by = await person_display_name(visit.get("assigned_by_person_id")) if visit.get("assigned_by_person_id") else None
+        day = visit.get("invasion_day")
+        items.append({"kind": "assigned_visit", "id": visit["visit_id"], "title": name or visit.get("contact_name") or "Persona por visitar",
+                      "subtitle": " · ".join(filter(None, [visit.get("address_line1"), visit.get("address_line2")])) or visit.get("contact_zone"),
+                      "phone": visit.get("contact_phone"), "assigned_by_name": by,
+                      "last_at": visit.get("assigned_at") or visit.get("created_at"), "last_result": f"Asignada por {by}" if by else "Visita por hacer",
+                      "next_action": "Visitar", "due_date": day, "bucket": _bucket(day, today, "today"), "campaign_id": visit.get("campaign_id"),
+                      "visit_id": visit["visit_id"], "person_id": visit.get("person_id")})
     enrollment_query: dict = {"mentor_person_id": mentor, "process_key": "consolidation", "status": {"$in": ACTIVE_ENROLLMENT}}
     if campaign_id:
         enrollment_query["campaign_id"] = campaign_id
@@ -279,7 +294,7 @@ async def my_work_pending(kind: Literal["all", "households", "people"] = "all", 
     if kind == "households":
         items = [item for item in items if item["kind"] == "household"]
     elif kind == "people":
-        items = [item for item in items if item["kind"] in {"person", "contact"}]
+        items = [item for item in items if item["kind"] in {"person", "contact", "assigned_visit"}]
     counts = {bucket: sum(1 for item in items if item["bucket"] == bucket) for bucket in BUCKET_ORDER}
     limit = max(1, min(limit, 100))
     return {"total": len(items), "counts": counts, "items": items[offset:offset + limit]}
@@ -448,7 +463,7 @@ async def leader_detail(mentor_person_id: str, current_user: dict = Depends(get_
 
 
 class ReassignItem(BaseModel):
-    kind: Literal["household", "contact", "person"]
+    kind: Literal["household", "contact", "assigned_visit", "person"]
     id: str = Field(min_length=1, max_length=80)
 
 
@@ -482,12 +497,13 @@ async def reassign_pending(payload: ReassignInput, current_user: dict = Depends(
             await db.outreach_households.update_one({"household_id": item.id}, {"$set": {"mentor_person_id": target, "front_group_id": snapshot["front_group_id"],
                                                                                           "front_group_ancestor_ids": snapshot["front_group_ancestor_ids"], "updated_at": now},
                                                                                  "$push": {"reassignments": {**entry, "from_mentor_person_id": house.get("mentor_person_id")}}})
-        elif item.kind == "contact":
+        elif item.kind in ("contact", "assigned_visit"):
             visit = await db.outreach_visits.find_one({"visit_id": item.id, "archived": {"$ne": True}}, {"_id": 0, "mentor_person_id": 1, "followup_responsible_person_id": 1})
             if not visit or visit.get("mentor_person_id") == target:
                 skipped.append(item.id)
                 continue
-            await db.outreach_visits.update_one({"visit_id": item.id}, {"$set": {"mentor_person_id": target, "followup_responsible_person_id": target, "updated_at": now},
+            await db.outreach_visits.update_one({"visit_id": item.id}, {"$set": {"mentor_person_id": target, "followup_responsible_person_id": target, "updated_at": now,
+                                                                                 "assigned_by_person_id": current_user.get("person_id"), "assigned_by_user_id": current_user["user_id"], "assigned_at": now},
                                                                          "$push": {"reassignments": {**entry, "from_mentor_person_id": visit.get("mentor_person_id")}}})
             await log_visit_history(item.id, current_user, "reassigned", {"from": visit.get("mentor_person_id"), "to": target, "reason": reason})
         else:
