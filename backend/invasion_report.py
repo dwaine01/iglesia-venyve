@@ -309,6 +309,22 @@ async def _help_alerts(campaign_id: str) -> dict:
     return await help_summary(campaign_id)
 
 
+STATUS_LABELS = {"assigned": "Asignada", "not_found": "No encontrada", "visited": "Visitada", "rejected": "Rechazó", "wants_followup": "Quiere seguimiento"}
+
+
+async def _people_rows(visits: list[dict], mentor_names: dict, sector_of_house: dict) -> list[dict]:
+    person_names = await _names({visit.get("converted_person_id") or visit.get("person_id") for visit in visits})
+    rows = []
+    for visit in visits[:5000]:
+        pid = visit.get("converted_person_id") or visit.get("person_id")
+        rows.append({"visit_id": visit["visit_id"], "name": person_names.get(pid) or visit.get("contact_name") or "Persona", "mentor": mentor_names.get(visit.get("mentor_person_id"), "Mentor"),
+                     "sector": (visit.get("contact_zone") or sector_of_house.get(visit.get("household_id")) or "").strip() or "Sin sector",
+                     "address": " ".join(filter(None, [visit.get("address_line1"), visit.get("address_line2")])) or None,
+                     "status": STATUS_LABELS.get(visit.get("status"), visit.get("status")), "followup": bool(visit.get("followup_accepted") or visit.get("status") == "wants_followup"),
+                     "next_action": visit.get("next_action"), "consolidation": bool(visit.get("enrollment_id")), "date": _day(visit.get("created_at"))})
+    return rows
+
+
 async def _books_trace(campaign_id: str) -> dict:
     from library_trace import campaign_books_summary
     return await campaign_books_summary(campaign_id)
@@ -326,7 +342,8 @@ async def compute_report(campaign: dict) -> dict:
     participants = [row for row in await db.invasion_participants.find({"campaign_id": campaign_id}, {"_id": 0}).to_list(3000) if row["person_id"] not in authorities]
     households = await db.outreach_households.find({"campaign_id": campaign_id, "archived": {"$ne": True}}, {"_id": 0, "household_id": 1, "mentor_person_id": 1, "sector": 1, "status": 1, "latitude": 1}).to_list(5000)
     events = await db.outreach_visit_events.find({"campaign_id": campaign_id}, {"_id": 0, "household_id": 1, "mentor_person_id": 1, "result": 1, "occurred_at": 1}).to_list(20000)
-    visits = [visit for visit in await db.outreach_visits.find({"campaign_id": campaign_id, "archived": {"$ne": True}}, {"_id": 0, "visit_id": 1, "mentor_person_id": 1, "status": 1, "received_mcd": 1, "received_npt": 1, "lbs_decision": 1, "enrollment_id": 1, "contact_zone": 1, "household_id": 1, "created_at": 1, "front_group_id": 1}).to_list(20000)
+    visits = [visit for visit in await db.outreach_visits.find({"campaign_id": campaign_id, "archived": {"$ne": True}}, {"_id": 0, "visit_id": 1, "mentor_person_id": 1, "status": 1, "received_mcd": 1, "received_npt": 1, "lbs_decision": 1, "enrollment_id": 1, "contact_zone": 1, "household_id": 1, "created_at": 1, "front_group_id": 1,
+                                                                                                       "contact_name": 1, "person_id": 1, "converted_person_id": 1, "address_line1": 1, "address_line2": 1, "followup_accepted": 1, "next_action": 1}).to_list(20000)
               if visit.get("mentor_person_id") not in authorities]
     person_ids = {row["person_id"] for row in participants} | {item.get("mentor_person_id") for item in households + visits if item.get("mentor_person_id")}
     names = await _names(person_ids | {campaign.get("general_lead_person_id"), campaign.get("logistics_lead_person_id")})
@@ -467,6 +484,8 @@ async def compute_report(campaign: dict) -> dict:
         "followup": {key: value for key, value in followup.items() if key != "unattended_items"},
         "goals": goals,
         "comparison": await comparison_section(campaign, key_figures),
+        # Sección 9: personas alcanzadas (solo en el reporte completo; el personal no la recibe).
+        "people_reached": await _people_rows(visits, names, sector_of_house),
     }
 
 

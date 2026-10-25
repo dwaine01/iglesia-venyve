@@ -87,7 +87,7 @@ function GroupTable({ group, rows, onDrill, fileName, live }) {
     ...(group.key === 'by_street' ? { inicio: row.started_at || '', fin: row.ended_at || (row.started_at ? 'activa' : ''), duracion_min: row.duration_minutes ?? '' } : {}), ...Object.fromEntries(COLUMNS.map((column) => [column.label, row[column.key] || 0])), personas: row.people })));
   return (
     <div className="space-y-2">
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2 print:hidden">
         <label className="relative min-w-0 flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Buscar ${group.name.toLowerCase()}`} className="h-11 w-full rounded-lg border border-[#D9D4C7] bg-white pl-9 pr-3 text-[15px]" data-testid="door-report-search" />
@@ -165,7 +165,7 @@ export function DoorReport({ campaignId, data: given, live = true, fileTag = 'in
       </div>
       <p className="text-sm text-slate-600" data-testid="door-report-note">{totals.attempts} intento(s) en {totals.houses_visited} vivienda(s): una vivienda cuenta una vez aunque se visite varias veces; cada apartamento es una vivienda. {totals.people} persona(s) registrada(s).</p>
 
-      <div className={`grid gap-1 rounded-xl bg-[#EEECE6] p-1 ${groups.length === 3 ? 'grid-cols-3' : 'grid-cols-1'}`} role="tablist">
+      <div className={`grid gap-1 rounded-xl bg-[#EEECE6] p-1 print:hidden ${groups.length === 3 ? 'grid-cols-3' : 'grid-cols-1'}`} role="tablist">
         {groups.map((item) => <button key={item.key} type="button" role="tab" aria-selected={group.key === item.key} onClick={() => setGroupKey(item.key)} className={`min-h-11 rounded-lg text-[15px] font-semibold ${group.key === item.key ? 'bg-white text-[#101D36] shadow' : 'text-slate-600'}`} data-testid={`door-report-group-${item.key}`}>{item.label}</button>)}
       </div>
       <GroupTable key={group.key} group={group} rows={data[group.key] || []} fileName={`puerta-a-puerta-${group.key.replace('by_', '')}-${fileTag}.csv`} live={live}

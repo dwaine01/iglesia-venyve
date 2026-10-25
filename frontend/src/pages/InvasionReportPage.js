@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Download, Lock, Printer } from 'lucide-react';
+import { ArrowLeft, Download, FileSpreadsheet, Lock, Printer } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { useAuth } from '../context/AuthContext';
@@ -9,6 +9,8 @@ import { apiErrorMessage } from '../lib/apiErrors';
 import { InvasionHousesMap } from '../components/outreach/InvasionHousesMap';
 import { LessonsBlock, RecommendationsBlock } from '../components/invasions/ReportRecommendations';
 import { downloadCsv } from '../lib/csv';
+import { downloadXlsx } from '../lib/xlsx';
+import { ReportTables, reportTables } from '../components/invasions/ReportTables';
 import { DoorReport } from '../components/doors/DoorReport';
 import { COLORS, ChartCard, Donut, GoalBar, HBars, Lines, PALETTE, VBars, semaphoreStyle } from '../components/invasions/reportCharts';
 
@@ -90,6 +92,18 @@ export default function InvasionReportPage() {
   if (error) return <div className="p-6"><p className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</p></div>;
   if (!report) return <div className="p-6 text-sm text-slate-500">Cargando reporte…</div>;
   const s = report.summary; const figures = s.key_figures;
+  // Excel: una hoja por tabla (sin dependencias; .xlsx real).
+  const exportExcel = () => {
+    const labels = { houses_visited: 'Casas visitadas', houses_total: 'Casas en total', people_reached: 'Personas alcanzadas', wants_followup: 'Quieren seguimiento', seven_weeks: 'Iniciaron 7 Semanas',
+      participants: 'Participantes', attended: 'Asistieron', attendance_pct: 'Asistencia %', confirmed: 'Confirmados', to_consolidation: 'Pasaron a Consolidación', route_started: 'Ruta iniciada (MCD)' };
+    const summaryRows = [['Invasión', s.name], ['Fechas', `${s.start_date || ''}${s.end_date && s.end_date !== s.start_date ? ` a ${s.end_date}` : ''}`], ['Lugar', s.location || ''], ['Estado', report.mode === 'final' ? 'Reporte final' : 'En curso'],
+      ...Object.entries(figures).map(([key, value]) => [labels[key] || key, value])].map(([indicator, value]) => ({ indicator, value }));
+    const sheets = [{ name: 'Resumen', columns: [['indicator', 'Indicador'], ['value', 'Valor']], rows: summaryRows },
+      ...reportTables(report).map((table) => ({ name: table.name, columns: table.columns, rows: table.rows.map((row) => Object.fromEntries(table.columns.map(([key]) => [key, table.format?.[key] && row[key] != null ? row[key] : row[key]]))) })),
+      { name: 'Metas', columns: [['label', 'Indicador'], ['value', 'Real'], ['goal', 'Meta'], ['progress_pct', 'Avance %']], rows: (report.goals?.items || []).map((row) => ({ ...row, progress_pct: row.progress == null ? null : Math.round(row.progress * 100) })) },
+      { name: 'Libros por mentor', columns: [['mentor_name', 'Mentor'], ['book_name', 'Libro'], ['assigned', 'Asignados'], ['delivered', 'Entregados'], ['remaining', 'Le quedan']], rows: report.books || [] }];
+    downloadXlsx(`reporte-${(s.name || 'invasion').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\w-]+/g, '-')}.xlsx`, sheets);
+  };
   const header = (
     <header className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
       <div className="min-w-0">
@@ -102,7 +116,8 @@ export default function InvasionReportPage() {
         </p>
       </div>
       <div className="grid grid-cols-1 gap-2 sm:flex print:hidden">
-        <button type="button" onClick={() => window.print()} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg border border-[#D9D4C7] bg-white px-4 text-sm font-semibold text-[#101D36]" data-testid="report-print"><Printer className="h-4 w-4" />Imprimir / PDF</button>
+        {report.scope !== 'personal' && <button type="button" onClick={exportExcel} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg border border-[#D9D4C7] bg-white px-4 text-sm font-semibold text-[#101D36]" data-testid="report-excel"><FileSpreadsheet className="h-4 w-4" />Excel</button>}
+        <button type="button" onClick={() => window.print()} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg border border-[#D9D4C7] bg-white px-4 text-sm font-semibold text-[#101D36]" data-testid="report-print"><Printer className="h-4 w-4" />PDF / Imprimir</button>
         {report.can_finalize && <button type="button" onClick={finalize} disabled={closing} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg bg-[#101D36] px-4 text-sm font-semibold text-white" data-testid="report-finalize"><Lock className="h-4 w-4" />Cerrar invasión y generar reporte final</button>}
       </div>
     </header>
@@ -154,6 +169,20 @@ export default function InvasionReportPage() {
   const avgPeople = previousAvg.length ? Math.round(previousAvg.reduce((sum, row) => sum + row.people, 0) / previousAvg.length) : null;
   return (
     <div className="mx-auto w-full max-w-[1500px] space-y-4 p-4 sm:p-6 print:max-w-none print:p-0" data-testid="invasion-report">
+      {/* Portada del PDF (solo al imprimir): nombre, fechas y lugar. */}
+      <section className="report-cover hidden print:flex" data-testid="report-cover">
+        <p className="text-sm font-semibold uppercase tracking-[0.3em] text-[#7A5F22]">Reporte de invasión</p>
+        <h1 className="mt-4 font-['Spectral'] text-5xl font-semibold text-[#101D36]">{s.name}</h1>
+        <p className="mt-6 text-xl text-slate-700">{fmtDate(s.start_date)}{s.end_date && s.end_date !== s.start_date ? ` – ${fmtDate(s.end_date)}` : ''}</p>
+        {s.location && <p className="mt-1 text-xl text-slate-700">{s.location}</p>}
+        <div className="mt-10 space-y-1 text-base text-slate-600">
+          {s.organizer && <p>Organizador: {s.organizer}</p>}{s.general_lead && <p>Encargado general: {s.general_lead}</p>}
+          <p>{report.mode === 'final' ? `Reporte final · congelado el ${fmtDate(report.frozen_at)}` : `En curso · datos al ${fmtDate(report.generated_at)}`}</p>
+        </div>
+        <div className="mt-12 grid grid-cols-3 gap-4 text-left">
+          {[['Personas alcanzadas', figures.people_reached], ['Casas visitadas', figures.houses_visited], ['Quieren seguimiento', figures.wants_followup]].map(([label, value]) => <div key={label} className="rounded-xl border border-[#E8E5DE] p-4"><p className="text-3xl font-semibold text-[#101D36]">{value}</p><p className="text-sm text-slate-600">{label}</p></div>)}
+        </div>
+      </section>
       {header}
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <Section title="1. Resumen ejecutivo" className="xl:col-span-2" testId="report-summary" csv={() => downloadCsv(`resumen-${s.name}.csv`, [{ invasion: s.name, inicio: s.start_date, fin: s.end_date, lugar: s.location, proposito: s.purpose, organizador: s.organizer, encargado_general: s.general_lead, estado: STATE[s.state], ...figures }])}>
@@ -265,6 +294,10 @@ export default function InvasionReportPage() {
 
         <Section title="8. Recomendaciones" className="xl:col-span-2" testId="report-recommendations" csv={() => downloadCsv(`recomendaciones-${s.name}.csv`, (report.recommendations || []).map((row) => ({ prioridad: row.priority, recomendacion: row.title, detalle: row.detail, evidencia: row.evidence.label, valor: row.evidence.value, base: row.evidence.total ?? '', pct: row.evidence.pct ?? '', responsable: row.responsible, regla: row.rule, resuelta: row.resolved ? 'sí' : 'no', nota: row.resolved_note || '' })))}>
           <RecommendationsBlock key={`rec-${report.mode}`} campaignId={campaignId} items={report.recommendations} />
+        </Section>
+
+        <Section title="9. Tablas" className="xl:col-span-2" testId="report-section-tables">
+          <ReportTables report={report} />
         </Section>
 
         <Section title="Lecciones aprendidas" className="xl:col-span-2" testId="report-lessons-section">
