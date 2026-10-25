@@ -1,30 +1,35 @@
 """Registro digital de visitantes (V1): tabletas en modo quiosco.
 
-Seguridad del quiosco:
-- Cada tableta se empareja desde el panel con un código de un solo uso (24 h);
-  recibe un TOKEN DE DISPOSITIVO (solo se guarda su hash) cuyo ÚNICO permiso es
-  crear registros: no puede leer nada. Se desactiva desde el panel.
-- Sin sesiones de personal en la tableta.
+Seguridad del quiosco (sin fricción):
+- UN enlace único para todas las tabletas, con un token largo e impredecible
+  cuyo ÚNICO permiso es crear registros (no puede leer nada). «Generar enlace
+  nuevo» invalida el anterior en el acto. Sin códigos ni sesiones de personal.
+- Límite de frecuencia por tableta y por conexión, y un campo trampa contra robots.
+- Cada tableta se nombra sola («Tableta 3F9A») solo para saber de dónde vino.
 
 Registro:
 - Número único ATÓMICO en el servidor (V-AAAA-000001), nunca en la tableta.
 - Clave de idempotencia ÚNICA por envío: un doble toque o un reintento sin
   internet devuelven el mismo registro.
 - Persona 360: misma búsqueda de duplicados del directorio (teléfono, correo,
-  nombre + nacimiento). Una coincidencia clara se vincula; una dudosa queda como
-  «posible coincidencia» para que el personal confirme (nunca se fusiona sola).
-- Datos separados: bienvenida (solo nombre preferido + consentimientos),
+  nombre + nacimiento). Una coincidencia clara se vincula; si es dudosa se crea su
+  perfil igual (ningún registro queda fuera) y el personal confirma en
+  Seguimiento si era una persona que ya existía (nunca se fusiona sola).
+- Datos separados: bienvenida (solo el nombre para leer en voz alta),
   contacto y RESTRINGIDOS (oración, consejería, necesidades) en otra colección.
 - Textos editables (bienvenida, aviso de privacidad versionado, confirmación) y
   la versión del aviso aceptado queda en cada registro. Auditoría de todo."""
 import hashlib
+import hmac
+import re
 import secrets
 from datetime import date, datetime, timedelta, timezone
 from typing import Literal, Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, Field
+from bson import ObjectId
 from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
@@ -37,13 +42,18 @@ from server import db, get_current_user
 admin_router = APIRouter(prefix="/api/visitors", tags=["visitors"])
 kiosk_router = APIRouter(prefix="/api/kiosk", tags=["visitor-kiosk"])
 
-CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # sin 0/O ni 1/I para leerlo sin errores
-CODE_HOURS = 24
 TEXTS_ID = "visitor_texts"
+# Cada línea del texto es una frase en pantalla: 1.ª título, 2.ª subtítulo, las demás en bloques.
 DEFAULT_TEXTS = {
-    "welcome": "¡Bienvenido a Casa de Oración! Nos alegra que estés aquí. Esperamos que hagas de esta iglesia tu casa y de esta familia tu familia. Queremos conocerte y saber cómo podemos servirte.",
-    "privacy": "Usamos tus datos solo para darte la bienvenida, comunicarnos contigo si lo autorizas y servirte mejor. Los cuida un equipo autorizado de la iglesia; no los compartimos con nadie fuera de la iglesia. Tu nombre solo se anuncia o se muestra en pantallas si tú lo autorizas. Puedes pedir en cualquier momento que corrijamos o borremos tus datos.",
-    "confirmation": "¡Gracias por registrarte! Ya eres parte de esta familia. Si necesitas algo, muestra este número a cualquier servidor de la iglesia.",
+    "welcome": "¡Bienvenido a Casa de Oración!\n¡Nos alegra que estés aquí!\nEsperamos que hagas de esta iglesia tu casa\ny de esta familia tu familia.\nQueremos conocerte y saber cómo podemos servirte.",
+    "privacy": "Usamos tus datos solo para darte la bienvenida y servirte mejor.\nNo los compartimos con nadie fuera de la iglesia.\nPuedes pedir que los corrijamos o borremos cuando quieras.",
+    "confirmation": "¡Gracias por registrarte!\nYa eres parte de esta familia.\nSi necesitas algo, muestra este número a cualquier servidor de la iglesia.",
+}
+# Textos de la primera versión (un solo párrafo): si siguen sin editar, se usan los nuevos.
+LEGACY_TEXTS = {
+    "¡Bienvenido a Casa de Oración! Nos alegra que estés aquí. Esperamos que hagas de esta iglesia tu casa y de esta familia tu familia. Queremos conocerte y saber cómo podemos servirte.",
+    "Usamos tus datos solo para darte la bienvenida, comunicarnos contigo si lo autorizas y servirte mejor. Los cuida un equipo autorizado de la iglesia; no los compartimos con nadie fuera de la iglesia. Tu nombre solo se anuncia o se muestra en pantallas si tú lo autorizas. Puedes pedir en cualquier momento que corrijamos o borremos tus datos.",
+    "¡Gracias por registrarte! Ya eres parte de esta familia. Si necesitas algo, muestra este número a cualquier servidor de la iglesia.",
 }
 REQUEST_KEYS = ["prayer", "visit", "info", "counseling_personal", "counseling_marriage", "counseling_family", "support_child", "other_help", "no_followup"]
 
@@ -80,16 +90,16 @@ async def ensure_indexes() -> None:
     await db.visitor_registrations.create_index("idempotency_key", unique=True)
     await db.visitor_registrations.create_index("visitor_number", unique=True)
     await db.visitor_registrations.create_index([("service.date", -1), ("created_at", -1)])
-    await db.visitor_devices.create_index("token_hash", unique=True, partialFilterExpression={"token_hash": {"$type": "string"}})
-    await db.visitor_devices.create_index("code_hash", unique=True, partialFilterExpression={"code_hash": {"$type": "string"}})
+    await db.visitor_registrations.create_index("person_id")
+    await db.visitor_rate.create_index("expires_at", expireAfterSeconds=0)
     _indexes_ready = True
 
 
 # ------------------------------------------------------------------ textos
 async def load_texts() -> dict:
     doc = await db.app_settings.find_one({"_id": TEXTS_ID}, {"_id": 0}) or {}
-    return {"welcome": doc.get("welcome") or DEFAULT_TEXTS["welcome"], "privacy": doc.get("privacy") or DEFAULT_TEXTS["privacy"],
-            "privacy_version": doc.get("privacy_version") or 1, "confirmation": doc.get("confirmation") or DEFAULT_TEXTS["confirmation"],
+    pick = lambda key: doc.get(key) if doc.get(key) and doc.get(key) not in LEGACY_TEXTS else DEFAULT_TEXTS[key]  # noqa: E731
+    return {"welcome": pick("welcome"), "privacy": pick("privacy"), "privacy_version": (doc.get("privacy_version") or 1) + (1 if doc.get("privacy") in LEGACY_TEXTS else 0), "confirmation": pick("confirmation"),
             "updated_at": doc.get("updated_at"), "updated_by": doc.get("updated_by_name")}
 
 
@@ -151,116 +161,72 @@ async def set_service_today(payload: ServiceInput, current_user: dict = Depends(
     return await current_service()
 
 
-# ------------------------------------------------------------------ tabletas
-DEVICE_KINDS = {"tablet": "Tableta de registro", "screen_tv": "Pantalla de bienvenida (salón)", "screen_pastora": "Pantalla de la pastora"}
+# ------------------------------------------------------------------ enlaces (tabletas y pantalla)
+LINKS_ID = "visitor_links"
+LINK_KINDS = {"tablet": "Enlace de tabletas", "screen": "Enlace de pantalla de bienvenida"}
+LINK_PATHS = {"tablet": "/quiosco", "screen": "/pantalla-bienvenida"}
+TABLET_NAME = re.compile(r"^Tableta [0-9A-F]{4}$")
 
 
-class DeviceInput(BaseModel):
-    name: str = Field(min_length=2, max_length=60)
-    kind: Literal["tablet", "screen_tv", "screen_pastora"] = "tablet"
+async def load_links() -> dict:
+    """Dos enlaces únicos con un token largo e impredecible (se crean la primera vez)."""
+    doc = await db.app_settings.find_one({"_id": LINKS_ID}, {"_id": 0}) or {}
+    missing = {kind: {"token": secrets.token_urlsafe(32), "created_at": now_utc(), "created_by": None} for kind in LINK_KINDS if not (doc.get(kind) or {}).get("token")}
+    if missing:
+        await db.app_settings.update_one({"_id": LINKS_ID}, {"$set": missing}, upsert=True)
+        doc = await db.app_settings.find_one({"_id": LINKS_ID}, {"_id": 0})
+    return doc
 
 
-def new_code() -> str:
-    return "".join(secrets.choice(CODE_ALPHABET) for _ in range(8))
+def link_view(kind: str, item: dict) -> dict:
+    return {"kind": kind, "label": LINK_KINDS[kind], "path": f"{LINK_PATHS[kind]}/{item['token']}", "created_at": item["created_at"].isoformat() if item.get("created_at") else None}
 
 
-def device_view(doc: dict) -> dict:
-    return {"device_id": doc["device_id"], "name": doc["name"], "status": doc["status"], "status_label": {"pending": "Esperando emparejar", "paired": "Activa", "revoked": "Desactivada"}[doc["status"]],
-            "code_expires_at": doc.get("code_expires_at").isoformat() if doc.get("code_expires_at") and doc["status"] == "pending" else None,
-            "paired_at": doc.get("paired_at").isoformat() if doc.get("paired_at") else None, "last_seen_at": doc.get("last_seen_at").isoformat() if doc.get("last_seen_at") else None,
-            "registrations": doc.get("registrations", 0), "kind": doc.get("kind", "tablet"), "kind_label": DEVICE_KINDS[doc.get("kind", "tablet")]}
-
-
-@admin_router.get("/devices", response_model=dict)
-async def list_devices(current_user: dict = Depends(get_current_user)):
+@admin_router.get("/links", response_model=dict)
+async def get_links(current_user: dict = Depends(get_current_user)):
     require(current_user, VISITORS_DEVICES_MANAGE)
-    return {"items": [device_view(doc) async for doc in db.visitor_devices.find({}, {"_id": 0}).sort("name", 1)]}
+    links = await load_links()
+    await audit("links_viewed", current_user["user_id"])
+    return {"items": [link_view(kind, links[kind]) for kind in LINK_KINDS]}
 
 
-async def issue_code(device_id: str) -> tuple[str, datetime]:
-    for _ in range(5):
-        code = new_code()
-        expires = now_utc() + timedelta(hours=CODE_HOURS)
-        try:
-            await db.visitor_devices.update_one({"device_id": device_id}, {"$set": {"code_hash": sha(code), "code_expires_at": expires, "status": "pending", "token_hash": None, "updated_at": now_utc()}})
-            return code, expires
-        except DuplicateKeyError:
-            continue
-    raise HTTPException(status_code=500, detail="No se pudo generar el código; intente de nuevo")
-
-
-@admin_router.post("/devices", response_model=dict, status_code=201)
-async def create_device(payload: DeviceInput, current_user: dict = Depends(get_current_user)):
-    """Registra una tableta («Tableta 1») y devuelve su código de emparejamiento UNA vez."""
+@admin_router.post("/links/{kind}/rotate", response_model=dict)
+async def rotate_link(kind: Literal["tablet", "screen"], current_user: dict = Depends(get_current_user)):
+    """Enlace nuevo (por si se filtró): el anterior deja de funcionar en el acto."""
     require(current_user, VISITORS_DEVICES_MANAGE)
-    await ensure_indexes()
-    device_id = str(uuid4())
-    await db.visitor_devices.insert_one({"_id": device_id, "device_id": device_id, "name": payload.name.strip(), "kind": payload.kind, "status": "pending", "token_hash": None, "created_at": now_utc(), "created_by_user_id": current_user["user_id"], "registrations": 0})
-    code, expires = await issue_code(device_id)
-    await audit("device_created", current_user["user_id"], {"device_id": device_id, "name": payload.name})
-    return {**device_view(await db.visitor_devices.find_one({"device_id": device_id}, {"_id": 0})), "pairing_code": code, "code_expires_at": expires.isoformat()}
+    await load_links()
+    item = {"token": secrets.token_urlsafe(32), "created_at": now_utc(), "created_by": current_user["user_id"]}
+    await db.app_settings.update_one({"_id": LINKS_ID}, {"$set": {kind: item}})
+    await audit("link_rotated", current_user["user_id"], {"kind": kind})
+    return link_view(kind, item)
 
 
-@admin_router.post("/devices/{device_id}/new-code", response_model=dict)
-async def device_new_code(device_id: str, current_user: dict = Depends(get_current_user)):
-    """Nuevo código (la tableta anterior queda desconectada)."""
-    require(current_user, VISITORS_DEVICES_MANAGE)
-    await ensure_indexes()
-    if not await db.visitor_devices.find_one({"device_id": device_id}, {"_id": 1}):
-        raise HTTPException(status_code=404, detail="Tableta no encontrada")
-    code, expires = await issue_code(device_id)
-    await audit("device_new_code", current_user["user_id"], {"device_id": device_id})
-    return {**device_view(await db.visitor_devices.find_one({"device_id": device_id}, {"_id": 0})), "pairing_code": code, "code_expires_at": expires.isoformat()}
+async def link_access(kind: str, token: Optional[str]) -> None:
+    links = await load_links()
+    if not token or not hmac.compare_digest(token, links[kind]["token"]):
+        raise HTTPException(status_code=401, detail="Este enlace ya no funciona. Pida el enlace nuevo a la administración.")
 
 
-@admin_router.post("/devices/{device_id}/revoke", response_model=dict)
-async def revoke_device(device_id: str, current_user: dict = Depends(get_current_user)):
-    require(current_user, VISITORS_DEVICES_MANAGE)
-    result = await db.visitor_devices.update_one({"device_id": device_id}, {"$set": {"status": "revoked", "token_hash": None, "code_hash": None, "revoked_at": now_utc(), "updated_at": now_utc()}})
-    if not result.matched_count:
-        raise HTTPException(status_code=404, detail="Tableta no encontrada")
-    await audit("device_revoked", current_user["user_id"], {"device_id": device_id})
-    return device_view(await db.visitor_devices.find_one({"device_id": device_id}, {"_id": 0}))
+def client_ip(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for")
+    return (forwarded.split(",")[0].strip() if forwarded else None) or (request.client.host if request.client else "desconocida")
 
 
-# ------------------------------------------------------------------ quiosco (token de dispositivo)
-class PairInput(BaseModel):
-    code: str = Field(min_length=6, max_length=20)
-    expected_kinds: Optional[list[Literal["tablet", "screen_tv", "screen_pastora"]]] = None
+async def rate_limit(key: str, limit: int, window_seconds: int = 60) -> None:
+    """Límite de frecuencia compartido entre procesos (contador por ventana en Mongo)."""
+    now = now_utc()
+    window = int(now.timestamp() // window_seconds)
+    doc = await db.visitor_rate.find_one_and_update({"_id": f"{key}:{window}"}, {"$inc": {"count": 1}, "$setOnInsert": {"expires_at": now + timedelta(seconds=window_seconds * 2)}},
+                                                    upsert=True, return_document=ReturnDocument.AFTER)
+    if doc["count"] > limit:
+        raise HTTPException(status_code=429, detail="Demasiados registros seguidos desde esta tableta. Espere un minuto e intente de nuevo.")
 
 
-@kiosk_router.post("/pair", response_model=dict)
-async def pair(payload: PairInput):
-    await ensure_indexes()
-    code = payload.code.strip().upper().replace(" ", "").replace("-", "")
-    device = await db.visitor_devices.find_one({"code_hash": sha(code), "status": "pending"}, {"_id": 0})
-    if not device or not device.get("code_expires_at") or (device["code_expires_at"] if device["code_expires_at"].tzinfo else device["code_expires_at"].replace(tzinfo=timezone.utc)) < now_utc():
-        raise HTTPException(status_code=404, detail="Código no válido o vencido. Pida un código nuevo en el panel de administración.")
-    if payload.expected_kinds and device.get("kind", "tablet") not in payload.expected_kinds:
-        # No se gasta el código: se abrió la página equivocada.
-        where = "/quiosco" if device.get("kind", "tablet") == "tablet" else "/pantalla-bienvenida"
-        raise HTTPException(status_code=409, detail=f"Este código es de «{DEVICE_KINDS[device.get('kind', 'tablet')]}». Ábralo en la dirección {where}.")
-    token = secrets.token_urlsafe(32)
-    await db.visitor_devices.update_one({"device_id": device["device_id"], "status": "pending"}, {"$set": {"token_hash": sha(token), "code_hash": None, "status": "paired", "paired_at": now_utc(), "updated_at": now_utc()}})
-    await audit("device_paired", f"device:{device['device_id']}", {"name": device["name"]})
-    return {"token": token, "device_name": device["name"], "kind": device.get("kind", "tablet")}
-
-
-async def paired_device(token: Optional[str], kinds: set) -> dict:
-    if not token:
-        raise HTTPException(status_code=401, detail="Dispositivo no emparejado")
-    device = await db.visitor_devices.find_one({"token_hash": sha(token), "status": "paired"}, {"_id": 0})
-    if not device:
-        raise HTTPException(status_code=401, detail="Este dispositivo fue desactivado o no está emparejado")
-    if device.get("kind", "tablet") not in kinds:
-        # Una pantalla no puede registrar y una tableta no puede leer nombres.
-        raise HTTPException(status_code=403, detail="Este dispositivo no tiene permiso para esta función")
-    await db.visitor_devices.update_one({"device_id": device["device_id"]}, {"$set": {"last_seen_at": now_utc()}})
-    return device
-
-
-async def kiosk_device(x_device_token: Optional[str] = Header(default=None)) -> dict:
-    return await paired_device(x_device_token, {"tablet"})
+async def kiosk_device(request: Request, x_link_token: Optional[str] = Header(default=None), x_tablet_name: Optional[str] = Header(default=None)) -> dict:
+    """Tableta: solo el enlace de tabletas. Se identifica sola («Tableta 3F9A») para trazabilidad."""
+    await link_access("tablet", x_link_token)
+    name = x_tablet_name if x_tablet_name and TABLET_NAME.match(x_tablet_name) else "Tableta sin nombre"
+    return {"device_id": name, "name": name, "ip": client_ip(request)}
 
 
 @kiosk_router.get("/config", response_model=dict)
@@ -300,10 +266,10 @@ class RegistrationInput(BaseModel):
     prayer_request: Optional[str] = Field(default=None, max_length=1500)
     counseling_note: Optional[str] = Field(default=None, max_length=1500)
     needs_note: Optional[str] = Field(default=None, max_length=1500)
-    consent_followup: bool = False
-    consent_announce: bool = False
-    consent_screens: bool = False
-    consent_family_announce: bool = False
+    # Única pregunta: «¿Podemos comunicarnos contigo para darte seguimiento?» (opcional).
+    consent_followup: Optional[bool] = None
+    # Campo trampa: invisible para personas; si llega con texto, es un robot.
+    website: Optional[str] = Field(default=None, max_length=200)
     privacy_version: int = Field(ge=1)
     privacy_accepted: bool
     started_at: Optional[datetime] = None
@@ -332,8 +298,36 @@ async def link_person(payload: RegistrationInput, device: dict) -> dict:
     if result["status"] == "strong_match" and len(cards) == 1 and name_compatible(payload, cards[0]):
         # Coincidencia clara (mismo teléfono/correo o nombre + nacimiento) Y nombre compatible: se vincula.
         return {"person_id": candidates[0], "match_status": "linked", "candidates": candidates}
-    # Dudosa (p. ej. el mismo teléfono con otro nombre, o varias personas): revisión humana.
-    return {"person_id": None, "match_status": "possible", "candidates": candidates}
+    # Dudosa (p. ej. el mismo teléfono con otro nombre): se crea su perfil en Persona 360 para que
+    # nunca quede fuera, y el personal confirma en Seguimiento si era la misma persona.
+    person_id = await insert_person(payload.first_name.strip(), payload.last_name.strip(), payload.birth_date.isoformat() if payload.birth_date else None, payload.phone, payload.email,
+                                    f"visitor:{payload.idempotency_key}", f"device:{device['device_id']}", "visitor_kiosk", candidates)
+    return {"person_id": person_id, "match_status": "possible", "candidates": candidates}
+
+
+async def insert_person(first: str, last: str, birth: Optional[str], phone: Optional[str], email: Optional[str], key: str, actor: str, source: str, candidates: list) -> str:
+    """Persona confirmada como distinta de las sugeridas (p. ej. familiares que comparten teléfono)."""
+    from core_person import next_person_number
+    from person_matching import normalize_phone, normalize_text
+    existing = await db.persons.find_one({"idempotency_key": key}, {"_id": 1})
+    if existing:
+        return str(existing["_id"])
+    now = now_utc()
+    doc = {"nombre": first, "apellido": last, "fecha_nacimiento": birth, "person_number": await next_person_number(), "search_key": normalize_text(f"{first} {last}"),
+           "idempotency_key": key, "version": 1, "created_by_user_id": actor, "created_source": source, "created_at": now, "updated_at": now,
+           "distinct_person_confirmed": {"reason": "Registro de visitantes: posible coincidencia pendiente de revisión", "candidates": candidates, "by_user_id": actor, "at": now}}
+    try:
+        person_id = str((await db.persons.insert_one(doc)).inserted_id)
+    except DuplicateKeyError:
+        return str((await db.persons.find_one({"idempotency_key": key}, {"_id": 1}))["_id"])
+    contacts = []
+    if phone:
+        contacts.append({"person_id": person_id, "tipo": "telefono", "valor": phone, "valor_normalizado": normalize_phone(phone), "es_principal": True, "created_by_user_id": actor, "created_at": now, "updated_at": now})
+    if email:
+        contacts.append({"person_id": person_id, "tipo": "email", "valor": email, "es_principal": not contacts, "created_by_user_id": actor, "created_at": now, "updated_at": now})
+    if contacts:
+        await db.person_contacts.insert_many(contacts)
+    return person_id
 
 
 def name_compatible(payload: "RegistrationInput", card: dict) -> bool:
@@ -353,6 +347,13 @@ async def create_registration(payload: RegistrationInput, device: dict = Depends
         return kiosk_reply(existing, True, texts)
     if not payload.privacy_accepted:
         raise HTTPException(status_code=422, detail="Para registrarte necesitamos que aceptes el aviso de privacidad")
+    # Límite de frecuencia: por tableta y por conexión (las 4 tabletas comparten el internet de la iglesia).
+    await rate_limit(f"tablet:{device['name']}:{device['ip']}", 12)
+    await rate_limit(f"ip:{device['ip']}", 60)
+    if (payload.website or "").strip():
+        # Campo trampa lleno: robot. Se responde igual, pero no se guarda nada.
+        await audit("bot_blocked", f"device:{device['device_id']}", {"ip": device["ip"]})
+        return {"visitor_number": "V-0000-000000", "greeting_name": payload.first_name.strip(), "confirmation": texts["confirmation"], "duplicate": False}
     from person_matching import normalize_phone, normalize_text
     service = await current_service()
     phone_norm = normalize_phone(payload.phone)
@@ -385,7 +386,8 @@ async def insert_registration(payload: "RegistrationInput", device: dict, servic
     now = now_utc()
     registration_id = str(uuid4())
     requests = [item for item in payload.requests if item in REQUEST_KEYS]
-    wants_followup = payload.consent_followup and "no_followup" not in requests
+    # Solo un «No» explícito (o «prefiero no recibir seguimiento») lo saca del seguimiento.
+    wants_followup = payload.consent_followup is not False and "no_followup" not in requests
     doc = {
         "_id": registration_id, "registration_id": registration_id, "idempotency_key": payload.idempotency_key, "visitor_number": None,
         "device_id": device["device_id"], "device_name": device["name"], "service": service, "name_key": name_key,
@@ -401,7 +403,8 @@ async def insert_registration(payload: "RegistrationInput", device: dict, servic
         # Familiares: solo nombre y parentesco; nunca datos sensibles de menores. No se anuncian sin consentimiento.
         "family": [{"name": item.name.strip(), "relation": item.relation, "is_minor": item.is_minor} for item in payload.family],
         "requests": requests, "has_restricted": bool(payload.prayer_request or payload.counseling_note or payload.needs_note),
-        "consents": {"followup": payload.consent_followup, "announce": payload.consent_announce, "screens": payload.consent_screens, "family_announce": payload.consent_family_announce},
+        # Bienvenida: por decisión de la iglesia, todo registrado entra a la lista (el operador puede quitarlo).
+        "consents": {"followup": payload.consent_followup},
         "privacy": {"version": payload.privacy_version, "accepted_at": now},
         "followup": {"status": "pending" if wants_followup else "not_requested", "assigned_person_id": None, "results": []},
         "test_data": False, "created_at": now, "started_at": payload.started_at,
@@ -417,7 +420,6 @@ async def insert_registration(payload: "RegistrationInput", device: dict, servic
     if doc["has_restricted"]:
         await db.visitor_restricted.insert_one({"_id": registration_id, "registration_id": registration_id, "prayer_request": payload.prayer_request, "counseling_note": payload.counseling_note,
                                                 "needs_note": payload.needs_note, "created_at": now})
-    await db.visitor_devices.update_one({"device_id": device["device_id"]}, {"$inc": {"registrations": 1}})
     await audit("registration_created", f"device:{device['device_id']}", {"registration_id": registration_id, "visitor_number": doc["visitor_number"], "match_status": match["match_status"]})
     return kiosk_reply(doc, False, texts)
 
@@ -425,7 +427,7 @@ async def insert_registration(payload: "RegistrationInput", device: dict, servic
 # ------------------------------------------------------------------ personal: consultar registros (V1 básico)
 REQUEST_LABELS = {"prayer": "Oración", "visit": "Una visita", "info": "Información de la iglesia", "counseling_personal": "Consejería personal", "counseling_marriage": "Consejería matrimonial",
                   "counseling_family": "Consejería familiar", "support_child": "Apoyo para un hijo o familiar", "other_help": "Otro tipo de ayuda", "no_followup": "Prefiere no recibir seguimiento por ahora"}
-MATCH_LABELS = {"created": "Persona nueva en Persona 360", "linked": "Vinculado a su perfil existente", "possible": "Posible coincidencia: revisar"}
+MATCH_LABELS = {"created": "Persona nueva en Persona 360", "linked": "Vinculado a su perfil existente", "possible": "Ya está en Persona 360 · confirmar si es una persona que ya existía"}
 
 
 def staff_view(doc: dict, restricted_ok: bool = False) -> dict:
@@ -632,39 +634,41 @@ class ResolveMatchInput(BaseModel):
 
 @admin_router.post("/registrations/{registration_id}/resolve-match", response_model=dict)
 async def resolve_match(registration_id: str, payload: ResolveMatchInput, current_user: dict = Depends(get_current_user)):
-    """Revisión humana de «posible coincidencia»: es la misma persona (vincular) o es otra (crear)."""
+    """Revisión humana de «posible coincidencia»: el registro ya tiene su perfil en
+    Persona 360; aquí se confirma si es otra persona o si era la misma (se vincula a
+    la existente y se retira el perfil provisional, que no tenía nada más)."""
     require(current_user, VISITORS_FOLLOWUP_MANAGE)
     doc = await load_registration(registration_id)
     if doc["match_status"] != "possible":
-        raise HTTPException(status_code=409, detail="Este registro ya está vinculado a Persona 360")
+        raise HTTPException(status_code=409, detail="Este registro ya fue revisado")
+    provisional = doc.get("person_id")
     if payload.create_new:
-        person_id = await create_distinct_person(doc, current_user)
+        person_id = provisional or await insert_person(doc["first_name"], doc["last_name"], doc["contact"].get("birth_date"), doc["contact"].get("phone"), doc["contact"].get("email"),
+                                                       f"visitor-distinct:{registration_id}", current_user["user_id"], "visitor_review", doc.get("possible_person_ids") or [])
         status = "created"
     elif payload.person_id and payload.person_id in (doc.get("possible_person_ids") or []):
         person_id, status = payload.person_id, "linked"
     else:
         raise HTTPException(status_code=422, detail="Elija una de las personas sugeridas o «Es otra persona»")
-    await db.visitor_registrations.update_one({"registration_id": registration_id, "match_status": "possible"},
-                                              {"$set": {"person_id": person_id, "match_status": status, "match_resolved": {"by_user_id": current_user["user_id"], "at": now_utc()}}})
+    result = await db.visitor_registrations.update_one({"registration_id": registration_id, "match_status": "possible"},
+                                                       {"$set": {"person_id": person_id, "match_status": status, "match_resolved": {"by_user_id": current_user["user_id"], "at": now_utc(), "provisional_person_id": provisional}}})
+    if result.modified_count and status == "linked" and provisional and provisional != person_id:
+        await retire_provisional(provisional, doc, current_user)
     await audit("match_resolved", current_user["user_id"], {"registration_id": registration_id, "person_id": person_id, "result": status})
     return await followup_reply(registration_id, current_user)
 
 
-async def create_distinct_person(doc: dict, current_user: dict) -> str:
-    """Crea la persona confirmada como distinta (p. ej. familiares que comparten teléfono)."""
-    from core_person import next_person_number
-    from person_matching import normalize_phone, normalize_text
-    existing = await db.persons.find_one({"idempotency_key": f"visitor-distinct:{doc['registration_id']}"}, {"_id": 1})
-    if existing:
-        return str(existing["_id"])
-    now = now_utc()
-    person = {"nombre": doc["first_name"], "apellido": doc["last_name"], "fecha_nacimiento": doc["contact"].get("birth_date"), "person_number": await next_person_number(),
-              "search_key": normalize_text(f"{doc['first_name']} {doc['last_name']}"), "idempotency_key": f"visitor-distinct:{doc['registration_id']}", "version": 1,
-              "created_by_user_id": current_user["user_id"], "created_source": "visitor_review", "created_at": now, "updated_at": now,
-              "distinct_person_confirmed": {"reason": "Revisión del registro de visitantes", "candidates": doc.get("possible_person_ids") or [], "by_user_id": current_user["user_id"], "at": now}}
-    result = await db.persons.insert_one(person)
-    person_id = str(result.inserted_id)
-    if doc["contact"].get("phone"):
-        await db.person_contacts.insert_one({"person_id": person_id, "tipo": "telefono", "valor": doc["contact"]["phone"], "valor_normalizado": normalize_phone(doc["contact"]["phone"]), "es_principal": True,
-                                             "created_by_user_id": current_user["user_id"], "created_at": now, "updated_at": now})
-    return person_id
+async def retire_provisional(person_id: str, doc: dict, current_user: dict) -> None:
+    """Quita el perfil provisional SOLO si lo creó este registro y nada más lo usa."""
+    if not ObjectId.is_valid(person_id):
+        return
+    person = await db.persons.find_one({"_id": ObjectId(person_id)}, {"idempotency_key": 1})
+    if not person or person.get("idempotency_key") != f"visitor:{doc['idempotency_key']}":
+        return
+    in_use = (await db.visitor_registrations.count_documents({"person_id": person_id}) or await db.process_enrollments.count_documents({"person_id": person_id})
+              or await db.users.count_documents({"person_id": person_id}) or await db.outreach_visits.count_documents({"$or": [{"person_id": person_id}, {"converted_person_id": person_id}]}))
+    if in_use:
+        return
+    await db.persons.delete_one({"_id": ObjectId(person_id)})
+    await db.person_contacts.delete_many({"person_id": person_id})
+    await audit("provisional_person_retired", current_user["user_id"], {"person_id": person_id, "registration_id": doc["registration_id"]})

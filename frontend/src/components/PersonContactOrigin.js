@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
-import { BookOpen, DoorOpen, MapPin, Route, UserRoundCheck } from 'lucide-react';
+import { BookOpen, DoorOpen, MapPin, Route, UserPlus, UserRoundCheck } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { useAuth } from '../context/AuthContext';
@@ -104,7 +104,7 @@ export function ContactOriginCard({ personId, origin, onAssigned }) {
   );
 }
 
-const KIND_ICON = { visit: DoorOpen, book: BookOpen };
+const KIND_ICON = { visit: DoorOpen, book: BookOpen, visitor_registration: UserPlus };
 
 /** Historial del contacto: visitas (abrieron / no abrieron), libros, seguimiento y Consolidación. */
 export function ContactHistory({ origin }) {

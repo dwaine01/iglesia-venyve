@@ -77,7 +77,9 @@ async def gather(person_id: str) -> dict:
         item["_mentor_person_id"] = user_person.get(holder.get("id")) if holder.get("type") == "user" else None
         if not item["_mentor_person_id"] and item.get("household_id") in houses:
             item["_mentor_person_id"] = houses[item["household_id"]].get("mentor_person_id")
-    return {"visits": visits, "books": books, "enrollment": enrollment, "assignment": assignment, "houses": houses, "campaigns": campaigns}
+    # Registro de visitantes (tabletas): número, servicio y fecha; nada confidencial.
+    visitor_regs = await db.visitor_registrations.find({"person_id": person_id}, {"_id": 0, "visitor_number": 1, "service": 1, "created_at": 1, "visit": 1, "followup.status": 1}).sort("created_at", 1).to_list(50)
+    return {"visits": visits, "books": books, "enrollment": enrollment, "assignment": assignment, "houses": houses, "campaigns": campaigns, "visitor_regs": visitor_regs}
 
 
 def contact_mentor_ids(data: dict) -> set:
@@ -175,6 +177,10 @@ async def history(data: dict, names: dict) -> list:
             rows.append({"kind": "followup", "title": "Aceptó seguimiento", "at": visit.get("updated_at"), "mentor": names.get(visit.get("followup_responsible_person_id") or visit.get("mentor_person_id")),
                          "campaign": campaigns.get(visit.get("campaign_id")), "address": _address(houses.get(visit.get("household_id")), visit),
                          "detail": " · ".join(filter(None, [visit.get("next_action"), serialize(visit.get("next_action_at"))[:10] if visit.get("next_action_at") else None])) or None})
+    for item in data.get("visitor_regs") or []:
+        rows.append({"kind": "visitor_registration", "title": f"Registro de visitante · {item['visitor_number']}", "at": item.get("created_at"), "mentor": None,
+                     "campaign": None, "address": None,
+                     "detail": " · ".join(filter(None, [(item.get("service") or {}).get("label"), "Primera visita" if (item.get("visit") or {}).get("first_visit") else None]))})
     rows.sort(key=lambda row: serialize(row.get("at")) or "")
     return serialize(rows)
 

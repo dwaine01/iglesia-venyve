@@ -268,7 +268,9 @@ function App() {
           <Route path="/verificar/presentacion/:token" element={<DedicationVerificationPage />} />
           {/* Quiosco de visitantes: sin menú ni sesión de personal (token de la tableta). */}
           <Route path="/quiosco" element={<KioskPage />} />
+          <Route path="/quiosco/:token" element={<KioskPage />} />
           <Route path="/pantalla-bienvenida" element={<WelcomeScreenPage />} />
+          <Route path="/pantalla-bienvenida/:token" element={<WelcomeScreenPage />} />
           {/* Rutas de presentación full-screen (fuera del AppLayout) */}
           <Route path="/presentacion/presenter" element={<StaffRoute><PresentacionPresenterPage /></StaffRoute>} />
           <Route path="/presentacion/audiencia/:code" element={<PresentacionAudiencePage />} />

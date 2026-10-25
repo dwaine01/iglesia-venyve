@@ -47,7 +47,7 @@ app.add_middleware(
     allow_origin_regex=cors_origin_regex,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-CSRF-Token", "X-Device-Token"],
+    allow_headers=["Authorization", "Content-Type", "X-CSRF-Token", "X-Link-Token", "X-Tablet-Name"],
     max_age=600,
 )
 
