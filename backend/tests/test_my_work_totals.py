@@ -82,6 +82,18 @@ async def test_legacy_visits_totals_people_households_and_inventory():
         assert (await luis.get("/api/my-work/households", params={"state": "pending"})).json()["total"] == 0
         assert (await luis.get("/api/my-work/households", params={"state": "all"})).json()["total"] == 9
 
+        # Panel General › Líderes y su Desempeño y su detalle: MISMAS cifras que Supervisar.
+        dashboard = (await pastora.get("/api/dashboard/role-based")).json()
+        luis_row = next(item for item in dashboard["lideres"] if item.get("person_id") == luis_id)
+        assert (luis_row["trabajo"]["houses_visited"], luis_row["trabajo"]["people_contacted"], luis_row["trabajo"]["books_delivered"]) == (9, 9, 8)
+        assert luis_row["trabajo"]["today"]["books"] == 8 and luis_row["trabajo"]["work_status_label"] == "Trabajó hoy"
+        detail = (await pastora.get("/api/my-work/leader-detail", params={"mentor_person_id": luis_id})).json()
+        assert detail["summary"]["total"] == {"houses": 9, "people": 9, "books": 8, "in_consolidation": 0, "pending": 0}
+        assert detail["summary"]["today"]["books"] == 8 and sum(1 for item in detail["timeline"] if item["kind"] == "book") == 8
+        assert all(item["time"] for item in detail["timeline"]) and any("Elvido" in (item.get("detail") or "") for item in detail["timeline"])
+        assert detail["inventory"] == row["inventory"]
+        assert (await luis.get("/api/my-work/leader-detail", params={"mentor_person_id": luis_id})).status_code == 200  # el propio mentor
+
         # Programar el seguimiento → «Seguimiento aceptado»; un expediente → «En Consolidación».
         visit_id = elvido["visit_id"]
         assert (await luis.put(f"/api/mentorship/outreach/visits/{visit_id}/followup", json={"accepted": True, "next_action": "Llamar por teléfono", "next_action_date": date.today().isoformat()})).status_code == 200
@@ -94,6 +106,8 @@ async def test_legacy_visits_totals_people_households_and_inventory():
         other = await fx.account(await fx.person(f"Otro{tag}"), "persona")
         assert (await other.get("/api/my-work/people", params={"mentor_person_id": luis_id})).status_code == 403
         assert (await other.get("/api/my-work/households", params={"mentor_person_id": luis_id})).status_code == 403
+        assert (await other.get("/api/my-work/leader-detail", params={"mentor_person_id": luis_id})).status_code == 403
+        assert (await other.get("/api/dashboard/role-based")).json().get("rol") != "pastor"
     finally:
         for collection in ("outreach_households", "outreach_visit_events", "outreach_visits", "outreach_visit_history", "outreach_campaigns", "library_movements"):
             await db[collection].delete_many({"campaign_id": campaign_id})

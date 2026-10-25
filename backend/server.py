@@ -2464,6 +2464,27 @@ async def get_dashboard_by_role(authorization: Optional[str] = Header(None), lea
         lideres_data = []
         for start in range(0, len(lideres), 20):
             lideres_data.extend(await asyncio.gather(*(lider_row(lider) for lider in lideres[start:start + 20])))
+        # Trabajo real (misma fuente que «Supervisar Mi Trabajo»): viviendas, personas,
+        # libros, Consolidación, pendientes y trabajo de hoy. También los mentores con
+        # insignia activa que no tienen cuenta de líder.
+        from my_work import mentor_work_rows
+        from participation_scope import principal_authority_person_ids
+        authorities = set(await principal_authority_person_ids(db))
+        person_of_leader = {str(lider["_id"]): lider.get("person_id") for lider in lideres}
+        badge_ids = [doc["person_id"] for doc in await db.mentor_badges.find({"active": True}, {"_id": 0, "person_id": 1}).to_list(5000) if doc.get("person_id")]
+        work = await mentor_work_rows([pid for pid in list(person_of_leader.values()) + badge_ids if pid and pid not in authorities])
+        for row in lideres_data:
+            row["person_id"] = person_of_leader.get(row["_id"])
+            row["trabajo"] = work.get(row["person_id"])
+        leader_people = {pid for pid in person_of_leader.values() if pid}
+        for pid in badge_ids:
+            if pid in work and pid not in leader_people:
+                lideres_data.append({"_id": None, "person_id": pid, "nombre": work[pid]["name"], "email": "", "es_mentor": True, "total_personas": 0, "activas": 0, "graduadas": 0,
+                                     "promedio_semana": 0, "estado": None, "meta_baja": False, "trabajo": work[pid]})
+                leader_people.add(pid)
+        # Primero quien trabajó hoy, luego quien tiene pendientes; dentro, por nombre.
+        order = {"worked_today": 0, "has_pending": 1, "no_activity_today": 2}
+        lideres_data.sort(key=lambda row: (order.get((row.get("trabajo") or {}).get("work_status"), 3), (row.get("nombre") or "").lower()))
         
         # Personas que quedaron sin líder (p. ej. al eliminar la cuenta de su líder): visibles para reasignar.
         sin_lider_docs = await db.people.find({"leader_id": None, "previous_leader_id": {"$exists": True}}, {"nombre": 1, "apellido": 1, "canonical_person_id": 1, "estado": 1}).sort("nombre", 1).to_list(500)
@@ -2471,7 +2492,7 @@ async def get_dashboard_by_role(authorization: Optional[str] = Header(None), lea
             "rol": "pastor",
             "personas_sin_lider": [{"_id": str(doc["_id"]), "nombre": " ".join(filter(None, [doc.get("nombre"), doc.get("apellido")])), "estado": doc.get("estado"), "canonical_person_id": doc.get("canonical_person_id")} for doc in sin_lider_docs],
             "lideres": lideres_data,
-            "total_lideres": len(lideres_data),
+            "total_lideres": len(lideres),  # cuentas de líder (los mentores sin cuenta de líder se listan aparte)
         "total_personas_global": await db.persons.count_documents({"is_archived": {"$ne": True}}),
         "total_personas_en_proceso": sum(l["total_personas"] for l in lideres_data),
         }

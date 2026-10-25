@@ -18,12 +18,24 @@ import {
 import { Users, TrendingUp, Award, AlertCircle, ArrowRight, Crown, UserPlus, Trash2, Key, Shield, Presentation, DoorOpen } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
-import { StatusBadge, ProgressVsExpected } from '../components/StatusBadge';
 import { LOGO_IGLESIA } from '../data/presentationData';
 import { BRAND } from '../config/brand';
 import { LeaderDeleteDialog } from '../components/LeaderDeleteDialog';
 import { isPastoralAuthority } from '../lib/accessControl';
 import { PresentReportLauncher } from '../components/invasions/PresentReportLauncher';
+
+// Trabajo real del líder (misma fuente que «Supervisar Mi Trabajo»).
+const WORK_TONE = { worked_today: 'bg-emerald-100 text-emerald-900 border-emerald-200', has_pending: 'bg-amber-100 text-amber-900 border-amber-200', no_activity_today: 'bg-slate-100 text-slate-700 border-slate-200' };
+const leaderTarget = (lider) => (lider.person_id ? `/mi-trabajo/supervision?mentor=${lider.person_id}` : `/lider/${lider._id}/dashboard`);
+const todayText = (work) => {
+  const today = work?.today || {};
+  if (!today.houses && !today.books && !today.people) return 'Sin actividad hoy';
+  return [today.houses ? `${today.houses} vivienda(s) visitada(s)` : null, today.people ? `${today.people} persona(s) registrada(s)` : null, today.books ? `${today.books} libro(s) entregado(s)` : null].filter(Boolean).join(' · ');
+};
+function WorkStatus({ work }) {
+  if (!work) return <span className="text-sm text-slate-500">Sin cuenta de mentor vinculada</span>;
+  return <span className={`inline-flex rounded-full border px-2.5 py-1 text-sm font-semibold ${WORK_TONE[work.work_status] || WORK_TONE.no_activity_today}`} data-testid="leader-work-status">{work.work_status_label}</span>;
+}
 
 export default function DashboardGeneralPage() {
   const { API, getAuthHeaders, user } = useAuth();
@@ -292,56 +304,49 @@ export default function DashboardGeneralPage() {
           <Card className="shadow-xl border border-[#E7E2D6]">
             <CardHeader>
               <CardTitle style={{ fontFamily: 'Spectral, serif' }}>Líderes y su Desempeño</CardTitle>
+              <p className="text-sm text-muted-foreground">Trabajo real de cada líder y mentor: viviendas visitadas, personas contactadas, libros entregados, Consolidación y lo que hizo hoy. «Entrar al Líder» abre el detalle completo.</p>
             </CardHeader>
             <CardContent>
               {/* Vista mobile: Cards */}
               <div className="md:hidden space-y-3">
                 {lideres.map((lider, idx) => (
                   <motion.div
-                    key={lider._id}
+                    key={lider._id || lider.person_id}
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: idx * 0.04 }}
                     className="p-4 rounded-xl border border-[#E7E2D6] bg-gradient-to-br from-[#F5F0E8]/40 to-[#FAFAF8] space-y-3"
-                    data-testid={`lider-card-${lider._id}`}
+                    data-testid={`lider-card-${lider._id || lider.person_id}`}
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0 flex-1">
                         <p className="font-bold text-[#1B2A4A] text-base truncate">{lider.nombre}</p>
                         <p className="text-xs text-muted-foreground truncate">{lider.email}</p>
                       </div>
-                      <StatusBadge status={lider.estado} />
+                      <WorkStatus work={lider.trabajo} />
                     </div>
 
-                    <div className="grid grid-cols-3 gap-2">
-                      <div className="text-center p-2 bg-white rounded-lg border border-[#E7E2D6]">
-                        <p className="text-[10px] uppercase text-muted-foreground tracking-wider">Personas</p>
-                        <p className="text-lg font-bold text-[#1B2A4A]">{lider.total_personas}</p>
-                      </div>
-                      <div className="text-center p-2 bg-white rounded-lg border border-[#E7E2D6]">
-                        <p className="text-[10px] uppercase text-muted-foreground tracking-wider">Activas</p>
-                        <p className="text-lg font-bold text-purple-600">{lider.activas}</p>
-                      </div>
-                      <div className="text-center p-2 bg-white rounded-lg border border-[#E7E2D6]">
-                        <p className="text-[10px] uppercase text-muted-foreground tracking-wider">Grad.</p>
-                        <p className="text-lg font-bold text-emerald-600">{lider.graduadas}</p>
-                      </div>
+                    <div className="grid grid-cols-2 gap-2" data-testid="leader-work-mobile">
+                      {[['Viviendas visitadas', lider.trabajo?.houses_visited], ['Personas contactadas', lider.trabajo?.people_contacted], ['Libros entregados', lider.trabajo?.books_delivered], ['En Consolidación', lider.trabajo?.in_consolidation], ['Pendientes', lider.trabajo?.pending]].map(([label, value]) => (
+                        <div key={label} className="rounded-lg border border-[#E7E2D6] bg-white p-2 text-center">
+                          <p className="text-xs text-slate-600">{label}</p>
+                          <p className="text-lg font-bold text-[#1B2A4A]">{value ?? 0}</p>
+                        </div>
+                      ))}
                     </div>
-
-                    {lider.estado && lider.total_personas > 0 && (
-                      <ProgressVsExpected status={lider.estado} compact={false} />
-                    )}
+                    <p className="text-sm text-slate-700"><b>Hoy:</b> {todayText(lider.trabajo)}</p>
 
                     <div className="flex gap-2">
                       <Button
                         size="sm"
                         className="min-h-11 flex-1 bg-[#1B2A4A] hover:bg-[#2A3D63] text-white font-medium"
-                        onClick={() => navigate(`/lider/${lider._id}/dashboard`)}
+                        onClick={() => navigate(leaderTarget(lider))}
+                        data-testid={`leader-enter-mobile-${lider.person_id || lider._id}`}
                       >
                         Entrar al Líder
                         <ArrowRight className="w-3.5 h-3.5 ml-1" />
                       </Button>
-                      {canDeleteLeaders && <Button size="sm" variant="outline" className="min-h-11 border-red-200 text-red-700 hover:bg-red-50" onClick={() => setLeaderToDelete(lider)} aria-label={`Eliminar a ${lider.nombre}`} data-testid={`lider-delete-${lider._id}`}><Trash2 className="h-4 w-4" />Eliminar</Button>}
+                      {canDeleteLeaders && lider._id && <Button size="sm" variant="outline" className="min-h-11 border-red-200 text-red-700 hover:bg-red-50" onClick={() => setLeaderToDelete(lider)} aria-label={`Eliminar a ${lider.nombre}`} data-testid={`lider-delete-${lider._id}`}><Trash2 className="h-4 w-4" />Eliminar</Button>}
                     </div>
                   </motion.div>
                 ))}
@@ -353,18 +358,19 @@ export default function DashboardGeneralPage() {
                   <TableHeader>
                     <TableRow className="bg-gradient-to-r from-[#F5F0E8] to-[#FAFAF8]">
                       <TableHead className="font-bold text-[#1B2A4A]">Líder</TableHead>
-                      <TableHead className="font-bold text-[#1B2A4A]">Total Personas</TableHead>
-                      <TableHead className="font-bold text-[#1B2A4A]">Activas</TableHead>
-                      <TableHead className="font-bold text-[#1B2A4A]">Graduadas</TableHead>
-                      <TableHead className="font-bold text-[#1B2A4A]">Promedio Semana</TableHead>
+                      <TableHead className="font-bold text-[#1B2A4A]">Viviendas visitadas</TableHead>
+                      <TableHead className="font-bold text-[#1B2A4A]">Personas contactadas</TableHead>
+                      <TableHead className="font-bold text-[#1B2A4A]">Libros entregados</TableHead>
+                      <TableHead className="font-bold text-[#1B2A4A]">Personas en Consolidación</TableHead>
+                      <TableHead className="font-bold text-[#1B2A4A]">Pendientes</TableHead>
+                      <TableHead className="font-bold text-[#1B2A4A]">Trabajo de hoy</TableHead>
                       <TableHead className="font-bold text-[#1B2A4A]">Estado</TableHead>
-                      <TableHead className="text-right font-bold text-[#1B2A4A]">Acciones</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {lideres.map((lider, idx) => (
                       <motion.tr
-                        key={lider._id}
+                        key={lider._id || lider.person_id}
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         transition={{ delay: idx * 0.03 }}
@@ -373,53 +379,20 @@ export default function DashboardGeneralPage() {
                         <TableCell>
                           <div>
                             <p className="font-bold text-[#1B2A4A]">{lider.nombre}</p>
-                            <p className="text-xs text-muted-foreground">{lider.email}</p>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Users className="w-4 h-4 text-muted-foreground" />
-                            <span className="font-semibold">{lider.total_personas}</span>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge className="bg-purple-500 text-white">{lider.activas}</Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge className="bg-emerald-500 text-white">{lider.graduadas}</Badge>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <div className="w-16 h-2 bg-gray-200 rounded-full overflow-hidden">
-                              <div
-                                className="h-full bg-gradient-to-r from-indigo-500 to-purple-500"
-                                style={{ width: `${(lider.promedio_semana / 7) * 100}%` }}
-                              />
+                            <p className="text-xs text-muted-foreground">{lider.es_mentor ? 'Mentor (sin cuenta de líder)' : lider.email}</p>
+                            {lider._id && lider.total_personas > 0 && <button type="button" onClick={() => navigate(`/lider/${lider._id}/dashboard`)} className="text-xs font-semibold text-[#0879BE] underline">Expedientes anteriores ({lider.total_personas})</button>}
+                            <div className="mt-2 flex items-center gap-2">
+                              <Button size="sm" className="min-h-10 bg-[#1B2A4A] font-medium text-white hover:bg-[#2A3D63]" onClick={() => navigate(leaderTarget(lider))} data-testid={`leader-enter-${lider.person_id || lider._id}`}>Entrar al Líder<ArrowRight className="ml-1 h-3.5 w-3.5" /></Button>
+                              {canDeleteLeaders && lider._id && <Button size="icon" variant="outline" className="h-10 w-10 border-red-200 text-red-700 hover:bg-red-50" onClick={() => setLeaderToDelete(lider)} aria-label={`Eliminar a ${lider.nombre}`} title="Eliminar cuenta" data-testid={`lider-delete-${lider._id}`}><Trash2 className="h-4 w-4" /></Button>}
                             </div>
-                            <span className="text-sm font-semibold">{lider.promedio_semana}</span>
                           </div>
                         </TableCell>
-                        <TableCell>
-                          <div className="flex flex-col gap-1 min-w-[140px]">
-                            <StatusBadge status={lider.estado} />
-                            {lider.estado && lider.total_personas > 0 && (
-                              <ProgressVsExpected status={lider.estado} compact={true} />
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            <Button
-                              size="sm"
-                              className="bg-[#1B2A4A] hover:bg-[#2A3D63] text-white font-medium"
-                              onClick={() => navigate(`/lider/${lider._id}/dashboard`)}
-                            >
-                              Entrar al Líder
-                              <ArrowRight className="w-3.5 h-3.5 ml-1" />
-                            </Button>
-                            {canDeleteLeaders && <Button size="icon" variant="outline" className="h-9 w-9 border-red-200 text-red-700 hover:bg-red-50" onClick={() => setLeaderToDelete(lider)} aria-label={`Eliminar a ${lider.nombre}`} title="Eliminar cuenta" data-testid={`lider-delete-${lider._id}`}><Trash2 className="h-4 w-4" /></Button>}
-                          </div>
-                        </TableCell>
+                        {[lider.trabajo?.houses_visited, lider.trabajo?.people_contacted, lider.trabajo?.books_delivered, lider.trabajo?.in_consolidation, lider.trabajo?.pending].map((value, position) => (
+                          <TableCell key={position} className="text-base font-semibold text-[#1B2A4A]">{value ?? 0}</TableCell>
+                        ))}
+                        <TableCell className="min-w-[180px] text-sm text-slate-700" data-testid="leader-work-today">{todayText(lider.trabajo)}</TableCell>
+                        <TableCell className="whitespace-nowrap"><WorkStatus work={lider.trabajo} /></TableCell>
+
                       </motion.tr>
                     ))}
                   </TableBody>
