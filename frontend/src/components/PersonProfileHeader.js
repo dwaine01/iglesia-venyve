@@ -44,6 +44,8 @@ const formatDate = (iso) => {
   }
 };
 
+const MONTH_NAMES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
 const calculateAge = (iso) => {
   if (!iso) return null;
   const birth = new Date(`${iso}T12:00:00`);
@@ -80,8 +82,9 @@ export default function PersonProfileHeader({ header, photoSrc, onEdit, onArchiv
       key: 'birth',
       icon: Cake,
       label: 'Fecha de nacimiento',
-      value: formatDate(header.fecha_nacimiento),
-      helper: age !== null ? `${age} años` : null,
+      // Sin año (registro de visitantes) se muestra solo el cumpleaños: «9 de julio».
+      value: header.fecha_nacimiento ? formatDate(header.fecha_nacimiento) : header.cumpleanos ? `${header.cumpleanos.dia} de ${MONTH_NAMES[header.cumpleanos.mes - 1]}` : null,
+      helper: age !== null ? `${age} años` : header.cumpleanos ? 'Cumpleaños (sin año)' : null,
     },
     { key: 'gender', icon: UsersRound, label: 'Género', value: titleCase(header.genero) },
     { key: 'civil', icon: Heart, label: 'Estado civil', value: titleCase(header.estado_civil) },

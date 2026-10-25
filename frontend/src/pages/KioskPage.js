@@ -5,6 +5,7 @@ import { Check, HeartHandshake, Lock, Users, X } from 'lucide-react';
 
 import { enqueue, flush, pendingCount } from '../lib/kioskQueue';
 import { adoptShortPath, rememberedToken, useAppManifest } from '../lib/appManifest';
+import { KIOSK_TEXT, LANGUAGES } from '../lib/kioskI18n';
 
 /* Quiosco de registro de visitantes (/quiosco/<enlace>). Un único enlace para
  * todas las tabletas: sin código, sin sesión. El enlace solo permite CREAR
@@ -18,9 +19,9 @@ const NAME_KEY = 'vv_tablet_name';
 const DEFAULT_TIMEOUTS = { form_warn_seconds: 240, form_reset_seconds: 300, start_reset_seconds: 600, confirm_reset_seconds: 60 };
 const C = { navy: '#14213D', ink: '#101D36', gold: '#C8A951', goldDark: '#8A6A1F', goldSoft: '#F6EEDA', bg: '#F7F5EF', line: '#DDD6C6', muted: '#475467' };
 
-const CONTACT = [['call', 'Llamada'], ['text', 'Mensaje de texto'], ['whatsapp', 'WhatsApp'], ['email', 'Correo electrónico']];
-const VISIT_MODES = [['nearby', 'Vivo cerca de la iglesia'], ['other_city', 'Vengo de otra ciudad'], ['passing', 'Estoy de paso'], ['new_in_area', 'Soy nuevo en el área']];
-const MONTHS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+// Claves que se guardan (las etiquetas salen del diccionario del idioma elegido).
+const CONTACT = ['call', 'text', 'whatsapp', 'email'];
+const MONTH_DAYS = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 /** Teléfono de EE. UU. con guiones mientras se escribe: 555-123-4567 (se guarda solo con dígitos). */
 export const phoneDigits = (value) => (value || '').replace(/\D/g, '').replace(/^1(?=\d{10})/, '').slice(0, 10);
 export const formatPhone = (value) => {
@@ -30,13 +31,13 @@ export const formatPhone = (value) => {
   return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
 };
 const HEARD = ['Invitación de alguien', 'Redes sociales', 'Internet', 'Pasé por la iglesia', 'Evento o campaña Ven y Come', 'Otro'];
-const REQUESTS = [['prayer_me', 'Quiero oración por mí'], ['prayer_family', 'Quiero oración por mi familia'], ['call_prayer', 'Llámenme para orar'], ['visit', 'Me gustaría que me visiten'],
-  ['info', 'Quiero saber más de esta iglesia'], ['counseling_personal', 'Consejería personal'], ['counseling_marriage', 'Consejería matrimonial'], ['counseling_family', 'Consejería familiar'],
-  ['support_child', 'Apoyo para un hijo o familiar'], ['membership', 'Me gustaría pertenecer a la iglesia'], ['serve', 'Quiero servir en la iglesia'], ['home_service', 'Me gustaría un culto en mi casa'],
-  ['other_help', 'Otra ayuda'], ['no_followup', 'Prefiero no recibir seguimiento por ahora']];
-const CHRISTIAN = [['yes', 'Sí'], ['on_way', 'Estoy en camino'], ['not_yet', 'No todavía']];
-const ACCEPT = [['today', 'Hoy'], ['another_day', 'Otro día']];
-const MARITAL = [['single', 'Soltero o soltera'], ['married', 'Casado o casada'], ['other', 'Otro']];
+// «¿Cómo podemos servirte?» en grupos con subtítulo; «prefiero no recibir seguimiento» va aparte al final.
+const SERVE_GROUPS = [['prayer', ['prayer_me', 'prayer_family', 'call_prayer']], ['visit', ['visit', 'info']],
+  ['counseling', ['counseling_personal', 'counseling_marriage', 'counseling_family', 'support_child', 'other_help']], ['serve', ['membership', 'serve', 'home_service']]];
+const CHRISTIAN = ['yes', 'on_way', 'not_yet'];
+const ACCEPT = ['today', 'another_day'];
+const MARITAL = ['single', 'married', 'other'];
+const pairs = (keys, labels) => keys.map((key) => [key, labels[key]]);
 const PRAYER = ['prayer_me', 'prayer_family', 'call_prayer'];
 // Formulario ÚNICO (los 3 papeles + el digital), un tema por paso. «Cuéntanos más» solo aparece
 // si eligió oración, consejería u otra ayuda (así ninguna pantalla necesita desplazarse).
@@ -46,7 +47,7 @@ const stepOrder = (form) => ['nombre', 'contacto', 'vives', 'visita', 'fe', 'fam
 const emptyForm = () => ({
   idempotency_key: (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`).replace(/[^a-zA-Z0-9-]/g, '') + Date.now().toString(36),
   started_at: new Date().toISOString(), privacy_accepted: false, first_name: '', last_name: '', preferred_name: '', phone: '', email: '', contact_methods: [], city: '', address: '',
-  zip_code: '', birth_date: '', first_visit: null, invited_by: '', visit_mode: null, how_heard: '',
+  zip_code: '', birth: { day: '', month: '', year: '' }, sex: null, new_in_area: null, first_visit: null, invited_by: '', how_heard: '',
   faith_christian: null, accept_jesus: null, reconcile: false, faith_info: false, other_church: null, other_church_name: '', other_church_pastor: '',
   marital_status: null, spouse_name: '', has_children: null, children: [], companions: '', kids_ministry: false, requests: [], giving_info: false,
   prayer_request: '', counseling_note: '', needs_note: '', consent_followup: null, website: '',
@@ -112,31 +113,47 @@ function CheckChips({ options, value, onChange, testId }) {
     </div>
   );
 }
-// Cumpleaños con tres listas grandes (día, mes, año): más fácil que un calendario en tableta.
-function BirthdayPicker({ value, onChange }) {
-  const [year, month, day] = (value || '--').split('-');
-  const parts = { year: year || '', month: month || '', day: day || '' };
-  const [draft, setDraft] = useState(parts);
+// Cumpleaños con listas grandes: día y mes (el año solo si la administración lo pide).
+function BirthdayPicker({ value, onChange, withYear, t }) {
   const update = (key, next) => {
-    const merged = { ...draft, [key]: next };
-    setDraft(merged);
-    const max = merged.year && merged.month ? new Date(Number(merged.year), Number(merged.month), 0).getDate() : 31;
-    onChange(merged.year && merged.month && merged.day && Number(merged.day) <= max ? `${merged.year}-${merged.month}-${merged.day}` : '');
+    const merged = { ...value, [key]: next };
+    // Un día que no existe en el mes elegido (31 de abril) se borra; el 29 de febrero sí existe.
+    if (merged.month && merged.day && Number(merged.day) > MONTH_DAYS[Number(merged.month) - 1]) merged.day = '';
+    onChange(merged);
   };
   const thisYear = new Date().getFullYear();
+  const days = (current) => (current.month ? MONTH_DAYS[Number(current.month) - 1] : 31);
   // Listas grandes para tableta: alto fijo de 64 px y letra de 22 px (iPad respeta el alto solo sin la apariencia nativa).
   const select = { ...inputStyle, height: 64, minHeight: 64, fontSize: 22, padding: '0 44px 0 16px', appearance: 'none', WebkitAppearance: 'none', cursor: 'pointer',
     backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='22' height='22' viewBox='0 0 24 24' fill='none' stroke='%23101D36' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\")",
     backgroundRepeat: 'no-repeat', backgroundPosition: 'right 14px center' };
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.6fr 1.2fr', gap: 12 }} data-testid="kiosk-birth">
-      <select value={draft.day} onChange={(event) => update('day', event.target.value)} aria-label="Día" style={select} data-testid="kiosk-birth-day"><option value="">Día</option>{Array.from({ length: 31 }, (_, index) => String(index + 1).padStart(2, '0')).map((item) => <option key={item} value={item}>{Number(item)}</option>)}</select>
-      <select value={draft.month} onChange={(event) => update('month', event.target.value)} aria-label="Mes" style={select} data-testid="kiosk-birth-month"><option value="">Mes</option>{MONTHS.map((name, index) => <option key={name} value={String(index + 1).padStart(2, '0')}>{name}</option>)}</select>
-      <select value={draft.year} onChange={(event) => update('year', event.target.value)} aria-label="Año" style={select} data-testid="kiosk-birth-year"><option value="">Año</option>{Array.from({ length: 100 }, (_, index) => String(thisYear - index)).map((item) => <option key={item} value={item}>{item}</option>)}</select>
+    <div style={{ display: 'grid', gridTemplateColumns: withYear ? '1fr 1.6fr 1.2fr' : '1fr 1.6fr', gap: 12 }} data-testid="kiosk-birth">
+      <select value={value.day} onChange={(event) => update('day', event.target.value)} aria-label={t.day} style={select} data-testid="kiosk-birth-day"><option value="">{t.day}</option>{Array.from({ length: days(value) }, (_, index) => String(index + 1).padStart(2, '0')).map((item) => <option key={item} value={item}>{Number(item)}</option>)}</select>
+      <select value={value.month} onChange={(event) => update('month', event.target.value)} aria-label={t.month} style={select} data-testid="kiosk-birth-month"><option value="">{t.month}</option>{t.months.map((name, index) => <option key={name} value={String(index + 1).padStart(2, '0')}>{name}</option>)}</select>
+      {withYear && <select value={value.year} onChange={(event) => update('year', event.target.value)} aria-label={t.year} style={select} data-testid="kiosk-birth-year"><option value="">{t.year}</option>{Array.from({ length: 100 }, (_, index) => String(thisYear - index)).map((item) => <option key={item} value={item}>{item}</option>)}</select>}
     </div>
   );
 }
-const YesNo = ({ value, onChange, testId }) => <Chips options={[[true, 'Sí'], [false, 'No']]} value={value} onChange={onChange} testId={testId} />;
+/** Fecha para el servidor: día y mes siempre; la fecha completa solo con año (y si existe, p. ej. no el 29 de febrero de 2023). */
+export function birthPayload(birth, withYear) {
+  if (!birth.day || !birth.month) return { birth_day: null, birth_month: null, birth_date: null };
+  const day = Number(birth.day); const month = Number(birth.month);
+  const year = withYear && birth.year ? Number(birth.year) : null;
+  const valid = year && new Date(year, month, 0).getDate() >= day;
+  return { birth_day: day, birth_month: month, birth_date: valid ? `${birth.year}-${birth.month}-${birth.day}` : null };
+}
+// Renglones alineados: casilla a la izquierda, texto a la derecha, todos del mismo alto.
+function CheckRow({ on, label, onClick, testId }) {
+  return (
+    <button type="button" role="checkbox" aria-checked={on} onClick={onClick} data-testid={testId} className="vk-row"
+      style={{ display: 'flex', alignItems: 'center', gap: 14, width: '100%', padding: '0 6px', border: 'none', borderRadius: 12, background: on ? '#EEF2FA' : 'transparent', color: C.ink, textAlign: 'left', fontSize: 'clamp(19px, 2.7vh, 21px)', fontWeight: on ? 700 : 500, lineHeight: 1.2 }}>
+      <span aria-hidden style={{ flex: '0 0 auto', width: 32, height: 32, borderRadius: 8, border: `2px solid ${on ? C.navy : '#8E97A8'}`, background: on ? C.navy : '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{on && <Check size={22} color="#fff" strokeWidth={3} />}</span>
+      <span>{label}</span>
+    </button>
+  );
+}
+const YesNo = ({ value, onChange, testId, t }) => <Chips options={[[true, t.yes], [false, t.no]]} value={value} onChange={onChange} testId={testId} />;
 const Accent = () => <span aria-hidden style={{ display: 'block', width: 88, height: 2, background: C.gold, margin: 'clamp(10px, 2vh, 18px) auto' }} />;
 // En horizontal los campos van en dos columnas para que todo quepa sin desplazar.
 const Section = ({ children, testId }) => <div className="vk-grid" data-testid={testId}>{children}</div>;
@@ -147,9 +164,13 @@ const KIOSK_CSS = `
   .vk-grid { display: grid; gap: clamp(12px, 2vh, 22px); align-content: start; }
   .vk-kids { display: grid; gap: 8px; }
   @media (min-width: 700px) { .vk-kids { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 24px; } }
+  .vk-serve { display: grid; gap: clamp(8px, 1.6vh, 16px); }
+  .vk-rows { display: grid; grid-auto-rows: clamp(46px, 4.1vh, 56px); gap: 4px; }
+  .vk-row:focus-visible { outline: 3px solid #C8A951; outline-offset: 2px; }
   @media (orientation: landscape) and (min-width: 900px) {
     .vk-grid { grid-template-columns: 1fr 1fr; column-gap: 36px; }
     .vk-wide { grid-column: 1 / -1; }
+    .vk-serve { grid-template-columns: 1fr 1fr; column-gap: 36px; align-items: start; }
   }
 `;
 
@@ -164,6 +185,9 @@ export default function KioskPage() {
   const [configProblem, setConfigProblem] = useState('');
   const retryTimer = useRef(null);
   const [error, setError] = useState('');
+  // Idioma: null = primera pantalla («Español» / «English»). Se puede cambiar en cualquier paso sin perder lo escrito.
+  const [lang, setLang] = useState(null);
+  const t = KIOSK_TEXT[lang || 'es'];
   const [step, setStep] = useState(-1);  // -1 = inicio
   const [form, setForm] = useState(emptyForm);
   const [result, setResult] = useState(null);
@@ -172,44 +196,48 @@ export default function KioskPage() {
   const [pending, setPending] = useState(0);
   const lastTouch = useRef(Date.now());
   const times = useMemo(() => ({ ...DEFAULT_TIMEOUTS, ...(config?.timeouts || {}) }), [config]);
+  // Textos editables (bienvenida, privacidad, confirmación) en el idioma elegido.
+  const texts = config ? (lang === 'en' && config.texts_en ? config.texts_en : config.texts) : null;
+  const withYear = !!config?.ask_birth_year;
   // Pedidos «simples» (sin encabezados propios y con el cuerpo como texto): el navegador no necesita
   // pedir permiso antes, algo que Silk de las tabletas Amazon Fire a veces no completa.
   const linkParams = { link: token || '', tablet: device };
   const simplePost = (path, body, timeout) => axios.post(`${API}${path}`, JSON.stringify(body), { params: linkParams, headers: { 'Content-Type': 'text/plain' }, timeout });
   const set = (key, value) => setForm((current) => ({ ...current, [key]: value }));
 
-  const reset = useCallback(() => { setForm(emptyForm()); setStep(-1); setResult(null); setError(''); setSaving(false); window.scrollTo(0, 0); }, []);
+  const reset = useCallback(() => { setForm(emptyForm()); setStep(-1); setLang(null); setResult(null); setError(''); setSaving(false); window.scrollTo(0, 0); }, []);
 
   // Textos y servicio de hoy. Un enlace viejo o equivocado muestra cómo pedir el nuevo.
   // ¿Por qué no llegó la configuración? Se prueba el servidor sin ningún dato para decirlo claro.
-  const diagnose = async (requestError) => {
+  const diagnose = async (requestError, words) => {
     const host = (() => { try { return new URL(API).host; } catch { return API; } })();
     const detail = ` (servidor: ${host}; página: ${window.location.host}; código: ${requestError?.code || 'sin código'})`;
-    if (requestError?.code === 'ECONNABORTED') return `El servidor tardó demasiado en responder. Reintentando…${detail}`;
+    if (requestError?.code === 'ECONNABORTED') return `${words.slow}${detail}`;
     try {
       const ping = await axios.get(`${API}/api/kiosk/ping`, { timeout: 8000 });
-      if ((ping.data?.kiosk_api || 0) < 4) return `El servidor todavía no tiene la versión nueva. Reintentando…${detail}`;
-      return `El servidor responde, pero este navegador bloqueó el pedido. Reintentando…${detail}`;
+      if ((ping.data?.kiosk_api || 0) < 5) return `${words.outdated}${detail}`;
+      return `${words.blocked}${detail}`;
     } catch (pingError) {
-      if (pingError?.response?.status === 404) return `El servidor todavía no tiene la versión nueva. Reintentando…${detail}`;
-      return `No hay conexión con el servidor. Revise el internet de la tableta. Reintentando…${detail}`;
+      if (pingError?.response?.status === 404) return `${words.outdated}${detail}`;
+      return `${words.offlineServer}${detail}`;
     }
   };
 
   const loadConfig = useCallback(() => {
-    if (!token) { setLinkError('Abra el enlace de tabletas que aparece en Registro de visitantes › Enlaces.'); return; }
+    const words = KIOSK_TEXT.es;
+    if (!token) { setLinkError(words.openLink); return; }
     axios.get(`${API}/api/kiosk/config`, { params: { link: token, tablet: device }, timeout: 12000 })
       .then((response) => { setConfig(response.data); setLinkError(''); setConfigProblem(''); adoptShortPath('vv_kiosk_link', response.data.short_path); })
       .catch((requestError) => {
         const status = requestError?.response?.status;
-        if (status === 401) { setLinkError(requestError.response.data?.detail || 'Este enlace ya no funciona.'); return; }
+        if (status === 401) { setLinkError(requestError.response.data?.detail || words.linkGone); return; }
         // Sin servidor (se está actualizando, sin internet, error): se dice y se reintenta solo, nunca se queda colgado.
-        if (status) setConfigProblem(`El servidor respondió con un error (${status}). Reintentando…`);
-        else diagnose(requestError).then(setConfigProblem);
+        if (status) setConfigProblem(words.serverError(status));
+        else diagnose(requestError, words).then(setConfigProblem);
         clearTimeout(retryTimer.current);
         retryTimer.current = setTimeout(loadConfig, 5000);
       });
-  }, [token, device]);
+  }, [token, device]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { loadConfig(); const timer = setInterval(loadConfig, 10 * 60 * 1000); return () => { clearInterval(timer); clearTimeout(retryTimer.current); }; }, [loadConfig]);
 
   // Cola sin internet: se reenvía con la misma clave de idempotencia. Solo un dato
@@ -219,7 +247,11 @@ export default function KioskPage() {
       return (await simplePost('/api/kiosk/registrations', payload, 20000)).data;
     } catch (requestError) {
       const status = requestError?.response?.status;
-      if (status === 400 || status === 422) { const permanent = new Error(requestError.response.data?.detail || 'Revise los datos'); permanent.permanent = true; throw permanent; }
+      if (status === 400 || status === 422) {
+        const detail = requestError.response.data?.detail;
+        const permanent = new Error(payload.language === 'en' || typeof detail !== 'string' ? KIOSK_TEXT[payload.language || 'es'].checkData : detail);
+        permanent.permanent = true; throw permanent;
+      }
       throw requestError;
     }
   }, [token, device]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -231,7 +263,7 @@ export default function KioskPage() {
   }, [token, send]);
 
   // Cada paso empieza arriba (el centro es lo único que se desplaza).
-  useEffect(() => { document.querySelector('[data-testid=kiosk-main]')?.scrollTo(0, 0); }, [step, result]);
+  useEffect(() => { document.querySelector('[data-testid=kiosk-main]')?.scrollTo(0, 0); }, [step, result, lang]);
 
   // Sin desplazamiento ni rebote del documento mientras está el quiosco.
   useEffect(() => {
@@ -240,6 +272,7 @@ export default function KioskPage() {
     root.style.overflow = 'hidden'; root.style.overscrollBehavior = 'none'; body.style.overflow = 'hidden'; body.style.overscrollBehavior = 'none'; root.style.height = '100%'; body.style.height = '100%';
     return () => { [root.style.overflow, root.style.overscrollBehavior, body.style.overflow, body.style.overscrollBehavior, root.style.height, body.style.height] = before; };
   }, []);
+  useEffect(() => { document.documentElement.lang = lang || 'es'; }, [lang]);
 
   // Modo quiosco: el botón «atrás» no sale de la página.
   useEffect(() => {
@@ -248,7 +281,7 @@ export default function KioskPage() {
     window.addEventListener('popstate', stay);
     return () => window.removeEventListener('popstate', stay);
   }, []);
-  // Inactividad: aviso a los 60 s y reinicio a los 75 s (borra todo lo escrito).
+  // Inactividad: aviso y luego reinicio (borra todo lo escrito y vuelve a elegir idioma).
   useEffect(() => {
     const touch = () => { lastTouch.current = Date.now(); setIdle(0); };
     // Cualquier toque, tecla o cambio en un campo reinicia el contador: nunca se borra mientras escribe.
@@ -262,13 +295,12 @@ export default function KioskPage() {
     return () => { clearInterval(timer); ['pointerdown', 'keydown', 'touchstart', 'input', 'change', 'scroll'].forEach((name) => window.removeEventListener(name, touch, { capture: true })); };
   }, [step, result, reset, times, loadConfig]);
 
-  // Al continuar después del nombre: borrador en el servidor para que el nombre aparezca YA en la
-  // bienvenida de la pastora. No detiene a la persona (si falla, el registro final lo crea igual).
   // Lo que se envía (en cada paso al borrador y al terminar). Al continuar después del nombre la persona
   // acepta el aviso corto (lo ve completo al final).
   const buildPayload = () => {
+    const { birth, ...rest } = form;
     const payload = {
-      ...form, privacy_accepted: true, privacy_version: config.texts.privacy_version, birth_date: form.birth_date || null, phone: phoneDigits(form.phone),
+      ...rest, ...birthPayload(birth, withYear), language: lang || 'es', privacy_accepted: true, privacy_version: config.texts.privacy_version, phone: phoneDigits(form.phone),
       invited: form.invited_by.trim() ? true : null, children: form.has_children ? form.children.filter((item) => item.name.trim()).map((item) => ({ name: item.name.trim(), age: item.age === '' || item.age == null ? null : Number(item.age) })) : [],
       ...(form.other_church ? {} : { other_church_name: '', other_church_pastor: '' }), ...(form.marital_status === 'married' ? {} : { spouse_name: '' }),
     };
@@ -291,7 +323,7 @@ export default function KioskPage() {
     } catch (requestError) {
       if (requestError?.permanent) { setError(requestError.message); setSaving(false); return; }
       await enqueue(payload); setPending(await pendingCount());
-      setResult({ offline: true, greeting_name: form.preferred_name || form.first_name, confirmation: config.texts.confirmation });
+      setResult({ offline: true, greeting_name: form.preferred_name || form.first_name, confirmation: texts.confirmation });
     }
     setSaving(false); lastTouch.current = Date.now();
   };
@@ -301,6 +333,16 @@ export default function KioskPage() {
   // Obligatorio: nombre y apellido, y un medio de contacto solo si aceptó el seguimiento.
   const missingContact = form.consent_followup === true && !phoneDigits(form.phone) && !form.email.trim();
   const canNext = () => (stepKey === 'nombre' ? form.first_name.trim() && form.last_name.trim() : true);
+  const serviceLabel = config ? (lang === 'en' ? t.services[config.service.kind] || config.service.label : config.service.label) : '';
+  // «Español | English» pequeño en la barra: cambia el idioma en cualquier paso sin perder lo escrito.
+  const switcher = lang && (
+    <span role="group" aria-label="Idioma · Language" style={{ display: 'inline-flex', border: `2px solid ${C.line}`, borderRadius: 12, overflow: 'hidden', flex: '0 0 auto' }} data-testid="kiosk-lang-switch">
+      {LANGUAGES.map(([key, label], index) => (
+        <button key={key} type="button" onClick={() => setLang(key)} aria-pressed={lang === key} data-testid={`kiosk-lang-switch-${key}`}
+          style={{ minHeight: 44, padding: '0 14px', border: 'none', borderLeft: index ? `2px solid ${C.line}` : 'none', fontSize: 17, fontWeight: lang === key ? 800 : 500, background: lang === key ? C.navy : '#fff', color: lang === key ? '#fff' : C.ink }}>{label}</button>
+      ))}
+    </span>
+  );
   const shell = (children, footer = null, hideLogo = false) => (
     // Pantalla fija de app: encabezado y botones nunca se mueven; solo el centro se desplaza si de verdad no cabe.
     // Alto = área visible (visualViewport), así el teclado no empuja el encabezado fuera de vista.
@@ -311,7 +353,10 @@ export default function KioskPage() {
       <header style={{ flex: '0 0 auto', background: '#fff', borderBottom: `2px solid ${C.gold}`, padding: '8px 24px', minHeight: 70, boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
         {/* En la barra solo el emblema (óvalo con la cruz), legible; el logo completo va grande en la bienvenida. */}
         {!hideLogo ? <img {...EMBLEM} style={{ height: 52, width: 'auto' }} data-testid="kiosk-header-logo" /> : <span />}
-        {config && <span style={{ fontSize: 19, color: C.muted, textAlign: 'right' }}>{config.service.label}{pending ? ` · ${pending} registro(s) esperando internet` : ''}</span>}
+        <span style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 0 }}>
+          {config && <span style={{ fontSize: 19, color: C.muted, textAlign: 'right' }}>{serviceLabel}{pending ? ` · ${t.waiting(pending)}` : ''}</span>}
+          {switcher}
+        </span>
       </header>
       <main className="vk-main" data-testid="kiosk-main" style={{ flex: '1 1 auto', minHeight: 0, overflowY: 'auto', overscrollBehavior: 'contain', touchAction: 'pan-y', WebkitOverflowScrolling: 'touch' }}>
         <div style={{ width: '100%', maxWidth: hideLogo || result ? 1040 : 1120, minHeight: '100%', margin: '0 auto', padding: 'clamp(10px, 2.4vh, 28px) 24px 20px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column' }}>{children}</div>
@@ -320,10 +365,10 @@ export default function KioskPage() {
       {idle >= times.form_warn_seconds && step >= 0 && !result && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(20,33,61,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }} data-testid="kiosk-idle">
           <div style={{ background: '#fff', borderRadius: 24, padding: 32, maxWidth: 560, textAlign: 'center' }}>
-            <p style={{ fontSize: 30, fontWeight: 800, margin: 0 }}>¿Sigues ahí?</p>
-            <p style={{ fontSize: 21, color: C.muted }}>Por tu privacidad, el registro se borrará en {Math.max(0, times.form_reset_seconds - idle)} segundos.</p>
+            <p style={{ fontSize: 30, fontWeight: 800, margin: 0 }}>{t.stillThere}</p>
+            <p style={{ fontSize: 21, color: C.muted }}>{t.idleWarning(Math.max(0, times.form_reset_seconds - idle))}</p>
             <button type="button" onClick={() => { lastTouch.current = Date.now(); setIdle(0); }} data-testid="kiosk-continue"
-              style={{ minHeight: 84, width: '100%', borderRadius: 20, fontSize: 30, fontWeight: 800, border: 'none', background: C.gold, color: C.navy }}>Continuar</button>
+              style={{ minHeight: 84, width: '100%', borderRadius: 20, fontSize: 30, fontWeight: 800, border: 'none', background: C.gold, color: C.navy }}>{t.continue}</button>
           </div>
         </div>
       )}
@@ -333,7 +378,7 @@ export default function KioskPage() {
   if (linkError) {
     return shell(
       <div style={{ textAlign: 'center', marginTop: 60 }} data-testid="kiosk-link-error">
-        <p style={{ fontSize: 32, fontWeight: 800, margin: 0, fontFamily: 'Spectral, Georgia, serif' }}>Esta tableta necesita el enlace nuevo</p>
+        <p style={{ fontSize: 32, fontWeight: 800, margin: 0, fontFamily: 'Spectral, Georgia, serif' }}>{t.needLinkTitle}</p>
         <p style={{ fontSize: 22, color: C.muted, marginTop: 16 }}>{linkError}</p>
       </div>,
     );
@@ -341,29 +386,49 @@ export default function KioskPage() {
   if (!config) {
     return shell(
       <div style={{ textAlign: 'center', marginTop: 40 }} data-testid="kiosk-loading">
-        <p style={{ fontSize: 22, margin: 0 }}>Preparando el registro…</p>
+        <p style={{ fontSize: 22, margin: 0 }}>{KIOSK_TEXT.es.preparing}</p>
+        <p style={{ fontSize: 20, margin: '4px 0 0', color: C.muted }}>{KIOSK_TEXT.en.preparing}</p>
         {configProblem && <p style={{ fontSize: 20, color: C.goldDark, marginTop: 16 }} data-testid="kiosk-config-problem">{configProblem}</p>}
-        {configProblem && <div style={{ marginTop: 20 }}><Big kind="secondary" onClick={() => { setConfigProblem('Reintentando…'); loadConfig(); }} testId="kiosk-retry">Reintentar ahora</Big></div>}
+        {configProblem && <div style={{ marginTop: 20 }}><Big kind="secondary" onClick={() => { setConfigProblem(KIOSK_TEXT.es.retrying); loadConfig(); }} testId="kiosk-retry">{KIOSK_TEXT.es.retryNow} · {KIOSK_TEXT.en.retryNow}</Big></div>}
       </div>,
     );
   }
 
   // ---------------------------------------------------------------- confirmación
   if (result) {
-    const extra = phrases(result.confirmation).filter((line) => !/^¡?gracias/i.test(line));
+    const extra = phrases(result.confirmation).filter((line) => !/^¡?(gracias|thank you)/i.test(line));
     return shell(
       <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1 }} data-testid="kiosk-confirmation">
-        <p style={{ fontSize: 'clamp(34px, min(5.4vw, 6.4vh), 50px)', fontWeight: 700, margin: 0, fontFamily: 'Spectral, Georgia, serif', lineHeight: 1.15, color: C.navy }}>¡Gracias, {result.greeting_name}!</p>
+        <p style={{ fontSize: 'clamp(34px, min(5.4vw, 6.4vh), 50px)', fontWeight: 700, margin: 0, fontFamily: 'Spectral, Georgia, serif', lineHeight: 1.15, color: C.navy }}>{t.thanks(result.greeting_name)}</p>
         <Accent />
         {result.offline
-          ? <p style={{ fontSize: 24, margin: '20px auto', maxWidth: 680, color: C.goldDark, fontWeight: 700 }} data-testid="kiosk-offline">Tu registro quedó guardado en esta tableta y se enviará apenas vuelva el internet. Un servidor te dará tu número.</p>
+          ? <p style={{ fontSize: 24, margin: '20px auto', maxWidth: 680, color: C.goldDark, fontWeight: 700 }} data-testid="kiosk-offline">{t.offlineSaved}</p>
           : <>
-              <p style={{ fontSize: 22, margin: 0, color: C.muted }}>Tu número de registro</p>
+              <p style={{ fontSize: 22, margin: 0, color: C.muted }}>{t.yourNumber}</p>
               <p style={{ fontSize: 'clamp(40px, min(10vw, 9vh), 76px)', whiteSpace: 'nowrap', fontWeight: 800, letterSpacing: '0.04em', margin: '4px 0 clamp(14px, 3vh, 28px)', color: C.navy }} data-testid="kiosk-number">{result.visitor_number}</p>
             </>}
         <div style={{ display: 'grid', gap: 8, margin: '0 auto clamp(18px, 3vh, 30px)', maxWidth: 720 }}>{extra.map((line) => <p key={line} style={{ fontSize: 'clamp(21px, 3.2vh, 25px)', lineHeight: 1.35, margin: 0 }}>{line}</p>)}</div>
-        <Big onClick={reset} testId="kiosk-done">Listo</Big>
+        <Big onClick={reset} testId="kiosk-done">{t.done}</Big>
       </div>,
+    );
+  }
+
+  // ---------------------------------------------------------------- idioma (antes de la bienvenida)
+  if (!lang) {
+    const choose = (key) => { setLang(key); setForm(emptyForm()); setStep(-1); lastTouch.current = Date.now(); };
+    return shell(
+      <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1 }} data-testid="kiosk-language">
+        <img {...LOGO} style={{ width: 'min(420px, 62vw)', maxHeight: '22vh', objectFit: 'contain' }} data-testid="kiosk-logo" />
+        <h1 style={{ fontSize: 'clamp(30px, min(4.6vw, 5.4vh), 44px)', margin: 'clamp(16px, 3vh, 34px) 0 0', fontFamily: 'Spectral, Georgia, serif', fontWeight: 600, lineHeight: 1.15, color: C.navy }}>{KIOSK_TEXT.es.chooseTitle}</h1>
+        <p style={{ fontSize: 'clamp(24px, min(3.4vw, 4vh), 32px)', margin: '4px 0 0', color: C.goldDark, fontWeight: 700 }}>{KIOSK_TEXT.en.chooseTitle}</p>
+        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 'clamp(16px, 3vw, 32px)', marginTop: 'clamp(22px, 4.4vh, 48px)', width: '100%' }}>
+          {LANGUAGES.map(([key, label]) => (
+            <button key={key} type="button" onClick={() => choose(key)} data-testid={`kiosk-lang-${key}`}
+              style={{ flex: '0 1 340px', minHeight: 'clamp(96px, 14vh, 130px)', borderRadius: 28, fontSize: 'clamp(32px, 4.8vh, 42px)', fontWeight: 800, background: C.gold, color: C.navy, border: 'none', boxShadow: '0 8px 24px rgba(20,33,61,0.22)' }}>{label}</button>
+          ))}
+        </div>
+        <p style={{ margin: 'clamp(14px, 3vh, 30px) 0 0', fontSize: 15, color: C.muted }}>{device}</p>
+      </div>, null, true,
     );
   }
 
@@ -372,7 +437,7 @@ export default function KioskPage() {
     // Composición sin cajas: logo, título y subtítulo arriba; la frase PRINCIPAL (3.ª
     // línea), la más grande, entera al centro con una línea dorada fina; las demás,
     // secundarias, justo encima del botón.
-    const [title, subtitle, main, ...closing] = phrases(config.texts.welcome);
+    const [title, subtitle, main, ...closing] = phrases(texts.welcome);
     return shell(
       <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1 }} data-testid="kiosk-start">
         <img {...LOGO} style={{ width: 'min(420px, 62vw)', maxHeight: '22vh', objectFit: 'contain' }} data-testid="kiosk-logo" />
@@ -385,8 +450,8 @@ export default function KioskPage() {
           </div>
         )}
         {closing.map((line) => <p key={line} style={{ margin: 'clamp(14px, 2.6vh, 28px) 0 0', fontSize: 'clamp(20px, min(2.6vw, 3.2vh), 24px)', lineHeight: 1.35, color: C.muted }} data-testid="kiosk-closing">{line}</p>)}
-        <button type="button" onClick={() => { setForm(emptyForm()); setStep(0); lastTouch.current = Date.now(); }} data-testid="kiosk-begin"
-          style={{ marginTop: 'clamp(14px, 2.6vh, 28px)', minHeight: 'clamp(72px, 10vh, 100px)', padding: '0 clamp(28px, 7vw, 64px)', whiteSpace: 'nowrap', borderRadius: 28, fontSize: 'clamp(28px, 4.2vh, 34px)', fontWeight: 800, background: C.gold, color: C.navy, border: 'none', boxShadow: '0 8px 24px rgba(20,33,61,0.22)' }}>Iniciar registro</button>
+        <button type="button" onClick={() => { setStep(0); lastTouch.current = Date.now(); }} data-testid="kiosk-begin"
+          style={{ marginTop: 'clamp(14px, 2.6vh, 28px)', minHeight: 'clamp(72px, 10vh, 100px)', padding: '0 clamp(28px, 7vw, 64px)', whiteSpace: 'nowrap', borderRadius: 28, fontSize: 'clamp(28px, 4.2vh, 34px)', fontWeight: 800, background: C.gold, color: C.navy, border: 'none', boxShadow: '0 8px 24px rgba(20,33,61,0.22)' }}>{t.begin}</button>
         <p style={{ margin: 'clamp(8px, 1.6vh, 16px) 0 0', fontSize: 15, color: C.muted }}>{device}</p>
       </div>, null, true,
     );
@@ -395,97 +460,122 @@ export default function KioskPage() {
   // ---------------------------------------------------------------- pasos
   const footer = (
     <>
-      <Big kind="secondary" onClick={() => (step === 0 ? reset() : setStep(step - 1))} testId="kiosk-back">{step === 0 ? 'Cancelar' : 'Atrás'}</Big>
+      <Big kind="secondary" onClick={() => (step === 0 ? reset() : setStep(step - 1))} testId="kiosk-back">{step === 0 ? t.cancel : t.back}</Big>
       {step < order.length - 1
-        ? <Big onClick={() => { saveDraft(); setStep(step + 1); }} disabled={!canNext()} testId="kiosk-next">Siguiente</Big>
-        : <Big onClick={submit} disabled={saving || missingContact} testId="kiosk-submit">{saving ? 'Guardando…' : 'Terminar registro'}</Big>}
+        ? <Big onClick={() => { saveDraft(); setStep(step + 1); }} disabled={!canNext()} testId="kiosk-next">{t.next}</Big>
+        : <Big onClick={submit} disabled={saving || missingContact} testId="kiosk-submit">{saving ? t.saving : t.finish}</Big>}
     </>
   );
   const title = (text, sub) => (
     <div className="vk-wide" style={{ marginBottom: 4 }}>
-      <p style={{ fontSize: 18, color: C.goldDark, fontWeight: 700, margin: 0 }}>Paso {step + 1} de {order.length}</p>
+      <p style={{ fontSize: 18, color: C.goldDark, fontWeight: 700, margin: 0 }}>{t.step(step + 1, order.length)}{sub ? ` · ${sub}` : ''}</p>
       <h2 style={{ fontSize: 'clamp(28px, 4.4vh, 36px)', margin: '4px 0 0', fontFamily: 'Spectral, Georgia, serif', fontWeight: 600, lineHeight: 1.15, color: C.navy }}>{text}</h2>
-      {sub && <p style={{ fontSize: 20, color: C.muted, margin: '6px 0 0' }}>{sub}</p>}
     </div>
   );
   const setChild = (index, key, value) => set('children', form.children.map((item, position) => (position === index ? { ...item, [key]: value } : item)));
+  // «Prefiero no recibir seguimiento» excluye lo demás (y al revés).
+  const toggleRequest = (key) => {
+    const on = form.requests.includes(key);
+    if (key === 'no_followup') set('requests', on ? [] : ['no_followup']);
+    else set('requests', on ? form.requests.filter((item) => item !== key) : [...form.requests.filter((item) => item !== 'no_followup'), key]);
+  };
   const body = {
-    nombre: <Section testId="kiosk-step-nombre">{title('¿Cómo te llamas?')}
-      <Field label="Nombre" value={form.first_name} onChange={(value) => set('first_name', value)} testId="kiosk-first-name" />
-      <Field label="Apellidos" value={form.last_name} onChange={(value) => set('last_name', value)} testId="kiosk-last-name" />
-      <Field label="¿Cómo te gusta que te llamen?" value={form.preferred_name} onChange={(value) => set('preferred_name', value)} placeholder="Ej.: Toño" testId="kiosk-preferred" />
-      <Wide><p style={{ margin: 0, fontSize: 18, color: C.muted, display: 'flex', alignItems: 'center', gap: 10 }}><Lock size={20} color={C.goldDark} aria-hidden />Cuidamos tus datos: solo los usamos para darte la bienvenida y servirte.</p></Wide>
+    nombre: <Section testId="kiosk-step-nombre">{title(t.nameTitle)}
+      <Field label={t.firstName} value={form.first_name} onChange={(value) => set('first_name', value)} testId="kiosk-first-name" />
+      <Field label={t.lastName} value={form.last_name} onChange={(value) => set('last_name', value)} testId="kiosk-last-name" />
+      <Field label={t.preferred} value={form.preferred_name} onChange={(value) => set('preferred_name', value)} placeholder={t.preferredHint} testId="kiosk-preferred" />
+      <div><Label>{t.sex}</Label><Chips options={[['female', t.female], ['male', t.male]]} value={form.sex} onChange={(value) => set('sex', value)} testId="kiosk-sex" /></div>
+      <Wide><p style={{ margin: 0, fontSize: 18, color: C.muted, display: 'flex', alignItems: 'center', gap: 10 }}><Lock size={20} color={C.goldDark} aria-hidden />{t.careNote}</p></Wide>
       {/* Campo trampa: invisible para personas; los robots lo llenan. */}
       <input type="text" name="website" value={form.website} onChange={(event) => set('website', event.target.value)} tabIndex={-1} autoComplete="off" aria-hidden="true"
         style={{ position: 'absolute', left: '-10000px', width: 1, height: 1, opacity: 0 }} data-testid="kiosk-website" /></Section>,
-    contacto: <Section testId="kiosk-step-contacto">{title('¿Cómo te contactamos?')}
-      <label style={{ display: 'block' }}><Label>Teléfono</Label><input type="tel" inputMode="numeric" autoComplete="off" value={formatPhone(form.phone)} onChange={(event) => set('phone', phoneDigits(event.target.value))} placeholder="555-123-4567" style={inputStyle} data-testid="kiosk-phone" /></label>
-      <Field label="Correo electrónico" type="email" value={form.email} onChange={(value) => set('email', value)} testId="kiosk-email" />
-      <Wide><Label>¿Cómo prefieres que te contactemos? Puedes elegir varias.</Label><CheckChips options={CONTACT} value={form.contact_methods} onChange={(value) => set('contact_methods', value)} testId="kiosk-contact-methods" /></Wide></Section>,
-    vives: <Section testId="kiosk-step-vives">{title('¿Dónde vives?')}
-      <Wide><Field label="Calle y número" value={form.address} onChange={(value) => set('address', value)} testId="kiosk-address" /></Wide>
-      <Field label="Ciudad" value={form.city} onChange={(value) => set('city', value)} testId="kiosk-city" />
-      <label style={{ display: 'block' }}><Label>Código postal</Label><input inputMode="numeric" autoComplete="off" value={form.zip_code} onChange={(event) => set('zip_code', event.target.value.replace(/[^0-9-]/g, '').slice(0, 10))} style={inputStyle} data-testid="kiosk-zip" /></label>
-      <Wide><Label>¿Cómo nos visitas hoy?</Label><Chips options={VISIT_MODES} value={form.visit_mode} onChange={(value) => set('visit_mode', value)} testId="kiosk-visit-mode" /></Wide>
-      <Wide><Label>Fecha de nacimiento</Label><p style={{ margin: '-4px 0 10px', fontSize: 19, color: C.muted }}>Para tenerte presente el día de tu cumpleaños</p><div style={{ maxWidth: 720 }}><BirthdayPicker value={form.birth_date} onChange={(value) => set('birth_date', value)} /></div></Wide></Section>,
-    visita: <Section testId="kiosk-step-visita">{title('Tu visita')}
-      <div><Label>¿Es tu primera vez con nosotros?</Label><Chips options={[[true, 'Primera vez'], [false, 'Ya los había visitado']]} value={form.first_visit} onChange={(value) => set('first_visit', value)} testId="kiosk-first-visit" /></div>
-      <Field label="¿Quién te invitó?" value={form.invited_by} onChange={(value) => set('invited_by', value)} placeholder="Nombre de quien te invitó" testId="kiosk-invited-by" />
-      <Wide><Label>¿Cómo te enteraste de nosotros?</Label><Chips options={HEARD.map((item) => [item, item])} value={form.how_heard || null} onChange={(value) => set('how_heard', value || '')} testId="kiosk-heard" /></Wide></Section>,
-    fe: <Section testId="kiosk-step-fe">{title('Tu fe')}
-      <div><Label>¿Eres cristiano o cristiana?</Label><Chips options={CHRISTIAN} value={form.faith_christian} onChange={(value) => set('faith_christian', value)} testId="kiosk-christian" /></div>
-      <div><Label>Quiero aceptar a Jesús como mi Salvador</Label><Chips options={ACCEPT} value={form.accept_jesus} onChange={(value) => set('accept_jesus', value)} testId="kiosk-accept-jesus" /></div>
-      <Wide><CheckChips options={[['reconcile', 'Deseo reconciliarme con Dios'], ['faith_info', 'Quiero informarme de cómo ser cristiano']]} value={['reconcile', 'faith_info'].filter((key) => form[key])}
+    contacto: <Section testId="kiosk-step-contacto">{title(t.contactTitle)}
+      <label style={{ display: 'block' }}><Label>{t.phone}</Label><input type="tel" inputMode="numeric" autoComplete="off" value={formatPhone(form.phone)} onChange={(event) => set('phone', phoneDigits(event.target.value))} placeholder="555-123-4567" style={inputStyle} data-testid="kiosk-phone" /></label>
+      <Field label={t.email} type="email" value={form.email} onChange={(value) => set('email', value)} testId="kiosk-email" />
+      <Wide><Label>{t.methodsLabel}</Label><CheckChips options={pairs(CONTACT, t.methods)} value={form.contact_methods} onChange={(value) => set('contact_methods', value)} testId="kiosk-contact-methods" /></Wide></Section>,
+    vives: <Section testId="kiosk-step-vives">{title(t.homeTitle)}
+      <Wide><Field label={t.street} value={form.address} onChange={(value) => set('address', value)} testId="kiosk-address" /></Wide>
+      <Field label={t.city} value={form.city} onChange={(value) => set('city', value)} testId="kiosk-city" />
+      <label style={{ display: 'block' }}><Label>{t.zip}</Label><input inputMode="numeric" autoComplete="off" value={form.zip_code} onChange={(event) => set('zip_code', event.target.value.replace(/[^0-9-]/g, '').slice(0, 10))} style={inputStyle} data-testid="kiosk-zip" /></label>
+      <div><Label>{t.newInArea}</Label><YesNo t={t} value={form.new_in_area} onChange={(value) => set('new_in_area', value)} testId="kiosk-new-in-area" /></div>
+      <div><Label>{t.birthTitle}</Label><p style={{ margin: '-4px 0 10px', fontSize: 19, color: C.muted }}>{t.birthHint}</p><BirthdayPicker t={t} withYear={withYear} value={form.birth} onChange={(value) => set('birth', value)} /></div></Section>,
+    visita: <Section testId="kiosk-step-visita">{title(t.visitTitle)}
+      <div><Label>{t.firstVisit}</Label><Chips options={[[true, t.firstTime], [false, t.beenBefore]]} value={form.first_visit} onChange={(value) => set('first_visit', value)} testId="kiosk-first-visit" /></div>
+      <Field label={t.invitedBy} value={form.invited_by} onChange={(value) => set('invited_by', value)} placeholder={t.invitedHint} testId="kiosk-invited-by" />
+      <Wide><Label>{t.heard}</Label><Chips options={HEARD.map((item) => [item, t.heardOptions[item]])} value={form.how_heard || null} onChange={(value) => set('how_heard', value || '')} testId="kiosk-heard" /></Wide></Section>,
+    fe: <Section testId="kiosk-step-fe">{title(t.faithTitle)}
+      <div><Label>{t.christian}</Label><Chips options={pairs(CHRISTIAN, t.christianOptions)} value={form.faith_christian} onChange={(value) => set('faith_christian', value)} testId="kiosk-christian" /></div>
+      <div><Label>{t.accept}</Label><Chips options={pairs(ACCEPT, t.acceptOptions)} value={form.accept_jesus} onChange={(value) => set('accept_jesus', value)} testId="kiosk-accept-jesus" /></div>
+      <Wide><CheckChips options={[['reconcile', t.reconcile], ['faith_info', t.faithInfo]]} value={['reconcile', 'faith_info'].filter((key) => form[key])}
         onChange={(value) => setForm((current) => ({ ...current, reconcile: value.includes('reconcile'), faith_info: value.includes('faith_info') }))} testId="kiosk-faith" /></Wide>
-      <Wide><Label>¿Asistes a otra iglesia?</Label>
+      <Wide><Label>{t.otherChurch}</Label>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
-          <YesNo value={form.other_church} onChange={(value) => set('other_church', value)} testId="kiosk-other-church" />
+          <YesNo t={t} value={form.other_church} onChange={(value) => set('other_church', value)} testId="kiosk-other-church" />
           {form.other_church && <>
-            <input value={form.other_church_name} onChange={(event) => set('other_church_name', event.target.value)} placeholder="Nombre de la iglesia" aria-label="Nombre de la iglesia" autoComplete="off" style={{ ...inputStyle, flex: '1 1 220px', width: 'auto', minWidth: 0 }} data-testid="kiosk-other-church-name" />
-            <input value={form.other_church_pastor} onChange={(event) => set('other_church_pastor', event.target.value)} placeholder="Nombre del pastor" aria-label="Nombre del pastor" autoComplete="off" style={{ ...inputStyle, flex: '1 1 220px', width: 'auto', minWidth: 0 }} data-testid="kiosk-other-church-pastor" />
+            <input value={form.other_church_name} onChange={(event) => set('other_church_name', event.target.value)} placeholder={t.churchName} aria-label={t.churchName} autoComplete="off" style={{ ...inputStyle, flex: '1 1 220px', width: 'auto', minWidth: 0 }} data-testid="kiosk-other-church-name" />
+            <input value={form.other_church_pastor} onChange={(event) => set('other_church_pastor', event.target.value)} placeholder={t.pastorName} aria-label={t.pastorName} autoComplete="off" style={{ ...inputStyle, flex: '1 1 220px', width: 'auto', minWidth: 0 }} data-testid="kiosk-other-church-pastor" />
           </>}
         </div></Wide></Section>,
-    familia: <Section testId="kiosk-step-familia">{title('Tu familia')}
-      <Wide><Label>Estado civil</Label>
+    familia: <Section testId="kiosk-step-familia">{title(t.familyTitle)}
+      <Wide><Label>{t.marital}</Label>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
-          <Chips options={MARITAL} value={form.marital_status} onChange={(value) => set('marital_status', value)} testId="kiosk-marital" />
-          {form.marital_status === 'married' && <input value={form.spouse_name} onChange={(event) => set('spouse_name', event.target.value)} placeholder="Nombre de tu esposo o esposa" aria-label="Nombre de tu esposo o esposa" autoComplete="off" style={{ ...inputStyle, flex: '1 1 260px', width: 'auto', minWidth: 0 }} data-testid="kiosk-spouse" />}
+          <Chips options={pairs(MARITAL, t.maritalOptions)} value={form.marital_status} onChange={(value) => set('marital_status', value)} testId="kiosk-marital" />
+          {form.marital_status === 'married' && <input value={form.spouse_name} onChange={(event) => set('spouse_name', event.target.value)} placeholder={t.spouse} aria-label={t.spouse} autoComplete="off" style={{ ...inputStyle, flex: '1 1 260px', width: 'auto', minWidth: 0 }} data-testid="kiosk-spouse" />}
         </div></Wide>
-      <div><Label>¿Tienes hijos?</Label><YesNo value={form.has_children} onChange={(value) => setForm((current) => ({ ...current, has_children: value, children: value && !current.children.length ? [{ name: '', age: '' }] : current.children }))} testId="kiosk-has-children" /></div>
-      <Field label="¿Quién te acompaña hoy?" value={form.companions} onChange={(value) => set('companions', value)} placeholder="Ej.: mi esposa y mis dos hijos" testId="kiosk-companions" />
+      <div><Label>{t.hasChildren}</Label><YesNo t={t} value={form.has_children} onChange={(value) => setForm((current) => ({ ...current, has_children: value, children: value && !current.children.length ? [{ name: '', age: '' }] : current.children }))} testId="kiosk-has-children" /></div>
+      <Field label={t.companions} value={form.companions} onChange={(value) => set('companions', value)} placeholder={t.companionsHint} testId="kiosk-companions" />
       {form.has_children && <Wide><div className="vk-kids" data-testid="kiosk-children">
         {form.children.map((child, index) => (
           <div key={index} style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-            <input value={child.name} onChange={(event) => setChild(index, 'name', event.target.value)} placeholder={`Nombre del hijo o hija ${index + 1}`} aria-label={`Nombre del hijo o hija ${index + 1}`} autoComplete="off" style={{ ...inputStyle, minHeight: 56, flex: '1 1 auto', width: 'auto', minWidth: 0 }} data-testid={`kiosk-child-name-${index}`} />
-            <input value={child.age} onChange={(event) => setChild(index, 'age', event.target.value.replace(/\D/g, '').slice(0, 2))} inputMode="numeric" placeholder="Edad" aria-label={`Edad del hijo o hija ${index + 1}`} style={{ ...inputStyle, minHeight: 56, flex: '0 0 96px', width: 96 }} data-testid={`kiosk-child-age-${index}`} />
-            <button type="button" onClick={() => set('children', form.children.filter((_, position) => position !== index))} aria-label={`Quitar al hijo o hija ${index + 1}`} title="Quitar"
+            <input value={child.name} onChange={(event) => setChild(index, 'name', event.target.value)} placeholder={t.childName(index + 1)} aria-label={t.childName(index + 1)} autoComplete="off" style={{ ...inputStyle, minHeight: 56, flex: '1 1 auto', width: 'auto', minWidth: 0 }} data-testid={`kiosk-child-name-${index}`} />
+            <input value={child.age} onChange={(event) => setChild(index, 'age', event.target.value.replace(/\D/g, '').slice(0, 2))} inputMode="numeric" placeholder={t.age} aria-label={t.childAge(index + 1)} style={{ ...inputStyle, minHeight: 56, flex: '0 0 96px', width: 96 }} data-testid={`kiosk-child-age-${index}`} />
+            <button type="button" onClick={() => set('children', form.children.filter((_, position) => position !== index))} aria-label={t.removeChild(index + 1)} title={t.remove}
               style={{ flex: '0 0 56px', height: 56, borderRadius: 14, border: `2px solid ${C.line}`, background: '#fff', color: C.ink, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><X size={26} aria-hidden /></button>
           </div>
         ))}
       </div></Wide>}
       <Wide><div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
-        {form.has_children && <Big kind="secondary" onClick={() => set('children', [...form.children, { name: '', age: '' }])} testId="kiosk-child-add">Agregar otro hijo</Big>}
-        <CheckChips options={[['kids', 'Deseo que mis hijos participen en el ministerio de niños']]} value={form.kids_ministry ? ['kids'] : []} onChange={(value) => set('kids_ministry', value.includes('kids'))} testId="kiosk-kids-ministry" />
+        {form.has_children && <Big kind="secondary" onClick={() => set('children', [...form.children, { name: '', age: '' }])} testId="kiosk-child-add">{t.addChild}</Big>}
+        <CheckChips options={[['kids', t.kids]]} value={form.kids_ministry ? ['kids'] : []} onChange={(value) => set('kids_ministry', value.includes('kids'))} testId="kiosk-kids-ministry" />
       </div></Wide></Section>,
-    servir: <Section testId="kiosk-step-servir">{title('¿Cómo podemos servirte?', 'Puedes elegir varias.')}
-      <Wide><CheckChips options={REQUESTS} value={form.requests} onChange={(value) => set('requests', value.includes('no_followup') && !form.requests.includes('no_followup') ? ['no_followup'] : value.filter((item) => item !== 'no_followup' || value.length === 1))} testId="kiosk-requests" /></Wide></Section>,
-    notas: <Section testId="kiosk-step-notas">{title('Cuéntanos un poco más', 'Es confidencial.')}
-      {form.requests.some((item) => PRAYER.includes(item)) && <Area label="¿Por qué quieres que oremos?" hint="Solo lo verá el equipo de oración." value={form.prayer_request} onChange={(value) => set('prayer_request', value)} testId="kiosk-prayer" />}
-      {form.requests.some((item) => item.startsWith('counseling')) && <Area label="Cuéntanos brevemente" hint="Solo lo verá el equipo pastoral." value={form.counseling_note} onChange={(value) => set('counseling_note', value)} testId="kiosk-counseling" />}
-      {form.requests.some((item) => ['support_child', 'other_help'].includes(item)) && <Area label="¿Qué otra ayuda necesitas?" hint="Confidencial." value={form.needs_note} onChange={(value) => set('needs_note', value)} testId="kiosk-needs" />}</Section>,
-    apoyo: <Section testId="kiosk-step-apoyo">{title('Apoyo')}
-      <Wide><CheckChips options={[['giving', 'Quiero información para ofrendar o donar mensualmente']]} value={form.giving_info ? ['giving'] : []} onChange={(value) => set('giving_info', value.includes('giving'))} testId="kiosk-giving" /></Wide>
-      <Wide><p style={{ margin: 0, fontSize: 20, color: C.muted }}>No pedimos datos de pago. La encargada de finanzas te dará la información.</p></Wide></Section>,
-    cierre: <Section testId="kiosk-step-cierre">{title('¿Podemos comunicarnos contigo para darte seguimiento?')}
-      <Wide><YesNo value={form.consent_followup} onChange={(value) => set('consent_followup', value)} testId="kiosk-consent-followup" /></Wide>
+    // Cuadrícula de renglones alineados: 2 columnas en horizontal, 1 en vertical; subtítulos cortos.
+    servir: <div data-testid="kiosk-step-servir">{title(t.serveTitle, t.serveHint)}
+      {/* «Prefiero no recibir seguimiento» va aparte, al final (en horizontal ocupa el hueco bajo «Participar y servir», así nada se desplaza). */}
+      <div className="vk-serve" style={{ marginTop: 'clamp(6px, 1.4vh, 14px)' }} data-testid="kiosk-requests">
+        {SERVE_GROUPS.map(([group, keys], index) => {
+          const section = (
+            <section key={group} data-testid={`kiosk-serve-${group}`}>
+              <h3 style={{ margin: '0 0 2px', fontSize: 'clamp(18px, 2.5vh, 20px)', fontWeight: 800, color: C.goldDark, letterSpacing: '0.02em' }}>{t.serveGroups[group]}</h3>
+              <div className="vk-rows">{keys.map((key) => <CheckRow key={key} on={form.requests.includes(key)} label={t.requests[key]} onClick={() => toggleRequest(key)} testId={`kiosk-requests-${key}`} />)}</div>
+            </section>
+          );
+          if (index < SERVE_GROUPS.length - 1) return section;
+          return (
+            <div key={group}>{section}
+              <div className="vk-rows" style={{ marginTop: 'clamp(10px, 1.8vh, 18px)', paddingTop: 'clamp(8px, 1.4vh, 12px)', borderTop: `2px solid ${C.line}` }}>
+                <CheckRow on={form.requests.includes('no_followup')} label={t.requests.no_followup} onClick={() => toggleRequest('no_followup')} testId="kiosk-requests-no_followup" />
+              </div>
+            </div>
+          );
+        })}
+      </div></div>,
+    notas: <Section testId="kiosk-step-notas">{title(t.notesTitle, t.notesHint)}
+      {form.requests.some((item) => PRAYER.includes(item)) && <Area label={t.prayerWhy} hint={t.prayerOnly} value={form.prayer_request} onChange={(value) => set('prayer_request', value)} testId="kiosk-prayer" />}
+      {form.requests.some((item) => item.startsWith('counseling')) && <Area label={t.counselingTell} hint={t.counselingOnly} value={form.counseling_note} onChange={(value) => set('counseling_note', value)} testId="kiosk-counseling" />}
+      {form.requests.some((item) => ['support_child', 'other_help'].includes(item)) && <Area label={t.needsWhat} hint={t.confidential} value={form.needs_note} onChange={(value) => set('needs_note', value)} testId="kiosk-needs" />}</Section>,
+    apoyo: <Section testId="kiosk-step-apoyo">{title(t.givingTitle)}
+      <Wide><CheckChips options={[['giving', t.giving]]} value={form.giving_info ? ['giving'] : []} onChange={(value) => set('giving_info', value.includes('giving'))} testId="kiosk-giving" /></Wide>
+      <Wide><p style={{ margin: 0, fontSize: 20, color: C.muted }}>{t.givingNote}</p></Wide></Section>,
+    cierre: <Section testId="kiosk-step-cierre">{title(t.closeTitle)}
+      <Wide><YesNo t={t} value={form.consent_followup} onChange={(value) => set('consent_followup', value)} testId="kiosk-consent-followup" /></Wide>
       {missingContact && (
         <Wide><div style={{ display: 'grid', gap: 12, justifyItems: 'start' }} data-testid="kiosk-need-contact">
-          <p style={{ margin: 0, fontSize: 22, color: C.goldDark, fontWeight: 700 }}>Para darte seguimiento necesitamos tu teléfono o tu correo.</p>
-          <Big kind="secondary" onClick={() => setStep(order.indexOf('contacto'))} testId="kiosk-add-contact">Escribir mi teléfono o correo</Big>
+          <p style={{ margin: 0, fontSize: 22, color: C.goldDark, fontWeight: 700 }}>{t.needContact}</p>
+          <Big kind="secondary" onClick={() => setStep(order.indexOf('contacto'))} testId="kiosk-add-contact">{t.addContact}</Big>
         </div></Wide>
       )}
       <Wide><ul style={{ display: 'grid', gap: 'clamp(10px, 2vh, 18px)', margin: '6px 0 0', padding: 0, listStyle: 'none', maxWidth: 860 }} data-testid="kiosk-privacy">
-        {phrases(config.texts.privacy).map((line, index) => {
+        {phrases(texts.privacy).map((line, index) => {
           const Icon = [Lock, Users, HeartHandshake][index % 3];
           return <li key={line} style={{ display: 'flex', alignItems: 'flex-start', gap: 14, fontSize: 'clamp(19px, 2.8vh, 22px)', lineHeight: 1.35, color: C.muted }}><Icon size={26} color={C.goldDark} aria-hidden style={{ flex: '0 0 auto', marginTop: 2 }} /><span>{line}</span></li>;
         })}

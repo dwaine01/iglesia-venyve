@@ -71,7 +71,7 @@ function KioskTimeouts({ canEdit }) {
   useEffect(() => { axios.get(`${API}/api/visitors/kiosk-settings`, getAuthHeaders()).then((response) => setValues(response.data)).catch(() => setValues(null)); }, [API, getAuthHeaders]);
   if (!values) return null;
   const fields = [['form_warn_seconds', 'Aviso «¿Sigues ahí?» en el formulario'], ['form_reset_seconds', 'Limpiar el formulario sin actividad'], ['start_reset_seconds', 'Refrescar la pantalla de inicio'], ['confirm_reset_seconds', 'Volver al inicio desde la confirmación']];
-  const save = async () => { try { setValues((await axios.put(`${API}/api/visitors/kiosk-settings`, values, getAuthHeaders())).data); toast.success('Tiempos guardados'); } catch (error) { toast.error(apiErrorMessage(error, 'No se pudieron guardar')); } };
+  const save = async () => { try { setValues((await axios.put(`${API}/api/visitors/kiosk-settings`, values, getAuthHeaders())).data); toast.success('Ajustes guardados'); } catch (error) { toast.error(apiErrorMessage(error, 'No se pudieron guardar')); } };
   return (
     <div className="border-t border-[#EEECE6] pt-4" data-testid="visitors-timeouts">
       <p className="text-[15px] font-semibold text-[#101D36]">Tiempos de espera de la tableta (minutos)</p>
@@ -81,7 +81,12 @@ function KioskTimeouts({ canEdit }) {
           <input type="number" min={key === 'confirm_reset_seconds' ? 0.25 : 1} step={0.25} disabled={!canEdit} value={Math.round((values[key] / 60) * 100) / 100} onChange={(event) => setValues((current) => ({ ...current, [key]: Math.round(Number(event.target.value) * 60) }))}
             className="mt-1 block h-12 w-full rounded-lg border border-[#D9D4C7] px-3 text-base" data-testid={`visitors-timeout-${key}`} /></label>
       ))}</div>
-      {canEdit && <button type="button" onClick={save} className="mt-3 min-h-12 rounded-xl border border-[#D9D4C7] px-4 text-base font-semibold">Guardar tiempos</button>}
+      {/* Por privacidad la tableta pide solo día y mes; se puede activar el año sin tocar código. */}
+      <label className="mt-3 flex min-h-12 items-center gap-3 text-[15px] font-semibold text-slate-700">
+        <input type="checkbox" disabled={!canEdit} checked={!!values.ask_birth_year} onChange={(event) => setValues((current) => ({ ...current, ask_birth_year: event.target.checked }))} className="h-6 w-6" data-testid="visitors-ask-birth-year" />
+        Pedir año de nacimiento <span className="font-normal text-slate-600">(apagado: solo día y mes)</span>
+      </label>
+      {canEdit && <button type="button" onClick={save} className="mt-3 min-h-12 rounded-xl border border-[#D9D4C7] px-4 text-base font-semibold" data-testid="visitors-settings-save">Guardar ajustes</button>}
     </div>
   );
 }
@@ -90,16 +95,28 @@ function Texts({ canEdit }) {
   const { API, getAuthHeaders } = useAuth();
   const [texts, setTexts] = useState(null);
   const [service, setService] = useState('');
+  const [language, setLanguage] = useState('es');
   useEffect(() => { axios.get(`${API}/api/visitors/texts`, getAuthHeaders()).then((response) => setTexts(response.data)).catch((error) => toast.error(apiErrorMessage(error, 'No se pudieron cargar los textos'))); }, [API, getAuthHeaders]);
   if (!texts) return <Loader2 className="mx-auto h-6 w-6 animate-spin text-slate-400" />;
-  const save = async () => { try { const response = await axios.put(`${API}/api/visitors/texts`, { welcome: texts.welcome, privacy: texts.privacy, confirmation: texts.confirmation }, getAuthHeaders()); setTexts(response.data); toast.success('Textos guardados'); } catch (error) { toast.error(apiErrorMessage(error, 'No se pudieron guardar')); } };
+  const save = async () => { try { const response = await axios.put(`${API}/api/visitors/texts`, { welcome: texts.welcome, privacy: texts.privacy, confirmation: texts.confirmation, welcome_en: texts.welcome_en, privacy_en: texts.privacy_en, confirmation_en: texts.confirmation_en }, getAuthHeaders()); setTexts(response.data); toast.success('Textos guardados'); } catch (error) { toast.error(apiErrorMessage(error, 'No se pudieron guardar')); } };
   const saveService = async () => { try { const response = await axios.put(`${API}/api/visitors/service-today`, { label: service.trim(), kind: 'special' }, getAuthHeaders()); toast.success(`Hoy: ${response.data.label}`); setService(''); } catch (error) { toast.error(apiErrorMessage(error, 'No se pudo guardar')); } };
-  const area = (key, label, help, rows = 4) => (
-    <label className="block"><span className="text-[15px] font-semibold text-[#101D36]">{label}</span><span className="block text-sm text-slate-600">{help}</span>
+  // Cada texto existe en español y en inglés (la persona elige el idioma en la tableta).
+  const area = (base, label, help, rows = 4) => {
+    const key = language === 'en' ? `${base}_en` : base;
+    return (
+    <label className="block"><span className="text-[15px] font-semibold text-[#101D36]">{label}{language === 'en' ? ' · English' : ''}</span><span className="block text-sm text-slate-600">{help}</span>
       <textarea value={texts[key]} disabled={!canEdit} onChange={(event) => setTexts((current) => ({ ...current, [key]: event.target.value }))} rows={rows} className="mt-1 w-full rounded-lg border border-[#D9D4C7] p-3 text-base" data-testid={`visitors-text-${key}`} /></label>
-  );
+    );
+  };
   return (
     <div className="space-y-4 rounded-2xl border border-[#E8E5DE] bg-white p-4">
+      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Idioma de los textos">
+        <span className="text-[15px] font-semibold text-[#101D36]">Idioma de los textos:</span>
+        {[['es', 'Español'], ['en', 'English']].map(([key, label]) => (
+          <button key={key} type="button" onClick={() => setLanguage(key)} aria-pressed={language === key} data-testid={`visitors-texts-lang-${key}`}
+            className={`min-h-11 rounded-xl border px-4 text-base font-semibold ${language === key ? 'border-[#132443] bg-[#132443] text-white' : 'border-[#D9D4C7] bg-white text-[#101D36]'}`}>{label}</button>
+        ))}
+      </div>
       {area('welcome', 'Mensaje de bienvenida', 'Una frase por línea. 1.ª: título. 2.ª: subtítulo. 3.ª: la frase principal, en un bloque destacado al centro (escríbela completa en una sola línea). Las demás se muestran más pequeñas, encima del botón «Iniciar registro».', 6)}
       {area('privacy', `Aviso de privacidad (versión ${texts.privacy_version})`, 'Corto, una frase por línea. Si lo cambias, sube la versión y cada registro guarda la versión que aceptó.', 5)}
       {area('confirmation', 'Mensaje de confirmación', 'Se muestra con el número de registro al terminar. Una frase por línea.', 3)}

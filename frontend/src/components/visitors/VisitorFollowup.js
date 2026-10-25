@@ -197,9 +197,10 @@ function FollowupCard({ item: initial, canManage, canRestricted, onChanged }) {
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div>
             <p className="text-lg font-semibold text-[#101D36]">{item.name}{item.preferred_name && !item.name.startsWith(item.preferred_name) ? ` («${item.preferred_name}»)` : ''}</p>
-            <p className="text-[15px] text-slate-600">{item.visitor_number} · {item.service.label} · {fmtDate(item.service.date)}{item.first_visit ? ' · Primera visita' : ''}</p>
+            <p className="text-[15px] text-slate-600">{item.visitor_number} · {item.service.label} · {fmtDate(item.service.date)}{item.first_visit ? ' · Primera visita' : ''}{item.sex ? ` · ${item.sex === 'female' ? 'Femenino' : 'Masculino'}` : ''}</p>
           </div>
           <span className="flex flex-wrap gap-1">
+            {item.language === 'en' && <span className="rounded-full bg-sky-100 px-3 py-1 text-sm font-semibold text-sky-900" data-testid="followup-english">Contactar en inglés</span>}
             {item.registration_state_label && <span className={`rounded-full px-3 py-1 text-sm font-semibold ${item.registration_state === 'incomplete' ? 'bg-rose-100 text-rose-900' : 'bg-violet-100 text-violet-900'}`} data-testid="followup-state">{item.registration_state_label}</span>}
             <span className={`rounded-full px-3 py-1 text-sm font-semibold ${STATUS_STYLE[item.status] || ''}`} data-testid="followup-status">{item.status_label}</span>
           </span>
@@ -214,6 +215,8 @@ function FollowupCard({ item: initial, canManage, canRestricted, onChanged }) {
             {item.phone ? <a href={`tel:${item.phone}`} className="inline-flex min-h-11 items-center gap-2 font-semibold text-[#0879BE]"><Phone className="h-4 w-4" />{fmtPhone(item.phone)}</a> : <p>Sin teléfono</p>}
             <p>Prefiere: {(item.contact_methods || []).map((key) => CONTACT[key]).filter(Boolean).join(', ') || 'No indicó'}</p>
             {item.visit_mode && <p>Hoy: {VISIT_MODES[item.visit_mode]}</p>}
+            {item.new_in_area != null && <p>Nuevo en esta área: {item.new_in_area ? 'Sí' : 'No'}</p>}
+            <p>Idioma preferido: {item.language === 'en' ? 'Inglés' : 'Español'}</p>
             {item.invited_by && <p>Invitado por {item.invited_by}</p>}
             {item.email && <p className="break-all">Correo: {item.email}</p>}
             {item.city && <p>Ciudad o zona: {item.city}</p>}

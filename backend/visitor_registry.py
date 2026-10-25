@@ -28,7 +28,7 @@ from typing import Literal, Optional
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from bson import ObjectId
 from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
@@ -51,6 +51,13 @@ DEFAULT_TEXTS = {
     "privacy": "Usamos tus datos solo para darte la bienvenida y servirte mejor.\nNo los compartimos con nadie fuera de la iglesia.\nPuedes pedir que los corrijamos o borremos cuando quieras.",
     "confirmation": "¡Gracias por registrarte!\nYa eres parte de esta familia.\nSi necesitas algo, muestra este número a cualquier servidor de la iglesia.",
 }
+# Mismos textos en inglés (la persona elige el idioma en la primera pantalla de la tableta).
+DEFAULT_TEXTS_EN = {
+    "welcome": "Welcome to Casa de Oración!\nWe are glad you are here!\nWe hope you make this church your home and this family your family.\nWe want to get to know you and learn how we can serve you.",
+    "privacy": "We use your information only to welcome you and serve you better.\nWe do not share it with anyone outside the church.\nYou can ask us to correct or delete it at any time.",
+    "confirmation": "Thank you for registering!\nYou are now part of this family.\nIf you need anything, show this number to any church volunteer.",
+}
+LANGUAGES = {"es": "Español", "en": "English"}
 # Textos de la primera versión (un solo párrafo): si siguen sin editar, se usan los nuevos.
 LEGACY_TEXTS = {
     "¡Bienvenido a Casa de Oración!\n¡Nos alegra que estés aquí!\nEsperamos que hagas de esta iglesia tu casa\ny de esta familia tu familia.\nQueremos conocerte y saber cómo podemos servirte.",
@@ -106,8 +113,16 @@ async def ensure_indexes() -> None:
 async def load_texts() -> dict:
     doc = await db.app_settings.find_one({"_id": TEXTS_ID}, {"_id": 0}) or {}
     pick = lambda key: doc.get(key) if doc.get(key) and doc.get(key) not in LEGACY_TEXTS else DEFAULT_TEXTS[key]  # noqa: E731
+    english = {key: doc.get(f"{key}_en") or value for key, value in DEFAULT_TEXTS_EN.items()}
     return {"welcome": keep_main_phrase(pick("welcome")), "privacy": pick("privacy"), "privacy_version": (doc.get("privacy_version") or 1) + (1 if doc.get("privacy") in LEGACY_TEXTS else 0), "confirmation": pick("confirmation"),
+            "welcome_en": english["welcome"], "privacy_en": english["privacy"], "confirmation_en": english["confirmation"],
             "updated_at": doc.get("updated_at"), "updated_by": doc.get("updated_by_name")}
+
+
+def texts_in(texts: dict, language: Optional[str]) -> dict:
+    """Los textos públicos en el idioma que eligió la persona."""
+    suffix = "_en" if language == "en" else ""
+    return {"welcome": texts[f"welcome{suffix}"], "privacy": texts[f"privacy{suffix}"], "confirmation": texts[f"confirmation{suffix}"], "privacy_version": texts["privacy_version"]}
 
 
 def keep_main_phrase(text: str) -> str:
@@ -119,6 +134,10 @@ class TextsInput(BaseModel):
     welcome: str = Field(min_length=10, max_length=1500)
     privacy: str = Field(min_length=20, max_length=3000)
     confirmation: str = Field(min_length=5, max_length=800)
+    # En inglés (si no llegan, se conservan los actuales).
+    welcome_en: Optional[str] = Field(default=None, min_length=10, max_length=1500)
+    privacy_en: Optional[str] = Field(default=None, min_length=20, max_length=3000)
+    confirmation_en: Optional[str] = Field(default=None, min_length=5, max_length=800)
 
 
 @admin_router.get("/texts", response_model=dict)
@@ -132,11 +151,14 @@ async def get_texts(current_user: dict = Depends(get_current_user)):
 async def put_texts(payload: TextsInput, current_user: dict = Depends(get_current_user)):
     require(current_user, VISITORS_TEXTS_MANAGE)
     current = await load_texts()
-    version = current["privacy_version"] + (1 if payload.privacy.strip() != current["privacy"].strip() else 0)
-    await db.app_settings.update_one({"_id": TEXTS_ID}, {"$set": {"welcome": keep_main_phrase(payload.welcome.strip()), "privacy": payload.privacy.strip(), "privacy_version": version,
+    privacy_en = (payload.privacy_en or current["privacy_en"]).strip()
+    changed = payload.privacy.strip() != current["privacy"].strip() or privacy_en != current["privacy_en"].strip()
+    version = current["privacy_version"] + (1 if changed else 0)
+    english = {"welcome_en": (payload.welcome_en or current["welcome_en"]).strip(), "privacy_en": privacy_en, "confirmation_en": (payload.confirmation_en or current["confirmation_en"]).strip()}
+    await db.app_settings.update_one({"_id": TEXTS_ID}, {"$set": {"welcome": keep_main_phrase(payload.welcome.strip()), "privacy": payload.privacy.strip(), "privacy_version": version, **english,
                                                                     "confirmation": payload.confirmation.strip(), "updated_at": now_utc(), "updated_by_user_id": current_user["user_id"],
                                                                     "updated_by_name": current_user.get("nombre")},
-                                                           "$push": {"history": {"privacy_version": version, "privacy": payload.privacy.strip(), "at": now_utc(), "by": current_user["user_id"]}}}, upsert=True)
+                                                           "$push": {"history": {"privacy_version": version, "privacy": payload.privacy.strip(), "privacy_en": privacy_en, "at": now_utc(), "by": current_user["user_id"]}}}, upsert=True)
     await audit("texts_updated", current_user["user_id"], {"privacy_version": version})
     return await load_texts()
 
@@ -292,7 +314,8 @@ DEFAULT_KIOSK_SETTINGS = {"form_warn_seconds": 240, "form_reset_seconds": 300, "
 
 async def load_kiosk_settings() -> dict:
     doc = await db.app_settings.find_one({"_id": KIOSK_SETTINGS_ID}, {"_id": 0}) or {}
-    return {key: int(doc.get(key) or value) for key, value in DEFAULT_KIOSK_SETTINGS.items()}
+    # «Pedir año de nacimiento»: apagado por defecto (por privacidad solo día y mes).
+    return {**{key: int(doc.get(key) or value) for key, value in DEFAULT_KIOSK_SETTINGS.items()}, "ask_birth_year": bool(doc.get("ask_birth_year"))}
 
 
 class KioskSettingsInput(BaseModel):
@@ -300,6 +323,7 @@ class KioskSettingsInput(BaseModel):
     form_reset_seconds: int = Field(ge=60, le=3600)
     start_reset_seconds: int = Field(ge=60, le=7200)
     confirm_reset_seconds: int = Field(ge=10, le=600)
+    ask_birth_year: bool = False
 
 
 @admin_router.get("/kiosk-settings", response_model=dict)
@@ -319,7 +343,7 @@ async def put_kiosk_settings(payload: KioskSettingsInput, current_user: dict = D
     return await load_kiosk_settings()
 
 
-KIOSK_API_VERSION = 4  # sube cuando cambia lo que la tableta necesita del servidor
+KIOSK_API_VERSION = 5  # sube cuando cambia lo que la tableta necesita del servidor
 
 
 @kiosk_router.get("/ping", response_model=dict)
@@ -332,9 +356,10 @@ async def kiosk_ping():
 async def kiosk_config(device: dict = Depends(kiosk_device)):
     """Lo único que la tableta puede leer: textos públicos y el servicio de hoy."""
     texts = await load_texts()
+    settings = await load_kiosk_settings()
     return {"device_name": device["name"], "service": await current_service(),
-            "texts": {"welcome": texts["welcome"], "privacy": texts["privacy"], "privacy_version": texts["privacy_version"], "confirmation": texts["confirmation"]},
-            "timeouts": await load_kiosk_settings(),
+            "texts": texts_in(texts, "es"), "texts_en": texts_in(texts, "en"),
+            "timeouts": {key: settings[key] for key in DEFAULT_KIOSK_SETTINGS}, "ask_birth_year": settings["ask_birth_year"],
             # Dirección corta de esta tableta: si se abrió con el enlace largo anterior, la página pasa a la corta.
             "short_path": device["short_path"]}
 
@@ -363,11 +388,20 @@ class RegistrationInput(BaseModel):
     city: Optional[str] = Field(default=None, max_length=120)
     address: Optional[str] = Field(default=None, max_length=300)
     birth_date: Optional[date] = None
+    # Cumpleaños SIN año (por privacidad): día y mes. El año solo si la administración lo pide.
+    birth_day: Optional[int] = Field(default=None, ge=1, le=31)
+    birth_month: Optional[int] = Field(default=None, ge=1, le=12)
+    # Idioma que eligió en la tableta (para que el equipo sepa en qué idioma contactarle).
+    language: Literal["es", "en"] = "es"
+    # Sexo (solo para asignar el seguimiento; nunca se muestra en pantallas públicas).
+    sex: Optional[Literal["female", "male"]] = None
+    # «¿Eres nuevo en esta área?» (del papel de la iglesia).
+    new_in_area: Optional[bool] = None
     first_visit: Optional[bool] = None
     invited: Optional[bool] = None
     invited_by: Optional[str] = Field(default=None, max_length=120)
-    # «¿Cómo nos visitas hoy?» (sin preguntar país de origen). `visiting_from` se acepta por
-    # registros viejos en cola, pero ya no se guarda.
+    # «¿Cómo nos visitas hoy?» (ya no se pregunta; se acepta por registros viejos en cola).
+    # `visiting_from` tampoco se guarda.
     visit_mode: Optional[Literal["nearby", "other_city", "passing", "new_in_area"]] = None
     zip_code: Optional[str] = Field(default=None, max_length=12)
     # Tu fe (de las hojas en papel).
@@ -403,6 +437,16 @@ class RegistrationInput(BaseModel):
     privacy_accepted: bool
     started_at: Optional[datetime] = None
 
+    @model_validator(mode="after")
+    def birthday_exists(self):
+        if (self.birth_day is None) != (self.birth_month is None):
+            raise ValueError("Elige el día y el mes de tu cumpleaños")
+        if self.birth_day and self.birth_day > [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][self.birth_month - 1]:
+            raise ValueError("Esa fecha no existe")
+        if self.birth_date:  # con año: el día y el mes salen de la fecha completa
+            self.birth_day, self.birth_month = self.birth_date.day, self.birth_date.month
+        return self
+
 
 async def next_number(year: int) -> str:
     counter = await db.counters.find_one_and_update({"_id": f"visitor_number_{year}"}, {"$inc": {"seq": 1}}, upsert=True, return_document=ReturnDocument.AFTER)
@@ -416,7 +460,8 @@ def normalize_phone_digits(phone: Optional[str]) -> Optional[str]:
 
 def kiosk_reply(doc: dict, duplicate: bool, texts: dict) -> dict:
     """La tableta solo recibe el número, el nombre para saludar y el mensaje."""
-    return {"visitor_number": doc["visitor_number"], "greeting_name": doc["welcome"]["preferred_name"], "confirmation": texts["confirmation"], "duplicate": duplicate}
+    confirmation = texts["confirmation_en"] if doc.get("language") == "en" else texts["confirmation"]
+    return {"visitor_number": doc["visitor_number"], "greeting_name": doc["welcome"]["preferred_name"], "confirmation": confirmation, "duplicate": duplicate}
 
 
 async def link_person(payload: RegistrationInput, device: dict) -> dict:
@@ -464,6 +509,22 @@ async def insert_person(first: str, last: str, birth: Optional[str], phone: Opti
     return person_id
 
 
+async def fill_person(person_id: str, payload: "RegistrationInput") -> None:
+    """Persona 360: sexo y cumpleaños (día y mes) SOLO donde aún falten; nunca se cambia lo que ya tiene.
+    Sin año, `fecha_nacimiento` queda vacía: la edad no se calcula ni se inventa."""
+    try:
+        oid = ObjectId(person_id)
+    except Exception:
+        return
+    if payload.sex:
+        await db.persons.update_one({"_id": oid, "$or": [{"genero": {"$in": [None, "", "no_especificado"]}}, {"genero": {"$exists": False}}]},
+                                    {"$set": {"genero": {"female": "femenino", "male": "masculino"}[payload.sex], "updated_at": now_utc()}})
+    if payload.birth_day and payload.birth_month:
+        await db.persons.update_one({"_id": oid, "$or": [{"fecha_nacimiento": {"$in": [None, ""]}}, {"fecha_nacimiento": {"$exists": False}}],
+                                     "cumpleanos_mes": {"$in": [None]}},
+                                    {"$set": {"cumpleanos_dia": payload.birth_day, "cumpleanos_mes": payload.birth_month, "updated_at": now_utc()}})
+
+
 async def resolve_inviter(text: str) -> Optional[dict]:
     """Quien invitó, si es UNA persona clara de Persona 360 (nombre y apellido): su nombre completo."""
     from person_matching import normalize_text
@@ -504,7 +565,7 @@ async def create_registration(payload: RegistrationInput, device: dict = Depends
     if (payload.website or "").strip():
         # Campo trampa lleno: robot. Se responde igual, pero no se guarda nada.
         await audit("bot_blocked", f"device:{device['device_id']}", {"ip": device["ip"]})
-        return {"visitor_number": "V-0000-000000", "greeting_name": payload.first_name.strip(), "confirmation": texts["confirmation"], "duplicate": False}
+        return {"visitor_number": "V-0000-000000", "greeting_name": payload.first_name.strip(), "confirmation": texts_in(texts, payload.language)["confirmation"], "duplicate": False}
     from person_matching import normalize_phone, normalize_text
     service = draft["service"] if draft else await current_service()
     phone_norm = normalize_phone(payload.phone)
@@ -562,8 +623,9 @@ def draft_doc(payload: "RegistrationInput", device: dict, service: dict, name_ke
         "person_id": None, "match_status": "pending", "possible_person_ids": [],
         "first_name": payload.first_name.strip(), "last_name": payload.last_name.strip(),
         "welcome": {"preferred_name": (payload.preferred_name or "").strip() or payload.first_name.strip(), "display_name": None, "approved": False, "hidden": False, "invited_by": None, "invited_by_display": None},
-        "contact": {"phone": None, "phone_normalized": None, "email": None, "methods": [], "city": None, "address": None, "birth_date": None},
-        "visit": {"first_visit": None, "invited": None, "invited_by": None, "invited_by_person_id": None, "visit_mode": None, "other_church": None, "other_church_name": None, "how_heard": None},
+        "contact": {"phone": None, "phone_normalized": None, "email": None, "methods": [], "city": None, "address": None, "birth_date": None, "birth_day": None, "birth_month": None},
+        "language": payload.language, "profile": {"sex": None},
+        "visit": {"first_visit": None, "invited": None, "invited_by": None, "invited_by_person_id": None, "visit_mode": None, "new_in_area": None, "other_church": None, "other_church_name": None, "how_heard": None},
         "family": [], "requests": [], "has_restricted": False, "consents": {"followup": None},
         "privacy": {"version": payload.privacy_version, "accepted_at": now},
         "followup": {"status": "pending", "assigned_person_id": None, "results": []},
@@ -671,6 +733,8 @@ async def registration_fields(payload: "RegistrationInput", device: dict, servic
     """Todos los datos del formulario (registro nuevo, borrador paso a paso o al completar un borrador).
     En el borrador (`link=False`) aún no se toca Persona 360."""
     match = await link_person(payload, device) if link else {"person_id": None, "match_status": "pending", "candidates": []}
+    if match["person_id"]:
+        await fill_person(match["person_id"], payload)
     invited = payload.invited if payload.invited is not None else bool((payload.invited_by or "").strip())
     payload.invited = invited
     methods = list(dict.fromkeys(payload.contact_methods or ([payload.contact_method] if payload.contact_method and payload.contact_method != "none" else [])))
@@ -692,9 +756,11 @@ async def registration_fields(payload: "RegistrationInput", device: dict, servic
         # Bloque de CONTACTO (personal autorizado).
         "contact": {"phone": phone_norm, "phone_normalized": phone_norm, "email": (payload.email or "").strip() or None, "methods": methods, "city": payload.city, "address": payload.address,
                     "zip_code": (payload.zip_code or "").strip() or None,
-                    "birth_date": payload.birth_date.isoformat() if payload.birth_date else None},
+                    "birth_date": payload.birth_date.isoformat() if payload.birth_date else None, "birth_day": payload.birth_day, "birth_month": payload.birth_month},
+        # Idioma preferido y sexo: para el seguimiento (nunca en la bienvenida ni en pantallas).
+        "language": payload.language, "profile": {"sex": payload.sex},
         "visit": {"first_visit": payload.first_visit, "invited": payload.invited, "invited_by": (payload.invited_by or "").strip() or None if payload.invited else None,
-                  "invited_by_person_id": inviter["person_id"] if inviter else None, "visit_mode": payload.visit_mode,
+                  "invited_by_person_id": inviter["person_id"] if inviter else None, "visit_mode": payload.visit_mode, "new_in_area": payload.new_in_area,
                   "other_church": payload.other_church, "other_church_name": payload.other_church_name if payload.other_church else None,
                   "other_church_pastor": payload.other_church_pastor if payload.other_church else None, "how_heard": payload.how_heard},
         "faith": {"christian": payload.faith_christian, "accept_jesus": payload.accept_jesus, "reconcile": payload.reconcile, "faith_info": payload.faith_info},
@@ -810,7 +876,9 @@ def followup_view(doc: dict, current_user: dict, names: dict) -> dict:
             "service": doc["service"], "created_at": doc["created_at"].isoformat(), "person_id": doc.get("person_id"), "match_status": doc["match_status"], "match_label": MATCH_LABELS.get(doc["match_status"]),
             "possible_person_ids": doc.get("possible_person_ids") or [], "possible_people": [{"person_id": pid, "name": names.get(pid) or "Persona sin nombre"} for pid in doc.get("possible_person_ids") or []],
             "phone": doc["contact"].get("phone"), "email": doc["contact"].get("email"), "contact_methods": doc["contact"].get("methods") or ([doc["contact"]["method"]] if doc["contact"].get("method") in ("call", "text", "whatsapp", "email") else []),
-            "visit_mode": doc["visit"].get("visit_mode"), "invited_by": doc["visit"].get("invited_by"), "city": doc["contact"].get("city"),
+            "visit_mode": doc["visit"].get("visit_mode"), "new_in_area": doc["visit"].get("new_in_area"),
+            # Idioma en que hay que contactarle y sexo (para asignar un mentor del mismo sexo).
+            "language": doc.get("language") or "es", "sex": (doc.get("profile") or {}).get("sex"), "invited_by": doc["visit"].get("invited_by"), "city": doc["contact"].get("city"),
             "first_visit": doc["visit"].get("first_visit"), "requests": shown, "has_restricted": bool(doc.get("has_restricted") or any(item in RESTRICTED_REQUESTS for item in requests)),
             "status": followup.get("status", "pending"), "status_label": FOLLOWUP_LABELS.get(followup.get("status", "pending")),
             "assigned_person_id": followup.get("assigned_person_id"), "assigned_name": names.get(followup.get("assigned_person_id")) if followup.get("assigned_person_id") else None,
