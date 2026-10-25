@@ -554,6 +554,7 @@ from invasion_attendance import router as invasion_attendance_router
 from outreach_doors import router as outreach_doors_router, ensure_indexes as outreach_doors_ensure_indexes
 from invasion_alerts import router as invasion_alerts_router, ensure_indexes as invasion_alerts_ensure_indexes
 from consolidation_leads import router as consolidation_leads_router, ensure_indexes as consolidation_leads_ensure_indexes
+from consolidation_panorama import router as consolidation_panorama_router
 
 app.include_router(portal_notifications_router)
 app.include_router(invasion_participants_router)
@@ -566,6 +567,7 @@ app.include_router(invasion_attendance_router)
 app.include_router(outreach_doors_router)
 app.include_router(invasion_alerts_router)
 app.include_router(consolidation_leads_router)
+app.include_router(consolidation_panorama_router)
 app.include_router(invasion_planning_router)
 
 
