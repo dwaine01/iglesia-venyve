@@ -27,6 +27,14 @@ if FRONTEND_ENV.get("REACT_APP_BACKEND_URL"):
     os.environ["REACT_APP_BACKEND_URL"] = str(FRONTEND_ENV["REACT_APP_BACKEND_URL"]).strip('"')
 
 
+# Las pruebas crean y borran datos: NUNCA contra la base de producción.
+# Solo se permiten bases cuyo nombre diga "test" y nunca dentro de Railway.
+_db_name = os.environ.get("DB_NAME") or ""
+if "test" not in _db_name.lower() or os.environ.get("RAILWAY_ENVIRONMENT") or os.environ.get("RAILWAY_PROJECT_ID"):
+    raise SystemExit(f"Pruebas bloqueadas: DB_NAME={_db_name!r} no es una base de pruebas (debe contener 'test') o se está en Railway. "
+                     "Las pruebas nunca deben escribir en producción.")
+
+
 BACKEND_DIR = str(APP_DIR / "backend")
 if BACKEND_DIR not in sys.path:
     sys.path.insert(0, BACKEND_DIR)

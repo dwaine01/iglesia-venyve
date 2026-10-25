@@ -11,6 +11,8 @@ Definiciones aprobadas por el dueño:
 - «Sin atender» = expediente activo con más de 48 h sin ninguna actividad
   realizada (consolidation_activities status=done).
 - «Sin próxima acción» = expediente activo sin `next_action_at`.
+Cuenta PERSONAS ÚNICAS (un expediente por persona; los repetidos son
+historial) y nunca los archivados.
 Lee lo que ya existe (process_enrollments v2, consolidation_activities,
 mentor_assignments, person_memberships); no crea colecciones."""
 from collections import Counter, defaultdict
@@ -82,6 +84,10 @@ async def load_population(current_user: dict, campaign_id: Optional[str], mentor
     if stage_key:
         query["current_stage_key"] = stage_key
     items = await db.process_enrollments.find(query, {"_id": 0}).to_list(20000)
+    # PERSONAS ÚNICAS: un expediente por persona (el activo, o el más avanzado/reciente);
+    # los demás de la misma persona son historial y no inflan las cifras.
+    from enrollment_cleanup import representatives
+    items, _ = representatives(items)
     ids = [item["enrollment_id"] for item in items]
     # Primera actividad realizada y la más reciente, por expediente (una consulta agregada).
     activity: dict = {}

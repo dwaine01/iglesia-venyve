@@ -125,3 +125,8 @@ html[data-keyboard="open"] .vv-fit {
   padding-bottom: 0.5rem;
   box-shadow: 0 -10px 12px -12px rgba(16, 29, 54, 0.35);
 }
+
+/* Radio global: margen al final del contenido mientras está el micrófono flotante. */
+html[data-radio-ptt="on"] .overflow-y-auto[data-testid="app-page-scroll-container"] > * {
+  padding-bottom: 6.5rem;
+}
