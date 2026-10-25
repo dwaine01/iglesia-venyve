@@ -582,6 +582,9 @@ app.include_router(global_stats_router)
 from visitor_registry import admin_router as visitor_admin_router, kiosk_router as visitor_kiosk_router
 app.include_router(visitor_admin_router)
 app.include_router(visitor_kiosk_router)
+from visitor_welcome import operator_router as visitor_welcome_router, screen_router as visitor_screen_router
+app.include_router(visitor_welcome_router)
+app.include_router(visitor_screen_router)
 from enrollment_cleanup import router as enrollment_cleanup_router, ensure_indexes as enrollment_cleanup_ensure_indexes
 app.include_router(enrollment_cleanup_router)
 from door_streets import router as door_streets_router, ensure_indexes as door_streets_ensure_indexes
