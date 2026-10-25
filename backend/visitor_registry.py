@@ -95,6 +95,10 @@ async def ensure_indexes() -> None:
     await db.visitor_registrations.create_index([("service.date", -1), ("created_at", -1)])
     await db.visitor_registrations.create_index("person_id")
     await db.visitor_rate.create_index("expires_at", expireAfterSeconds=0)
+    # Migración segura de la primera versión: una forma de contacto → lista (no se borra nada).
+    await db.visitor_registrations.update_many({"contact.methods": {"$exists": False}, "contact.method": {"$in": ["call", "text", "whatsapp", "email"]}},
+                                               [{"$set": {"contact.methods": ["$contact.method"]}}])
+    await db.visitor_registrations.update_many({"contact.methods": {"$exists": False}}, {"$set": {"contact.methods": []}})
     _indexes_ready = True
 
 
@@ -237,12 +241,48 @@ async def kiosk_device(request: Request, x_link_token: Optional[str] = Header(de
     return {"device_id": name, "name": name, "ip": client_ip(request)}
 
 
+KIOSK_SETTINGS_ID = "visitor_kiosk_settings"
+# Tiempos de espera (segundos): aviso «¿Sigues ahí?» y limpieza en el formulario,
+# limpieza de la pantalla de inicio y regreso al inicio desde la confirmación.
+DEFAULT_KIOSK_SETTINGS = {"form_warn_seconds": 240, "form_reset_seconds": 300, "start_reset_seconds": 600, "confirm_reset_seconds": 60}
+
+
+async def load_kiosk_settings() -> dict:
+    doc = await db.app_settings.find_one({"_id": KIOSK_SETTINGS_ID}, {"_id": 0}) or {}
+    return {key: int(doc.get(key) or value) for key, value in DEFAULT_KIOSK_SETTINGS.items()}
+
+
+class KioskSettingsInput(BaseModel):
+    form_warn_seconds: int = Field(ge=30, le=3600)
+    form_reset_seconds: int = Field(ge=60, le=3600)
+    start_reset_seconds: int = Field(ge=60, le=7200)
+    confirm_reset_seconds: int = Field(ge=10, le=600)
+
+
+@admin_router.get("/kiosk-settings", response_model=dict)
+async def get_kiosk_settings(current_user: dict = Depends(get_current_user)):
+    if not any(can(current_user, cap) for cap in (VISITORS_TEXTS_MANAGE, VISITORS_DEVICES_MANAGE)):
+        raise HTTPException(status_code=403, detail="Sin permiso para el Registro de visitantes")
+    return await load_kiosk_settings()
+
+
+@admin_router.put("/kiosk-settings", response_model=dict)
+async def put_kiosk_settings(payload: KioskSettingsInput, current_user: dict = Depends(get_current_user)):
+    require(current_user, VISITORS_TEXTS_MANAGE)
+    if payload.form_warn_seconds >= payload.form_reset_seconds:
+        raise HTTPException(status_code=422, detail="El aviso debe salir antes de limpiar el formulario")
+    await db.app_settings.update_one({"_id": KIOSK_SETTINGS_ID}, {"$set": {**payload.model_dump(), "updated_at": now_utc(), "updated_by": current_user["user_id"]}}, upsert=True)
+    await audit("kiosk_settings_changed", current_user["user_id"], payload.model_dump())
+    return await load_kiosk_settings()
+
+
 @kiosk_router.get("/config", response_model=dict)
 async def kiosk_config(device: dict = Depends(kiosk_device)):
     """Lo único que la tableta puede leer: textos públicos y el servicio de hoy."""
     texts = await load_texts()
     return {"device_name": device["name"], "service": await current_service(),
-            "texts": {"welcome": texts["welcome"], "privacy": texts["privacy"], "privacy_version": texts["privacy_version"], "confirmation": texts["confirmation"]}}
+            "texts": {"welcome": texts["welcome"], "privacy": texts["privacy"], "privacy_version": texts["privacy_version"], "confirmation": texts["confirmation"]},
+            "timeouts": await load_kiosk_settings()}
 
 
 class FamilyMember(BaseModel):
@@ -258,6 +298,8 @@ class RegistrationInput(BaseModel):
     preferred_name: Optional[str] = Field(default=None, max_length=80)
     phone: Optional[str] = Field(default=None, max_length=40)
     email: Optional[str] = Field(default=None, max_length=160)
+    # Varias formas de contacto (casillas). `contact_method` (una sola) queda por registros guardados sin internet.
+    contact_methods: list[Literal["call", "text", "whatsapp", "email"]] = Field(default_factory=list, max_length=4)
     contact_method: Optional[Literal["call", "whatsapp", "text", "email", "none"]] = None
     city: Optional[str] = Field(default=None, max_length=120)
     address: Optional[str] = Field(default=None, max_length=300)
@@ -265,6 +307,9 @@ class RegistrationInput(BaseModel):
     first_visit: Optional[bool] = None
     invited: Optional[bool] = None
     invited_by: Optional[str] = Field(default=None, max_length=120)
+    # «¿Cómo nos visitas hoy?» (sin preguntar país de origen). `visiting_from` se acepta por
+    # registros viejos en cola, pero ya no se guarda.
+    visit_mode: Optional[Literal["nearby", "other_city", "passing"]] = None
     visiting_from: Optional[str] = Field(default=None, max_length=160)
     other_church: Optional[bool] = None
     other_church_name: Optional[str] = Field(default=None, max_length=160)
@@ -286,6 +331,11 @@ class RegistrationInput(BaseModel):
 async def next_number(year: int) -> str:
     counter = await db.counters.find_one_and_update({"_id": f"visitor_number_{year}"}, {"$inc": {"seq": 1}}, upsert=True, return_document=ReturnDocument.AFTER)
     return f"V-{year}-{counter['seq']:06d}"
+
+
+def normalize_phone_digits(phone: Optional[str]) -> Optional[str]:
+    from person_matching import normalize_phone
+    return normalize_phone(phone)
 
 
 def kiosk_reply(doc: dict, duplicate: bool, texts: dict) -> dict:
@@ -338,6 +388,20 @@ async def insert_person(first: str, last: str, birth: Optional[str], phone: Opti
     return person_id
 
 
+async def resolve_inviter(text: str) -> Optional[dict]:
+    """Quien invitó, si es UNA persona clara de Persona 360 (nombre y apellido): su nombre completo."""
+    from person_matching import normalize_text
+    words = [word for word in normalize_text(text).split() if len(word) > 1]
+    if len(words) < 2:
+        return None
+    query = {"$and": [{"search_key": {"$regex": rf"(^|\s){re.escape(word)}"}} for word in words]}
+    found = await db.persons.find(query, {"nombre": 1, "apellido": 1}).limit(2).to_list(2)
+    if len(found) != 1:
+        return None
+    person = found[0]
+    return {"person_id": str(person["_id"]), "name": " ".join(part for part in [person.get("nombre"), person.get("apellido")] if part)}
+
+
 def name_compatible(payload: "RegistrationInput", card: dict) -> bool:
     from person_matching import normalize_text
     given = set(normalize_text(f"{payload.first_name} {payload.last_name}").split())
@@ -355,6 +419,8 @@ async def create_registration(payload: RegistrationInput, device: dict = Depends
         return kiosk_reply(existing, True, texts)
     if not payload.privacy_accepted:
         raise HTTPException(status_code=422, detail="Para registrarte necesitamos que aceptes el aviso de privacidad")
+    if payload.consent_followup and not (normalize_phone_digits(payload.phone) or (payload.email or "").strip()):
+        raise HTTPException(status_code=422, detail="Para darte seguimiento necesitamos tu teléfono o tu correo")
     # Límite de frecuencia: por tableta y por conexión (las 4 tabletas comparten el internet de la iglesia).
     await rate_limit(f"tablet:{device['name']}:{device['ip']}", 12)
     await rate_limit(f"ip:{device['ip']}", 60)
@@ -391,6 +457,10 @@ async def create_registration(payload: RegistrationInput, device: dict = Depends
 
 async def insert_registration(payload: "RegistrationInput", device: dict, service: dict, phone_norm: Optional[str], name_key: str, texts: dict) -> dict:
     match = await link_person(payload, device)
+    methods = list(dict.fromkeys(payload.contact_methods or ([payload.contact_method] if payload.contact_method and payload.contact_method != "none" else [])))
+    inviter = await resolve_inviter(payload.invited_by) if payload.invited and (payload.invited_by or "").strip() else None
+    if payload.invited and (payload.invited_by or "").strip() and not inviter:
+        inviter = {"person_id": None, "name": " ".join(payload.invited_by.split())}
     now = now_utc()
     registration_id = str(uuid4())
     requests = [item for item in payload.requests if item in REQUEST_KEYS]
@@ -402,11 +472,14 @@ async def insert_registration(payload: "RegistrationInput", device: dict, servic
         "person_id": match["person_id"], "match_status": match["match_status"], "possible_person_ids": match["candidates"] if match["match_status"] == "possible" else [],
         "first_name": payload.first_name.strip(), "last_name": payload.last_name.strip(),
         # Bloque de BIENVENIDA (lo único que verá el panel/pantallas, y solo si lo autorizó).
-        "welcome": {"preferred_name": (payload.preferred_name or "").strip() or payload.first_name.strip(), "display_name": None, "approved": False, "hidden": False},
+        "welcome": {"preferred_name": (payload.preferred_name or "").strip() or payload.first_name.strip(), "display_name": None, "approved": False, "hidden": False,
+                    # «Invitado por …» en la pantalla: el nombre completo de Persona 360 si quien invitó está allí.
+                    "invited_by": inviter["name"] if inviter else None, "invited_by_display": None},
         # Bloque de CONTACTO (personal autorizado).
-        "contact": {"phone": payload.phone, "phone_normalized": phone_norm, "email": (payload.email or "").strip() or None, "method": payload.contact_method, "city": payload.city, "address": payload.address,
+        "contact": {"phone": phone_norm, "phone_normalized": phone_norm, "email": (payload.email or "").strip() or None, "methods": methods, "city": payload.city, "address": payload.address,
                     "birth_date": payload.birth_date.isoformat() if payload.birth_date else None},
-        "visit": {"first_visit": payload.first_visit, "invited": payload.invited, "invited_by": payload.invited_by if payload.invited else None, "visiting_from": payload.visiting_from,
+        "visit": {"first_visit": payload.first_visit, "invited": payload.invited, "invited_by": (payload.invited_by or "").strip() or None if payload.invited else None,
+                  "invited_by_person_id": inviter["person_id"] if inviter else None, "visit_mode": payload.visit_mode,
                   "other_church": payload.other_church, "other_church_name": payload.other_church_name if payload.other_church else None, "how_heard": payload.how_heard},
         # Familiares: solo nombre y parentesco; nunca datos sensibles de menores. No se anuncian sin consentimiento.
         "family": [{"name": item.name.strip(), "relation": item.relation, "is_minor": item.is_minor} for item in payload.family],
@@ -495,7 +568,8 @@ def followup_view(doc: dict, current_user: dict, names: dict) -> dict:
     return {"registration_id": doc["registration_id"], "visitor_number": doc["visitor_number"], "name": f"{doc['first_name']} {doc['last_name']}", "preferred_name": doc["welcome"]["preferred_name"],
             "service": doc["service"], "created_at": doc["created_at"].isoformat(), "person_id": doc.get("person_id"), "match_status": doc["match_status"], "match_label": MATCH_LABELS.get(doc["match_status"]),
             "possible_person_ids": doc.get("possible_person_ids") or [], "possible_people": [{"person_id": pid, "name": names.get(pid) or "Persona sin nombre"} for pid in doc.get("possible_person_ids") or []],
-            "phone": doc["contact"].get("phone"), "email": doc["contact"].get("email"), "contact_method": doc["contact"].get("method"), "city": doc["contact"].get("city"),
+            "phone": doc["contact"].get("phone"), "email": doc["contact"].get("email"), "contact_methods": doc["contact"].get("methods") or ([doc["contact"]["method"]] if doc["contact"].get("method") in ("call", "text", "whatsapp", "email") else []),
+            "visit_mode": doc["visit"].get("visit_mode"), "invited_by": doc["visit"].get("invited_by"), "city": doc["contact"].get("city"),
             "first_visit": doc["visit"].get("first_visit"), "requests": shown, "has_restricted": bool(doc.get("has_restricted") or any(item in RESTRICTED_REQUESTS for item in requests)),
             "status": followup.get("status", "pending"), "status_label": FOLLOWUP_LABELS.get(followup.get("status", "pending")),
             "assigned_person_id": followup.get("assigned_person_id"), "assigned_name": names.get(followup.get("assigned_person_id")) if followup.get("assigned_person_id") else None,

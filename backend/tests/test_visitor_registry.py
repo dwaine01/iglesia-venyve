@@ -11,13 +11,13 @@ from bson import ObjectId
 from httpx import ASGITransport, AsyncClient
 
 from tests.test_pastoral_front_group_5c import Fixture, server  # noqa: I001 — server primero
+import visitor_registry  # noqa: E402
 
 db = server.db
 
 
 def visitor(tag, **extra):
-    return {"idempotency_key": f"vk-{uuid.uuid4().hex}", "first_name": f"Visit{tag}", "last_name": "Prueba", "privacy_version": 1, "privacy_accepted": True,
-            "consent_followup": True, **extra}
+    return {"idempotency_key": f"vk-{uuid.uuid4().hex}", "first_name": f"Visit{tag}", "last_name": "Prueba", "privacy_version": 1, "privacy_accepted": True, **extra}
 
 
 async def link(pastora, kind) -> str:
@@ -122,10 +122,41 @@ async def test_kiosk_link_numbers_idempotency_dedupe_and_permissions():
         assert "restricted" not in limited and limited["contact"] is not None
         assert await db.visitor_audit.count_documents({"action": "restricted_viewed", "detail.registration_id": private_doc["registration_id"]}) == 1
         # Seguimiento: solo un «No» explícito lo saca; sin responder queda pendiente.
-        silent = await tablets[0].post("/api/kiosk/registrations", json=visitor(f"{tag}sil", consent_followup=None))
+        silent = await tablets[0].post("/api/kiosk/registrations", json=visitor(f"{tag}sil"))
         refused = await tablets[0].post("/api/kiosk/registrations", json=visitor(f"{tag}ref", consent_followup=False))
         assert (await db.visitor_registrations.find_one({"visitor_number": silent.json()["visitor_number"]}))["followup"]["status"] == "pending"
         assert (await db.visitor_registrations.find_one({"visitor_number": refused.json()["visitor_number"]}))["followup"]["status"] == "not_requested"
+        # Teléfono con guiones → se guarda solo con dígitos; varias formas de contacto;
+        # «¿Cómo nos visitas hoy?» en lugar de país de origen (que ya no se guarda).
+        rich = await tablets[0].post("/api/kiosk/registrations", json=visitor(f"{tag}rich", phone="555-321-0987", contact_methods=["call", "whatsapp", "email"], email=f"rich{tag}@example.com",
+                                                                               consent_followup=True, visit_mode="other_city", visiting_from="México", birth_date="1990-03-04"))
+        rich_doc = await db.visitor_registrations.find_one({"visitor_number": rich.json()["visitor_number"]}, {"_id": 0})
+        assert rich_doc["contact"]["phone"] == "5553210987" and rich_doc["contact"]["methods"] == ["call", "whatsapp", "email"] and rich_doc["contact"]["birth_date"] == "1990-03-04"
+        assert rich_doc["visit"]["visit_mode"] == "other_city" and "visiting_from" not in rich_doc["visit"] and "México" not in str(rich_doc)
+        rich_view = next(item for item in (await pastora.get("/api/visitors/followup")).json()["items"] if item["visitor_number"] == rich_doc["visitor_number"])
+        assert rich_view["contact_methods"] == ["call", "whatsapp", "email"] and rich_view["visit_mode"] == "other_city"
+        # Un registro viejo guardado sin internet (una sola forma de contacto) sigue funcionando.
+        legacy = await tablets[0].post("/api/kiosk/registrations", json=visitor(f"{tag}leg", phone="5550005555", contact_method="text"))
+        assert (await db.visitor_registrations.find_one({"visitor_number": legacy.json()["visitor_number"]}))["contact"]["methods"] == ["text"]
+        # Si acepta seguimiento hace falta un teléfono o un correo.
+        assert (await tablets[0].post("/api/kiosk/registrations", json=visitor(f"{tag}nc", consent_followup=True))).status_code == 422
+        # Migración segura de la primera versión: «method» → «methods», sin borrar nada.
+        old_id = f"old-{tag}"
+        await db.visitor_registrations.insert_one({**{key: value for key, value in rich_doc.items() if key not in ("idempotency_key", "visitor_number")}, "_id": old_id, "registration_id": old_id,
+                                                   "idempotency_key": f"old-{tag}-key", "visitor_number": f"V-1999-{tag}", "name_key": f"visit{tag}old",
+                                                   "contact": {"phone": "5551112222", "method": "whatsapp"}, "visit": {"visiting_from": "Antes"}})
+        visitor_registry._indexes_ready = False
+        await visitor_registry.ensure_indexes()
+        migrated = await db.visitor_registrations.find_one({"registration_id": old_id})
+        assert migrated["contact"]["methods"] == ["whatsapp"] and migrated["contact"]["method"] == "whatsapp"
+        assert any(item["registration_id"] == old_id for item in (await pastora.get("/api/visitors/followup")).json()["items"])
+        # Tiempos de espera configurables (por defecto 4 y 5 minutos en el formulario, 10 en el inicio).
+        assert config["timeouts"] == {"form_warn_seconds": 240, "form_reset_seconds": 300, "start_reset_seconds": 600, "confirm_reset_seconds": 60}
+        assert (await mentor.put("/api/visitors/kiosk-settings", json=config["timeouts"])).status_code == 403
+        assert (await pastora.put("/api/visitors/kiosk-settings", json={**config["timeouts"], "form_warn_seconds": 400})).status_code == 422
+        changed = (await pastora.put("/api/visitors/kiosk-settings", json={**config["timeouts"], "form_reset_seconds": 420})).json()
+        assert changed["form_reset_seconds"] == 420 and (await tablets[0].get("/api/kiosk/config")).json()["timeouts"]["form_reset_seconds"] == 420
+        await pastora.put("/api/visitors/kiosk-settings", json=config["timeouts"])
         # Sin aceptar el aviso de privacidad no se guarda.
         assert (await tablets[0].post("/api/kiosk/registrations", json=visitor(f"{tag}np", privacy_accepted=False))).status_code == 422
         # Campo trampa: responde igual pero no guarda nada.

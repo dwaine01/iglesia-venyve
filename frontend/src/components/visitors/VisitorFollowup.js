@@ -13,7 +13,9 @@ import { apiErrorMessage } from '../../lib/apiErrors';
  * quien tiene el permiso restringido (lo valida el backend). */
 
 const SERVICES = [['', 'Todos los servicios'], ['sunday', 'Domingo'], ['wednesday', 'Miércoles'], ['special', 'Actividad especial']];
-const CONTACT = { call: 'Llamada', whatsapp: 'WhatsApp', text: 'Mensaje de texto', email: 'Correo electrónico', none: 'Prefiere que no le contacten' };
+const CONTACT = { call: 'Llamada', whatsapp: 'WhatsApp', text: 'Mensaje de texto', email: 'Correo electrónico' };
+const VISIT_MODES = { nearby: 'Vive cerca de la iglesia', other_city: 'Viene de otra ciudad', passing: 'Está de paso' };
+const fmtPhone = (value) => { const digits = (value || '').replace(/\D/g, ''); return digits.length === 10 ? `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}` : value; };
 const KINDS = [['call', 'Llamada'], ['visit', 'Visita'], ['message', 'Mensaje']];
 const OUTCOMES = [['reached', 'Se habló con la persona'], ['no_answer', 'No contestó'], ['wrong_number', 'Número equivocado'], ['visit_done', 'Visita realizada'],
   ['wants_more', 'Quiere más información o acompañamiento'], ['declined', 'Prefiere no recibir seguimiento'], ['other', 'Otro resultado']];
@@ -131,8 +133,10 @@ function FollowupCard({ item: initial, canManage, canRestricted }) {
       {open && (
         <div className="mt-3 space-y-4 border-t border-[#EEECE6] pt-3">
           <div className="grid gap-1 text-base text-slate-800 sm:grid-cols-2">
-            {item.phone ? <a href={`tel:${item.phone}`} className="inline-flex min-h-11 items-center gap-2 font-semibold text-[#0879BE]"><Phone className="h-4 w-4" />{item.phone}</a> : <p>Sin teléfono</p>}
-            <p>Prefiere: {CONTACT[item.contact_method] || 'No indicó'}</p>
+            {item.phone ? <a href={`tel:${item.phone}`} className="inline-flex min-h-11 items-center gap-2 font-semibold text-[#0879BE]"><Phone className="h-4 w-4" />{fmtPhone(item.phone)}</a> : <p>Sin teléfono</p>}
+            <p>Prefiere: {(item.contact_methods || []).map((key) => CONTACT[key]).filter(Boolean).join(', ') || 'No indicó'}</p>
+            {item.visit_mode && <p>Hoy: {VISIT_MODES[item.visit_mode]}</p>}
+            {item.invited_by && <p>Invitado por {item.invited_by}</p>}
             {item.email && <p className="break-all">Correo: {item.email}</p>}
             {item.city && <p>Ciudad o zona: {item.city}</p>}
             <p>¿Podemos comunicarnos?: {item.consent_followup === true ? 'Sí' : item.consent_followup === false ? 'No' : 'No respondió'}</p>

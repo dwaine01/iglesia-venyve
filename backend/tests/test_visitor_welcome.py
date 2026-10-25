@@ -11,7 +11,7 @@ from tests.test_visitor_registry import cleanup, link, tablet, visitor
 
 db = server.db
 SCREEN_KEYS = {"names", "total", "service_label"}
-ITEM_KEYS = {"registration_id", "visitor_number", "name", "default_name", "corrected", "hidden", "service_label"}
+ITEM_KEYS = {"registration_id", "visitor_number", "name", "default_name", "corrected", "hidden", "service_label", "invited_by", "default_invited_by", "invited_corrected"}
 
 
 @pytest.mark.asyncio
@@ -30,17 +30,22 @@ async def test_welcome_link_whitelist_everyone_listed_hide_and_correct():
                       requests=["prayer", "counseling_marriage"], email=f"secreto{tag}@example.com", family=[{"name": f"Hija{tag}", "relation": "Hijo o hija", "is_minor": True}])
         first = visitor(f"{tag}a", last_name="Uno Ramos", preferred_name=f"Toño{tag}", **secret)
         second = visitor(f"{tag}b", last_name="Dos", phone="5550408888", consent_followup=False)
-        for payload in (first, second):
+        # Invitado por un miembro de Persona 360 → su nombre completo; por alguien que no está → lo escrito.
+        await fx.person(f"Rosa{tag}")
+        third = visitor(f"{tag}c", last_name="Tres", invited=True, invited_by=f"rosa{tag}  etapa")
+        fourth = visitor(f"{tag}d", last_name="Cuatro", invited=True, invited_by="  el hermano   Pedro ")
+        for payload in (first, second, third, fourth):
             assert (await pad.post("/api/kiosk/registrations", json=payload)).status_code == 201
 
         # Lista blanca: la pantalla recibe exactamente estas claves; cada nombre solo {id, name}.
         view = (await tv.get("/api/screen/welcome")).json()
-        assert set(view) == SCREEN_KEYS and all(set(item) == {"id", "name"} for item in view["names"])
+        assert set(view) == SCREEN_KEYS and all(set(item) == {"id", "name", "invited_by"} for item in view["names"])
         for leaked in ("5550409999", "Secreta", "1990", "OracionSecreta", "ConsejeriaSecreta", "secreto", "Consejería", "V-20", f"Hija{tag}"):
             assert leaked not in str(view), leaked
         mine = [item for item in view["names"] if tag in item["name"]]
         # Todo registrado entra (sin preguntar), en orden de llegada; nunca los familiares ni menores.
-        assert [item["name"] for item in mine] == [f"Toño{tag} Uno", f"Visit{tag}b Dos"]
+        assert [item["name"] for item in mine] == [f"Toño{tag} Uno", f"Visit{tag}b Dos", f"Visit{tag}c Tres", f"Visit{tag}d Cuatro"]
+        assert [item["invited_by"] for item in mine] == [None, None, f"Rosa{tag} Etapa5C", "el hermano Pedro"]
 
         # Panel del operador: también lista blanca; el mentor no tiene acceso.
         assert (await mentor.get("/api/visitors/welcome")).status_code == 403
@@ -57,6 +62,12 @@ async def test_welcome_link_whitelist_everyone_listed_hide_and_correct():
         assert not any(f"Bety{tag}" in item["name"] for item in (await tv.get("/api/screen/welcome")).json()["names"])
         assert await db.visitor_registrations.count_documents({"registration_id": target["registration_id"]}) == 1
         assert await db.visitor_audit.count_documents({"action": "welcome_item_changed", "detail.registration_id": target["registration_id"]}) == 2
+        # Corregir también «Invitado por» antes de leerlo, y volver al original.
+        guest = next(item for item in items if item["name"] == f"Visit{tag}d Cuatro")
+        fixed_inviter = (await pastora.post(f"/api/visitors/welcome/items/{guest['registration_id']}", json={"invited_by_display": "Pedro Ramírez"})).json()
+        assert fixed_inviter["invited_by"] == "Pedro Ramírez" and fixed_inviter["invited_corrected"] is True
+        assert any(item["invited_by"] == "Pedro Ramírez" for item in (await tv.get("/api/screen/welcome")).json()["names"])
+        assert (await pastora.post(f"/api/visitors/welcome/items/{guest['registration_id']}", json={"reset_invited": True})).json()["invited_by"] == "el hermano Pedro"
         back = (await pastora.post(f"/api/visitors/welcome/items/{target['registration_id']}", json={"hidden": False, "reset_name": True})).json()
         assert back["name"] == f"Visit{tag}b Dos" and back["hidden"] is False
 

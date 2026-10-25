@@ -74,7 +74,12 @@ export default function WelcomeScreenPage() {
         {linkError ? <div data-testid="welcome-screen-error"><p style={{ fontSize: 'min(6vh, 5vw)', fontWeight: 800, margin: 0 }}>Esta pantalla necesita el enlace nuevo</p><p style={{ fontSize: 'min(3.5vh, 3vw)', color: C.soft }}>{linkError}</p></div>
           : !view ? <p style={{ fontSize: 'min(5vh, 4vw)', color: C.soft }}>Conectando…</p>
             : !current ? <p style={{ fontSize: 'min(7vh, 5vw)', fontWeight: 700, margin: 0, lineHeight: 1.2 }} data-testid="welcome-screen-empty">Todavía no hay visitantes registrados en este servicio</p>
-              : <p key={current.id} style={{ margin: 0, fontWeight: 800, lineHeight: 1.08, fontSize: 'min(16vh, 11vw)', overflowWrap: 'anywhere', animation: 'vvFade 500ms ease-out' }} data-testid="welcome-screen-name">{current.name}</p>}
+              : (
+                <div key={current.id} style={{ animation: 'vvFade 500ms ease-out' }}>
+                  <p style={{ margin: 0, fontWeight: 800, lineHeight: 1.08, fontSize: current.invited_by ? 'min(14vh, 10vw)' : 'min(16vh, 11vw)', overflowWrap: 'anywhere' }} data-testid="welcome-screen-name">{current.name}</p>
+                  {current.invited_by && <p style={{ margin: '3vh 0 0', fontSize: 'min(6vh, 4.2vw)', fontWeight: 600, color: C.gold, lineHeight: 1.2, overflowWrap: 'anywhere' }} data-testid="welcome-screen-invited">Invitado por {current.invited_by}</p>}
+                </div>
+              )}
       </main>
       {!linkError && view && (
         <footer style={{ padding: '0 4vw 4vh', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>

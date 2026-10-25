@@ -4,7 +4,7 @@
   del servicio. Sin emparejar ni iniciar sesión.
 - Por decisión de la iglesia todo visitante registrado entra a la lista; el
   operador puede quitar cualquiera (sin borrar el registro) o corregirlo.
-- LISTA BLANCA: la pantalla recibe solo {id, nombre}; nunca teléfonos,
+- LISTA BLANCA: la pantalla recibe solo {id, nombre, invitado por}; nunca teléfonos,
   direcciones, fechas, oración ni consejería. Los familiares que acompañan
   (incluidos menores) NO se muestran.
 - La encargada avanza y retrocede en la propia pantalla (flechas o botones);
@@ -34,6 +34,16 @@ def shown_name(doc: dict) -> str:
     return (doc.get("welcome") or {}).get("display_name") or default_name(doc)
 
 
+def default_inviter(doc: dict) -> Optional[str]:
+    """Nombre completo de Persona 360 si quien invitó está allí; si no, lo que escribió el visitante."""
+    welcome, visit = doc.get("welcome") or {}, doc.get("visit") or {}
+    return welcome.get("invited_by") or ((visit.get("invited_by") or "").strip() or None if visit.get("invited") else None)
+
+
+def shown_inviter(doc: dict) -> Optional[str]:
+    return (doc.get("welcome") or {}).get("invited_by_display") or default_inviter(doc)
+
+
 async def load_state() -> dict:
     doc = await db.app_settings.find_one({"_id": STATE_ID}, {"_id": 0}) or {}
     return {"service_date": doc.get("service_date"), "service_kind": doc.get("service_kind")}
@@ -57,16 +67,17 @@ async def screen_welcome(x_link_token: Optional[str] = Header(default=None)):
     """Lista blanca: solo id y nombre, en orden de llegada, sin los quitados."""
     await link_access("screen", x_link_token)
     state = await load_state()
-    docs = await db.visitor_registrations.find({**await service_query(state), "welcome.hidden": {"$ne": True}}, {"_id": 0, "registration_id": 1, "first_name": 1, "last_name": 1, "welcome": 1}) \
+    docs = await db.visitor_registrations.find({**await service_query(state), "welcome.hidden": {"$ne": True}}, {"_id": 0, "registration_id": 1, "first_name": 1, "last_name": 1, "welcome": 1, "visit.invited": 1, "visit.invited_by": 1}) \
         .sort("created_at", 1).to_list(500)
-    return {"names": [{"id": doc["registration_id"], "name": shown_name(doc)} for doc in docs], "total": len(docs), "service_label": await service_label(state)}
+    return {"names": [{"id": doc["registration_id"], "name": shown_name(doc), "invited_by": shown_inviter(doc)} for doc in docs], "total": len(docs), "service_label": await service_label(state)}
 
 
 # ------------------------------------------------------------------ operador
 def operator_item(doc: dict) -> dict:
     """Lista blanca del panel: nombre y número (sin contacto ni pedidos)."""
     return {"registration_id": doc["registration_id"], "visitor_number": doc["visitor_number"], "name": shown_name(doc), "default_name": default_name(doc),
-            "corrected": bool((doc.get("welcome") or {}).get("display_name")), "hidden": bool((doc.get("welcome") or {}).get("hidden")), "service_label": doc["service"]["label"]}
+            "corrected": bool((doc.get("welcome") or {}).get("display_name")), "hidden": bool((doc.get("welcome") or {}).get("hidden")), "service_label": doc["service"]["label"],
+            "invited_by": shown_inviter(doc), "default_invited_by": default_inviter(doc), "invited_corrected": bool((doc.get("welcome") or {}).get("invited_by_display"))}
 
 
 @operator_router.get("", response_model=dict)
@@ -103,6 +114,8 @@ async def set_state(payload: StateInput, current_user: dict = Depends(get_curren
 class ItemInput(BaseModel):
     display_name: Optional[str] = Field(default=None, max_length=120)
     reset_name: bool = False
+    invited_by_display: Optional[str] = Field(default=None, max_length=120)
+    reset_invited: bool = False
     hidden: Optional[bool] = None
 
 
@@ -115,6 +128,10 @@ async def update_item(registration_id: str, payload: ItemInput, current_user: di
         changes["welcome.display_name"] = None
     elif payload.display_name is not None and payload.display_name.strip():
         changes["welcome.display_name"] = " ".join(payload.display_name.split())
+    if payload.reset_invited:
+        changes["welcome.invited_by_display"] = None
+    elif payload.invited_by_display is not None and payload.invited_by_display.strip():
+        changes["welcome.invited_by_display"] = " ".join(payload.invited_by_display.split())
     if payload.hidden is not None:
         changes["welcome.hidden"] = payload.hidden
     if not changes:

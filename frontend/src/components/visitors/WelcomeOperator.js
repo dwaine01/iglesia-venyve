@@ -19,6 +19,7 @@ export default function WelcomeOperator() {
   const [data, setData] = useState(null);
   const [editing, setEditing] = useState(null);
   const [draft, setDraft] = useState('');
+  const [draftInvited, setDraftInvited] = useState('');
   const load = useCallback(() => axios.get(`${API}/api/visitors/welcome`, getAuthHeaders()).then((response) => setData(response.data))
     .catch((error) => toast.error(apiErrorMessage(error, 'No se pudo cargar la bienvenida'))), [API, getAuthHeaders]);
   useEffect(() => { load(); const timer = setInterval(load, 8000); return () => clearInterval(timer); }, [load]);
@@ -34,7 +35,7 @@ export default function WelcomeOperator() {
   return (
     <div className="space-y-4" data-testid="welcome-operator">
       <section className="space-y-2 rounded-2xl border border-[#E8E5DE] bg-white p-4">
-        <p className="text-[15px] text-slate-700">La pantalla de bienvenida muestra un nombre a la vez. Se avanza con la <b>flecha derecha</b> y se retrocede con la <b>izquierda</b> (o con los botones grandes de la pantalla). Todos los visitantes registrados aparecen; aquí puedes corregir un nombre antes de leerlo o quitarlo.</p>
+        <p className="text-[15px] text-slate-700">La pantalla de bienvenida muestra un nombre a la vez. Se avanza con la <b>flecha derecha</b> y se retrocede con la <b>izquierda</b> (o con los botones grandes de la pantalla). Todos los visitantes registrados aparecen; aquí puedes corregir un nombre (o «Invitado por») antes de leerlo, o quitarlo.</p>
         <p className="text-[15px] font-semibold text-[#101D36]">Servicio que se muestra</p>
         <div className="flex flex-wrap items-end gap-2">
           {SERVICES.map(([value, label]) => <button key={value} type="button" onClick={() => setState({ service_kind: value })} className={chip(serviceKind === value)} data-testid={`welcome-service-${value}`}>{label}</button>)}
@@ -49,16 +50,22 @@ export default function WelcomeOperator() {
           <ol className="mt-2 divide-y divide-[#EEECE6]" data-testid="welcome-items">{data.items.map((item) => (
             <li key={item.registration_id} className="flex flex-wrap items-center gap-2 py-2" data-testid="welcome-item">
               {editing === item.registration_id ? (
-                <form className="flex flex-1 flex-wrap gap-2" onSubmit={(event) => { event.preventDefault(); updateItem(item, { display_name: draft }); setEditing(null); }}>
-                  <input value={draft} onChange={(event) => setDraft(event.target.value)} className="h-12 min-w-[200px] flex-1 rounded-lg border border-[#D9D4C7] px-3 text-base" autoFocus data-testid="welcome-edit-input" />
+                <form className="flex flex-1 flex-wrap gap-2" onSubmit={(event) => {
+                  event.preventDefault();
+                  updateItem(item, { display_name: draft, ...(item.invited_by && draftInvited.trim() && draftInvited.trim() !== item.invited_by ? { invited_by_display: draftInvited } : {}) });
+                  setEditing(null);
+                }}>
+                  <label className="min-w-[200px] flex-1 text-sm font-semibold text-slate-700">Nombre que se lee<input value={draft} onChange={(event) => setDraft(event.target.value)} className="mt-1 block h-12 w-full rounded-lg border border-[#D9D4C7] px-3 text-base" autoFocus data-testid="welcome-edit-input" /></label>
+                  {item.invited_by && <label className="min-w-[200px] flex-1 text-sm font-semibold text-slate-700">Invitado por<input value={draftInvited} onChange={(event) => setDraftInvited(event.target.value)} className="mt-1 block h-12 w-full rounded-lg border border-[#D9D4C7] px-3 text-base" data-testid="welcome-edit-invited" /></label>}
                   <button type="submit" disabled={!draft.trim()} className="min-h-12 rounded-lg bg-[#132443] px-4 text-[15px] font-semibold text-white disabled:opacity-50" data-testid="welcome-edit-save">Guardar</button>
-                  {item.corrected && <button type="button" onClick={() => { updateItem(item, { reset_name: true }); setEditing(null); }} className="min-h-12 rounded-lg border border-[#D9D4C7] px-3 text-[15px] font-semibold">Usar el original ({item.default_name})</button>}
+                  {(item.corrected || item.invited_corrected) && <button type="button" onClick={() => { updateItem(item, { reset_name: true, reset_invited: true }); setEditing(null); }} className="min-h-12 rounded-lg border border-[#D9D4C7] px-3 text-[15px] font-semibold">Usar lo original ({item.default_name}{item.default_invited_by ? ` · invitado por ${item.default_invited_by}` : ''})</button>}
                   <button type="button" onClick={() => setEditing(null)} className="min-h-12 rounded-lg border border-[#D9D4C7] px-3 text-[15px] font-semibold">Cancelar</button>
                 </form>
               ) : (
                 <>
-                  <p className={`min-w-0 flex-1 text-lg ${item.hidden ? 'text-slate-400 line-through' : 'font-semibold text-[#101D36]'}`}>{item.name}{item.corrected ? <span className="ml-2 text-sm font-normal text-slate-500">(corregido)</span> : null}{item.hidden ? <span className="ml-2 text-sm font-normal">quitado de la bienvenida</span> : null}</p>
-                  <button type="button" onClick={() => { setEditing(item.registration_id); setDraft(item.name); }} className="inline-flex min-h-11 items-center gap-1 rounded-lg border border-[#D9D4C7] px-3 text-[15px] font-semibold" data-testid="welcome-edit"><Pencil className="h-4 w-4" />Corregir</button>
+                  <p className={`min-w-0 flex-1 text-lg ${item.hidden ? 'text-slate-400 line-through' : 'font-semibold text-[#101D36]'}`}>{item.name}{item.corrected ? <span className="ml-2 text-sm font-normal text-slate-500">(corregido)</span> : null}{item.hidden ? <span className="ml-2 text-sm font-normal">quitado de la bienvenida</span> : null}
+                    {item.invited_by && <span className="block text-[15px] font-normal text-slate-600" data-testid="welcome-item-invited">Invitado por {item.invited_by}{item.invited_corrected ? ' (corregido)' : ''}</span>}</p>
+                  <button type="button" onClick={() => { setEditing(item.registration_id); setDraft(item.name); setDraftInvited(item.invited_by || ''); }} className="inline-flex min-h-11 items-center gap-1 rounded-lg border border-[#D9D4C7] px-3 text-[15px] font-semibold" data-testid="welcome-edit"><Pencil className="h-4 w-4" />Corregir</button>
                   <button type="button" onClick={() => updateItem(item, { hidden: !item.hidden })} className="inline-flex min-h-11 items-center gap-1 rounded-lg border border-[#D9D4C7] px-3 text-[15px] font-semibold" data-testid="welcome-hide">{item.hidden ? <><Eye className="h-4 w-4" />Volver a mostrar</> : <><EyeOff className="h-4 w-4" />Quitar de la bienvenida</>}</button>
                 </>
               )}
