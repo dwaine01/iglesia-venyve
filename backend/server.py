@@ -566,6 +566,8 @@ app.include_router(invasion_prayer_router)
 app.include_router(invasion_report_router)
 app.include_router(invasion_attendance_router)
 app.include_router(outreach_doors_router)
+from door_reports import router as door_reports_router
+app.include_router(door_reports_router)
 app.include_router(invasion_alerts_router)
 app.include_router(consolidation_leads_router)
 app.include_router(consolidation_panorama_router)

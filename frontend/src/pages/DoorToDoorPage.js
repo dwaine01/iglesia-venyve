@@ -1,17 +1,18 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
 import { Link, useSearchParams } from 'react-router-dom';
-import { ClipboardList, Footprints, ListChecks, Loader2, Map as MapIcon, PenSquare, UserPlus } from 'lucide-react';
+import { BarChart3, ClipboardList, Footprints, ListChecks, Loader2, Map as MapIcon, PenSquare, UserPlus } from 'lucide-react';
 
 import { useAuth } from '../context/AuthContext';
 import { OUTREACH_CHANGED_EVENT, useInvasionToday } from '../context/InvasionTodayContext';
 import { DoorForm } from '../components/doors/DoorForm';
 import { DoorStats } from '../components/doors/DoorStats';
+import { DoorReport } from '../components/doors/DoorReport';
 import { StreetCard } from '../components/doors/StreetCard';
 import { PendingDoors, RevisitSheet } from '../components/doors/PendingDoors';
 import { InvasionHousesMap } from '../components/outreach/InvasionHousesMap';
 
-const VIEWS = [['registrar', 'Registrar', PenSquare], ['pendientes', 'Pendientes', ListChecks], ['mapa', 'Mapa', MapIcon]];
+const VIEWS = [['registrar', 'Registrar', PenSquare], ['pendientes', 'Pendientes', ListChecks], ['mapa', 'Mapa', MapIcon], ['reporte', 'Reporte', BarChart3]];
 import { AddVisitDialog } from '../components/outreach/AddVisitDialog';
 
 /** Puerta a puerta: al abrir la invasión activa, las cifras arriba (se
@@ -70,9 +71,9 @@ export default function DoorToDoorPage() {
 
       <DoorStats campaignId={campaignId} summary={summary} />
 
-      {/* Segmentos que caben en el celular: registrar, pendientes y mapa. */}
-      <div className="grid grid-cols-3 gap-1 rounded-xl bg-[#EEECE6] p-1" role="tablist" data-testid="door-views">
-        {VIEWS.map(([key, label, Icon]) => <button key={key} type="button" role="tab" aria-selected={view === key} onClick={() => setView(key)} className={`inline-flex min-h-12 items-center justify-center gap-1.5 rounded-lg text-[15px] font-semibold ${view === key ? 'bg-white text-[#101D36] shadow' : 'text-slate-600'}`} data-testid={`door-view-${key}`}><Icon className="h-4 w-4" />{label}{key === 'pendientes' && summary?.pending_revisit ? <span className="rounded-full bg-[#c2410c] px-1.5 text-xs text-white">{summary.pending_revisit}</span> : null}</button>)}
+      {/* Segmentos que caben en el celular: registrar, pendientes, mapa y reporte. */}
+      <div className="grid grid-cols-4 gap-1 rounded-xl bg-[#EEECE6] p-1" role="tablist" data-testid="door-views">
+        {VIEWS.map(([key, label, Icon]) => <button key={key} type="button" role="tab" aria-selected={view === key} onClick={() => setView(key)} className={`relative inline-flex min-h-12 min-w-0 items-center justify-center gap-1.5 rounded-lg px-0.5 text-[14px] font-semibold sm:text-[15px] ${view === key ? 'bg-white text-[#101D36] shadow' : 'text-slate-600'}`} data-testid={`door-view-${key}`}><Icon className="h-4 w-4 shrink-0 max-[419px]:hidden" /><span className="truncate">{label}</span>{key === 'pendientes' && summary?.pending_revisit ? <span className="rounded-full bg-[#c2410c] px-1.5 text-xs text-white max-[419px]:absolute max-[419px]:right-0.5 max-[419px]:top-0.5 max-[419px]:text-[10px]">{summary.pending_revisit}</span> : null}</button>)}
       </div>
 
       {view === 'registrar' && (error
@@ -87,6 +88,8 @@ export default function DoorToDoorPage() {
           onRegisterVisit={(point) => setRevisit(point)} onChanged={() => { loadSummary(); saved(); }} />
         <RevisitSheet household={revisit} books={books} onClose={() => setRevisit(null)} onSaved={() => { loadSummary(); saved(); }} />
       </>}
+
+      {view === 'reporte' && <DoorReport key={refreshKey} campaignId={campaignId} fileTag={(campaign?.name || 'invasion').replace(/\s+/g, '-')} />}
 
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <button type="button" onClick={() => setLooseOpen(true)} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-[#D9D4C7] bg-white px-4 text-[15px] font-semibold text-[#101D36]" data-testid="door-loose-person"><UserPlus className="h-5 w-5" />Persona sin vivienda</button>
