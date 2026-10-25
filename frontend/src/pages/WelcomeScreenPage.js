@@ -3,6 +3,8 @@ import axios from 'axios';
 import { useParams } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Maximize } from 'lucide-react';
 
+import { rememberedToken, useAppManifest } from '../lib/appManifest';
+
 /* Pantalla de bienvenida (/pantalla-bienvenida/<enlace>), a pantalla completa:
  * un nombre a la vez, GRANDE, para leerlo en voz alta. La encargada avanza con la
  * flecha derecha y retrocede con la izquierda (teclado o botones táctiles). El
@@ -13,7 +15,10 @@ const API = process.env.REACT_APP_BACKEND_URL;
 const C = { bg: '#0B1530', gold: '#E7C766', white: '#FFFFFF', soft: 'rgba(255,255,255,0.78)' };
 
 export default function WelcomeScreenPage() {
-  const { token } = useParams();
+  const params = useParams();
+  // El enlace se guarda en el equipo: el acceso directo «Bienvenida» abre sin el enlace en la dirección.
+  const [token] = useState(() => rememberedToken('vv_screen_link', params.token));
+  useAppManifest('/manifest-bienvenida.json', 'Bienvenida');
   const [view, setView] = useState(null);
   const [linkError, setLinkError] = useState(token ? '' : 'Abra el enlace de pantalla que aparece en Registro de visitantes › Enlaces.');
   const [offline, setOffline] = useState(false);
@@ -27,7 +32,7 @@ export default function WelcomeScreenPage() {
       .then((response) => { if (alive) { setView(response.data); setOffline(false); setLinkError(''); } })
       .catch((requestError) => { if (!alive) return; if (requestError?.response?.status === 401) setLinkError(requestError.response.data?.detail || 'Este enlace ya no funciona.'); else setOffline(true); });
     load();
-    const timer = setInterval(load, 3000);
+    const timer = setInterval(load, 2500);
     return () => { alive = false; clearInterval(timer); };
   }, [token]);
 
@@ -77,6 +82,7 @@ export default function WelcomeScreenPage() {
               : (
                 <div key={current.id} style={{ animation: 'vvFade 500ms ease-out' }}>
                   <p style={{ margin: 0, fontWeight: 800, lineHeight: 1.08, fontSize: current.invited_by ? 'min(14vh, 10vw)' : 'min(16vh, 11vw)', overflowWrap: 'anywhere' }} data-testid="welcome-screen-name">{current.name}</p>
+                  {current.registering && <p style={{ margin: '1.6vh 0 0', fontSize: 'min(2.8vh, 2vw)', color: C.soft, fontStyle: 'italic' }} data-testid="welcome-screen-registering">registrando…</p>}
                   {current.invited_by && <p style={{ margin: '3vh 0 0', fontSize: 'min(6vh, 4.2vw)', fontWeight: 600, color: C.gold, lineHeight: 1.2, overflowWrap: 'anywhere' }} data-testid="welcome-screen-invited">Invitado por {current.invited_by}</p>}
                 </div>
               )}
