@@ -156,7 +156,7 @@ const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
     { to: '/codigos', icon: KeyRound, label: 'Códigos de Invitación' },
     { to: '/bitacora', icon: NotebookPen, label: 'Bitácora Evangelística' },
     { to: '/presentacion', icon: Presentation, label: 'Manual de 7 Semanas' },
-    { to: '/estadisticas', icon: BarChart3, label: 'Estadísticas' },
+    ...(isGeneralCoordinator(user) || hasCapability(user, 'consolidation.assign') ? [{ to: '/estadisticas', icon: BarChart3, label: 'Estadísticas Globales' }] : []),
   ];
   if (hasAnyCapability(user, ['core.access.manage'])) {
     items.splice(1, 0, { to: '/nucleo', icon: DatabaseZap, label: 'Gestión de accesos', testId: 'nav-core-governance' });
@@ -215,7 +215,7 @@ const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
   ) && (
     item.to !== '/presentacion' || canViewPresentationManual(user)
   ) && (
-    item.to !== '/estadisticas' || canViewDirectory(user)
+    item.to !== '/estadisticas' || isPastoralAuthority(user) || isGeneralCoordinator(user) || hasCapability(user, 'consolidation.assign')
   ) && (
     item.to !== '/' || canViewProcesses(user)
   )).filter((item, index, all) => item.type !== 'separator' || all.slice(index + 1).some((next) => next.type !== 'separator'));
@@ -238,7 +238,8 @@ const breadcrumbMap = {
   '/registro': 'Registro de Contactos',
   '/bitacora': 'Bitácora Evangelística',
   '/codigos': 'Códigos de Invitación',
-  '/estadisticas': 'Estadísticas',
+  '/estadisticas': 'Estadísticas Globales',
+  '/mis-estadisticas/manual': 'Mi progreso del Manual de 7 Semanas',
   '/directorio': 'Directorio de Talentos',
   '/ministerios': 'Ministerios',
   '/personas': 'Personas',
