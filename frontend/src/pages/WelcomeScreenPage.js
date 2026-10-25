@@ -62,15 +62,19 @@ export default function WelcomeScreenPage() {
   const current = names[index];
   return (
     <div style={{ minHeight: '100vh', background: C.bg, color: C.white, fontFamily: 'Inter, system-ui, sans-serif', display: 'flex', flexDirection: 'column', overflow: 'hidden' }} data-testid="welcome-screen">
-      <header style={{ padding: '4vh 5vw 0', textAlign: 'center' }}>
-        <p style={{ margin: 0, fontFamily: 'Spectral, Georgia, serif', fontSize: 'min(7vh, 5.5vw)', fontWeight: 700, color: C.gold, lineHeight: 1.1 }}>¡Bienvenidos a Casa de Oración!</p>
+      <header style={{ padding: '3vh 5vw 0', textAlign: 'center' }}>
+        {/* El logo tiene letras verdes y azules: va sobre un fondo claro para verse nítido. */}
+        <span style={{ display: 'inline-block', background: '#fff', borderRadius: 'min(2.4vh, 24px)', padding: 'min(1.2vh, 12px) min(2.4vh, 24px)', marginBottom: '1.6vh' }}>
+          <img src="/logo-iglesia.png" srcSet="/logo-iglesia.png 1x, /logo-iglesia@2x.png 2x" alt="Primera Iglesia del Nazareno · Casa de oración Ven y Ve" style={{ display: 'block', height: '13vh', width: 'auto' }} data-testid="welcome-screen-logo" />
+        </span>
+        <p style={{ margin: 0, fontFamily: 'Spectral, Georgia, serif', fontSize: 'min(6vh, 5vw)', fontWeight: 700, color: C.gold, lineHeight: 1.1 }}>¡Bienvenidos a Casa de Oración!</p>
         {view?.service_label && <p style={{ margin: '1vh 0 0', fontSize: 'min(3.6vh, 2.8vw)', color: C.soft }}>{view.service_label}</p>}
       </header>
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '2vh 4vw', textAlign: 'center' }}>
         {linkError ? <div data-testid="welcome-screen-error"><p style={{ fontSize: 'min(6vh, 5vw)', fontWeight: 800, margin: 0 }}>Esta pantalla necesita el enlace nuevo</p><p style={{ fontSize: 'min(3.5vh, 3vw)', color: C.soft }}>{linkError}</p></div>
           : !view ? <p style={{ fontSize: 'min(5vh, 4vw)', color: C.soft }}>Conectando…</p>
             : !current ? <p style={{ fontSize: 'min(7vh, 5vw)', fontWeight: 700, margin: 0, lineHeight: 1.2 }} data-testid="welcome-screen-empty">Todavía no hay visitantes registrados en este servicio</p>
-              : <p key={current.id} style={{ margin: 0, fontWeight: 800, lineHeight: 1.08, fontSize: 'min(18vh, 11vw)', overflowWrap: 'anywhere', animation: 'vvFade 500ms ease-out' }} data-testid="welcome-screen-name">{current.name}</p>}
+              : <p key={current.id} style={{ margin: 0, fontWeight: 800, lineHeight: 1.08, fontSize: 'min(16vh, 11vw)', overflowWrap: 'anywhere', animation: 'vvFade 500ms ease-out' }} data-testid="welcome-screen-name">{current.name}</p>}
       </main>
       {!linkError && view && (
         <footer style={{ padding: '0 4vw 4vh', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
