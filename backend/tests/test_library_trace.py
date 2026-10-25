@@ -79,7 +79,9 @@ async def test_trace_summary_items_journey_permissions_and_report():
 
         # Reporte de invasión: libros entregados, con destinatario y con seguimiento.
         report = (await pastora.get(f"/api/invasions/{campaign_id}/report")).json()
-        assert report["books_trace"] == {"delivered": 6, "pending_reconciliation": 3, "identified": 2, "unidentified": 4, "with_followup": 2}
+        trace = report["books_trace"]
+        assert {key: trace[key] for key in ("delivered", "pending_reconciliation", "identified", "unidentified", "with_followup")} == {"delivered": 6, "pending_reconciliation": 3, "identified": 2, "unidentified": 4, "with_followup": 2}
+        assert trace["by_material"] == [{"name": f"Libro {tag}", "total": 6}]
     finally:
         if campaign_id:
             for collection in ("outreach_households", "outreach_visit_events", "outreach_visits", "outreach_visit_history", "outreach_participations", "invasion_participants", "outreach_campaigns", "library_movements"):

@@ -158,9 +158,13 @@ async def update_help(campaign_id: str, alert_id: str, payload: HelpUpdate, curr
     return alert_view(updated)
 
 
-async def help_summary(campaign_id: str) -> dict:
-    """Para el Reporte de invasión: número de alertas y tiempo de respuesta."""
+async def help_summary(campaign_id: str, day=None, zone=None) -> dict:
+    """Para el Reporte de invasión: número de alertas y tiempo de respuesta (opcional: de un día local)."""
     alerts = await db.invasion_help_alerts.find({"campaign_id": campaign_id}, {"_id": 0}).sort("created_at", 1).to_list(500)
+    if day:
+        from report_period import local_day, report_zone
+        zone = zone or await report_zone()
+        alerts = [item for item in alerts if local_day(item.get("created_at"), zone) == day]
     views = [alert_view(item) for item in alerts]
     times = [item["response_minutes"] for item in views if item["response_minutes"] is not None]
     by_reason = [{"reason": key, "label": label, "total": sum(1 for item in alerts if item.get("reason") == key)} for key, label in REASONS.items()]

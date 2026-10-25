@@ -237,12 +237,28 @@ async def trace_movement(movement_id: str, current_user: dict = Depends(get_curr
     return {"movement": serialize(movement), "steps": serialize(steps)}
 
 
-async def campaign_books_summary(campaign_id: str) -> dict:
-    """Para el Reporte de invasión: libros entregados, con destinatario y con seguimiento."""
+async def campaign_books_summary(campaign_id: str, day: Optional[str] = None, zone=None, excluded=None) -> dict:
+    """Para el Reporte de invasión: libros entregados, con destinatario y con
+    seguimiento, por material y por mentor (opcional: de un día local)."""
     movements = await db.library_movements.find({"campaign_id": campaign_id, "movement_type": {"$in": DELIVERY_TYPES}, "from_holder.type": "user"}, {"_id": 0}).to_list(20000)
+    if day:
+        from report_period import local_day, report_zone
+        zone = zone or await report_zone()
+        movements = [item for item in movements if local_day(item.get("occurred_at"), zone) == day]
+    user_names, _ = await _names(user_ids=[(item.get("from_holder") or {}).get("id") for item in movements])
+    if excluded:
+        users = {str(doc["_id"]): doc.get("person_id") async for doc in db.users.find({"_id": {"$in": [ObjectId(item) for item in {(m.get("from_holder") or {}).get("id") for m in movements} if item and ObjectId.is_valid(item)]}}, {"person_id": 1})}
+        movements = [item for item in movements if users.get((item.get("from_holder") or {}).get("id")) not in excluded]
     follow = await _followup_info(movements)
     delivered = sum(item.get("quantity") or 0 for item in movements)
     identified = sum(item.get("quantity") or 0 for item in movements if item.get("recipient_status") == "identified" or item.get("person_id"))
+    by_material: dict[str, int] = defaultdict(int)
+    by_mentor: dict[str, int] = defaultdict(int)
+    for item in movements:
+        by_material[item.get("book_name") or "Libro"] += item.get("quantity") or 0
+        by_mentor[user_names.get((item.get("from_holder") or {}).get("id")) or "Mentor"] += item.get("quantity") or 0
     return {"delivered": delivered, "pending_reconciliation": sum(item.get("quantity") or 0 for item in movements if item["movement_type"] == PENDING_TYPE),
             "identified": identified, "unidentified": delivered - identified,
-            "with_followup": sum(item.get("quantity") or 0 for item in movements if follow.get(item["movement_id"], {}).get("accepted"))}
+            "with_followup": sum(item.get("quantity") or 0 for item in movements if follow.get(item["movement_id"], {}).get("accepted")),
+            "by_material": sorted(({"name": key, "total": value} for key, value in by_material.items()), key=lambda row: -row["total"]),
+            "by_mentor": sorted(({"name": key, "total": value} for key, value in by_mentor.items()), key=lambda row: -row["total"])}

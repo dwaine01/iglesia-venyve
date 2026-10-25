@@ -304,9 +304,9 @@ def campaign_state(campaign: dict) -> str:
     return "finished"
 
 
-async def _help_alerts(campaign_id: str) -> dict:
+async def _help_alerts(campaign_id: str, day: Optional[str] = None, zone=None) -> dict:
     from invasion_alerts import help_summary
-    return await help_summary(campaign_id)
+    return await help_summary(campaign_id, day, zone)
 
 
 STATUS_LABELS = {"assigned": "Asignada", "not_found": "No encontrada", "visited": "Visitada", "rejected": "Rechazó", "wants_followup": "Quiere seguimiento"}
@@ -325,26 +325,59 @@ async def _people_rows(visits: list[dict], mentor_names: dict, sector_of_house: 
     return rows
 
 
-async def _books_trace(campaign_id: str) -> dict:
+async def _books_trace(campaign_id: str, day: Optional[str] = None, zone=None, excluded=None) -> dict:
     from library_trace import campaign_books_summary
-    return await campaign_books_summary(campaign_id)
+    return await campaign_books_summary(campaign_id, day, zone, excluded)
 
 
-async def _door_data(campaign_id: str) -> dict:
+async def _door_data(campaign_id: str, day: Optional[str] = None, zone=None, excluded=None) -> dict:
     from door_reports import door_report_data
-    return await door_report_data(campaign_id)
+    return await door_report_data(campaign_id, day=day, zone=zone, excluded=excluded)
 
 
-async def compute_report(campaign: dict) -> dict:
-    """Todas las secciones con datos vivos (lo que se congela al cerrar)."""
+def campaign_period_days(campaign: dict) -> list[dict]:
+    from invasion_attendance import campaign_days
+    names = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
+    months = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
+    out = []
+    for index, item in enumerate(campaign_days(campaign) if campaign.get("start_date") else []):
+        value = date.fromisoformat(item["day"])
+        out.append({"day": item["day"], "index": index + 1, "label": f"{names[value.weekday()]} {value.day} de {months[value.month - 1]} de {value.year}"})
+    return out
+
+
+async def compute_report(campaign: dict, day: Optional[str] = None) -> dict:
+    """Todas las secciones con datos vivos (lo que se congela al cerrar).
+    `day` (AAAA-MM-DD, día local de la iglesia) = solo lo de esa jornada."""
+    from report_period import excluded_person_ids, local_day, report_zone
     campaign_id = campaign["campaign_id"]
-    authorities = await principal_authority_person_ids(db)
+    authorities = await excluded_person_ids()  # autoridad pastoral + cuentas de prueba marcadas
+    zone = await report_zone() if day else None
     participants = [row for row in await db.invasion_participants.find({"campaign_id": campaign_id}, {"_id": 0}).to_list(3000) if row["person_id"] not in authorities]
+    if day:
+        # Asistencia de ESA jornada (asistencia por jornada).
+        participants = [{**row, "attended": day in (row.get("attended_days") or [])} for row in participants]
     households = await db.outreach_households.find({"campaign_id": campaign_id, "archived": {"$ne": True}}, {"_id": 0, "household_id": 1, "mentor_person_id": 1, "sector": 1, "status": 1, "latitude": 1}).to_list(5000)
     events = await db.outreach_visit_events.find({"campaign_id": campaign_id}, {"_id": 0, "household_id": 1, "mentor_person_id": 1, "result": 1, "occurred_at": 1}).to_list(20000)
     visits = [visit for visit in await db.outreach_visits.find({"campaign_id": campaign_id, "archived": {"$ne": True}}, {"_id": 0, "visit_id": 1, "mentor_person_id": 1, "status": 1, "received_mcd": 1, "received_npt": 1, "lbs_decision": 1, "enrollment_id": 1, "contact_zone": 1, "household_id": 1, "created_at": 1, "front_group_id": 1,
                                                                                                        "contact_name": 1, "person_id": 1, "converted_person_id": 1, "address_line1": 1, "address_line2": 1, "followup_accepted": 1, "next_action": 1}).to_list(20000)
               if visit.get("mentor_person_id") not in authorities]
+    # Las cuentas excluidas (pastora, pruebas) no cuentan tampoco en viviendas ni intentos.
+    households = [house for house in households if house.get("mentor_person_id") not in authorities]
+    events = [event for event in events if event.get("mentor_person_id") not in authorities]
+    if day:
+        events = [event for event in events if local_day(event.get("occurred_at"), zone) == day]
+        visits = [visit for visit in visits if local_day(visit.get("created_at"), zone) == day]
+    # Personas únicas: la misma persona registrada dos veces cuenta una vez.
+    seen: set = set()
+    unique_visits = []
+    for visit in visits:
+        key = visit.get("converted_person_id") or visit.get("person_id") or visit["visit_id"]
+        if key in seen:
+            continue
+        seen.add(key)
+        unique_visits.append(visit)
+    visits = unique_visits
     person_ids = {row["person_id"] for row in participants} | {item.get("mentor_person_id") for item in households + visits if item.get("mentor_person_id")}
     names = await _names(person_ids | {campaign.get("general_lead_person_id"), campaign.get("logistics_lead_person_id")})
 
@@ -367,6 +400,8 @@ async def compute_report(campaign: dict) -> dict:
     from invasion_attendance import campaign_days
     attendance_by_day = []
     for item in campaign_days(campaign):
+        if day and item["day"] != day:
+            continue
         count = sum(1 for row in participants if item["day"] in (row.get("attended_days") or []))
         attendance_by_day.append({"day": item["day"], "attended": count, "invited": len(participants), "pct": round(count / len(participants) * 100) if participants else None})
     groups_rows: dict[str, list] = defaultdict(list)
@@ -452,8 +487,11 @@ async def compute_report(campaign: dict) -> dict:
     field_section = {"houses": {"visited": key_figures["houses_visited"], "total": len(households)}}
     goals = goals_section(key_figures, field_section, followup, {"totals": prayer["totals"]} if prayer and prayer["period"]["expected_days"] else None,
                           sum(1 for row in participants if row["person_id"] in active_people), await load_thresholds())
+    days = campaign_period_days(campaign)
+    current = next((item for item in days if item["day"] == day), None)
     return {
         "version": REPORT_VERSION,
+        "period": {"day": day, "index": (current or {}).get("index"), "label": (current or {}).get("label"), "days_total": len(days), "days": days},
         "summary": {
             "name": campaign.get("name"), "start_date": campaign.get("start_date"), "end_date": campaign.get("end_date"),
             "location": campaign.get("location"), "purpose": campaign.get("purpose"), "description": campaign.get("description"),
@@ -472,15 +510,15 @@ async def compute_report(campaign: dict) -> dict:
             "results": results,
             "attempts_by_result": [{"result": key, "label": RESULT_LABELS.get(key, key), "total": value} for key, value in attempts_by_result.items() if key],
             # Puerta a puerta (tramo 4): viviendas vs intentos, libros, abrieron/no abrieron, pendientes; por mentor, equipo y calle.
-            "doors": await _door_data(campaign_id),
+            "doors": await _door_data(campaign_id, day, zone, authorities),
         },
         "ranking": {"mentors": mentor_rows, "teams": teams},
         "prayer": prayer_report(prayer) if prayer else None,
-        "help_alerts": await _help_alerts(campaign["campaign_id"]),
+        "help_alerts": await _help_alerts(campaign["campaign_id"], day, zone),
         # Lo que mostraba el "Informe" anterior: libros asignados/entregados por mentor.
         "books": [row for row in await campaign_book_rows(campaign) if row["mentor_person_id"] not in authorities],
         # L3: libros entregados (bitácora), con destinatario y con seguimiento.
-        "books_trace": await _books_trace(campaign_id),
+        "books_trace": await _books_trace(campaign_id, day, zone, authorities),
         "followup": {key: value for key, value in followup.items() if key != "unattended_items"},
         "goals": goals,
         "comparison": await comparison_section(campaign, key_figures),
@@ -530,14 +568,23 @@ async def with_organizer(campaign: dict) -> dict:
 
 
 @router.get("/{campaign_id}/report", response_model=dict)
-async def get_report(campaign_id: str, current_user: dict = Depends(get_current_user)):
+async def get_report(campaign_id: str, day: Optional[str] = None, day_index: Optional[int] = None, current_user: dict = Depends(get_current_user)):
     campaign = await load_campaign(campaign_id)
     access = await report_access(campaign, current_user)
     campaign = await with_organizer(campaign)
+    if day_index and not day:
+        # «Día 1», «Día 2»…: la jornada N según la fecha de inicio y las jornadas de la invasión.
+        days = campaign_period_days(campaign)
+        if not 1 <= day_index <= len(days):
+            raise HTTPException(status_code=422, detail="Esa jornada no existe en esta invasión")
+        day = days[day_index - 1]["day"]
+    if day and day not in {item["day"] for item in campaign_period_days(campaign)}:
+        raise HTTPException(status_code=422, detail="Ese día no es una jornada de esta invasión")
     snapshot = None
-    if campaign.get("status") == "closed":
+    if campaign.get("status") == "closed" and not day:
         snapshot = await freeze_report(campaign, None)  # invasiones cerradas antes de este reporte
-    data = snapshot["data"] if snapshot else await compute_report(campaign)
+    # Un día concreto se calcula siempre en vivo (el reporte final congela la semana completa).
+    data = snapshot["data"] if snapshot else await compute_report(campaign, day)
     meta = {"campaign_id": campaign_id, "mode": "final" if snapshot else "live",
             "frozen_at": serialize(snapshot["frozen_at"]) if snapshot else None, "generated_at": serialize(now_utc()),
             "can_finalize": access == "full" and not snapshot and campaign_state(campaign) in {"finished", "active"}}
@@ -592,7 +639,7 @@ async def finalize_report(campaign_id: str, current_user: dict = Depends(get_cur
         raise HTTPException(status_code=409, detail="La invasión todavía no empieza")
     await db.outreach_campaigns.update_one({"campaign_id": campaign_id}, {"$set": {"status": "closed", "closed_at": now_utc(), "closed_by_user_id": current_user["user_id"], "updated_at": now_utc()}})
     await freeze_report({**campaign, "status": "closed"}, current_user["user_id"])
-    return await get_report(campaign_id, current_user)
+    return await get_report(campaign_id, current_user=current_user)
 
 
 async def ensure_indexes() -> None:
