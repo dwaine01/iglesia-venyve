@@ -65,6 +65,13 @@ export default function PersonaPerfilPage({ personId: personIdProp, ownProfileEx
   const [archiving, setArchiving] = useState(false);
   const [archiveError, setArchiveError] = useState('');
   const [mentorBadgeActive, setMentorBadgeActive] = useState(false);
+  // L2: el mentor de esta persona (visita de invasión) también entrega libros desde el perfil (el backend lo valida).
+  const [mentorLibraryAccess, setMentorLibraryAccess] = useState(false);
+  useEffect(() => {
+    setMentorLibraryAccess(false);
+    if (!personId || canDeliverLibraryBooks(user)) return;
+    axios.get(`${API}/api/library/persons/${personId}/materials`, getAuthHeaders()).then(() => setMentorLibraryAccess(true)).catch(() => setMentorLibraryAccess(false));
+  }, [API, getAuthHeaders, personId, user]);
 
   const refreshProfile = async () => {
     const response = await axios.get(
@@ -122,7 +129,7 @@ export default function PersonaPerfilPage({ personId: personIdProp, ownProfileEx
   const available = profile?.sections_available || ['resumen'];
   const planned = profile?.sections_planned || [];
   const canViewFinance = profile?.private_finance_can_read === true;
-  const canViewLibrary = canDeliverLibraryBooks(user);
+  const canViewLibrary = canDeliverLibraryBooks(user) || mentorLibraryAccess;
   const canManageMembershipDocs = canManageMembershipDocuments(user);
   const canRegularize = canRegularizeMembership(user);
   const baptismCanWrite = canWriteBaptism(user);

@@ -21,6 +21,9 @@ export const DeliverBookDialog = ({ personId, trigger, onDelivered }) => {
   const [books, setBooks] = useState([]);
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
+  // Una clave por entrega: el doble toque no entrega dos veces. «Sin existencias» ofrece registrarla igual (pendiente de conciliar).
+  const [requestKey, setRequestKey] = useState(() => (window.crypto?.randomUUID ? window.crypto.randomUUID() : `${Date.now()}`));
+  const [noStock, setNoStock] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -34,8 +37,8 @@ export const DeliverBookDialog = ({ personId, trigger, onDelivered }) => {
     setForm((old) => ({ ...old, book_id: bookId, payment_status: book?.member_price_cents ? 'pendiente' : 'no_aplica', amount_paid: book?.member_price_cents ? String((book.member_price_cents / 100).toFixed(2)) : '0' }));
   };
 
-  const submit = async (event) => {
-    event.preventDefault();
+  const submit = async (event, allowPending = false) => {
+    event?.preventDefault?.();
     if (!form.book_id) return toast.error('Seleccione un material');
     setSaving(true);
     try {
@@ -43,10 +46,15 @@ export const DeliverBookDialog = ({ personId, trigger, onDelivered }) => {
         book_id: form.book_id, quantity: Number(form.quantity || 1), payment_status: form.payment_status,
         amount_paid_cents: form.payment_status === 'pagado' || form.payment_status === 'pago_parcial' ? Math.round(Number(form.amount_paid || 0) * 100) : 0,
         payment_method: form.payment_method, notes: form.notes, as_loan: form.as_loan, due_date: form.as_loan ? (form.due_date || null) : null,
+        idempotency_key: allowPending ? `${requestKey}-pending` : requestKey, allow_pending: allowPending,
       }, getAuthHeaders());
-      toast.success('Material entregado y registrado en Persona 360');
-      setForm(EMPTY); setOpen(false); await onDelivered();
-    } catch (error) { toast.error(error?.response?.data?.detail || 'No se pudo entregar el material'); }
+      toast.success(allowPending ? 'Entrega registrada sin descuento: Librería la conciliará' : 'Material entregado y registrado en Persona 360');
+      setForm(EMPTY); setNoStock(false); setRequestKey(window.crypto?.randomUUID ? window.crypto.randomUUID() : `${Date.now()}`); setOpen(false); await onDelivered();
+    } catch (error) {
+      const detail = error?.response?.data?.detail;
+      if (detail?.code === 'no_stock' && !allowPending) { setNoStock(true); return; }
+      toast.error((typeof detail === 'string' ? detail : detail?.message) || 'No se pudo entregar el material');
+    }
     finally { setSaving(false); }
   };
 
@@ -75,6 +83,8 @@ export const DeliverBookDialog = ({ personId, trigger, onDelivered }) => {
         </SelectContent></Select></div>}
         <div><Label>Notas (opcional)</Label><Textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} data-testid="deliver-book-notes-input" /></div>
         {selectedBook && <p className="flex items-center gap-2 text-xs text-slate-500" data-testid="deliver-book-selected-info"><BookThumbnail fileId={selectedBook.cover_file_id} size={28} />Inventario tipo: {selectedBook.inventory_kind === 'loanable' ? 'Prestado' : 'Consumible'} · Precio de lista: {selectedBook.member_price_cents ? `$${(selectedBook.member_price_cents / 100).toFixed(2)}` : 'Gratis'}</p>}
+        {noStock && <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900" data-testid="deliver-book-no-stock"><p>No te quedan unidades de este material en tu inventario. Si ya lo entregaste, regístralo igual: no resta de tu saldo hasta que Librería lo concilie.</p>
+          <Button type="button" variant="outline" disabled={saving} onClick={(event) => submit(event, true)} className="min-h-11 w-full" data-testid="deliver-book-pending-button">Registrar entrega sin descuento</Button></div>}
         <Button type="submit" disabled={saving} className="w-full bg-[#132443]" data-testid="confirm-deliver-book-button">{saving && <Loader2 className="h-4 w-4 animate-spin" />}Confirmar entrega</Button>
       </form>
     </DialogContent>

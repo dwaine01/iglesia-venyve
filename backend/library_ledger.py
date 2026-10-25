@@ -72,7 +72,7 @@ async def record_pending_delivery(*, book_id: Optional[str], book_label: str, qu
         "notes": notes or "Entregado sin descuento de inventario (pendiente de conciliar)", "actor_user_id": actor_user_id, "scan_method": "MANUAL",
         "occurred_at": when, "created_at": now_utc(), "is_reversal": False, "reversed_movement_id": None, "reversed_by_movement_id": None,
         "idempotency_key": idempotency_key, "household_id": household_id, "visit_id": visit_id, "visit_event_id": visit_event_id,
-        "recipient_status": "identified" if person_id else "unidentified", "already_counted": False, "completes_movement_id": None,
+        "recipient_status": "identified" if (person_id or visit_id) else "unidentified", "already_counted": False, "completes_movement_id": None,
         "inventory_status": "pending_reconciliation", "counts_in_balance": False, "pending_reason": reason,
     }
     try:
@@ -322,3 +322,92 @@ async def startup_migration() -> None:
         await migrate_existing_deliveries()
     except Exception:  # noqa: BLE001 — nunca impide arrancar el servidor
         logger.warning("library ledger: la migración falló", exc_info=True)
+
+
+# ------------------------------------------------------------------ L2 · completar destinatario
+async def _can_touch(movement: dict, current_user: dict) -> bool:
+    if is_library_manager(current_user):
+        return True
+    from mentorship_outreach import is_outreach_leader
+    if is_outreach_leader(current_user):
+        return True
+    return (movement.get("from_holder") or {}).get("id") == current_user["user_id"]
+
+
+@router.get("/unidentified", response_model=dict)
+async def unidentified_recipients(scope: str = "mine", limit: int = 100, current_user: dict = Depends(get_current_user)):
+    """Tareas «completar nombre»: libros entregados en una vivienda sin saber a quién.
+    El mentor ve las suyas; Librería y líderes de invasión pueden ver todas."""
+    from mentorship_outreach import is_outreach_leader
+    query: dict = {"movement_type": {"$in": ["DELIVERY", PENDING_TYPE]}, "recipient_status": "unidentified", "household_id": {"$nin": [None, ""]}}
+    if scope != "all" or not (is_library_manager(current_user) or is_outreach_leader(current_user)):
+        query["from_holder.id"] = current_user["user_id"]
+    items = await db.library_movements.find(query, {"_id": 0}).sort("occurred_at", -1).limit(max(1, min(limit, 500))).to_list(500)
+    house_ids = list({item["household_id"] for item in items})
+    houses = {doc["household_id"]: doc async for doc in db.outreach_households.find({"household_id": {"$in": house_ids}}, {"_id": 0, "household_id": 1, "address_line1": 1, "address_line2": 1, "street_name": 1, "campaign_id": 1})}
+    for item in items:
+        house = houses.get(item["household_id"]) or {}
+        item["address_line1"], item["address_line2"] = house.get("address_line1"), house.get("address_line2")
+    return {"items": serialize(items), "total": await db.library_movements.count_documents(query)}
+
+
+class RecipientInput(BaseModel):
+    contact_type: str = Field(default="new", pattern="^(new|existing)$")
+    person_id: Optional[str] = Field(default=None, max_length=80)
+    contact_name: Optional[str] = Field(default=None, max_length=200)
+    contact_phone: Optional[str] = Field(default=None, max_length=40)
+
+
+@router.post("/movements/{movement_id}/recipient", response_model=dict)
+async def complete_recipient(movement_id: str, payload: RecipientInput, current_user: dict = Depends(get_current_user)):
+    """Completa a quién se entregó un libro YA contado: se vincula a la persona
+    (con la misma revisión de duplicados de Persona 360 / visitas) y queda un
+    registro `RECIPIENT_COMPLETION` con `already_counted=True`; NO vuelve a
+    descontar. Idempotente."""
+    movement = await db.library_movements.find_one({"movement_id": movement_id}, {"_id": 0})
+    if not movement or movement.get("movement_type") not in {"DELIVERY", PENDING_TYPE}:
+        raise HTTPException(status_code=404, detail="Entrega no encontrada")
+    if not await _can_touch(movement, current_user):
+        raise HTTPException(status_code=403, detail="Solo quien entregó el libro, Librería o un líder de la invasión")
+    if movement.get("recipient_status") == "identified":
+        return {"movement": serialize(movement), "already": True}
+    visit = None
+    person_id = payload.person_id if payload.contact_type == "existing" else None
+    household = await db.outreach_households.find_one({"household_id": movement.get("household_id")}, {"_id": 0}) if movement.get("household_id") else None
+    if household and household.get("campaign_id") and household.get("mentor_person_id"):
+        from mentorship_outreach import resolve_and_insert_contact_visit
+        try:
+            visit = await resolve_and_insert_contact_visit(
+                payload.contact_type, payload.person_id, payload.contact_name, payload.contact_phone, household.get("street_name") or household.get("sector"),
+                household["campaign_id"], household["mentor_person_id"], "Destinatario completado de un libro entregado", current_user,
+                household_id=household["household_id"], visit_event_id=movement.get("visit_event_id"))
+            await db.outreach_visits.update_one({"visit_id": visit["visit_id"]}, {"$set": {"address_line1": household.get("address_line1"), "address_line2": household.get("address_line2"), "status": "visited"}})
+        except HTTPException as exc:
+            # Persona existente que ya tiene su visita: se vincula sin crear otra.
+            if not (exc.status_code == 409 and payload.contact_type == "existing" and payload.person_id):
+                raise
+    elif payload.contact_type != "existing" or not payload.person_id:
+        raise HTTPException(status_code=422, detail="Elija la persona en Persona 360")
+    if person_id:
+        from bson import ObjectId
+        if not ObjectId.is_valid(person_id) or not await db.persons.find_one({"_id": ObjectId(person_id)}, {"_id": 1}):
+            raise HTTPException(status_code=404, detail="Persona no encontrada")
+    now = now_utc()
+    completion_id = str(uuid4())
+    completion = {
+        "_id": completion_id, "movement_id": completion_id, "book_id": movement.get("book_id"), "book_name": movement.get("book_name"), "movement_type": "RECIPIENT_COMPLETION",
+        "quantity": movement.get("quantity"), "from_holder": None, "to_holder": None, "person_id": person_id, "campaign_id": movement.get("campaign_id"),
+        "process_key": movement.get("process_key"), "notes": "Destinatario completado (sin volver a descontar)", "actor_user_id": current_user["user_id"],
+        "occurred_at": now, "created_at": now, "is_reversal": False, "idempotency_key": f"complete:{movement_id}", "household_id": movement.get("household_id"),
+        "visit_id": (visit or {}).get("visit_id"), "visit_event_id": movement.get("visit_event_id"), "recipient_status": "identified",
+        "already_counted": True, "completes_movement_id": movement_id, "counts_in_balance": False, "inventory_status": "not_applicable",
+    }
+    try:
+        await db.library_movements.insert_one(completion)
+    except DuplicateKeyError:
+        return {"movement": serialize(await db.library_movements.find_one({"movement_id": movement_id}, {"_id": 0})), "already": True}
+    await db.library_movements.update_one({"movement_id": movement_id}, {"$set": {
+        "recipient_status": "identified", "person_id": person_id or movement.get("person_id"), "visit_id": (visit or {}).get("visit_id") or movement.get("visit_id"),
+        "recipient_completed_at": now, "completed_by_movement_id": completion_id}})
+    return {"movement": serialize(await db.library_movements.find_one({"movement_id": movement_id}, {"_id": 0})), "completion_id": completion_id,
+            "visit_id": (visit or {}).get("visit_id"), "already": False}

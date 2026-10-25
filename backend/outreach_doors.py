@@ -75,6 +75,9 @@ class AttemptInput(BaseModel):
     other_material_count: int = Field(default=0, ge=0, le=200)
     followup: Literal["yes", "no", "not_asked"] = "not_asked"
     followup_date: Optional[date] = None
+    # L2: seguimiento con responsable y próxima acción (mismo modelo que Consolidación; no la inicia).
+    followup_next_action: Optional[str] = Field(default=None, max_length=160)
+    followup_responsible_person_id: Optional[str] = Field(default=None, max_length=80)
     language: Optional[Literal["es", "en", "other", "unknown"]] = None
     language_other: Optional[str] = Field(default=None, max_length=60)
     language_basis: Optional[Literal["confirmed", "impression"]] = None
@@ -167,6 +170,8 @@ async def discount_books(entries: list[BookEntry], mentor_person_id: str, target
                     person_id=target_person_id, process_key=OUTREACH_PROCESS_KEY, campaign_id=campaign_id,
                     notes="Entregado en la puerta (invasión)" if not target_person_id else "Entrega en visita de invasión",
                     idempotency_key=f"door:{base_key}:{index}" if base_key else None, **links,
+                    # Identificado si hay persona contactada (con nombre) en el mismo intento; si no, queda para completar.
+                    recipient_status="identified" if (target_person_id or visit_id) else "unidentified",
                 ), actor_user_id)
                 row.update({"inventory_status": "discounted", "movement_id": movement["movement_id"]})
             except HTTPException as exc:
@@ -184,6 +189,47 @@ async def discount_books(entries: list[BookEntry], mentor_person_id: str, target
                 logging.getLogger(__name__).warning("No se pudo registrar la entrega pendiente", exc_info=True)
         rows.append(row)
     return rows
+
+
+# ------------------------------------------------------------------ seguimiento (L2)
+DEFAULT_NEXT_ACTION = "Visitar de nuevo"
+
+
+def followup_plan(accepted: bool, responsible_person_id: Optional[str], next_action: Optional[str], when: Optional[date]) -> dict:
+    """Campos de seguimiento en la persona contactada: responsable, próxima acción
+    y fecha (`next_action` / `next_action_at`, como en Consolidación). Aceptar
+    seguimiento NO inicia Consolidación."""
+    from datetime import datetime, time, timezone
+    if not accepted:
+        return {"followup_accepted": False}
+    return {"followup_accepted": True, "followup_responsible_person_id": responsible_person_id, "next_action": (next_action or "").strip() or DEFAULT_NEXT_ACTION,
+            "next_action_at": datetime.combine(when, time(12, 0), tzinfo=timezone.utc) if when else None, "followup_set_at": now_utc()}
+
+
+class FollowupInput(BaseModel):
+    accepted: bool = True
+    responsible_person_id: Optional[str] = Field(default=None, max_length=80)
+    next_action: Optional[str] = Field(default=None, max_length=160)
+    next_action_date: Optional[date] = None
+
+
+@router.put("/visits/{visit_id}/followup", response_model=dict)
+async def set_visit_followup(visit_id: str, payload: FollowupInput, current_user: dict = Depends(get_current_user)):
+    """Editar el seguimiento aceptado (responsable, próxima acción y fecha)."""
+    from mentorship_outreach import load_visit, log_visit_history
+    visit = await load_visit(visit_id)
+    if not is_outreach_leader(current_user) and visit.get("mentor_person_id") != current_user.get("person_id"):
+        raise HTTPException(status_code=403, detail="Solo el mentor responsable o un líder puede cambiar el seguimiento")
+    responsible = payload.responsible_person_id or visit.get("followup_responsible_person_id") or visit.get("mentor_person_id")
+    if responsible != visit.get("mentor_person_id") and not await is_active_mentor(responsible):
+        raise HTTPException(status_code=422, detail="El responsable debe ser un mentor activo")
+    fields = followup_plan(payload.accepted, responsible, payload.next_action, payload.next_action_date)
+    if payload.accepted and visit.get("status") in {"visited", "assigned"}:
+        fields["status"] = "wants_followup"
+    fields["updated_at"] = now_utc()
+    await db.outreach_visits.update_one({"visit_id": visit_id}, {"$set": fields})
+    await log_visit_history(visit_id, current_user, "followup_updated", {key: value for key, value in fields.items() if key != "updated_at"})
+    return serialize(await db.outreach_visits.find_one({"visit_id": visit_id}, {"_id": 0}))
 
 
 # ------------------------------------------------------------------ estado de la puerta
@@ -275,9 +321,10 @@ async def record_attempt(household: dict, payload: AttemptInput, current_user: d
                 household.get("campaign_id"), mentor_person_id, event["note"], current_user, household_id=household["household_id"], visit_event_id=event_id,
             )
             status = "wants_followup" if payload.followup == "yes" else "visited"
+            followup_fields = followup_plan(payload.followup == "yes", payload.followup_responsible_person_id or mentor_person_id, payload.followup_next_action, payload.followup_date)
             await db.outreach_visits.update_one({"visit_id": visit["visit_id"]}, {"$set": {
                 "status": status, "visit_date": date.today().isoformat(), "address_line1": household.get("address_line1"), "address_line2": household.get("address_line2"),
-                "language": event["language"], "agreed_start_date": event["followup_date"], "updated_at": now,
+                "language": event["language"], "agreed_start_date": event["followup_date"], "updated_at": now, **followup_fields,
             }})
             visit["status"] = status
         except HTTPException as exc:
