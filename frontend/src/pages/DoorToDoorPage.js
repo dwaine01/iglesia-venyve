@@ -8,6 +8,7 @@ import { OUTREACH_CHANGED_EVENT, useInvasionToday } from '../context/InvasionTod
 import { DoorForm } from '../components/doors/DoorForm';
 import { DoorStats } from '../components/doors/DoorStats';
 import { DoorReport } from '../components/doors/DoorReport';
+import { RecipientTasks } from '../components/doors/RecipientTasks';
 import { StreetCard } from '../components/doors/StreetCard';
 import { PendingDoors, RevisitSheet } from '../components/doors/PendingDoors';
 import { InvasionHousesMap } from '../components/outreach/InvasionHousesMap';
@@ -84,6 +85,7 @@ export default function DoorToDoorPage() {
           <StreetCard campaignId={campaignId} street={street} streets={streets} onChange={applyStreets} />
           {street && <DoorForm key={street.street_name} campaignId={campaignId} street={street} books={books} onSaved={() => { loadSummary(); saved(); }} />}
         </>)}
+      {view === 'pendientes' && <RecipientTasks refreshKey={refreshKey} />}
       {view === 'pendientes' && <PendingDoors campaignId={campaignId} books={books} refreshKey={refreshKey} onChanged={() => { loadSummary(); saved(); }} />}
       {view === 'mapa' && <>
         <InvasionHousesMap campaigns={[{ campaign_id: campaignId, name: campaign?.name || 'Invasión' }]} colorBy="door" fixedHeight={480} refreshKey={refreshKey} mentorPersonId={user?.person_id}

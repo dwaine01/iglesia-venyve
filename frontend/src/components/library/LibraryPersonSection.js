@@ -3,7 +3,6 @@ import axios from 'axios';
 import { BookOpen, FileSpreadsheet, FileText } from 'lucide-react';
 
 import { useAuth } from '../../context/AuthContext';
-import { canDeliverLibraryBooks } from '../../lib/accessControl';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../ui/table';
@@ -11,7 +10,7 @@ import { DeliverBookDialog } from './DeliverBookDialog';
 import { BookThumbnail } from './BookThumbnail';
 
 const PAYMENT_LABELS = { pagado: 'Pagado', pendiente: 'Pendiente', exonerado: 'Exonerado', beca: 'Beca', descuento: 'Descuento', pago_parcial: 'Pago parcial', no_aplica: 'Gratis' };
-const TYPE_LABELS = { DELIVERY: 'Entregado', LOAN: 'Prestado', LOAN_RETURN: 'Devuelto', RETURN: 'Devuelto', ASSIGNMENT: 'Asignado' };
+const TYPE_LABELS = { DELIVERY_PENDING: 'Entregado · sin conciliar', DELIVERY: 'Entregado', LOAN: 'Prestado', LOAN_RETURN: 'Devuelto', RETURN: 'Devuelto', ASSIGNMENT: 'Asignado' };
 
 export const LibraryPersonSection = ({ personId, user }) => {
   const { API, getAuthHeaders } = useAuth();
@@ -46,7 +45,7 @@ export const LibraryPersonSection = ({ personId, user }) => {
       <div className="flex gap-2">
         <Button size="sm" variant="outline" onClick={() => exportHistory('pdf')} data-testid="export-person-library-pdf"><FileText className="h-4 w-4" />PDF</Button>
         <Button size="sm" variant="outline" onClick={() => exportHistory('xlsx')} data-testid="export-person-library-xlsx"><FileSpreadsheet className="h-4 w-4" />Excel</Button>
-        {canDeliverLibraryBooks(user) && <DeliverBookDialog personId={personId} onDelivered={refresh} />}
+        <DeliverBookDialog personId={personId} onDelivered={refresh} />
       </div>
     </div>
     {loading ? <p className="mt-4 text-sm text-slate-500">Cargando…</p> : items.length === 0 ? (

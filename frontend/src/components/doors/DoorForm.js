@@ -12,9 +12,11 @@ export const newRequestId = () => (window.crypto?.randomUUID ? window.crypto.ran
 const LEVELS = [['brief', 'Atención breve'], ['conversation', 'Conversamos'], ['invited_in', 'Nos invitaron a pasar']];
 const ACTIONS = [['invitation', 'Invitación'], ['prayer', 'Oración'], ['book', 'Entrega de libro'], ['other_material', 'Otro material']];
 const FOLLOWUP = [['yes', 'Sí'], ['no', 'No'], ['not_asked', 'No se preguntó']];
+// Próxima acción del seguimiento (mismo modelo que Consolidación: acción + fecha). No inicia Consolidación.
+const NEXT_ACTIONS = ['Visitar de nuevo', 'Llamar por teléfono', 'Enviar mensaje', 'Invitar a la iglesia'];
 const LANGUAGES = [['es', 'Español'], ['en', 'Inglés'], ['other', 'Otro'], ['unknown', 'Desconocido']];
 
-const emptyVisit = () => ({ opened: null, contact_level: null, actions: [], books: {}, other_material_count: 0, followup: 'not_asked', followup_date: '',
+const emptyVisit = () => ({ opened: null, contact_level: null, actions: [], books: {}, other_material_count: 0, followup: 'not_asked', followup_date: '', followup_next_action: 'Visitar de nuevo',
   language: null, language_other: '', impression: false, name: '', phone: '', note: '', shared: false, religion: '', origin: '', start_consolidation: false });
 
 // Botón grande de opción (táctil 48 px, estado visible también sin color).
@@ -84,6 +86,7 @@ export function DoorForm({ campaignId, street, books, household = null, onSaved 
       other_material_count: visit.actions.includes('other_material') ? visit.other_material_count : 0,
       ...(opened ? {
         contact_level: visit.contact_level, actions: visit.actions, followup: visit.followup, followup_date: visit.followup === 'yes' && visit.followup_date ? visit.followup_date : null,
+        followup_next_action: visit.followup === 'yes' ? visit.followup_next_action : null,
         language: visit.language, language_other: visit.language === 'other' ? visit.language_other.trim() || null : null,
         language_basis: visit.language && visit.language !== 'unknown' ? (visit.impression ? 'impression' : 'confirmed') : null,
         shared_by_person: visit.shared, religion: visit.shared ? visit.religion.trim() || null : null, origin: visit.shared ? visit.origin.trim() || null : null,
@@ -164,7 +167,8 @@ export function DoorForm({ campaignId, street, books, household = null, onSaved 
         <div>
           <Label>¿Aceptó seguimiento?</Label>
           <div className="grid grid-cols-3 gap-2">{FOLLOWUP.map(([key, label]) => <Choice key={key} active={visit.followup === key} onClick={() => set({ followup: key })} testId={`door-followup-${key}`}>{label}</Choice>)}</div>
-          {visit.followup === 'yes' && <label className="mt-2 block"><Label>Próxima visita (opcional)</Label><input type="date" value={visit.followup_date} onChange={(event) => set({ followup_date: event.target.value })} className="h-12 w-full rounded-lg border border-[#D9D4C7] px-3 text-base" data-testid="door-followup-date" /></label>}
+          {visit.followup === 'yes' && <div className="mt-2" data-testid="door-next-action"><Label>Próxima acción (responsable: tú)</Label><div className="grid grid-cols-2 gap-2">{NEXT_ACTIONS.map((action) => <Choice key={action} active={visit.followup_next_action === action} onClick={() => set({ followup_next_action: action })} testId={`door-next-action-${NEXT_ACTIONS.indexOf(action)}`}>{action}</Choice>)}</div></div>}
+          {visit.followup === 'yes' && <label className="mt-2 block"><Label>Fecha (opcional)</Label><input type="date" value={visit.followup_date} onChange={(event) => set({ followup_date: event.target.value })} className="h-12 w-full rounded-lg border border-[#D9D4C7] px-3 text-base" data-testid="door-followup-date" /></label>}
         </div>
         <div>
           <Label>Idioma</Label>

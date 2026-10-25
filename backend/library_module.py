@@ -206,6 +206,9 @@ class DeliverBookInput(BaseModel):
     as_loan: bool = False
     due_date: Optional[date] = None
     scan_method: Optional[SCAN_METHODS] = None
+    # L2: doble toque y, si no hay existencias, registrar igual como pendiente de conciliar.
+    idempotency_key: Optional[str] = Field(default=None, max_length=200)
+    allow_pending: bool = False
 
 
 class RequestBookInput(BaseModel):
@@ -705,8 +708,12 @@ async def create_adjustment(payload: AdjustInventoryInput, current_user: dict = 
 
 
 @router.get("/persons/{person_id}/materials", response_model=dict)
-async def person_materials(person_id: str, current_user: dict = Depends(participant)):
+async def person_materials(person_id: str, current_user: dict = Depends(get_current_user)):
     person = await canonical_person(person_id)
+    if not (is_library_manager(current_user) or has_capability(current_user, LIBRARY_DELIVER) or has_capability(current_user, LIBRARY_REPORTS_READ)):
+        visit = await person_mentor_of(person["person_id"], current_user)
+        if not (current_user.get("person_id") and (visit or {}).get("mentor_person_id") == current_user.get("person_id")):
+            raise HTTPException(status_code=403, detail="No tiene acceso a Librería 360")
     query: dict = {"person_id": person["person_id"]}
     if not (is_library_manager(current_user) or has_capability(current_user, LIBRARY_REPORTS_READ)):
         query["actor_user_id"] = current_user["user_id"]
@@ -732,9 +739,22 @@ async def release_reservations_for_delivery(book_id: str, person_id: str, actor_
         )
 
 
+async def person_mentor_of(person_id: str, current_user: dict) -> Optional[dict]:
+    """La visita de invasión de esta persona si quien entrega es su mentor (para
+    entregar desde el perfil sin capacidad de Librería) — o cualquiera, para vincular."""
+    return await db.outreach_visits.find_one({"$or": [{"person_id": person_id}, {"converted_person_id": person_id}], "archived": {"$ne": True}},
+                                             {"_id": 0, "visit_id": 1, "household_id": 1, "visit_event_id": 1, "mentor_person_id": 1, "campaign_id": 1},
+                                             sort=[("created_at", -1)])
+
+
 @router.post("/persons/{person_id}/deliver", response_model=dict, status_code=201)
-async def deliver_book(person_id: str, payload: DeliverBookInput, current_user: dict = Depends(participant)):
+async def deliver_book(person_id: str, payload: DeliverBookInput, current_user: dict = Depends(get_current_user)):
     person = await canonical_person(person_id)
+    visit = await person_mentor_of(person["person_id"], current_user)
+    enrollment_mentor = await db.process_enrollments.find_one({"person_id": person["person_id"], "mentor_person_id": current_user.get("person_id"), "status": {"$in": ["active", "paused", "planned"]}}, {"_id": 1}) if current_user.get("person_id") else None
+    is_their_mentor = bool(current_user.get("person_id") and ((visit or {}).get("mentor_person_id") == current_user.get("person_id") or enrollment_mentor))
+    if not (is_library_manager(current_user) or has_capability(current_user, LIBRARY_DELIVER) or is_their_mentor):
+        raise HTTPException(status_code=403, detail="Solo Librería, quien entrega libros o el mentor de esta persona")
     from_holder = payload.from_holder.model_dump() if payload.from_holder else (CENTRAL_HOLDER if is_library_manager(current_user) else {"type": "user", "id": current_user["user_id"]})
     if not is_library_manager(current_user) and not (from_holder.get("type") == "user" and from_holder.get("id") == current_user["user_id"]):
         raise HTTPException(status_code=403, detail="Solo puede entregar unidades de su propio inventario")
@@ -745,8 +765,26 @@ async def deliver_book(person_id: str, payload: DeliverBookInput, current_user: 
         person_id=person["person_id"], process_key=payload.process_key, payment_status=payload.payment_status,
         amount_paid_cents=payload.amount_paid_cents, payment_method=payload.payment_method, notes=payload.notes,
         due_date=payload.due_date, scan_method=payload.scan_method,
+        idempotency_key=payload.idempotency_key, household_id=(visit or {}).get("household_id"), visit_id=(visit or {}).get("visit_id"),
+        visit_event_id=(visit or {}).get("visit_event_id"), campaign_id=(visit or {}).get("campaign_id"), recipient_status="identified",
     )
-    movement = await apply_movement(movement_payload, current_user["user_id"])
+    try:
+        movement = await apply_movement(movement_payload, current_user["user_id"])
+    except HTTPException as exc:
+        if exc.status_code != 409 or payload.as_loan or from_holder.get("type") != "user":
+            raise
+        if not payload.allow_pending:
+            # Código para que la pantalla ofrezca «registrar sin descuento» (solo con inventario propio).
+            raise HTTPException(status_code=409, detail={"code": "no_stock", "message": "No te quedan unidades de este material en tu inventario"})
+        # Sin existencias: la entrega real queda registrada (pendiente de conciliar) y no resta del saldo.
+        from library_ledger import record_pending_delivery
+        book = await canonical_book(payload.book_id)
+        pending = await record_pending_delivery(
+            book_id=book["book_id"], book_label=book["name"], quantity=payload.quantity, mentor_user_id=from_holder["id"], person_id=person["person_id"],
+            campaign_id=(visit or {}).get("campaign_id"), process_key=payload.process_key, idempotency_key=payload.idempotency_key or f"profile-pending:{uuid4()}",
+            reason="Sin existencias en el inventario de quien entregó", actor_user_id=current_user["user_id"], household_id=(visit or {}).get("household_id"),
+            visit_id=(visit or {}).get("visit_id"), visit_event_id=(visit or {}).get("visit_event_id"), notes=payload.notes)
+        return serialize(pending)
     await release_reservations_for_delivery(payload.book_id, person["person_id"], current_user["user_id"])
     if payload.amount_paid_cents:
         book = await canonical_book(payload.book_id)
