@@ -98,11 +98,38 @@ async def test_radio_channel_floor_audio_log_voice_messages_and_purge():
             await ws_col.send(json.dumps({"type": "ptt_end"}))
             await asyncio.sleep(0.3)
 
+        # Misma cuenta en dos pestañas: cuenta como una persona y su voz no vuelve a su otra pestaña (eco).
+        async with websockets.connect(f"{WS}/{active_id}?token={token_of(ana)}") as tab1, websockets.connect(f"{WS}/{active_id}?token={token_of(ana)}") as tab2, \
+                websockets.connect(f"{WS}/{active_id}?token={token_of(collab)}") as other:
+            for ws in (tab1, tab2, other):
+                await recv_until(ws, "welcome")
+            # Tres conexiones (dos de Ana), pero dos personas: se lee la última presencia enviada.
+            presence = await recv_until(other, "presence")
+            while True:
+                try:
+                    presence = await recv_until(other, "presence", timeout=0.5)
+                except asyncio.TimeoutError:
+                    break
+            assert presence["count"] == 2
+            await tab1.send(json.dumps({"type": "ptt_start"}))
+            await recv_until(tab1, "talk_granted")
+            await tab1.send(b"\x01" * 640)
+            assert await recv_until(other, "bytes") == b"\x01" * 640
+            with pytest.raises(asyncio.TimeoutError):
+                await recv_until(tab2, "bytes", timeout=0.8)
+            # Turno colgado: si deja de llegar audio 6 s, se libera solo.
+            assert (await recv_until(tab1, "talk_timeout", timeout=9))["type"] == "talk_timeout"
+            assert (await recv_until(other, "stopped", timeout=2))["name"].startswith("Ana")
+            await other.send(json.dumps({"type": "ptt_start"}))
+            await recv_until(other, "talk_granted")
+            await other.send(json.dumps({"type": "ptt_end"}))
+            await asyncio.sleep(0.3)
+
         # Registro de quién habló (sin audio guardado).
         log = await db.radio_talk_log.find({"campaign_id": active_id}).to_list(10)
-        assert len(log) == 2 and all("audio" not in item for item in log) and {item["person_id"] for item in log} == {ana_id, collab_id}
+        assert len(log) == 4 and all("audio" not in item for item in log) and {item["person_id"] for item in log} == {ana_id, collab_id}
         state = (await pastora.get(f"/api/radio/{active_id}")).json()
-        assert len(state["talk_log"]) == 2 and state["retention_days"] == 30
+        assert len(state["talk_log"]) == 4 and state["retention_days"] == 30
         assert (await outsider.get(f"/api/radio/{active_id}")).status_code == 403
 
         # Mensaje de voz: se guarda (idempotente), se descarga igual, solo audio.

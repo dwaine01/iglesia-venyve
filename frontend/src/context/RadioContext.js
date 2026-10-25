@@ -3,7 +3,7 @@ import { toast } from 'sonner';
 
 import { useAuth } from './AuthContext';
 import { useInvasionToday } from './InvasionTodayContext';
-import { beep, createAudioContext, createOutput, createPlayer, isIOS, openMicrophone } from '../lib/radioAudio';
+import { beep, createAudioContext, createOutput, createPlayer, inAppBrowser, isIOS, micErrorCode, micPermission, openMicrophone, radioLog, speakerTest } from '../lib/radioAudio';
 
 /* Radio GLOBAL: una sola conexión para toda la app (no por pantalla).
  * - Se conecta después del primer render si la persona tiene canal hoy y la
@@ -13,11 +13,29 @@ import { beep, createAudioContext, createOutput, createPlayer, isIOS, openMicrop
  *   toque si ya se activó antes) desbloquea el audio; se recuerda.
  * - Salida por un <audio> real + Media Session + Wake Lock (opcional) para
  *   que Android siga sonando en segundo plano cuando el sistema lo permite.
- *   iPhone corta audio y micrófono con la pantalla bloqueada o en otra app. */
+ *   iPhone corta audio y micrófono con la pantalla bloqueada o en otra app.
+ * - Micrófono: el permiso se pide en «Activar radio» (toque explícito), NO en
+ *   el primer «mantener para hablar»; queda abierto mientras el radio esté
+ *   encendido (abrirlo en cada toque perdía los toques cortos) y solo se
+ *   ENVÍA mientras se mantiene presionado. Una sola instancia para toda la app. */
 const RadioContext = createContext(null);
+/** Textos claros por estado del micrófono (qué pasó y qué hacer). */
+export const MIC_MESSAGES = {
+  unknown: 'Micrófono sin activar: toca «Probar y activar micrófono».',
+  requesting: 'Pidiendo permiso del micrófono… acepta en el aviso del navegador.',
+  ready: 'Micrófono listo.',
+  denied: 'No diste permiso al micrófono. Toca «Reintentar» y elige «Permitir».',
+  blocked: 'El micrófono está bloqueado para este sitio: Ajustes del navegador › Permisos del sitio › Micrófono › Permitir. Luego toca «Reintentar».',
+  notfound: 'No se encontró ningún micrófono en este dispositivo.',
+  busy: 'Otra app está usando el micrófono (llamada, grabadora, otra pestaña). Ciérrala y toca «Reintentar».',
+  insecure: 'El micrófono solo funciona con conexión segura (https).',
+  unsupported: 'Este navegador no permite usar el micrófono. Abre la plataforma en Chrome (Android) o Safari (iPhone).',
+  noframes: 'El micrófono se abrió pero no entrega sonido. Toca «Reintentar»; si sigue, reinicia el navegador.',
+  lost: 'El micrófono se desconectó (llamada u otra app). Toca «Reintentar».',
+  inapp: 'Estás dentro de otra app (WhatsApp, Facebook o Instagram), que no da micrófono. Abre la plataforma en Chrome o Safari.',
+};
 const PREFS_KEY = 'venyve.radio.prefs';
 const DEFAULT_PREFS = { enabled: true, activated: false, muted: false, volume: 1, wakeLock: true, vibrate: true, sound: true };
-const MIC_IDLE_MS = 90 * 1000; // se cierra el micrófono tras 90 s sin usarlo (sin indicador de grabación permanente)
 const PING_MS = 20 * 1000;
 const STALE_MS = 50 * 1000;
 
@@ -43,13 +61,15 @@ export function RadioProvider({ children }) {
   const [talk, setTalk] = useState('idle'); // idle | requesting | talking
   const [seconds, setSeconds] = useState(0);
   const [audioReady, setAudioReady] = useState(false);
-  const [micState, setMicState] = useState('unknown'); // unknown | granted | denied
+  // unknown | requesting | ready | denied | blocked | notfound | busy | insecure | unsupported | noframes | lost | inapp
+  const [micState, setMicState] = useState(() => (inAppBrowser() ? 'inapp' : 'unknown'));
   const [eventsVersion, setEventsVersion] = useState(0); // cambia con mensajes de voz / turnos (la pantalla de Radio recarga)
   const [lastVoice, setLastVoice] = useState(null);
   const [ready, setReady] = useState(false);
-  const r = useRef({ ws: null, ctx: null, out: null, player: null, mic: null, micTimer: null, mode: 'off', holding: false, retry: 0, retryTimer: null,
+  const r = useRef({ ws: null, ctx: null, out: null, player: null, mic: null, micOpening: null, micPermission: null, mode: 'off', holding: false, retry: 0, retryTimer: null,
                      pingTimer: null, lastSeen: 0, wake: null, chunks: [], channelId: null, fatal: false, prefs }).current;
   r.prefs = prefs;
+  r.micStateNow = micState;
 
   const setPrefs = useCallback((patch) => {
     setPrefsState((current) => {
@@ -93,8 +113,42 @@ export function RadioProvider({ children }) {
     } catch (error) { /* navegador sin Media Session completo */ }
   }, [setPrefs]);
 
-  /** Desbloquea el audio. Debe llamarse dentro de un toque del usuario. */
-  const activate = useCallback(async () => {
+  // iPhone (Safari 16.4+): tipo de sesión de audio. «playback»/«play-and-record» suenan aunque
+  // el interruptor de silencio esté activado; con micrófono abierto debe ser «play-and-record».
+  const audioSession = (type) => { try { if (navigator.audioSession && navigator.audioSession.type !== type) navigator.audioSession.type = type; } catch (error) { radioLog('AUDIO_SESSION_FAIL', error?.message); } };
+
+  // ------------------------------------------------------------ micrófono (una sola instancia)
+  const closeMic = useCallback(() => { r.mic?.close(); r.mic = null; audioSession('playback'); }, [r]);
+  const prepareMic = useCallback(async () => {
+    if (r.mic) return true;
+    if (r.micOpening) return r.micOpening;
+    if (inAppBrowser()) { r.micStateNow = 'inapp'; setMicState('inapp'); radioLog('MIC_INAPP', inAppBrowser()); return false; }
+    if (!r.ctx) return false;
+    setMicState('requesting');
+    r.micOpening = (async () => {
+      try {
+        audioSession('play-and-record');
+        r.mic = await openMicrophone(r.ctx, (chunk) => {
+          if (r.mode === 'ptt') send(chunk);
+          else if (r.mode === 'record') r.chunks.push(chunk);
+        });
+        r.mic.track?.addEventListener?.('ended', () => { radioLog('MIC_TRACK_ENDED'); r.mic = null; setMicState('lost'); });
+        setMicState('ready');
+        return true;
+      } catch (error) {
+        let code = micErrorCode(error);
+        if (code === 'denied' && (await micPermission()) === 'denied') code = 'blocked';
+        radioLog(`MIC_${code.toUpperCase()}`, `${error?.name}: ${error?.message}`);
+        r.micStateNow = code; setMicState(code);
+        return false;
+      } finally { r.micOpening = null; }
+    })();
+    return r.micOpening;
+  }, [r]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Desbloquea el audio (y, si `withMic`, pide/abre el micrófono). Debe
+   * llamarse dentro de un toque del usuario. */
+  const activate = useCallback(async ({ withMic = false } = {}) => {
     try {
       if (!r.ctx || r.ctx.state === 'closed') {
         r.ctx = createAudioContext();
@@ -102,6 +156,7 @@ export function RadioProvider({ children }) {
         r.player = createPlayer(r.ctx, r.out.node);
         r.ctx.onstatechange = () => setAudioReady(r.ctx?.state === 'running');
       }
+      if (!r.mic) audioSession('playback');
       await r.ctx.resume();
       await r.out.start();
       r.out.setVolume(r.prefs.muted ? 0 : r.prefs.volume);
@@ -110,11 +165,31 @@ export function RadioProvider({ children }) {
         setPrefs({ activated: true, enabled: true });
         mediaSession(channel?.name);
         ensureWake();
+        // Micrófono: en el toque explícito, o en silencio si ya había permiso.
+        if (withMic || r.micPermission === 'granted') prepareMic();
         return true;
       }
-    } catch (error) { setAudioReady(false); }
+      radioLog('CTX_NOT_RUNNING', r.ctx.state);
+    } catch (error) { radioLog('AUDIO_UNLOCK_FAIL', error?.message); setAudioReady(false); }
     return false;
-  }, [r, setPrefs, mediaSession, ensureWake, channel?.name]);
+  }, [r, setPrefs, mediaSession, ensureWake, channel?.name, prepareMic]);
+
+  // Estado del permiso (si el navegador lo informa) y sus cambios.
+  useEffect(() => {
+    let status;
+    const apply = (state) => {
+      r.micPermission = state;
+      if (state === 'denied') setMicState((current) => (current === 'inapp' ? current : 'blocked'));
+      else if (state === 'granted') setMicState((current) => (current === 'blocked' || current === 'denied' ? 'unknown' : current));
+    };
+    (async () => {
+      try { status = await navigator.permissions?.query({ name: 'microphone' }); } catch (error) { status = null; }
+      if (!status) return;
+      apply(status.state);
+      status.onchange = () => apply(status.state);
+    })();
+    return () => { if (status) status.onchange = null; };
+  }, [r]);
 
   useEffect(() => { r.out?.setVolume(prefs.muted ? 0 : prefs.volume); if (navigator.mediaSession) { try { navigator.mediaSession.playbackState = prefs.muted ? 'paused' : 'playing'; } catch (error) { /* nada */ } } }, [prefs.muted, prefs.volume, r]);
   useEffect(() => { if (prefs.wakeLock && prefs.enabled && audioReady) ensureWake(); else releaseWake(); }, [prefs.wakeLock, prefs.enabled, audioReady, ensureWake, releaseWake]);
@@ -122,31 +197,10 @@ export function RadioProvider({ children }) {
   // Si ya se activó antes, el primer toque en cualquier parte de la app vuelve a desbloquear el audio.
   useEffect(() => {
     if (!channelId || !prefs.enabled || !prefs.activated || audioReady) return undefined;
-    const unlock = () => { activate(); };
+    const unlock = () => { activate(); };  // con micrófono solo si ya había permiso
     document.addEventListener('pointerdown', unlock, { capture: true, once: true });
     return () => document.removeEventListener('pointerdown', unlock, { capture: true });
   }, [channelId, prefs.enabled, prefs.activated, audioReady, activate]);
-
-  // ------------------------------------------------------------ micrófono
-  const closeMic = useCallback(() => { clearTimeout(r.micTimer); r.mic?.close(); r.mic = null; }, [r]);
-  const scheduleMicClose = useCallback(() => { clearTimeout(r.micTimer); r.micTimer = setTimeout(() => { if (r.mode === 'off') closeMic(); }, MIC_IDLE_MS); }, [r, closeMic]);
-  const ensureMic = useCallback(async () => {
-    if (r.mic) return true;
-    if (!r.ctx) await activate();
-    if (!r.ctx) return false;
-    try {
-      r.mic = await openMicrophone(r.ctx, (chunk) => {
-        if (r.mode === 'ptt') send(chunk);
-        else if (r.mode === 'record') r.chunks.push(chunk);
-      });
-      setMicState('granted');
-      return true;
-    } catch (error) {
-      setMicState('denied');
-      toast.message('Sin permiso de micrófono: puedes escuchar, pero no hablar. Actívalo en los ajustes del navegador.', { id: 'radio-mic', duration: 6000 });
-      return false;
-    }
-  }, [r, activate, send]);
 
   // ------------------------------------------------------------ conexión
   const disconnect = useCallback((reason = 'off') => {
@@ -184,8 +238,10 @@ export function RadioProvider({ children }) {
       else if (data.type === 'talk_granted') {
         if (!r.holding) { ws.send(JSON.stringify({ type: 'ptt_end' })); setTalk('idle'); return; }
         ping(990, 0.08);
-        r.mode = 'ptt'; r.mic?.setSending(true); setTalk('talking'); setSeconds(0);
-      } else if (data.type === 'talk_limit') { r.mode = 'off'; r.mic?.setSending(false); setTalk('idle'); toast.message('Se alcanzó el máximo de 60 s; vuelve a presionar para seguir', { id: 'radio-limit' }); }
+        if (!r.mic) { radioLog('PTT_NO_MIC'); ws.send(JSON.stringify({ type: 'ptt_end' })); setTalk('idle'); return; }
+        r.mode = 'ptt'; r.mic.setSending(true); setTalk('talking'); setSeconds(0);
+      } else if (data.type === 'talk_timeout') { radioLog('PTT_TIMEOUT'); r.mode = 'off'; r.holding = false; r.mic?.setSending(false); setTalk('idle'); toast.message('Se cortó tu transmisión: no llegaba audio de tu micrófono', { id: 'radio-limit' }); }
+      else if (data.type === 'talk_limit') { r.mode = 'off'; r.mic?.setSending(false); setTalk('idle'); toast.message('Se alcanzó el máximo de 60 s; vuelve a presionar para seguir', { id: 'radio-limit' }); }
       else if (data.type === 'voice_message') { setLastVoice(data); setEventsVersion((value) => value + 1); ping(520); }
       else if (data.type === 'error') {
         // Sin acceso a este canal (no participa, cerrado, fuera de fecha): no se reintenta.
@@ -248,43 +304,65 @@ export function RadioProvider({ children }) {
   }, [talk]);
 
   // ------------------------------------------------------------ hablar (mantener)
-  const pressStart = useCallback(async () => {
+  const pressStart = useCallback(() => {
+    // Dentro del gesto: reanudar audio (iPhone lo suspende/interrumpe).
+    try { if (r.ctx && r.ctx.state !== 'running') r.ctx.resume(); r.out?.resume(); } catch (error) { /* nada */ }
     if (status !== 'online' || r.mode === 'record') return;
+    if (!r.mic) {
+      // Sin micrófono listo NO se intenta transmitir (se perdía el toque): se prepara y se avisa.
+      (async () => {
+        if (!r.ctx || r.ctx.state !== 'running') await activate();
+        if (await prepareMic()) toast.success('Micrófono listo: mantén presionado para hablar', { id: 'radio-mic' });
+        else toast.error(MIC_MESSAGES[r.micStateNow] || MIC_MESSAGES.unsupported, { id: 'radio-mic', duration: 8000 });
+      })();
+      return;
+    }
     if (speaker && talk === 'idle') { toast.message(`${speaker} está hablando; espera a que termine`, { id: 'radio-busy', duration: 2000 }); return; }
     r.holding = true; setTalk('requesting');
-    if (!audioReady) await activate();
-    const ok = await ensureMic();
-    if (!ok || !r.holding) { r.holding = false; setTalk('idle'); return; }
-    clearTimeout(r.micTimer);
     send({ type: 'ptt_start' });
-  }, [status, speaker, talk, audioReady, activate, ensureMic, send, r]);
+  }, [status, speaker, talk, activate, prepareMic, send, r]);
   const pressEnd = useCallback(() => {
     if (!r.holding) return;
     r.holding = false;
     if (r.mode === 'ptt') { r.mode = 'off'; r.mic?.setSending(false); }
     send({ type: 'ptt_end' }); setTalk('idle');
-    scheduleMicClose();
-  }, [r, send, scheduleMicClose]);
+  }, [r, send]);
+  // Soltar siempre: si la app pierde el foco o pasa a segundo plano mientras se mantiene.
+  useEffect(() => {
+    const release = () => { if (document.visibilityState === 'hidden' || !document.hasFocus()) pressEnd(); };
+    window.addEventListener('blur', pressEnd);
+    document.addEventListener('visibilitychange', release);
+    return () => { window.removeEventListener('blur', pressEnd); document.removeEventListener('visibilitychange', release); };
+  }, [pressEnd]);
+  // Radio apagado o sin canal: se cierra el micrófono.
+  useEffect(() => { if (!prefs.enabled || !channelId) { closeMic(); setMicState((current) => (current === 'ready' ? 'unknown' : current)); } }, [prefs.enabled, channelId, closeMic]);
 
   // Mensaje de voz (grabación para quien no estaba conectado).
   const recordStart = useCallback(async () => {
-    if (talk !== 'idle' || !(await ensureMic())) return false;
-    clearTimeout(r.micTimer);
+    if (talk !== 'idle') return false;
+    if (!r.mic && !(await prepareMic())) return false;
     r.chunks = []; r.mode = 'record'; r.mic.setSending(true);
     return true;
-  }, [talk, ensureMic, r]);
+  }, [talk, prepareMic, r]);
   const recordStop = useCallback(() => {
     if (r.mode !== 'record') return [];
-    r.mode = 'off'; r.mic?.setSending(false); scheduleMicClose();
+    r.mode = 'off'; r.mic?.setSending(false);
     const chunks = r.chunks; r.chunks = [];
     return chunks;
-  }, [r, scheduleMicClose]);
+  }, [r]);
+  const micLevel = useCallback(() => r.mic?.level() || 0, [r]);
+  const outputLevel = useCallback(() => r.out?.level() || 0, [r]);
+  const testSpeaker = useCallback(async () => {
+    if (!r.ctx || r.ctx.state !== 'running') await activate();
+    if (r.ctx && r.out) speakerTest(r.ctx, r.out.node);
+  }, [r, activate]);
 
   const value = useMemo(() => ({
-    channel, status, error, presence, speaker, talk, seconds, audioReady, micState, prefs, setPrefs, activate, pressStart, pressEnd,
+    channel, status, error, presence, speaker, talk, seconds, audioReady, micState, prefs, setPrefs, activate, pressStart, pressEnd, prepareMic,
+    micLevel, outputLevel, testSpeaker, inApp: inAppBrowser(), outputMode: r.out?.mode || null,
     recordStart, recordStop, eventsVersion, lastVoice, ios: isIOS(), connected: status === 'online',
     needsUnlock: Boolean(channelId && prefs.enabled && status !== 'error' && !audioReady),
-  }), [channel, channelId, status, error, presence, speaker, talk, seconds, audioReady, micState, prefs, setPrefs, activate, pressStart, pressEnd, recordStart, recordStop, eventsVersion, lastVoice]);
+  }), [channel, channelId, status, error, presence, speaker, talk, seconds, audioReady, micState, prefs, setPrefs, activate, pressStart, pressEnd, prepareMic, micLevel, outputLevel, testSpeaker, recordStart, recordStop, eventsVersion, lastVoice, r]);
   return <RadioContext.Provider value={value}>{children}</RadioContext.Provider>;
 }
 
