@@ -1,4 +1,5 @@
-"""MT1 · «Mi Trabajo»: una sola fuente de pendientes para el mentor.
+"""MT1–MT3 · «Mi Trabajo»: una sola fuente de pendientes para el mentor,
+supervisión por mentor y reasignación con historial.
 
 Lee lo que ya existe (sin colecciones nuevas):
 - viviendas del puerta a puerta (`outreach_households` + intentos);
@@ -20,6 +21,7 @@ from typing import Literal, Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 
 from access_control import CONSOLIDATION_ASSIGN, has_capability, is_general_coordinator, is_global_pastoral_authority
 from mentorship_outreach import person_display_name, serialize
@@ -289,3 +291,86 @@ async def my_work_campaigns(mentor_person_id: Optional[str] = None, current_user
     ids.discard(None)
     campaigns = await db.outreach_campaigns.find({"campaign_id": {"$in": list(ids)}}, {"_id": 0, "campaign_id": 1, "name": 1, "start_date": 1, "status": 1}).sort("start_date", -1).to_list(100)
     return {"items": campaigns}
+
+
+# ------------------------------------------------------------------ MT3 · supervisión y reasignar
+def require_supervisor(current_user: dict) -> None:
+    if not can_supervise(current_user):
+        raise HTTPException(status_code=403, detail="Solo coordinador general, autoridad pastoral o encargado de Consolidación")
+
+
+@router.get("/mentors", response_model=dict)
+async def my_work_mentors(current_user: dict = Depends(get_current_user)):
+    """Mentores activos con su carga de pendientes (información, no ranking)."""
+    require_supervisor(current_user)
+    from participation_scope import principal_authority_person_ids
+    authorities = await principal_authority_person_ids(db)
+    mentor_ids = [doc["person_id"] for doc in await db.mentor_badges.find({"active": True}, {"_id": 0, "person_id": 1}).to_list(5000) if doc.get("person_id") not in authorities]
+    houses = {row["_id"]: row["n"] async for row in db.outreach_households.aggregate([
+        {"$match": {"mentor_person_id": {"$in": mentor_ids}, "archived": {"$ne": True}, "door_status": {"$in": PENDING_DOORS}}}, {"$group": {"_id": "$mentor_person_id", "n": {"$sum": 1}}}])}
+    people = {row["_id"]: row["n"] async for row in db.process_enrollments.aggregate([
+        {"$match": {"mentor_person_id": {"$in": mentor_ids}, "process_key": "consolidation", "status": {"$in": ACTIVE_ENROLLMENT}}}, {"$group": {"_id": "$mentor_person_id", "n": {"$sum": 1}}}])}
+    contacts = {row["_id"]: row["n"] async for row in db.outreach_visits.aggregate([
+        {"$match": {"mentor_person_id": {"$in": mentor_ids}, "archived": {"$ne": True}, "enrollment_id": {"$in": [None, ""]}, "$or": [{"followup_accepted": True}, {"status": "wants_followup"}]}},
+        {"$group": {"_id": "$mentor_person_id", "n": {"$sum": 1}}}])}
+    items = [{"person_id": pid, "name": await person_display_name(pid) or "Mentor", "households": houses.get(pid, 0), "people": people.get(pid, 0) + contacts.get(pid, 0)} for pid in mentor_ids]
+    items.sort(key=lambda row: row["name"])
+    return {"items": items}
+
+
+class ReassignItem(BaseModel):
+    kind: Literal["household", "contact", "person"]
+    id: str = Field(min_length=1, max_length=80)
+
+
+class ReassignInput(BaseModel):
+    items: list[ReassignItem] = Field(min_length=1, max_length=200)
+    to_mentor_person_id: str = Field(min_length=1, max_length=80)
+    reason: str = Field(min_length=3, max_length=300)
+
+
+@router.post("/reassign", response_model=dict)
+async def reassign_pending(payload: ReassignInput, current_user: dict = Depends(get_current_user)):
+    """Reasigna pendientes a otro mentor. Quién hizo cada atención NO cambia
+    (los intentos y actividades guardan su autor); queda el historial de la
+    reasignación y el nuevo mentor recibe un aviso."""
+    require_supervisor(current_user)
+    from mentorship_outreach import is_active_mentor, log_visit_history, supervision_snapshot
+    target = payload.to_mentor_person_id
+    if not await is_active_mentor(target):
+        raise HTTPException(status_code=422, detail="El nuevo responsable debe ser un mentor activo")
+    now = datetime.now(timezone.utc)
+    reason = payload.reason.strip()
+    entry = {"to_mentor_person_id": target, "by_user_id": current_user["user_id"], "at": now, "reason": reason}
+    snapshot = await supervision_snapshot(target)
+    done, skipped = [], []
+    for item in payload.items:
+        if item.kind == "household":
+            house = await db.outreach_households.find_one({"household_id": item.id, "archived": {"$ne": True}}, {"_id": 0, "mentor_person_id": 1})
+            if not house or house.get("mentor_person_id") == target:
+                skipped.append(item.id)
+                continue
+            await db.outreach_households.update_one({"household_id": item.id}, {"$set": {"mentor_person_id": target, "front_group_id": snapshot["front_group_id"],
+                                                                                          "front_group_ancestor_ids": snapshot["front_group_ancestor_ids"], "updated_at": now},
+                                                                                 "$push": {"reassignments": {**entry, "from_mentor_person_id": house.get("mentor_person_id")}}})
+        elif item.kind == "contact":
+            visit = await db.outreach_visits.find_one({"visit_id": item.id, "archived": {"$ne": True}}, {"_id": 0, "mentor_person_id": 1, "followup_responsible_person_id": 1})
+            if not visit or visit.get("mentor_person_id") == target:
+                skipped.append(item.id)
+                continue
+            await db.outreach_visits.update_one({"visit_id": item.id}, {"$set": {"mentor_person_id": target, "followup_responsible_person_id": target, "updated_at": now},
+                                                                         "$push": {"reassignments": {**entry, "from_mentor_person_id": visit.get("mentor_person_id")}}})
+            await log_visit_history(item.id, current_user, "reassigned", {"from": visit.get("mentor_person_id"), "to": target, "reason": reason})
+        else:
+            from consolidation_service import assign_mentor
+            enrollment = await db.process_enrollments.find_one({"enrollment_id": item.id}, {"_id": 0})
+            if not enrollment or enrollment.get("mentor_person_id") == target:
+                skipped.append(item.id)
+                continue
+            await assign_mentor(db, enrollment, target, current_user["user_id"], reason, transfer=True)  # historial en mentor_assignments
+        done.append(item.model_dump())
+    if done:
+        from portal_notifications import notify_persons
+        await notify_persons([target], "my_work_reassigned", "Te asignaron pendientes", f"Te asignaron {len(done)} pendiente(s) en Mi Trabajo. Motivo: {reason}", "/mi-trabajo",
+                             {"type": "my_work_reassign", "count": len(done)})
+    return {"reassigned": len(done), "skipped": skipped, "to_mentor_person_id": target}
