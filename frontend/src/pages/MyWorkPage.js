@@ -74,9 +74,9 @@ function FigureList({ query, onClose }) {
   );
 }
 
-function PendingCard({ item, onRevisit, onSchedule, onFollowup }) {
+function PendingCard({ item, onRevisit, onSchedule, onFollowup, readOnly = false, selectable = false, selected = false, onSelect }) {
   return (
-    <li className="rounded-2xl border border-[#E8E5DE] bg-white p-3 shadow-sm" data-testid={`my-work-item-${item.kind}`}>
+    <li className={`rounded-2xl border bg-white p-3 shadow-sm ${selected ? 'border-[#132443] ring-2 ring-[#132443]/20' : 'border-[#E8E5DE]'}`} data-testid={`my-work-item-${item.kind}`}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="flex items-center gap-1.5 text-base font-semibold text-[#101D36]">{item.kind === 'household' ? <Home className="h-4 w-4 shrink-0 text-[#9A7A2F]" /> : <UserCheck className="h-4 w-4 shrink-0 text-[#9A7A2F]" />}<span className="truncate">{item.title}</span></p>
@@ -85,8 +85,9 @@ function PendingCard({ item, onRevisit, onSchedule, onFollowup }) {
           <p className="text-sm font-semibold text-[#132443]">Próximo: {item.next_action}{item.due_date ? ` · ${fmtDay(item.due_date)}` : ''}</p>
           {item.campaign_name && <p className="text-xs text-slate-500">Invasión de origen: {item.campaign_name}</p>}
         </div>
+        {selectable && <input type="checkbox" checked={selected} onChange={(event) => onSelect(event.target.checked)} className="mt-1 h-6 w-6 shrink-0 accent-[#132443]" aria-label={`Seleccionar ${item.title}`} data-testid="my-work-select" />}
       </div>
-      <div className="mt-2 grid grid-cols-2 gap-2">
+      {!readOnly && <div className="mt-2 grid grid-cols-2 gap-2">
         {item.kind === 'household' && <>
           <button type="button" onClick={() => onRevisit(item)} className="min-h-11 rounded-xl bg-[#132443] text-[15px] font-semibold text-white" data-testid="my-work-revisit">Registrar visita</button>
           <button type="button" onClick={() => onSchedule(item)} className="min-h-11 rounded-xl border border-[#D9D4C7] bg-white text-[15px] font-semibold text-[#101D36]" data-testid="my-work-schedule">Reprogramar</button>
@@ -99,14 +100,34 @@ function PendingCard({ item, onRevisit, onSchedule, onFollowup }) {
           <Link to={`/procesos/consolidacion/${item.enrollment_id}`} className="inline-flex min-h-11 items-center justify-center rounded-xl bg-[#132443] text-[15px] font-semibold text-white" data-testid="my-work-progress">Registrar avance</Link>
           <Link to={`/personas/${item.person_id}`} className="inline-flex min-h-11 items-center justify-center rounded-xl border border-[#D9D4C7] bg-white text-[15px] font-semibold text-[#101D36]">Perfil</Link>
         </>}
-      </div>
+      </div>}
     </li>
   );
 }
 
 /** MT2 · «Mi Trabajo»: inicio del mentor. Resumen arriba, pendientes debajo
  * (con fecha pasada → hoy → próximos) y accesos a Mis viviendas / Mis personas. */
-export default function MyWorkPage({ mentorPersonId = null, header = null }) {
+// MT3: reasignar los pendientes elegidos a otro mentor (historial + aviso al nuevo mentor).
+function ReassignDialog({ open, count, mentors, currentMentor, onClose, onConfirm }) {
+  const [target, setTarget] = useState('');
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { if (open) { setTarget(''); setReason(''); } }, [open]);
+  const run = async () => { setBusy(true); try { await onConfirm(target, reason.trim()); } finally { setBusy(false); } };
+  return (
+    <Dialog open={open} onOpenChange={(value) => { if (!value) onClose(); }}>
+      <DialogContent className="vv-fit bg-white sm:max-w-md" data-testid="my-work-reassign-dialog">
+        <DialogHeader><DialogTitle>Reasignar {count} pendiente(s)</DialogTitle><DialogDescription>Quién hizo cada atención se conserva; el nuevo mentor recibe un aviso.</DialogDescription></DialogHeader>
+        <label className="block"><span className="text-sm font-semibold text-slate-700">Nuevo mentor</span>
+          <select value={target} onChange={(event) => setTarget(event.target.value)} className="mt-1 h-12 w-full rounded-lg border border-[#D9D4C7] bg-white px-3 text-base" data-testid="my-work-reassign-target"><option value="">Elegir…</option>{mentors.filter((item) => item.person_id !== currentMentor).map((item) => <option key={item.person_id} value={item.person_id}>{item.name} · {item.households} vivienda(s) · {item.people} persona(s)</option>)}</select></label>
+        <label className="block"><span className="text-sm font-semibold text-slate-700">Motivo</span><input value={reason} onChange={(event) => setReason(event.target.value)} className="mt-1 h-12 w-full rounded-lg border border-[#D9D4C7] px-3 text-base" placeholder="Ej.: cambio de zona" data-testid="my-work-reassign-reason" /></label>
+        <div className="sticky-actions"><button type="button" onClick={run} disabled={busy || !target || reason.trim().length < 3} className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#132443] text-base font-semibold text-white disabled:opacity-50" data-testid="my-work-reassign-run">{busy && <Loader2 className="h-5 w-5 animate-spin" />}Reasignar</button></div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export default function MyWorkPage({ mentorPersonId = null, header = null, supervise = false, mentors = [] }) {
   const { API, getAuthHeaders, user } = useAuth();
   const [params, setParams] = useSearchParams();
   const view = ['viviendas', 'personas'].includes(params.get('vista')) ? params.get('vista') : 'pendientes';
@@ -122,6 +143,8 @@ export default function MyWorkPage({ mentorPersonId = null, header = null }) {
   const [followup, setFollowup] = useState(null);
   const [showMap, setShowMap] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [selected, setSelected] = useState([]);
+  const [reassignOpen, setReassignOpen] = useState(false);
   const scopeParams = mentorPersonId ? { mentor_person_id: mentorPersonId } : {};
   const setView = (value) => { const next = new URLSearchParams(params); if (value === 'pendientes') next.delete('vista'); else next.set('vista', value); setParams(next, { replace: true }); };
 
@@ -141,6 +164,15 @@ export default function MyWorkPage({ mentorPersonId = null, header = null }) {
   useEffect(() => { const refresh = () => setRefreshKey((value) => value + 1); window.addEventListener(OUTREACH_CHANGED_EVENT, refresh); return () => window.removeEventListener(OUTREACH_CHANGED_EVENT, refresh); }, []);
   const saved = () => { setRefreshKey((value) => value + 1); window.dispatchEvent(new Event(OUTREACH_CHANGED_EVENT)); };
   const readOnly = Boolean(mentorPersonId && mentorPersonId !== user?.person_id);
+  useEffect(() => { setSelected([]); }, [mentorPersonId, view]);
+  const keyOf = (item) => `${item.kind}:${item.id}`;
+  const toggle = (item, on) => setSelected((current) => (on ? [...current, keyOf(item)] : current.filter((key) => key !== keyOf(item))));
+  const reassign = async (target, reason) => {
+    try {
+      const response = await axios.post(`${API}/api/my-work/reassign`, { items: selected.map((key) => { const [kind, ...rest] = key.split(':'); return { kind, id: rest.join(':') }; }), to_mentor_person_id: target, reason }, getAuthHeaders());
+      toast.success(`${response.data.reassigned} pendiente(s) reasignado(s)`); setReassignOpen(false); setSelected([]); saved();
+    } catch (error) { toast.error(apiErrorMessage(error, 'No se pudo reasignar')); }
+  };
   const items = pending?.items || [];
 
   return (
@@ -180,11 +212,14 @@ export default function MyWorkPage({ mentorPersonId = null, header = null }) {
                 if (!group.length) return null;
                 return <section key={bucket} data-testid={`my-work-bucket-${bucket}`}><p className="mb-2 text-sm font-semibold text-slate-700">{label} ({group.length})</p>
                   <ul className="grid grid-cols-1 gap-2 lg:grid-cols-2">{group.map((item) => <PendingCard key={`${item.kind}-${item.id}`} item={item} onRevisit={readOnly ? () => {} : (value) => setRevisit({ household_id: value.household_id, address_line1: value.title, address_line2: null })}
-                    onSchedule={readOnly ? () => {} : (value) => setSchedule({ household_id: value.household_id, followup_date: value.due_date })} onFollowup={readOnly ? () => {} : setFollowup} />)}</ul></section>;
+                    onSchedule={readOnly ? () => {} : (value) => setSchedule({ household_id: value.household_id, followup_date: value.due_date })} onFollowup={readOnly ? () => {} : setFollowup}
+                    readOnly={readOnly} selectable={supervise} selected={selected.includes(keyOf(item))} onSelect={(on) => toggle(item, on)} />)}</ul></section>;
               })}
             </div>}
 
       {!readOnly && <Link to="/mentoria/visitas" className="inline-flex min-h-12 items-center gap-2 rounded-xl border border-[#D9D4C7] bg-white px-4 text-[15px] font-semibold text-[#101D36]"><MessageCircle className="h-5 w-5" />Visitas e invasiones</Link>}
+      {supervise && selected.length > 0 && <div className="sticky bottom-2 z-10"><button type="button" onClick={() => setReassignOpen(true)} className="inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-[#132443] text-base font-semibold text-white shadow-lg" data-testid="my-work-reassign">Reasignar {selected.length} pendiente(s)</button></div>}
+      <ReassignDialog open={reassignOpen} count={selected.length} mentors={mentors} currentMentor={mentorPersonId} onClose={() => setReassignOpen(false)} onConfirm={reassign} />
       <FigureList query={figure} onClose={() => setFigure(null)} />
       <RevisitSheet household={revisit} books={books} onClose={() => setRevisit(null)} onSaved={saved} />
       <ScheduleDialog household={schedule} onClose={() => setSchedule(null)} onSaved={saved} />

@@ -24,7 +24,7 @@ import { ContextGuideButton } from './guides/ContextGuideButton';
 import { FloatingLibraryScanButton } from './library/FloatingLibraryScanButton';
 import { resolveRouteGuide } from './guides/guideRouteMap';
 import { BRAND } from '../config/brand';
-import { canManageBaptismEvents, canManageDedicationEvents, canViewCare, canViewFinanceModule, canViewFormation, canViewFrontGroups, canViewGeo, canViewLeadership, canViewLibraryModule, canViewOperations, canAccessCampaignOperator, canAccessOutreach, canCreateOutreachCampaign, canViewPastoralFrontGroup, canViewProcesses, canViewCellular, canViewDoors, canViewDirectory, canManageInvitationCodes, canWriteEvangelismLog, canViewPresentationManual, hasAnyCapability, hasCapability, isPastoralAuthority } from '../lib/accessControl';
+import { canManageBaptismEvents, canManageDedicationEvents, canViewCare, canViewFinanceModule, canViewFormation, canViewFrontGroups, canViewGeo, canViewLeadership, canViewLibraryModule, canViewOperations, canAccessCampaignOperator, canAccessOutreach, canCreateOutreachCampaign, canViewPastoralFrontGroup, canViewProcesses, canViewCellular, canViewDoors, canViewDirectory, canManageInvitationCodes, canWriteEvangelismLog, canViewPresentationManual, hasAnyCapability, hasCapability, isGeneralCoordinator, isPastoralAuthority } from '../lib/accessControl';
 import { useBoardAccess } from '../hooks/useBoardAccess';
 import { useMentorAccess } from '../hooks/useMentorAccess';
 const LOGO_URL = LOGO_IGLESIA;
@@ -34,6 +34,9 @@ const consolidationDetailMatch = (pathname) => /^\/procesos\/consolidacion\/(?!m
 
 const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
   const rol = user?.rol;
+  // MT3: supervisar «Mi Trabajo» por mentor (coordinador general, pastoral, encargados de Consolidación).
+  const supervision = isPastoralAuthority(user) || isGeneralCoordinator(user) || hasCapability(user, 'consolidation.assign')
+    ? [{ to: '/mi-trabajo/supervision', icon: ClipboardCheck, label: 'Supervisar Mi Trabajo', testId: 'nav-my-work-supervision' }] : [];
   const BASE_PORTAL_ITEMS = [
     { to: '/mi-perfil', icon: UserCircle, label: 'Mi perfil', testId: 'nav-mi-perfil' },
     { to: '/mis-estadisticas', icon: BarChart3, label: 'Mis estadísticas', testId: 'nav-mis-estadisticas' },
@@ -79,7 +82,7 @@ const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
     if (isActiveMentor) {
       personItems.push({ to: '/procesos/consolidacion/mi-panel', icon: ClipboardCheck, label: 'Mi Panel de Mentor', testId: 'nav-mentor-panel' });
     }
-    return personItems;
+    return [...personItems, ...supervision];
   }
   
   if (rol === 'persona') {
@@ -116,7 +119,7 @@ const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
         personaItems.push({ to: '/mentoria/supervision', icon: BarChart3, label: 'Supervisión de mi Rama', testId: 'nav-supervision' });
       }
     }
-    return personaItems;
+    return [...personaItems, ...supervision];
   }
   
   // Default: lider
@@ -168,6 +171,7 @@ const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
     items.push({ to: '/admin/historial-borrados', icon: Trash2, label: 'Historial de Borrados', testId: 'nav-admin-deletions' });
     items.push({ to: '/admin/migracion-c11', icon: DatabaseBackup, label: 'Migración de Datos (C11)', testId: 'nav-migration-c11' });
   }
+  items.push(...supervision);
   return items.filter((item) => (
     (item.to !== '/estructura-frontal' || item.testId !== 'nav-front-group-structure' || canViewFrontGroups(user) || canViewPastoralFrontGroup(user))
   ) && (
@@ -221,6 +225,7 @@ const breadcrumbMap = {
   '/dashboard-general': 'Panel General',
   '/mi-perfil': 'Mi perfil',
   '/mi-trabajo': 'Mi Trabajo',
+  '/mi-trabajo/supervision': 'Supervisar Mi Trabajo',
   '/grupo-frontal-pastoral': 'Grupo frontal principal',
   '/estructura-frontal': 'Estructura por niveles',
   '/mis-estadisticas': 'Mis estadísticas',

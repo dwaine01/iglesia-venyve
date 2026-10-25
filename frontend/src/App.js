@@ -66,6 +66,7 @@ const LibraryScanPage = lazyPage(() => import('./pages/library/LibraryScanPage')
 const LibraryReportsPage = lazyPage(() => import('./pages/library/LibraryReportsPage'));
 const LibraryTracePage = lazyPage(() => import('./pages/library/LibraryTracePage'));
 const MyWorkPage = lazyPage(() => import('./pages/MyWorkPage'));
+const MyWorkSupervisionPage = lazyPage(() => import('./pages/MyWorkSupervisionPage'));
 const LibraryLabelsPage = lazyPage(() => import('./pages/library/LibraryLabelsPage'));
 const CampaignControlPage = lazyPage(() => import('./pages/campaign/CampaignControlPage'));
 const CampaignScreenPage = lazyPage(() => import('./pages/campaign/CampaignScreenPage'));
@@ -330,6 +331,7 @@ function App() {
             {/* L3: cualquier cuenta entra; el backend muestra solo lo propio salvo a Librería/encargados. */}
             <Route path="libreria/recorrido" element={<LibraryTracePage />} />
             <Route path="mi-trabajo" element={<MyWorkPage />} />
+            <Route path="mi-trabajo/supervision" element={<MyWorkSupervisionPage />} />
             <Route path="libreria/etiquetas" element={<CapabilityRoute allowed={canManageLibraryInventory}><LibraryLabelsPage /></CapabilityRoute>} />
             <Route path="campanas/ven-y-come/control" element={<CapabilityRoute allowed={canAccessCampaignOperator}><CampaignControlPage /></CapabilityRoute>} />
             <Route path="mentoria/visitas" element={<OutreachAccessRoute><OutreachPage /></OutreachAccessRoute>} />
