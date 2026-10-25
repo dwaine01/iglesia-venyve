@@ -138,13 +138,18 @@ async def _participant_check(campaign_id: str, current_user: dict) -> str:
 
 
 # ------------------------------------------------------------------ libros
-async def discount_books(entries: list[BookEntry], mentor_person_id: str, target_person_id: Optional[str], campaign_id: Optional[str], actor_user_id: str) -> list[dict]:
+async def discount_books(entries: list[BookEntry], mentor_person_id: str, target_person_id: Optional[str], campaign_id: Optional[str], actor_user_id: str,
+                         *, base_key: Optional[str] = None, household_id: Optional[str] = None, visit_event_id: Optional[str] = None, visit_id: Optional[str] = None) -> list[dict]:
     """Descuenta del inventario del mentor (Librería 360). Nunca lanza error:
-    si el libro no está cargado o no hay existencias, queda para conciliar."""
+    si el libro no está cargado o no hay existencias, queda en la bitácora
+    como entrega pendiente de conciliar (no resta del saldo del mentor).
+    Cada fila lleva su clave (doble toque) y el vínculo con vivienda/intento/visita."""
+    from library_ledger import record_pending_delivery
     from library_module import HolderInput, MovementInput, apply_movement
     mentor_user = await db.users.find_one({"person_id": mentor_person_id}, {"_id": 1})
+    links = {"household_id": household_id, "visit_event_id": visit_event_id, "visit_id": visit_id}
     rows = []
-    for entry in entries:
+    for index, entry in enumerate(entries):
         key = entry.book.strip()
         book = await db.library_books.find_one({"$or": [{"sku": key.upper()}, {"book_id": key}], "is_active": True}, {"_id": 0, "book_id": 1, "name": 1, "sku": 1})
         row = {"book": key, "book_id": (book or {}).get("book_id"), "sku": (book or {}).get("sku") or (key.upper() if key.upper() in {"MCD", "NPT"} else None),
@@ -161,12 +166,22 @@ async def discount_books(entries: list[BookEntry], mentor_person_id: str, target
                     from_holder=HolderInput(type="user", id=str(mentor_user["_id"])), to_holder=HolderInput(**to_holder),
                     person_id=target_person_id, process_key=OUTREACH_PROCESS_KEY, campaign_id=campaign_id,
                     notes="Entregado en la puerta (invasión)" if not target_person_id else "Entrega en visita de invasión",
+                    idempotency_key=f"door:{base_key}:{index}" if base_key else None, **links,
                 ), actor_user_id)
                 row.update({"inventory_status": "discounted", "movement_id": movement["movement_id"]})
             except HTTPException as exc:
                 row["reason"] = "Sin existencias en el inventario del mentor" if exc.status_code == 409 else str(exc.detail)
             except Exception:  # noqa: BLE001 — en la calle nunca se bloquea el registro
                 row["reason"] = "No se pudo descontar del inventario"
+        if row["inventory_status"] != "discounted" and visit_event_id:
+            try:
+                pending = await record_pending_delivery(
+                    book_id=row["book_id"], book_label=row["name"], quantity=entry.quantity, mentor_user_id=str(mentor_user["_id"]) if mentor_user else None,
+                    person_id=target_person_id, campaign_id=campaign_id, process_key=OUTREACH_PROCESS_KEY, idempotency_key=f"door-pending:{visit_event_id}:{index}",
+                    reason=row["reason"] or "Sin descuento de inventario", actor_user_id=actor_user_id, **links)
+                row["movement_id"] = pending["movement_id"]
+            except Exception:  # noqa: BLE001
+                logging.getLogger(__name__).warning("No se pudo registrar la entrega pendiente", exc_info=True)
         rows.append(row)
     return rows
 
@@ -269,7 +284,9 @@ async def record_attempt(household: dict, payload: AttemptInput, current_user: d
             # Nunca bloquear la calle: el intento queda guardado y se avisa.
             person_warning = exc.detail if isinstance(exc.detail, str) else "No se pudo registrar a la persona; el intento quedó guardado"
     target_person_id = visit.get("person_id") if visit and visit.get("contact_type") == "existing" else None
-    books = await discount_books(payload.books, mentor_person_id, target_person_id, household.get("campaign_id"), current_user["user_id"]) if payload.books else []
+    books = await discount_books(payload.books, mentor_person_id, target_person_id, household.get("campaign_id"), current_user["user_id"],
+                                 base_key=payload.client_request_id, household_id=household["household_id"], visit_event_id=event_id,
+                                 visit_id=(visit or {}).get("visit_id")) if payload.books else []
     updates = {"books": books, "books_inventory_pending": any(item["inventory_status"] != "discounted" for item in books)}
     if person_warning:
         updates["person_warning"] = person_warning

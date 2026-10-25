@@ -7,6 +7,7 @@ from uuid import uuid4
 import re
 
 from bson import ObjectId
+from pymongo.errors import DuplicateKeyError
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -167,6 +168,12 @@ class MovementInput(BaseModel):
     due_date: Optional[date] = None
     notes: str = Field(default="", max_length=1000)
     scan_method: Optional[SCAN_METHODS] = None
+    # L1 · trazabilidad: clave contra doble toque y vínculos con vivienda/visita.
+    idempotency_key: Optional[str] = Field(default=None, max_length=200)
+    household_id: Optional[str] = Field(default=None, max_length=80)
+    visit_id: Optional[str] = Field(default=None, max_length=80)
+    visit_event_id: Optional[str] = Field(default=None, max_length=80)
+    recipient_status: Optional[Literal["identified", "unidentified"]] = None
 
     @model_validator(mode="after")
     def validate_holders(self):
@@ -241,6 +248,11 @@ async def ensure_indexes_and_seed() -> None:
     await db.library_movements.create_index([("book_id", 1), ("occurred_at", -1)])
     await db.library_movements.create_index([("person_id", 1)])
     await db.library_movements.create_index([("campaign_id", 1)])
+    # L1: clave contra doble toque (única cuando existe) y vínculos de trazabilidad.
+    await db.library_movements.create_index("idempotency_key", unique=True, partialFilterExpression={"idempotency_key": {"$type": "string"}})
+    await db.library_movements.create_index("household_id", sparse=True)
+    await db.library_movements.create_index("visit_event_id", sparse=True)
+    await db.library_movements.create_index([("movement_type", 1), ("inventory_status", 1)])
     await db.library_holdings.create_index([("book_id", 1), ("holder_type", 1), ("holder_id", 1)], unique=True)
     await db.library_requests.create_index("request_id", unique=True)
 
@@ -348,6 +360,11 @@ async def ensure_library_finance_category() -> None:
 
 
 async def apply_movement(payload: MovementInput, actor_user_id: str, is_reversal: bool = False, reversed_movement_id: Optional[str] = None) -> dict:
+    # Doble toque / reintento: la misma clave devuelve el movimiento ya hecho, sin volver a descontar.
+    if payload.idempotency_key:
+        existing = await db.library_movements.find_one({"idempotency_key": payload.idempotency_key}, {"_id": 0})
+        if existing:
+            return existing
     book = await canonical_book(payload.book_id)
     if payload.payment_status == "pagado":
         list_price_cents = book.get("member_price_cents", 0)
@@ -378,8 +395,27 @@ async def apply_movement(payload: MovementInput, actor_user_id: str, is_reversal
         "scan_method": payload.scan_method or "MANUAL", "list_price_cents": book.get("member_price_cents", 0),
         "occurred_at": now, "created_at": now, "is_reversal": is_reversal, "reversed_movement_id": reversed_movement_id,
         "reversed_by_movement_id": None, "finance_contribution_id": None,
+        "idempotency_key": payload.idempotency_key, "household_id": payload.household_id, "visit_id": payload.visit_id, "visit_event_id": payload.visit_event_id,
+        "recipient_status": payload.recipient_status or (("identified" if payload.person_id else "unidentified") if payload.movement_type in {"DELIVERY", "LOAN"} else None),
+        "already_counted": False, "completes_movement_id": None, "inventory_status": "applied",
     }
-    await db.library_movements.insert_one(doc)
+    if not payload.idempotency_key:
+        doc.pop("idempotency_key")  # el índice único solo aplica a las claves presentes
+    try:
+        await db.library_movements.insert_one(doc)
+    except DuplicateKeyError:
+        # Dos toques simultáneos con la misma clave: se deshace el descuento de este y se devuelve el otro.
+        if payload.movement_type in reservation_types:
+            await adjust_holding(book["book_id"], to_holder if payload.movement_type == "RESERVATION" else from_holder, reserved_delta=-(payload.quantity if payload.movement_type == "RESERVATION" else -payload.quantity))
+        else:
+            if to_holder:
+                await adjust_holding(book["book_id"], to_holder, on_hand_delta=-payload.quantity)
+            if from_holder:
+                await adjust_holding(book["book_id"], from_holder, on_hand_delta=payload.quantity)
+        existing = await db.library_movements.find_one({"idempotency_key": payload.idempotency_key}, {"_id": 0})
+        if existing:
+            return existing
+        raise
     if payload.movement_type == "LOAN":
         await db.library_loans.insert_one({"_id": movement_id, "loan_id": movement_id, "movement_id": movement_id, "book_id": book["book_id"], "person_id": payload.person_id, "loaned_at": now, "due_date": payload.due_date, "status": "on_loan", "returned_movement_id": None})
     if payload.movement_type == "LOAN_RETURN" and payload.person_id:
@@ -390,6 +426,7 @@ async def apply_movement(payload: MovementInput, actor_user_id: str, is_reversal
 async def deliver_from_mentor_to_person(
     sku: str, mentor_person_id: str, target_person_id: str, actor_user_id: str,
     campaign_id: Optional[str] = None, process_key: Optional[str] = None, notes: str = "",
+    idempotency_key: Optional[str] = None, links: Optional[dict] = None,
 ) -> str:
     """Entrega 1 unidad desde el inventario del mentor (cuenta de usuario) hacia
     una Persona 360, vía un movimiento DELIVERY normal de Librería 360.
@@ -407,6 +444,7 @@ async def deliver_from_mentor_to_person(
                 book_id=book["book_id"], movement_type="DELIVERY", quantity=1,
                 from_holder=HolderInput(type="user", id=str(mentor_user["_id"])), to_holder=HolderInput(type="person", id=target_person_id),
                 person_id=target_person_id, process_key=process_key, campaign_id=campaign_id, notes=notes or "Entrega desde el inventario del mentor",
+                idempotency_key=idempotency_key, **(links or {}),
             ),
             actor_user_id,
         )

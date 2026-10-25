@@ -16,6 +16,8 @@ import { ReportDamageLossDialog } from '../../components/library/ReportDamageLos
 import { AdjustInventoryDialog } from '../../components/library/AdjustInventoryDialog';
 import { RequestBookDialog } from '../../components/library/RequestBookDialog';
 import { BookThumbnail } from '../../components/library/BookThumbnail';
+import { MyLedgerBalance, ReconciliationPanel } from '../../components/library/LedgerPanels';
+import { hasCapability } from '../../lib/accessControl';
 
 const REQUEST_STATUS = { pending: 'Pendiente', approved: 'Aprobada', partial: 'Aprobada parcial', rejected: 'Rechazada' };
 
@@ -57,6 +59,8 @@ export default function LibraryMyInventoryPage() {
   return <main className="min-h-screen bg-[#F4F1EA] px-4 py-6 sm:px-8" data-testid="library-my-inventory-page">
     <div className="mx-auto max-w-5xl space-y-6">
       <header><Link to="/libreria" className="text-sm text-[#0879BE]">← Librería 360</Link><h1 className="font-serif text-3xl text-[#132443]">Mi inventario de Librería</h1></header>
+      <MyLedgerBalance />
+      {(isManager || hasCapability(user, 'library.reports.read')) && <ReconciliationPanel canReconcile={isManager} />}
 
       <div className="flex flex-wrap gap-2">
         <RequestBookDialog onRequested={refresh} />
