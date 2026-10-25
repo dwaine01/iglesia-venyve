@@ -26,6 +26,8 @@ export default function DoorToDoorPage() {
   const campaign = active.find((item) => item.campaign_id === campaignId) || null;
   const [summary, setSummary] = useState(null);
   const [street, setStreet] = useState(undefined);
+  const [streets, setStreets] = useState([]);
+  const applyStreets = (data) => { setStreet(data.active_street || null); setStreets(data.streets || []); };
   const [books, setBooks] = useState([]);
   const [error, setError] = useState('');
   const [looseOpen, setLooseOpen] = useState(false);
@@ -41,9 +43,9 @@ export default function DoorToDoorPage() {
   }, [API, getAuthHeaders, campaignId]);
   useEffect(() => {
     if (!campaignId) return;
-    setSummary(null); setStreet(undefined); setError('');
+    setSummary(null); setStreet(undefined); setStreets([]); setError('');
     loadSummary();
-    axios.get(`${API}/api/mentorship/outreach/campaigns/${campaignId}/my-street`, getAuthHeaders()).then((response) => setStreet(response.data.active_street || null))
+    axios.get(`${API}/api/mentorship/outreach/campaigns/${campaignId}/my-street`, getAuthHeaders()).then((response) => { setStreet(response.data.active_street || null); setStreets(response.data.streets || []); })
       .catch((requestError) => { setStreet(null); setError(requestError?.response?.data?.detail || 'No puedes registrar viviendas en esta invasión'); });
     axios.get(`${API}/api/mentorship/outreach/door-books`, getAuthHeaders()).then((response) => setBooks(response.data.items || [])).catch(() => setBooks([]));
   }, [API, getAuthHeaders, campaignId, loadSummary]);
@@ -79,7 +81,7 @@ export default function DoorToDoorPage() {
       {view === 'registrar' && (error
         ? <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-base text-amber-900" data-testid="door-error">{error}</p>
         : street === undefined ? <Loader2 className="mx-auto h-6 w-6 animate-spin text-slate-400" /> : <>
-          <StreetCard campaignId={campaignId} street={street} onChange={setStreet} />
+          <StreetCard campaignId={campaignId} street={street} streets={streets} onChange={applyStreets} />
           {street && <DoorForm key={street.street_name} campaignId={campaignId} street={street} books={books} onSaved={() => { loadSummary(); saved(); }} />}
         </>)}
       {view === 'pendientes' && <PendingDoors campaignId={campaignId} books={books} refreshKey={refreshKey} onChanged={() => { loadSummary(); saved(); }} />}

@@ -143,6 +143,15 @@ async def door_report_data(campaign_id: str, mentor_person_id: Optional[str] = N
     group_names = {doc["front_group_id"]: doc.get("name") or "Grupo sin nombre"
                    async for doc in db.front_groups.find({"front_group_id": {"$in": [key for key in by_team if key]}}, {"_id": 0, "front_group_id": 1, "name": 1})}
 
+    # Inicio, fin y duración de cada calle (tramos de «Comenzar/Terminar calle» de los mentores).
+    from door_streets import street_timing
+    part_match = {"campaign_id": campaign_id, "street_sessions.0": {"$exists": True}}
+    if mentor_person_id:
+        part_match["mentor_person_id"] = mentor_person_id
+    sessions = [item async for doc in db.outreach_participations.find(part_match, {"_id": 0, "mentor_person_id": 1, "street_sessions": 1})
+                if doc.get("mentor_person_id") not in authorities for item in doc.get("street_sessions") or []]
+    timing = street_timing(sessions)
+
     def ordered(rows: list[dict]) -> list[dict]:
         # Orden por trabajo hecho, sin puntajes ni posiciones (no es un ranking).
         return sorted(rows, key=lambda item: (-item["houses_visited"], -item["people"], item["name"]))
@@ -160,7 +169,8 @@ async def door_report_data(campaign_id: str, mentor_person_id: Optional[str] = N
         "by_mentor": ordered([{"mentor_person_id": key or None, "name": names.get(key, "Sin mentor"), "front_group": group_names.get(group_of.get(key, "")), **value}
                               for key, value in by_mentor.items()]),
         "by_team": ordered([{"front_group_id": key or None, "name": group_names.get(key, "Sin Grupo Frontal"), **value} for key, value in by_team.items()]),
-        "by_street": ordered([{"street_key": key, "name": street_label[key], "mentors": sorted(names.get(pid, "Mentor") for pid in street_mentors.get(key, set())), **value}
+        "by_street": ordered([{"street_key": key, "name": street_label[key], "mentors": sorted(names.get(pid, "Mentor") for pid in street_mentors.get(key, set())),
+                               **{field: (timing.get(key) or {}).get(field) for field in ("started_at", "ended_at", "duration_minutes")}, **value}
                               for key, value in by_street.items()]),
         "profile": {
             "language": [{"key": key, "label": LANGUAGE_LABELS.get(key, key), "total": value} for key, value in language.most_common()],
@@ -199,7 +209,7 @@ async def door_report(campaign_id: str, mentor_person_id: Optional[str] = None, 
         data["by_team"] = []
         data["by_mentor"] = [row for row in data["by_mentor"] if row["mentor_person_id"] == mentor_person_id]
     return {"campaign_id": campaign_id, "campaign_name": campaign.get("name"), "scope": "all" if full and not mentor_person_id else "mine" if not full else "mentor",
-            "generated_at": serialize(now_utc()), **data}
+            "generated_at": serialize(now_utc()), **serialize(data)}
 
 
 DRILL = Literal["houses_visited", "opened", "not_opened", "conversed", "invited_in", "houses_with_books", "followup_houses", "pending_revisit", "followup_scheduled"]

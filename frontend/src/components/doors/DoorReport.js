@@ -29,10 +29,13 @@ const GROUPS = [
   { key: 'by_team', label: 'Por equipo', name: 'Equipo', filter: (row) => ({ front_group_id: row.front_group_id }) },
   { key: 'by_street', label: 'Por calle', name: 'Calle', filter: (row) => ({ street_key: row.street_key }) },
 ];
+const clock = (iso) => new Date(iso).toLocaleString('es', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+// Inicio – fin · duración de la calle (los tramos de «Comenzar/Terminar calle»).
+const span = (row) => `${clock(row.started_at)} – ${row.ended_at ? new Date(row.ended_at).toLocaleTimeString('es', { hour: 'numeric', minute: '2-digit' }) : 'activa'}${row.duration_minutes != null ? ` · ${row.duration_minutes < 60 ? `${row.duration_minutes} min` : `${Math.floor(row.duration_minutes / 60)} h ${row.duration_minutes % 60} min`}` : ''}`;
 const when = (iso) => (iso ? new Date(iso).toLocaleString('es', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '');
 
 // Viviendas detrás de una cifra (paginado en el servidor).
-function HouseList({ campaignId, open, onClose }) {
+export function HouseList({ campaignId, open, onClose }) {
   const { API, getAuthHeaders } = useAuth();
   const [data, setData] = useState(null);
   const last = useRef(null);
@@ -80,7 +83,8 @@ function GroupTable({ group, rows, onDrill, fileName, live }) {
   const toggle = (key) => setSort((current) => ({ key, dir: current.key === key ? -current.dir : key === 'name' ? 1 : -1 }));
   const Arrow = ({ column }) => (sort.key === column ? (sort.dir > 0 ? <ArrowUp className="inline h-3 w-3" /> : <ArrowDown className="inline h-3 w-3" />) : null);
   const csv = () => downloadCsv(fileName, shown.map((row) => ({ [group.name.toLowerCase()]: row.name, ...(row.front_group !== undefined ? { equipo: row.front_group || '' } : {}),
-    ...(row.mentors ? { mentores: row.mentors.join(' / ') } : {}), ...Object.fromEntries(COLUMNS.map((column) => [column.label, row[column.key] || 0])), personas: row.people })));
+    ...(row.mentors ? { mentores: row.mentors.join(' / ') } : {}),
+    ...(group.key === 'by_street' ? { inicio: row.started_at || '', fin: row.ended_at || (row.started_at ? 'activa' : ''), duracion_min: row.duration_minutes ?? '' } : {}), ...Object.fromEntries(COLUMNS.map((column) => [column.label, row[column.key] || 0])), personas: row.people })));
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-2">
@@ -102,7 +106,7 @@ function GroupTable({ group, rows, onDrill, fileName, live }) {
             <tbody>
               {shown.map((row) => (
                 <tr key={row[group.key === 'by_street' ? 'street_key' : group.key === 'by_team' ? 'front_group_id' : 'mentor_person_id'] || row.name} className="border-b border-[#F1EFEA]">
-                  <td className="sticky left-0 z-10 max-w-[180px] bg-white px-2 py-2 text-[#101D36]"><p className="truncate font-semibold">{row.name}</p>{row.front_group && <p className="truncate text-xs text-slate-500">{row.front_group}</p>}{row.mentors?.length > 0 && <p className="truncate text-xs text-slate-500">{row.mentors.join(', ')}</p>}</td>
+                  <td className="sticky left-0 z-10 max-w-[180px] bg-white px-2 py-2 text-[#101D36]"><p className="truncate font-semibold">{row.name}</p>{row.front_group && <p className="truncate text-xs text-slate-500">{row.front_group}</p>}{row.mentors?.length > 0 && <p className="truncate text-xs text-slate-500">{row.mentors.join(', ')}</p>}{row.started_at && <p className="truncate text-xs text-slate-500" data-testid="door-report-street-time">{span(row)}</p>}</td>
                   {COLUMNS.map((column) => (
                     <td key={column.key} className="px-1.5 py-1 text-right tabular-nums text-[#101D36]">
                       {column.drill && row[column.key] && canDrill(row) ? <button type="button" onClick={() => onDrill(column, row, group)} className="min-h-9 min-w-9 rounded-md px-1 font-semibold text-[#1d4ed8] underline decoration-dotted underline-offset-2">{row[column.key]}</button> : (row[column.key] || 0)}

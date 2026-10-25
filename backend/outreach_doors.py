@@ -14,7 +14,8 @@ Reutiliza las colecciones existentes, sin colecciones paralelas:
   compartió: `shared_by_person`), `client_request_id` (idempotencia).
 - `outreach_visits` = PERSONA contactada (sigue siendo la que se vincula con
   Persona 360 y Consolidación; se crea con el mismo núcleo de siempre).
-- `outreach_participations.active_street` = la calle activa del mentor.
+- `outreach_participations.active_street` = la calle activa del mentor
+  (historial de calles en `street_sessions`, ver door_streets.py).
 
 Reglas: el registro en la calle NUNCA se bloquea por inventario (los libros
 se descuentan del inventario del mentor si se puede; si no, quedan
@@ -32,7 +33,7 @@ from pydantic import BaseModel, Field, model_validator
 from pymongo.errors import DuplicateKeyError
 
 from mentorship_outreach import (
-    OUTREACH_PROCESS_KEY, campaign_roster, can_use_outreach, ensure_participation, is_active_mentor, is_outreach_leader,
+    OUTREACH_PROCESS_KEY, campaign_roster, can_use_outreach, is_active_mentor, is_outreach_leader,
     mark_participation_active, now_utc, resolve_and_insert_contact_visit, serialize, serialize_visits, supervision_snapshot,
 )
 from server import db, get_current_user
@@ -133,23 +134,7 @@ async def _participant_check(campaign_id: str, current_user: dict) -> str:
 
 
 # ------------------------------------------------------------------ calle activa
-@router.get("/campaigns/{campaign_id}/my-street", response_model=dict)
-async def get_my_street(campaign_id: str, current_user: dict = Depends(get_current_user)):
-    mentor_person_id = await _participant_check(campaign_id, current_user)
-    participation = await db.outreach_participations.find_one({"campaign_id": campaign_id, "mentor_person_id": mentor_person_id}, {"_id": 0, "active_street": 1})
-    return {"active_street": serialize((participation or {}).get("active_street"))}
-
-
-@router.put("/campaigns/{campaign_id}/my-street", response_model=dict)
-async def set_my_street(campaign_id: str, payload: StreetInput, current_user: dict = Depends(get_current_user)):
-    """«Comenzar calle» / «Cambiar calle»: queda activa para registrar viviendas sin repetirla."""
-    mentor_person_id = await _participant_check(campaign_id, current_user)
-    await ensure_participation(campaign_id, mentor_person_id)
-    street = {"street_name": payload.street_name.strip(), "street_key": _norm(payload.street_name), "started_at": now_utc(),
-              "latitude": payload.latitude, "longitude": payload.longitude, "location_accuracy_m": payload.location_accuracy_m,
-              "location_source": payload.location_source if payload.latitude is not None else None}
-    await db.outreach_participations.update_one({"campaign_id": campaign_id, "mentor_person_id": mentor_person_id}, {"$set": {"active_street": street, "updated_at": now_utc()}})
-    return {"active_street": serialize(street)}
+# Rutas de la calle activa («Comenzar/Cambiar/Terminar/Reabrir calle»): door_streets.py
 
 
 # ------------------------------------------------------------------ libros
@@ -233,7 +218,7 @@ async def attempt_response(event: dict, current_user: dict, duplicate: bool = Fa
             "duplicate": duplicate, "person_warning": person_warning or event.get("person_warning"), "saved_at": serialize(event.get("created_at"))}
 
 
-async def record_attempt(household: dict, payload: AttemptInput, current_user: dict) -> dict:
+async def record_attempt(household: dict, payload: AttemptInput, current_user: dict, street_session_id: Optional[str] = None) -> dict:
     mentor_person_id = household["mentor_person_id"]
     opened = payload.opened
     now = now_utc()
@@ -251,6 +236,7 @@ async def record_attempt(household: dict, payload: AttemptInput, current_user: d
         "shared_by_person": bool(payload.shared_by_person and opened and (payload.religion or payload.origin)),
         "note": (payload.note or "").strip() or None, "is_draft": False, "client_request_id": payload.client_request_id,
         "occurred_at": now, "created_by_user_id": current_user["user_id"], "created_at": now, "source": "door_to_door",
+        "street_session_id": street_session_id,
     }
     if not opened:
         # No abrieron: se guarda sin preguntas (no se inventan datos de la persona).
@@ -308,6 +294,8 @@ async def register_door(campaign_id: str, payload: DoorInput, current_user: dict
     if existing:
         return existing
     mentor_person_id = await _participant_check(campaign_id, current_user)
+    from door_streets import close_if_stale
+    await close_if_stale(campaign_id, mentor_person_id)
     street_name = (payload.street_name or "").strip()
     participation = await db.outreach_participations.find_one({"campaign_id": campaign_id, "mentor_person_id": mentor_person_id}, {"_id": 0, "active_street": 1})
     street = (participation or {}).get("active_street") or {}
@@ -323,7 +311,9 @@ async def register_door(campaign_id: str, payload: DoorInput, current_user: dict
         household = await claim_for(household, mentor_person_id)
     if not household:
         household = await create_door(campaign_id, street_name, payload.house_number, payload.unit, key, mentor_person_id, street if _norm(street.get("street_name")) == _norm(street_name) else {}, current_user)
-    return await record_attempt(household, payload, current_user)
+    # El intento queda en el tramo de la calle activa (para el inicio/fin y duración de la calle).
+    session_id = street.get("street_session_id") if _norm(street.get("street_name")) == _norm(street_name) else None
+    return await record_attempt(household, payload, current_user, session_id)
 
 
 async def claim_for(household: dict, mentor_person_id: str) -> dict:
