@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Download, Lock, Printer } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -281,6 +281,14 @@ export default function InvasionReportPage() {
           </>}
         </Section>}
 
+        {report.books_trace?.delivered > 0 && <Section title="Libros entregados y su seguimiento" testId="report-books-trace">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+            <Tile label="Libros entregados" value={report.books_trace.delivered} /><Tile label="Con destinatario" value={report.books_trace.identified} />
+            <Tile label="Por completar destinatario" value={report.books_trace.unidentified} /><Tile label="Con seguimiento" value={report.books_trace.with_followup} />
+            <Tile label="Sin conciliar (Librería)" value={report.books_trace.pending_reconciliation} />
+          </div>
+          <Link to={`/libreria/recorrido?invasion=${campaignId}`} className="mt-3 inline-flex min-h-11 items-center rounded-lg border border-[#D9D4C7] px-3 text-sm font-semibold text-[#0879BE] print:hidden" data-testid="report-books-trace-link">Ver recorrido de los libros (a quién, dónde y seguimiento)</Link>
+        </Section>}
         {report.books?.length > 0 && <Section title="Libros por mentor" testId="report-books" csv={() => downloadCsv(`libros-${s.name}.csv`, report.books.map((row) => ({ mentor: row.mentor_name, libro: row.book_name, asignados: row.assigned, entregados: row.delivered, le_quedan: row.remaining })))}>
           <Table columns={[['mentor_name', 'Mentor'], ['book_name', 'Libro'], ['assigned', 'Asignados'], ['delivered', 'Entregados'], ['remaining', 'Le quedan']]} rows={report.books.map((row) => ({ ...row, key: `${row.mentor_person_id}-${row.book_id}` }))} />
           <BookDeliveries campaignId={campaignId} books={report.books} />

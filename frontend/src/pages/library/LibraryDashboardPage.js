@@ -39,6 +39,7 @@ export default function LibraryDashboardPage() {
         <div className="flex items-center gap-2">
           <LibraryNotificationsBell />
           <Link to="/libreria/mi-inventario" className="rounded-lg border border-[#132443] px-4 py-2 text-sm text-[#132443]" data-testid="link-my-library-inventory">Mi inventario</Link>
+          <Link to="/libreria/recorrido" className="rounded-lg border border-[#132443] px-4 py-2 text-sm text-[#132443]" data-testid="link-library-trace">Recorrido de libros</Link>
           <Link to="/libreria/escanear" className="rounded-lg border border-[#132443] px-4 py-2 text-sm text-[#132443]" data-testid="link-library-scan">Escanear</Link>
           {canViewLibraryReports(user) && <Link to="/libreria/reportes" className="rounded-lg border border-[#132443] px-4 py-2 text-sm text-[#132443]" data-testid="link-library-reports">Reportes</Link>}
           {isManager && <Link to="/libreria/catalogo" className="rounded-lg border border-[#132443] px-4 py-2 text-sm text-[#132443]" data-testid="link-library-catalog">Catálogo</Link>}
