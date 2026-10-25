@@ -61,9 +61,11 @@ function TabletApp() {
   const [releases, setReleases] = useState({});
   useEffect(() => {
     Object.entries(TABLET_APP).forEach(([key, item]) => {
-      fetch(`https://api.github.com/repos/${TABLET_APP_REPO}/releases/tags/${item.tag}`)
-        .then((response) => (response.ok ? response.json() : null))
-        .then((data) => setReleases((current) => ({ ...current, [key]: data && (data.assets || []).some((asset) => asset.name === item.file) ? { name: data.name, date: data.published_at } : false })))
+      // Solo un «no existe» (404) cuenta como «todavía no hay versión»; si GitHub no responde o limita
+      // las consultas (403), no se sabe y el botón queda activo (el enlace funciona igual).
+      fetch(`https://api.github.com/repos/${TABLET_APP_REPO}/releases/tags/${item.tag}`, { cache: 'no-store' })
+        .then((response) => (response.ok ? response.json() : response.status === 404 ? { assets: [] } : null))
+        .then((data) => setReleases((current) => ({ ...current, [key]: !data ? null : (data.assets || []).some((asset) => asset.name === item.file) ? { name: data.name, date: data.published_at } : false })))
         .catch(() => setReleases((current) => ({ ...current, [key]: null })));
     });
   }, []);
