@@ -131,7 +131,7 @@ export default function KioskPage() {
   const pairDevice = async (event) => {
     event.preventDefault(); setError('');
     try {
-      const response = await axios.post(`${API}/api/kiosk/pair`, { code });
+      const response = await axios.post(`${API}/api/kiosk/pair`, { code, expected_kinds: ['tablet'] });
       const value = { token: response.data.token, name: response.data.device_name };
       try { localStorage.setItem(DEVICE_KEY, JSON.stringify(value)); } catch { /* sin almacenamiento */ }
       setDevice(value); setCode('');

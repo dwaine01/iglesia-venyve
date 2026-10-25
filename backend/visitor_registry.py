@@ -152,8 +152,12 @@ async def set_service_today(payload: ServiceInput, current_user: dict = Depends(
 
 
 # ------------------------------------------------------------------ tabletas
+DEVICE_KINDS = {"tablet": "Tableta de registro", "screen_tv": "Pantalla de bienvenida (salón)", "screen_pastora": "Pantalla de la pastora"}
+
+
 class DeviceInput(BaseModel):
     name: str = Field(min_length=2, max_length=60)
+    kind: Literal["tablet", "screen_tv", "screen_pastora"] = "tablet"
 
 
 def new_code() -> str:
@@ -164,7 +168,7 @@ def device_view(doc: dict) -> dict:
     return {"device_id": doc["device_id"], "name": doc["name"], "status": doc["status"], "status_label": {"pending": "Esperando emparejar", "paired": "Activa", "revoked": "Desactivada"}[doc["status"]],
             "code_expires_at": doc.get("code_expires_at").isoformat() if doc.get("code_expires_at") and doc["status"] == "pending" else None,
             "paired_at": doc.get("paired_at").isoformat() if doc.get("paired_at") else None, "last_seen_at": doc.get("last_seen_at").isoformat() if doc.get("last_seen_at") else None,
-            "registrations": doc.get("registrations", 0)}
+            "registrations": doc.get("registrations", 0), "kind": doc.get("kind", "tablet"), "kind_label": DEVICE_KINDS[doc.get("kind", "tablet")]}
 
 
 @admin_router.get("/devices", response_model=dict)
@@ -191,7 +195,7 @@ async def create_device(payload: DeviceInput, current_user: dict = Depends(get_c
     require(current_user, VISITORS_DEVICES_MANAGE)
     await ensure_indexes()
     device_id = str(uuid4())
-    await db.visitor_devices.insert_one({"_id": device_id, "device_id": device_id, "name": payload.name.strip(), "status": "pending", "token_hash": None, "created_at": now_utc(), "created_by_user_id": current_user["user_id"], "registrations": 0})
+    await db.visitor_devices.insert_one({"_id": device_id, "device_id": device_id, "name": payload.name.strip(), "kind": payload.kind, "status": "pending", "token_hash": None, "created_at": now_utc(), "created_by_user_id": current_user["user_id"], "registrations": 0})
     code, expires = await issue_code(device_id)
     await audit("device_created", current_user["user_id"], {"device_id": device_id, "name": payload.name})
     return {**device_view(await db.visitor_devices.find_one({"device_id": device_id}, {"_id": 0})), "pairing_code": code, "code_expires_at": expires.isoformat()}
@@ -222,6 +226,7 @@ async def revoke_device(device_id: str, current_user: dict = Depends(get_current
 # ------------------------------------------------------------------ quiosco (token de dispositivo)
 class PairInput(BaseModel):
     code: str = Field(min_length=6, max_length=20)
+    expected_kinds: Optional[list[Literal["tablet", "screen_tv", "screen_pastora"]]] = None
 
 
 @kiosk_router.post("/pair", response_model=dict)
@@ -231,20 +236,31 @@ async def pair(payload: PairInput):
     device = await db.visitor_devices.find_one({"code_hash": sha(code), "status": "pending"}, {"_id": 0})
     if not device or not device.get("code_expires_at") or (device["code_expires_at"] if device["code_expires_at"].tzinfo else device["code_expires_at"].replace(tzinfo=timezone.utc)) < now_utc():
         raise HTTPException(status_code=404, detail="Código no válido o vencido. Pida un código nuevo en el panel de administración.")
+    if payload.expected_kinds and device.get("kind", "tablet") not in payload.expected_kinds:
+        # No se gasta el código: se abrió la página equivocada.
+        where = "/quiosco" if device.get("kind", "tablet") == "tablet" else "/pantalla-bienvenida"
+        raise HTTPException(status_code=409, detail=f"Este código es de «{DEVICE_KINDS[device.get('kind', 'tablet')]}». Ábralo en la dirección {where}.")
     token = secrets.token_urlsafe(32)
     await db.visitor_devices.update_one({"device_id": device["device_id"], "status": "pending"}, {"$set": {"token_hash": sha(token), "code_hash": None, "status": "paired", "paired_at": now_utc(), "updated_at": now_utc()}})
     await audit("device_paired", f"device:{device['device_id']}", {"name": device["name"]})
-    return {"token": token, "device_name": device["name"]}
+    return {"token": token, "device_name": device["name"], "kind": device.get("kind", "tablet")}
+
+
+async def paired_device(token: Optional[str], kinds: set) -> dict:
+    if not token:
+        raise HTTPException(status_code=401, detail="Dispositivo no emparejado")
+    device = await db.visitor_devices.find_one({"token_hash": sha(token), "status": "paired"}, {"_id": 0})
+    if not device:
+        raise HTTPException(status_code=401, detail="Este dispositivo fue desactivado o no está emparejado")
+    if device.get("kind", "tablet") not in kinds:
+        # Una pantalla no puede registrar y una tableta no puede leer nombres.
+        raise HTTPException(status_code=403, detail="Este dispositivo no tiene permiso para esta función")
+    await db.visitor_devices.update_one({"device_id": device["device_id"]}, {"$set": {"last_seen_at": now_utc()}})
+    return device
 
 
 async def kiosk_device(x_device_token: Optional[str] = Header(default=None)) -> dict:
-    if not x_device_token:
-        raise HTTPException(status_code=401, detail="Tableta no emparejada")
-    device = await db.visitor_devices.find_one({"token_hash": sha(x_device_token), "status": "paired"}, {"_id": 0})
-    if not device:
-        raise HTTPException(status_code=401, detail="Esta tableta fue desactivada o no está emparejada")
-    await db.visitor_devices.update_one({"device_id": device["device_id"]}, {"$set": {"last_seen_at": now_utc()}})
-    return device
+    return await paired_device(x_device_token, {"tablet"})
 
 
 @kiosk_router.get("/config", response_model=dict)

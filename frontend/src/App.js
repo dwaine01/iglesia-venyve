@@ -23,6 +23,7 @@ const RegistroPage = lazyPage(() => import('./pages/RegistroPage'));
 const EstadisticasPage = lazyPage(() => import('./pages/EstadisticasPage'));
 const GlobalStatsPage = lazyPage(() => import('./pages/GlobalStatsPage'));
 const KioskPage = lazyPage(() => import('./pages/KioskPage'));
+const WelcomeScreenPage = lazyPage(() => import('./pages/WelcomeScreenPage'));
 const VisitorsAdminPage = lazyPage(() => import('./pages/VisitorsAdminPage'));
 const PersonasListPage = lazyPage(() => import('./pages/PersonasListPage'));
 const PersonaNuevaPage = lazyPage(() => import('./pages/PersonaNuevaPage'));
@@ -267,6 +268,7 @@ function App() {
           <Route path="/verificar/presentacion/:token" element={<DedicationVerificationPage />} />
           {/* Quiosco de visitantes: sin menú ni sesión de personal (token de la tableta). */}
           <Route path="/quiosco" element={<KioskPage />} />
+          <Route path="/pantalla-bienvenida" element={<WelcomeScreenPage />} />
           {/* Rutas de presentación full-screen (fuera del AppLayout) */}
           <Route path="/presentacion/presenter" element={<StaffRoute><PresentacionPresenterPage /></StaffRoute>} />
           <Route path="/presentacion/audiencia/:code" element={<PresentacionAudiencePage />} />
