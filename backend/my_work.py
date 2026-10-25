@@ -54,9 +54,10 @@ def scope_mentor(current_user: dict, mentor_person_id: Optional[str]) -> str:
 
 
 async def _zone() -> ZoneInfo:
-    from consolidation_activities import get_church_timezone
+    # Mismo día local que el reporte de invasión (America/New_York si la iglesia sigue en UTC).
+    from report_period import report_zone
     try:
-        return ZoneInfo(await get_church_timezone())
+        return await report_zone()
     except (ZoneInfoNotFoundError, ValueError):
         return ZoneInfo("UTC")
 
@@ -307,6 +308,18 @@ async def my_work_mentors(current_user: dict = Depends(get_current_user)):
     from participation_scope import principal_authority_person_ids
     authorities = await principal_authority_person_ids(db)
     mentor_ids = [doc["person_id"] for doc in await db.mentor_badges.find({"active": True}, {"_id": 0, "person_id": 1}).to_list(5000) if doc.get("person_id") not in authorities]
+    items = list((await mentor_work_rows(mentor_ids)).values())
+    items.sort(key=lambda row: row["name"])
+    return {"items": items}
+
+
+async def mentor_work_rows(mentor_ids: list[str]) -> dict:
+    """UNA sola fuente para «Supervisar Mi Trabajo», la tabla «Líderes y su
+    Desempeño» del Panel General y el detalle del líder: totales reales,
+    pendientes, personas en Consolidación, trabajo de hoy e inventario."""
+    mentor_ids = [pid for pid in dict.fromkeys(mentor_ids) if pid]
+    if not mentor_ids:
+        return {}
     houses = {row["_id"]: row["n"] async for row in db.outreach_households.aggregate([
         {"$match": {"mentor_person_id": {"$in": mentor_ids}, "archived": {"$ne": True}, "door_status": {"$in": PENDING_DOORS}}}, {"$group": {"_id": "$mentor_person_id", "n": {"$sum": 1}}}])}
     people = {row["_id"]: row["n"] async for row in db.process_enrollments.aggregate([
@@ -315,16 +328,109 @@ async def my_work_mentors(current_user: dict = Depends(get_current_user)):
         {"$match": {"mentor_person_id": {"$in": mentor_ids}, "archived": {"$ne": True}, "enrollment_id": {"$in": [None, ""]}, "$or": [{"followup_accepted": True}, {"status": "wants_followup"}]}},
         {"$group": {"_id": "$mentor_person_id", "n": {"$sum": 1}}}])}
     totals = await mentor_totals(mentor_ids)
-    items = []
+    today = await today_totals(mentor_ids)
+    rows = {}
     for pid in mentor_ids:
         row = totals.get(pid) or empty_totals()
-        items.append({"person_id": pid, "name": await person_display_name(pid) or "Mentor", **row,
-                      "pending_households": houses.get(pid, 0), "pending_people": people.get(pid, 0) + contacts.get(pid, 0),
-                      # Compatibilidad: «households»/«people» = totales reales del trabajo (no solo pendientes).
-                      "households": row["houses_visited"], "people": row["people_contacted"],
-                      "pending": houses.get(pid, 0) + people.get(pid, 0) + contacts.get(pid, 0)})
-    items.sort(key=lambda row: row["name"])
-    return {"items": items}
+        day = today.get(pid) or {"houses": 0, "books": 0, "people": 0}
+        pending = houses.get(pid, 0) + people.get(pid, 0) + contacts.get(pid, 0)
+        worked_today = bool(day["houses"] or day["books"] or day["people"])
+        rows[pid] = {"person_id": pid, "name": await person_display_name(pid) or "Mentor", **row,
+                     "pending_households": houses.get(pid, 0), "pending_people": people.get(pid, 0) + contacts.get(pid, 0),
+                     "in_consolidation": people.get(pid, 0), "today": day,
+                     # Compatibilidad: «households»/«people» = totales reales del trabajo (no solo pendientes).
+                     "households": row["houses_visited"], "people": row["people_contacted"], "pending": pending,
+                     "work_status": "worked_today" if worked_today else ("has_pending" if pending else "no_activity_today"),
+                     "work_status_label": "Trabajó hoy" if worked_today else ("Tiene pendientes" if pending else "Sin actividad hoy")}
+    return rows
+
+
+async def _today_start() -> tuple[datetime, ZoneInfo]:
+    zone = await _zone()
+    start = datetime.combine(datetime.now(zone).date(), datetime.min.time(), tzinfo=zone)
+    return start.astimezone(timezone.utc), zone
+
+
+async def today_totals(mentor_ids: list[str]) -> dict:
+    """Trabajo de HOY (día local): viviendas con intento, libros entregados y personas registradas."""
+    since, _ = await _today_start()
+    result = {pid: {"houses": 0, "books": 0, "people": 0} for pid in mentor_ids}
+    async for row in db.outreach_visit_events.aggregate([
+        {"$match": {"mentor_person_id": {"$in": mentor_ids}, "is_draft": {"$ne": True}, "occurred_at": {"$gte": since}}},
+        {"$group": {"_id": "$mentor_person_id", "houses": {"$addToSet": "$household_id"}}}]):
+        result[row["_id"]]["houses"] = len([item for item in row["houses"] if item])
+    async for row in db.outreach_visits.aggregate([
+        {"$match": {"mentor_person_id": {"$in": mentor_ids}, "archived": {"$ne": True}, "created_at": {"$gte": since}}}, {"$group": {"_id": "$mentor_person_id", "n": {"$sum": 1}}}]):
+        result[row["_id"]]["people"] = row["n"]
+    users = await _mentor_users(mentor_ids)
+    person_of_user = {user_id: pid for pid, user_id in users.items()}
+    if users:
+        async for movement in db.library_movements.find({"from_holder.type": "user", "from_holder.id": {"$in": list(users.values())}, "movement_type": {"$in": BOOK_TYPES},
+                                                         "is_reversal": {"$ne": True}, "occurred_at": {"$gte": since}}, {"_id": 0, "from_holder": 1, "quantity": 1}):
+            pid = person_of_user.get(movement["from_holder"]["id"])
+            if pid:
+                result[pid]["books"] += movement.get("quantity") or 1
+    return result
+
+
+@router.get("/leader-detail", response_model=dict)
+async def leader_detail(mentor_person_id: str, current_user: dict = Depends(get_current_user)):
+    """Detalle del trabajo de un líder/mentor (Panel General › Entrar al Líder):
+    resumen hoy / semana / total, su trabajo de hoy hora por hora, expedientes
+    de Consolidación y asistencia a invasiones. Pendientes, personas, viviendas
+    e inventario salen de los mismos endpoints de Mi Trabajo."""
+    mentor = scope_mentor(current_user, mentor_person_id)
+    row = (await mentor_work_rows([mentor]))[mentor]
+    week = await compute_summary(mentor, "week", None)
+    since, zone = await _today_start()
+    timeline = []
+    house_ids = set()
+    events = await db.outreach_visit_events.find({"mentor_person_id": mentor, "is_draft": {"$ne": True}, "occurred_at": {"$gte": since}}, {"_id": 0}).sort("occurred_at", 1).to_list(500)
+    house_ids |= {item.get("household_id") for item in events if item.get("household_id")}
+    visits = await db.outreach_visits.find({"mentor_person_id": mentor, "archived": {"$ne": True}, "created_at": {"$gte": since}}, {"_id": 0}).sort("created_at", 1).to_list(500)
+    house_ids |= {item.get("household_id") for item in visits if item.get("household_id")}
+    user = await db.users.find_one({"person_id": mentor}, {"_id": 1})
+    movements = await db.library_movements.find({"from_holder.type": "user", "from_holder.id": str(user["_id"]), "movement_type": {"$in": BOOK_TYPES}, "is_reversal": {"$ne": True},
+                                                 "occurred_at": {"$gte": since}}, {"_id": 0}).sort("occurred_at", 1).to_list(500) if user else []
+    house_ids |= {item.get("household_id") for item in movements if item.get("household_id")}
+    houses = {doc["household_id"]: doc async for doc in db.outreach_households.find({"household_id": {"$in": list(house_ids)}}, {"_id": 0, "household_id": 1, "address_line1": 1, "address_line2": 1, "street_name": 1})} if house_ids else {}
+    address = lambda house_id: " · ".join(filter(None, [(houses.get(house_id) or {}).get("address_line1"), (houses.get(house_id) or {}).get("address_line2")])) or None  # noqa: E731
+    for event in events:
+        detail = "Abrieron" if event.get("opened") else "No abrieron"
+        if event.get("books_total"):
+            detail += f" · {event['books_total']} libro(s)"
+        if event.get("followup") == "yes":
+            detail += " · aceptó seguimiento"
+        timeline.append({"kind": "visit", "at": event.get("occurred_at"), "title": f"Visitó {address(event.get('household_id')) or 'una vivienda'}", "detail": detail, "household_id": event.get("household_id")})
+    for visit in visits:
+        person_id = visit.get("converted_person_id") or visit.get("person_id")
+        name = (await person_display_name(person_id) if person_id else None) or visit.get("contact_name") or "Persona"
+        timeline.append({"kind": "person", "at": visit.get("created_at"), "title": f"Registró a {name}", "detail": address(visit.get("household_id")) or visit.get("address_line1"), "person_id": person_id})
+    for movement in movements:
+        name = await person_display_name(movement["person_id"]) if movement.get("person_id") else None
+        timeline.append({"kind": "book", "at": movement.get("occurred_at"), "title": f"Entregó {movement.get('quantity') or 1} × {movement.get('book_name') or 'libro'}",
+                         "detail": f"A {name}" if name else (f"En {address(movement.get('household_id'))} · sin nombre todavía" if movement.get("household_id") else "Sin nombre todavía"),
+                         "person_id": movement.get("person_id"), "movement_id": movement.get("movement_id")})
+    timeline.sort(key=lambda item: serialize(item.get("at")) or "")
+    for item in timeline:
+        moment = _aware(item.get("at"))
+        item["time"] = moment.astimezone(zone).strftime("%H:%M") if moment else None
+    enrollments = await db.process_enrollments.find({"mentor_person_id": mentor, "process_key": "consolidation", "status": {"$in": ACTIVE_ENROLLMENT}},
+                                                    {"_id": 0, "enrollment_id": 1, "person_id": 1, "current_stage_key": 1, "next_action": 1, "next_action_at": 1, "status": 1}).to_list(500)
+    for item in enrollments:
+        item["name"] = await person_display_name(item["person_id"]) or "Persona"
+        item["stage"] = STAGE_LABELS.get(item.get("current_stage_key"), item.get("current_stage_key"))
+    attendance = []
+    async for part in db.invasion_participants.find({"person_id": mentor}, {"_id": 0, "campaign_id": 1, "roles": 1, "attended": 1, "attended_days": 1, "response": 1}):
+        campaign = await db.outreach_campaigns.find_one({"campaign_id": part["campaign_id"]}, {"_id": 0, "name": 1, "start_date": 1})
+        if campaign:
+            attendance.append({"campaign_id": part["campaign_id"], "name": campaign.get("name"), "start_date": campaign.get("start_date"), "roles": part.get("roles") or [],
+                               "attended": bool(part.get("attended") or part.get("attended_days")), "days": len(part.get("attended_days") or [])})
+    attendance.sort(key=lambda item: item.get("start_date") or "", reverse=True)
+    return {"mentor_person_id": mentor, "name": row["name"], "row": row,
+            "summary": {"today": row["today"], "week": {"houses": week["figures"]["visited"], "opened": week["figures"]["opened"], "started_consolidation": week["figures"]["started_consolidation"]},
+                        "total": {"houses": row["houses_visited"], "people": row["people_contacted"], "books": row["books_delivered"], "in_consolidation": row["in_consolidation"], "pending": row["pending"]}},
+            "timeline": serialize(timeline), "enrollments": serialize(enrollments), "attendance": attendance, "inventory": row["inventory"]}
 
 
 class ReassignItem(BaseModel):
