@@ -149,7 +149,9 @@ jobs:
 
   publicar:
     name: Publicar en Releases
-    needs: [compilar, emulador]
+    # Solo depende de «Compilar y probar» (pruebas de reglas y Robolectric): una falla pasajera del
+    # emulador no debe impedir publicar; su resultado igual queda visible en la misma ejecución.
+    needs: [compilar]
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
