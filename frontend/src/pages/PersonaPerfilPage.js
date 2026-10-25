@@ -28,6 +28,7 @@ import { PersonJourneyStatusStrip } from '../components/PersonJourneyStatusStrip
 import { toast } from 'sonner';
 import { canDeliverLibraryBooks, canIssueBaptismCertificates, canManageMembershipDocuments, canRegularizeMembership, canViewDirectory, canViewOtherMentorDisciples, canWriteBaptism, isPastoralAuthority } from '../lib/accessControl';
 import { LibraryPersonSection } from '../components/library/LibraryPersonSection';
+import { ContactHistory, ContactOriginCard, useContactOrigin } from '../components/PersonContactOrigin';
 
 // P-001 Slice 2A - Person Profile 360 (shell full-screen).
 // Consume unicamente el read-model /api/core/persons/{id}/profile.
@@ -46,7 +47,7 @@ const SECTION_LABELS = {
   bautismo: 'Bautismo',
   formacion: 'Formación',
   libreria: 'Libros y Materiales',
-  mentor: 'Mentor',
+  mentor: 'Mentor / Insignia',
 };
 
 export default function PersonaPerfilPage({ personId: personIdProp, ownProfileExtra = null }) {
@@ -67,6 +68,8 @@ export default function PersonaPerfilPage({ personId: personIdProp, ownProfileEx
   const [mentorBadgeActive, setMentorBadgeActive] = useState(false);
   // L2: el mentor de esta persona (visita de invasión) también entrega libros desde el perfil (el backend lo valida).
   const [mentorLibraryAccess, setMentorLibraryAccess] = useState(false);
+  // «Contactado por»: visita de invasión y libros (lectura; el backend filtra permisos).
+  const [origin, refreshOrigin] = useContactOrigin(personId);
   useEffect(() => {
     setMentorLibraryAccess(false);
     if (!personId || canDeliverLibraryBooks(user)) return;
@@ -137,7 +140,10 @@ export default function PersonaPerfilPage({ personId: personIdProp, ownProfileEx
   const isOwnProfile = Boolean(user?.person_id) && user.person_id === personId;
   const backPath = canViewDirectory(user) ? '/personas' : '/';
   const canArchive = isPastoralAuthority(user) && user?.person_id !== personId && profile?.identity?.account_role !== 'pastor';
-  const allSections = [
+  // El mentor que la contactó ve una vista mínima: cómo llegó y sus libros (sin datos sensibles).
+  const mentorView = profile?.contact_mentor_view === true;
+  const hasContactHistory = Boolean(origin?.history?.length);
+  const allSections = mentorView ? ['resumen', 'historial', ...(canViewLibrary ? ['libreria'] : [])] : [
     'resumen', 'contacto', 'direcciones', 'household',
     'familia', 'procesos', ...(available.includes('formacion') ? ['formacion'] : []), 'asistencia', 'historial', 'mentor', ...(available.includes('membresia') ? ['membresia'] : []), ...(available.includes('bautismo') ? ['bautismo'] : []), ...(canViewFinance ? ['finanzas'] : []), ...(canViewLibrary ? ['libreria'] : []),
   ];
@@ -203,7 +209,8 @@ export default function PersonaPerfilPage({ personId: personIdProp, ownProfileEx
           error={archiveError}
           onConfirm={archivePerson}
         />
-        <PersonJourneyStatusStrip status={profile.journey_status} />
+        <PersonJourneyStatusStrip status={profile.journey_status} contact={origin} />
+        <ContactOriginCard personId={personId} origin={origin} onAssigned={() => { refreshOrigin(); refreshProfile().catch(() => {}); }} />
         {ownProfileExtra}
         {profile.profile_can_write && (
           <PersonProfileEditor
@@ -227,7 +234,7 @@ export default function PersonaPerfilPage({ personId: personIdProp, ownProfileEx
                   key={section}
                   value={section}
                   data-testid={`profile-tab-${section}`}
-                  disabled={!available.includes(section) && section !== 'finanzas' && section !== 'libreria' && section !== 'mentor'}
+                  disabled={!available.includes(section) && section !== 'finanzas' && section !== 'libreria' && section !== 'mentor' && !(section === 'historial' && hasContactHistory)}
                   className="min-h-9 shrink-0 whitespace-nowrap rounded-lg px-3 text-xs font-medium text-gray-600 data-[state=active]:bg-white data-[state=active]:text-[#101D36] data-[state=active]:shadow-sm sm:text-sm"
                 >
                   {SECTION_LABELS[section] || displayLabel(section, 'Sección')}
@@ -237,11 +244,13 @@ export default function PersonaPerfilPage({ personId: personIdProp, ownProfileEx
           </div>
 
           <TabsContent value="resumen" className="mt-0">
-            <Profile360Summary
+            {mentorView ? (
+              <p className="rounded-xl border border-[#E8E5DE] bg-white p-4 text-[15px] text-slate-700" data-testid="profile-mentor-view-note">Ves esta ficha porque contactaste o acompañas a esta persona: cómo llegó, sus libros y su recorrido. Sus datos personales son privados.</p>
+            ) : <Profile360Summary
               sections={sections}
               available={available}
               onSelect={setActiveTab}
-            />
+            />}
           </TabsContent>
 
           {profile.contacto && (
@@ -292,9 +301,10 @@ export default function PersonaPerfilPage({ personId: personIdProp, ownProfileEx
             </TabsContent>
           )}
 
-          {available.includes('historial') && (
-            <TabsContent value="historial" className="mt-0 rounded-xl border border-[#E8E5DE] bg-white p-4 shadow-sm sm:p-6">
-              <HistorySection personId={personId} notes={profile.notas} activity={profile.historial} canWrite={profile.permissions?.notas?.write} canPastoral={profile.permissions?.notas?.pastoral} API={API} getAuthHeaders={getAuthHeaders} onChanged={refreshProfile} />
+          {(available.includes('historial') || hasContactHistory) && (
+            <TabsContent value="historial" className="mt-0 space-y-6 rounded-xl border border-[#E8E5DE] bg-white p-4 shadow-sm sm:p-6">
+              <ContactHistory origin={origin} />
+              {available.includes('historial') && <HistorySection personId={personId} notes={profile.notas} activity={profile.historial} canWrite={profile.permissions?.notas?.write} canPastoral={profile.permissions?.notas?.pastoral} API={API} getAuthHeaders={getAuthHeaders} onChanged={refreshProfile} />}
             </TabsContent>
           )}
 
@@ -324,18 +334,22 @@ export default function PersonaPerfilPage({ personId: personIdProp, ownProfileEx
 
           {canViewLibrary && (
             <TabsContent value="libreria" className="mt-0">
-              <LibraryPersonSection personId={personId} user={user} />
+              <LibraryPersonSection personId={personId} user={user} origin={origin} />
             </TabsContent>
           )}
 
-          <TabsContent value="mentor" className="mt-0 rounded-xl border border-[#E8E5DE] bg-white p-4 shadow-sm sm:p-6">
+          {!mentorView && <TabsContent value="mentor" className="mt-0 rounded-xl border border-[#E8E5DE] bg-white p-4 shadow-sm sm:p-6">
+            <div className="mb-5 space-y-1 rounded-lg bg-[#FBFAF7] p-3 text-[15px] text-slate-700" data-testid="mentor-tab-explainer">
+              <p><b className="text-[#101D36]">{isOwnProfile ? 'Mi mentor / quién me acompaña' : 'Quién la acompaña'}:</b> {origin?.current_mentor?.name || (origin?.first_contact?.mentor_name ? `pendiente de asignar · contactada por ${origin.first_contact.mentor_name}` : 'pendiente de asignar')}</p>
+              <p className="text-sm text-slate-500">Abajo: la insignia de Mentor de {isOwnProfile ? 'tu cuenta' : 'ESTA persona'} (si sirve como mentora), no su mentor.</p>
+            </div>
             <MentorBadgeSection personId={personId} API={API} getAuthHeaders={getAuthHeaders} onChanged={refreshProfile} onBadgeStatusLoaded={setMentorBadgeActive} />
             {mentorBadgeActive && (isOwnProfile || canViewOtherMentorDisciples(user)) && (
               <div className="mt-6 border-t border-[#E8E5DE] pt-6">
                 <MentorDisciplesSection personId={personId} isOwnProfile={isOwnProfile} API={API} getAuthHeaders={getAuthHeaders} />
               </div>
             )}
-          </TabsContent>
+          </TabsContent>}
 
 
           {planned.map((section) => (

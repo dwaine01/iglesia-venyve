@@ -575,6 +575,8 @@ from my_work import router as my_work_router
 app.include_router(my_work_router)
 from report_period import router as report_period_router
 app.include_router(report_period_router)
+from person_contact import router as person_contact_router
+app.include_router(person_contact_router)
 from enrollment_cleanup import router as enrollment_cleanup_router, ensure_indexes as enrollment_cleanup_ensure_indexes
 app.include_router(enrollment_cleanup_router)
 from door_streets import router as door_streets_router, ensure_indexes as door_streets_ensure_indexes

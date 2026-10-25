@@ -12,6 +12,7 @@ from bson.errors import InvalidId
 from fastapi import APIRouter, HTTPException, Depends
 
 from core_person import db, require_person_profile_or_self, serialize_person
+from server import get_current_user
 from access_control import (
     BAPTISM_READ,
     FORMATION_READ,
@@ -205,8 +206,31 @@ def build_header(
     return header
 
 
+async def profile_viewer(person_id: str, current_user: dict = Depends(get_current_user)) -> dict:
+    """Directorio/propia ficha como siempre; además, el mentor que contactó o
+    acompaña a la persona abre una vista mínima (sin datos sensibles)."""
+    try:
+        return require_person_profile_or_self(person_id, current_user)
+    except HTTPException as exc:
+        from person_contact import is_contact_mentor
+        if exc.status_code == 403 and await is_contact_mentor(person_id, current_user):
+            return {**current_user, "contact_mentor_view": True}
+        raise
+
+
+def contact_mentor_profile(person: dict) -> dict:
+    """Solo identidad básica: el resto lo da /api/persons/{id}/contact-origin."""
+    return {
+        "canonical_profile_path": f"/personas/{person['person_id']}",
+        "header": {"person_id": person["person_id"], "person_number": person["person_number"], "nombre": person.get("nombre"), "apellido": person.get("apellido"),
+                   "nombre_completo": f"{person.get('nombre', '')} {person.get('apellido', '')}".strip(), "initials": _initials(person.get("nombre"), person.get("apellido"))},
+        "sections": [], "sections_available": ["resumen"], "sections_planned": [], "journey_status": None,
+        "profile_can_write": False, "private_finance_can_read": False, "contact_mentor_view": True,
+    }
+
+
 @router.get("/persons/{person_id}/profile")
-async def get_person_profile(person_id: str, current_user: dict = Depends(require_person_profile_or_self)):
+async def get_person_profile(person_id: str, current_user: dict = Depends(profile_viewer)):
     try:
         oid = ObjectId(person_id)
     except InvalidId:
@@ -219,8 +243,11 @@ async def get_person_profile(person_id: str, current_user: dict = Depends(requir
         if doc.get(optional_field):
             person[optional_field] = doc[optional_field]
 
-    in_scope = can_access_person(current_user, person)
+    in_scope = not current_user.get("contact_mentor_view") and can_access_person(current_user, person)
     if not in_scope:
+        from person_contact import is_contact_mentor
+        if current_user.get("contact_mentor_view") or await is_contact_mentor(person_id, current_user):
+            return contact_mentor_profile(person)
         # Una cuenta sin alcance sobre esta Persona no abre su ficha.
         raise HTTPException(status_code=403, detail="No autorizado para ver esta Persona")
     can_read_contacts = in_scope and has_capability(current_user, PERSON_CONTACTS_READ)

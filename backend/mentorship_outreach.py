@@ -1224,22 +1224,12 @@ async def transfer_visit(visit_id: str, payload: VisitTransferInput, current_use
     return (await serialize_visits([updated], current_user))[0]
 
 
-@router.post("/visits/{visit_id}/start-seven-weeks", response_model=dict)
-async def start_seven_weeks(visit_id: str, background_tasks: BackgroundTasks, current_user: dict = Depends(get_current_user), payload: Optional[StartSevenWeeksInput] = None):
-    if not await can_use_outreach(current_user):
-        raise HTTPException(status_code=403, detail="Sin permiso para iniciar la Ley de las 7 Semanas")
-    visit = await load_visit(visit_id)
-    if not is_outreach_leader(current_user) and visit.get("mentor_person_id") != current_user.get("person_id"):
-        raise HTTPException(status_code=403, detail="Solo el mentor responsable o un líder puede iniciar este proceso")
-    if visit.get("status") != "wants_followup":
-        raise HTTPException(status_code=409, detail="La visita debe estar en estado 'Quiere seguimiento'")
-    if visit.get("enrollment_id"):
-        raise HTTPException(status_code=409, detail="Esta visita ya inició la Ley de las 7 Semanas")
+async def open_consolidation_from_visit(visit: dict, person_id: str, current_user: dict, reason: str = "Inicia la Ley de las 7 Semanas desde una invasión") -> tuple[dict, bool]:
+    """Abre (o reutiliza) el expediente de Consolidación de la persona con el
+    mentor de la visita y lo vincula a la visita. Mismo mecanismo para
+    «Iniciar 7 Semanas» y para «Asignar a <mentor>» desde el Perfil 360."""
+    visit_id = visit["visit_id"]
     mentor_person_id = visit["mentor_person_id"]
-    await assert_mentor_eligible(db, mentor_person_id)
-    payload = payload or StartSevenWeeksInput()
-    person_id, created_person = await resolve_or_create_target_person(visit, current_user, payload.person_id, payload.confirm_distinct_person, payload.distinct_reason)
-    await sync_visit_address_to_person(visit, person_id, current_user, background_tasks)
     enrollment, created_enrollment = await create_enrollment(
         db, "consolidation", person_id, mentor_person_id, current_user["user_id"],
         status="active", next_action="Dar seguimiento al visitante", source="mentorship_outreach", source_id=visit_id,
@@ -1267,7 +1257,7 @@ async def start_seven_weeks(visit_id: str, background_tasks: BackgroundTasks, cu
         # con la campaña, así que el expediente abre completo y listo para MCD.
         await configure_entry_stages(db, enrollment, "invasion", current_user["user_id"], mentor_person_id=mentor_person_id)
         enrollment = await db.process_enrollments.find_one({"enrollment_id": enrollment["enrollment_id"]}, {"_id": 0})
-        await assign_mentor(db, enrollment, mentor_person_id, current_user["user_id"], "Inicia la Ley de las 7 Semanas desde una invasión")
+        await assign_mentor(db, enrollment, mentor_person_id, current_user["user_id"], reason)
     now = now_utc()
     await db.outreach_visits.update_one({"visit_id": visit_id}, {"$set": {
         "enrollment_id": enrollment["enrollment_id"], "converted_person_id": person_id, "converted_at": now, "updated_at": now,
@@ -1275,6 +1265,26 @@ async def start_seven_weeks(visit_id: str, background_tasks: BackgroundTasks, cu
     await log_visit_history(visit_id, current_user, "seven_weeks_started", {
         "enrollment_id": enrollment["enrollment_id"], "person_id": person_id, "reused_existing_enrollment": not created_enrollment,
     })
+    return enrollment, created_enrollment
+
+
+@router.post("/visits/{visit_id}/start-seven-weeks", response_model=dict)
+async def start_seven_weeks(visit_id: str, background_tasks: BackgroundTasks, current_user: dict = Depends(get_current_user), payload: Optional[StartSevenWeeksInput] = None):
+    if not await can_use_outreach(current_user):
+        raise HTTPException(status_code=403, detail="Sin permiso para iniciar la Ley de las 7 Semanas")
+    visit = await load_visit(visit_id)
+    if not is_outreach_leader(current_user) and visit.get("mentor_person_id") != current_user.get("person_id"):
+        raise HTTPException(status_code=403, detail="Solo el mentor responsable o un líder puede iniciar este proceso")
+    if visit.get("status") != "wants_followup":
+        raise HTTPException(status_code=409, detail="La visita debe estar en estado 'Quiere seguimiento'")
+    if visit.get("enrollment_id"):
+        raise HTTPException(status_code=409, detail="Esta visita ya inició la Ley de las 7 Semanas")
+    mentor_person_id = visit["mentor_person_id"]
+    await assert_mentor_eligible(db, mentor_person_id)
+    payload = payload or StartSevenWeeksInput()
+    person_id, created_person = await resolve_or_create_target_person(visit, current_user, payload.person_id, payload.confirm_distinct_person, payload.distinct_reason)
+    await sync_visit_address_to_person(visit, person_id, current_user, background_tasks)
+    enrollment, created_enrollment = await open_consolidation_from_visit(visit, person_id, current_user)
     updated = await load_visit(visit_id)
     enriched = (await serialize_visits([updated], current_user))[0]
     enriched["enrollment_created"] = created_enrollment
