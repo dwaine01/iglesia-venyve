@@ -161,6 +161,8 @@ export default function KioskPage() {
   const [device] = useState(tabletName);
   const [config, setConfig] = useState(null);
   const [linkError, setLinkError] = useState('');
+  const [configProblem, setConfigProblem] = useState('');
+  const retryTimer = useRef(null);
   const [error, setError] = useState('');
   const [step, setStep] = useState(-1);  // -1 = inicio
   const [form, setForm] = useState(emptyForm);
@@ -178,10 +180,18 @@ export default function KioskPage() {
   // Textos y servicio de hoy. Un enlace viejo o equivocado muestra cómo pedir el nuevo.
   const loadConfig = useCallback(() => {
     if (!token) { setLinkError('Abra el enlace de tabletas que aparece en Registro de visitantes › Enlaces.'); return; }
-    axios.get(`${API}/api/kiosk/config`, { headers: { 'X-Link-Token': token, 'X-Tablet-Name': device } }).then((response) => { setConfig(response.data); setLinkError(''); adoptShortPath('vv_kiosk_link', response.data.short_path); })
-      .catch((requestError) => { if (requestError?.response?.status === 401) setLinkError(requestError.response.data?.detail || 'Este enlace ya no funciona.'); });
+    axios.get(`${API}/api/kiosk/config`, { headers: { 'X-Link-Token': token, 'X-Tablet-Name': device }, timeout: 12000 })
+      .then((response) => { setConfig(response.data); setLinkError(''); setConfigProblem(''); adoptShortPath('vv_kiosk_link', response.data.short_path); })
+      .catch((requestError) => {
+        const status = requestError?.response?.status;
+        if (status === 401) { setLinkError(requestError.response.data?.detail || 'Este enlace ya no funciona.'); return; }
+        // Sin servidor (se está actualizando, sin internet, error): se dice y se reintenta solo, nunca se queda colgado.
+        setConfigProblem(status ? `El servidor respondió con un error (${status}). Reintentando…` : 'No hay conexión con el servidor. Reintentando…');
+        clearTimeout(retryTimer.current);
+        retryTimer.current = setTimeout(loadConfig, 5000);
+      });
   }, [token, device]);
-  useEffect(() => { loadConfig(); const timer = setInterval(loadConfig, 10 * 60 * 1000); return () => clearInterval(timer); }, [loadConfig]);
+  useEffect(() => { loadConfig(); const timer = setInterval(loadConfig, 10 * 60 * 1000); return () => { clearInterval(timer); clearTimeout(retryTimer.current); }; }, [loadConfig]);
 
   // Cola sin internet: se reenvía con la misma clave de idempotencia. Solo un dato
   // inválido (400/422) se descarta; sin internet, límite o enlace viejo, se reintenta.
@@ -309,7 +319,15 @@ export default function KioskPage() {
       </div>,
     );
   }
-  if (!config) return shell(<p style={{ fontSize: 22, marginTop: 40, textAlign: 'center' }}>Preparando el registro…</p>);
+  if (!config) {
+    return shell(
+      <div style={{ textAlign: 'center', marginTop: 40 }} data-testid="kiosk-loading">
+        <p style={{ fontSize: 22, margin: 0 }}>Preparando el registro…</p>
+        {configProblem && <p style={{ fontSize: 20, color: C.goldDark, marginTop: 16 }} data-testid="kiosk-config-problem">{configProblem}</p>}
+        {configProblem && <div style={{ marginTop: 20 }}><Big kind="secondary" onClick={() => { setConfigProblem('Reintentando…'); loadConfig(); }} testId="kiosk-retry">Reintentar ahora</Big></div>}
+      </div>,
+    );
+  }
 
   // ---------------------------------------------------------------- confirmación
   if (result) {
