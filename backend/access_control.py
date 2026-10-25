@@ -82,6 +82,13 @@ OPERATIONS_MANAGE = "operations.manage"
 OPERATIONS_CHECKIN = "operations.checkin"
 OPERATIONS_VOLUNTEER = "operations.volunteer"
 OPERATIONS_REPORTS = "operations.reports"
+# Registro digital de visitantes (tabletas de bienvenida).
+VISITORS_DEVICES_MANAGE = "visitors.devices.manage"
+VISITORS_READ = "visitors.read"
+VISITORS_FOLLOWUP_MANAGE = "visitors.followup.manage"
+VISITORS_RESTRICTED_READ = "visitors.restricted.read"
+VISITORS_WELCOME_OPERATE = "visitors.welcome.operate"
+VISITORS_TEXTS_MANAGE = "visitors.texts.manage"
 OPERATIONS_CAPABILITIES = [OPERATIONS_VIEW, OPERATIONS_MANAGE, OPERATIONS_CHECKIN, OPERATIONS_VOLUNTEER, OPERATIONS_REPORTS]
 CARE_ASSIGNED_READ = "care.assigned.read"
 CARE_ASSIGNED_WRITE = "care.assigned.write"
@@ -217,6 +224,14 @@ CAPABILITY_CATALOG = [
         {"capability": DOORS_MANAGE, "action": "administrar", "label": "Administrar: 9 Puertas"},
         {"capability": BOARD_AUDIO, "action": "administrar", "label": "Administrar: grabación de audio de Junta"},
         {"capability": BOARD_AI, "action": "administrar", "label": "Administrar: generación por IA en Junta"},
+    ]},
+    {"module_key": "visitors", "label": "Registro de visitantes", "items": [
+        {"capability": VISITORS_DEVICES_MANAGE, "action": "administrar", "label": "Administrar: tabletas de registro (emparejar y desactivar)"},
+        {"capability": VISITORS_READ, "action": "consultar", "label": "Consultar: registros de visitantes y sus datos de contacto"},
+        {"capability": VISITORS_FOLLOWUP_MANAGE, "action": "editar", "label": "Editar: seguimiento de visitantes (asignar y registrar resultado)"},
+        {"capability": VISITORS_RESTRICTED_READ, "action": "consultar", "label": "Consultar: oración, consejería y necesidades personales (restringido)"},
+        {"capability": VISITORS_WELCOME_OPERATE, "action": "administrar", "label": "Administrar: panel y pantalla de bienvenida"},
+        {"capability": VISITORS_TEXTS_MANAGE, "action": "editar", "label": "Editar: textos de bienvenida, privacidad y confirmación"},
     ]},
     {"module_key": "operations", "label": "Operaciones y Eventos", "items": [
         {"capability": OPERATIONS_VIEW, "action": "consultar", "label": "Consultar: Operaciones y eventos"},

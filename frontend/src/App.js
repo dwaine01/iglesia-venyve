@@ -22,6 +22,8 @@ const SemanaPage = lazyPage(() => import('./pages/SemanaPage'));
 const RegistroPage = lazyPage(() => import('./pages/RegistroPage'));
 const EstadisticasPage = lazyPage(() => import('./pages/EstadisticasPage'));
 const GlobalStatsPage = lazyPage(() => import('./pages/GlobalStatsPage'));
+const KioskPage = lazyPage(() => import('./pages/KioskPage'));
+const VisitorsAdminPage = lazyPage(() => import('./pages/VisitorsAdminPage'));
 const PersonasListPage = lazyPage(() => import('./pages/PersonasListPage'));
 const PersonaNuevaPage = lazyPage(() => import('./pages/PersonaNuevaPage'));
 const PersonaPerfilPage = lazyPage(() => import('./pages/PersonaPerfilPage'));
@@ -263,6 +265,8 @@ function App() {
           <Route path="/verificar/carnet/:token" element={<MembershipVerificationPage />} />
           <Route path="/verificar/bautismo/:token" element={<BaptismVerificationPage />} />
           <Route path="/verificar/presentacion/:token" element={<DedicationVerificationPage />} />
+          {/* Quiosco de visitantes: sin menú ni sesión de personal (token de la tableta). */}
+          <Route path="/quiosco" element={<KioskPage />} />
           {/* Rutas de presentación full-screen (fuera del AppLayout) */}
           <Route path="/presentacion/presenter" element={<StaffRoute><PresentacionPresenterPage /></StaffRoute>} />
           <Route path="/presentacion/audiencia/:code" element={<PresentacionAudiencePage />} />
@@ -368,6 +372,7 @@ function App() {
             <Route path="bitacora" element={<CapabilityRoute allowed={canWriteEvangelismLog}><BitacoraPage /></CapabilityRoute>} />
             <Route path="codigos" element={<CapabilityRoute allowed={canManageInvitationCodes}><CodigosInvitacionPage /></CapabilityRoute>} />
             <Route path="estadisticas" element={<GlobalStatsPage />} />
+            <Route path="visitantes" element={<VisitorsAdminPage />} />
             <Route path="mis-estadisticas/manual" element={<EstadisticasPage />} />
             <Route path="presentacion" element={<CapabilityRoute allowed={canViewPresentationManual}><PresentacionHomePage /></CapabilityRoute>} />
             <Route path="mi-perfil" element={<MiPerfilPage />} />

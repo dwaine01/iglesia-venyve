@@ -47,7 +47,7 @@ app.add_middleware(
     allow_origin_regex=cors_origin_regex,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-CSRF-Token"],
+    allow_headers=["Authorization", "Content-Type", "X-CSRF-Token", "X-Device-Token"],
     max_age=600,
 )
 
@@ -579,6 +579,9 @@ from person_contact import router as person_contact_router
 app.include_router(person_contact_router)
 from global_stats import router as global_stats_router
 app.include_router(global_stats_router)
+from visitor_registry import admin_router as visitor_admin_router, kiosk_router as visitor_kiosk_router
+app.include_router(visitor_admin_router)
+app.include_router(visitor_kiosk_router)
 from enrollment_cleanup import router as enrollment_cleanup_router, ensure_indexes as enrollment_cleanup_ensure_indexes
 app.include_router(enrollment_cleanup_router)
 from door_streets import router as door_streets_router, ensure_indexes as door_streets_ensure_indexes
