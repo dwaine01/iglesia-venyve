@@ -101,6 +101,7 @@ export const OutreachLeaderPanel = ({ campaigns, onCampaignsChanged }) => {
                   <Button size="sm" variant="outline" onClick={() => setHousesCampaignId((prev) => (prev === campaign.campaign_id ? null : campaign.campaign_id))} data-testid={`outreach-campaign-houses-button-${campaign.campaign_id}`}>Casas</Button>
                   <Button size="sm" variant="outline" onClick={() => setBooksCampaign(campaign)} data-testid={`outreach-campaign-books-button-${campaign.campaign_id}`}>Libros</Button>
                   <Button size="sm" variant="outline" onClick={() => navigate(`/invasiones/${campaign.campaign_id}/reporte`)} data-testid={`outreach-campaign-report-button-${campaign.campaign_id}`}>Reporte</Button>
+                  {canCreateOutreachCampaign(user) && <Button size="sm" className="bg-[#C8A951] font-bold text-[#14213D] hover:bg-[#E2CF8A]" onClick={() => navigate(`/invasiones/${campaign.campaign_id}/reporte/presentar?dia=1`)} data-testid={`outreach-campaign-present-button-${campaign.campaign_id}`}>Presentar reporte</Button>}
                   {canCreateOutreachCampaign(user) && <DeleteCampaignDialog campaignId={campaign.campaign_id} campaignName={campaign.name} onDeleted={onCampaignsChanged} />}
                 </div>
               </div>

@@ -37,6 +37,8 @@ const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
   // MT3: supervisar «Mi Trabajo» por mentor (coordinador general, pastoral, encargados de Consolidación).
   const supervision = isPastoralAuthority(user) || isGeneralCoordinator(user) || hasCapability(user, 'consolidation.assign')
     ? [{ to: '/mi-trabajo/supervision', icon: ClipboardCheck, label: 'Supervisar Mi Trabajo', testId: 'nav-my-work-supervision' }] : [];
+  // Invasiones › Reporte para la pastora (Modo Presentar sin pegar enlaces).
+  const presentReport = { to: '/invasiones/reporte-pastora', icon: Presentation, label: 'Invasiones · Reporte para la pastora', testId: 'nav-present-report' };
   const BASE_PORTAL_ITEMS = [
     { to: '/mi-perfil', icon: UserCircle, label: 'Mi perfil', testId: 'nav-mi-perfil' },
     { to: '/mis-estadisticas', icon: BarChart3, label: 'Mis estadísticas', testId: 'nav-mis-estadisticas' },
@@ -58,6 +60,7 @@ const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
       { to: '/campanas/ven-y-come/control', icon: Bus, label: 'Campaña Ven y Come', testId: 'nav-campaign-venycome' },
       { to: '/mentoria/visitas', icon: Footprints, label: 'Visitas e Invasiones', testId: 'nav-outreach' },
       { to: '/mentoria/supervision', icon: BarChart3, label: 'Supervisión de Invasiones', testId: 'nav-supervision' },
+      presentReport,
       { to: '/liderazgo', icon: Award, label: 'Liderazgo', testId: 'nav-leadership' },
       { to: '/mapas', icon: MapPinned, label: 'Mapa 360', testId: 'nav-geo-maps' },
       { to: '/operaciones', icon: Calendar, label: 'Operaciones', testId: 'nav-operations' },
@@ -137,6 +140,7 @@ const getNavItems = (user, boardAllowed = false, isActiveMentor = false) => {
     { to: '/campanas/ven-y-come/control', icon: Bus, label: 'Campaña Ven y Come', testId: 'nav-campaign-venycome' },
     { to: '/mentoria/visitas', icon: Footprints, label: 'Visitas e Invasiones', testId: 'nav-outreach' },
     { to: '/mentoria/supervision', icon: BarChart3, label: 'Supervisión de Invasiones', testId: 'nav-supervision' },
+    ...(isGeneralCoordinator(user) ? [presentReport] : []),
     ...(canViewPastoralFrontGroup(user) ? [] : [{ to: '/estructura-frontal', icon: Network, label: 'Estructura de mi rama', testId: 'nav-front-group-structure' }]),
     { to: '/liderazgo', icon: Award, label: 'Liderazgo', testId: 'nav-leadership' },
     { to: '/mapas', icon: MapPinned, label: 'Mapa 360', testId: 'nav-geo-maps' },
@@ -226,6 +230,7 @@ const breadcrumbMap = {
   '/mi-perfil': 'Mi perfil',
   '/mi-trabajo': 'Mi Trabajo',
   '/mi-trabajo/supervision': 'Supervisar Mi Trabajo',
+  '/invasiones/reporte-pastora': 'Reporte para la pastora',
   '/grupo-frontal-pastoral': 'Grupo frontal principal',
   '/estructura-frontal': 'Estructura por niveles',
   '/mis-estadisticas': 'Mis estadísticas',

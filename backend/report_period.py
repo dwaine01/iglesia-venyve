@@ -99,3 +99,27 @@ async def set_exclusions(payload: ExclusionsInput, current_user: dict = Depends(
     ids = sorted({item for item in payload.person_ids if item})
     await db.app_settings.update_one({"_id": SETTINGS_ID}, {"$set": {"person_ids": ids, "updated_at": datetime.now(timezone.utc), "updated_by_user_id": current_user["user_id"]}}, upsert=True)
     return await get_exclusions(current_user)
+
+
+@router.get("/presentable", response_model=dict)
+async def presentable_campaigns(current_user: dict = Depends(get_current_user)):
+    """Invasiones cuyo reporte completo puede presentar este usuario (para el botón
+    «Reporte para la pastora»): la activa o más reciente primero, con sus días y el
+    día sugerido (el de hoy o el último ya trabajado). Mismo permiso que el reporte."""
+    from invasion_participants import can_edit_participants
+    from invasion_report import campaign_period_days, campaign_state
+    zone = await report_zone()
+    today = datetime.now(zone).date().isoformat()
+    items = []
+    async for campaign in db.outreach_campaigns.find({"archived": {"$ne": True}, "deleted": {"$ne": True}}, {"_id": 0}).sort("start_date", -1).limit(200):
+        if not can_edit_participants(current_user, campaign):
+            continue
+        state = campaign_state(campaign)
+        if state == "upcoming":
+            continue
+        days = campaign_period_days(campaign)
+        worked = [item for item in days if item["day"] <= today]
+        items.append({"campaign_id": campaign["campaign_id"], "name": campaign.get("name") or "Invasión", "location": campaign.get("location"), "start_date": campaign.get("start_date"),
+                      "end_date": campaign.get("end_date"), "state": state, "days": days, "suggested_day": worked[-1]["index"] if worked else (1 if days else 0)})
+    items.sort(key=lambda item: item["state"] != "active")  # estable: luego la más reciente
+    return {"items": items}

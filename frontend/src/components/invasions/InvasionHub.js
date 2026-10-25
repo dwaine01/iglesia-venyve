@@ -188,6 +188,7 @@ function InvasionSummary({ campaignId, onClose }) {
           {data.can_edit_participants && <Link to={`/invasiones/${campaignId}/asistencia`} className="inline-flex min-h-11 items-center justify-center rounded-lg border border-[#101D36] text-sm font-semibold text-[#101D36]" data-testid="invasion-summary-attendance">Asistencia</Link>}
           <Link to={`/invasiones/${campaignId}/reporte`} className="inline-flex min-h-11 items-center justify-center rounded-lg bg-[#101D36] text-sm font-semibold text-white" data-testid="invasion-summary-report">Ver reporte de la invasión</Link>
         </div>
+        {data.can_edit_participants && <Link to={`/invasiones/${campaignId}/reporte/presentar?dia=1`} className="inline-flex min-h-12 w-full items-center justify-center rounded-lg bg-[#C8A951] text-base font-bold text-[#14213D]" data-testid="invasion-summary-present">Presentar reporte (pantalla grande)</Link>}
         <ParticipantsPanel campaignId={campaignId} />
         <PrayerPanel campaignId={campaignId} />
       </>}
@@ -287,6 +288,7 @@ export function InvasionHub({ showAction = false }) {
                 <Link to={`/invasiones/${item.campaign_id}/programa`} className="inline-flex min-h-11 items-center rounded-md border border-[#D9D4C7] px-4 text-sm font-semibold text-[#101D36]" data-testid={`invasion-program-${item.campaign_id}`}>Programa</Link>
                 {counts[item.campaign_id] && <Link to={`/invasiones/${item.campaign_id}/asistencia`} className="inline-flex min-h-11 items-center rounded-md border border-[#D9D4C7] px-4 text-sm font-semibold text-[#101D36]" data-testid={`invasion-attendance-${item.campaign_id}`}>Asistencia</Link>}
                 <Link to={`/invasiones/${item.campaign_id}/reporte`} className="inline-flex min-h-11 items-center rounded-md border border-[#D9D4C7] px-4 text-sm font-semibold text-[#101D36]" data-testid={`invasion-report-${item.campaign_id}`}>Reporte</Link>
+                {counts[item.campaign_id] && <Link to={`/invasiones/${item.campaign_id}/reporte/presentar?dia=1`} className="inline-flex min-h-11 items-center rounded-md bg-[#C8A951] px-4 text-sm font-bold text-[#14213D]" data-testid={`invasion-present-${item.campaign_id}`}>Presentar reporte</Link>}
                 {canCreate && <button type="button" onClick={() => setWizard({ campaignId: item.campaign_id })} className="min-h-11 rounded-md border border-[#D9D4C7] px-4 text-sm font-semibold text-[#101D36]" data-testid={`invasion-edit-${item.campaign_id}`}>Editar</button>}
               </div>
             </li>
