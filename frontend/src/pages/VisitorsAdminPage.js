@@ -1,12 +1,13 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
 import { Link, useSearchParams } from 'react-router-dom';
-import { ClipboardList, Copy, FileText, Loader2, Tablet, TriangleAlert } from 'lucide-react';
+import { ClipboardList, Copy, FileText, HeartHandshake, Loader2, Tablet, TriangleAlert } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { useAuth } from '../context/AuthContext';
 import { apiErrorMessage } from '../lib/apiErrors';
 import { hasCapability, isPastoralAuthority } from '../lib/accessControl';
+import VisitorFollowup from '../components/visitors/VisitorFollowup';
 
 /* Registro de visitantes › administración: emparejar las tabletas (código de un
  * solo uso), textos editables (bienvenida, privacidad, confirmación), servicio de
@@ -121,12 +122,12 @@ function Registrations() {
   );
 }
 
-const TABS = [['tabletas', 'Tabletas', Tablet, 'visitors.devices.manage'], ['textos', 'Textos y servicio de hoy', FileText, null], ['registros', 'Registros', ClipboardList, 'visitors.read']];
+const TABS = [['seguimiento', 'Seguimiento', HeartHandshake, 'any'], ['tabletas', 'Tabletas', Tablet, 'visitors.devices.manage'], ['textos', 'Textos y servicio de hoy', FileText, null], ['registros', 'Registros', ClipboardList, 'visitors.read']];
 
 export default function VisitorsAdminPage() {
   const { user } = useAuth();
   const [params, setParams] = useSearchParams();
-  const allowed = TABS.filter(([, , , capability]) => (capability ? can(user, capability) : ['visitors.texts.manage', 'visitors.devices.manage', 'visitors.read'].some((item) => can(user, item))));
+  const allowed = TABS.filter(([, , , capability]) => (capability === 'any' ? true : capability ? can(user, capability) : ['visitors.texts.manage', 'visitors.devices.manage', 'visitors.read'].some((item) => can(user, item))));
   const tab = allowed.some(([key]) => key === params.get('tab')) ? params.get('tab') : allowed[0]?.[0];
   return (
     <div className="min-h-screen bg-[#F8F6F0] pb-10" data-testid="visitors-admin">
@@ -137,6 +138,7 @@ export default function VisitorsAdminPage() {
       <div className="mx-auto w-full max-w-[1400px] space-y-4 px-4 py-4 sm:px-6 lg:px-8">
         {allowed.length === 0 ? <div className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 p-3 text-[15px] text-red-700"><TriangleAlert className="mt-0.5 h-4 w-4" />Tu cuenta no tiene permiso para el Registro de visitantes.</div> : <>
           <div className="flex flex-wrap gap-1 rounded-xl bg-[#EEECE6] p-1" role="tablist">{allowed.map(([key, label, Icon]) => <button key={key} type="button" role="tab" aria-selected={tab === key} onClick={() => setParams({ tab: key }, { replace: true })} className={`inline-flex min-h-12 items-center gap-2 rounded-lg px-4 text-[15px] font-semibold ${tab === key ? 'bg-white text-[#101D36] shadow' : 'text-slate-600'}`} data-testid={`visitors-tab-${key}`}><Icon className="h-4 w-4" />{label}</button>)}</div>
+          {tab === 'seguimiento' && <VisitorFollowup />}
           {tab === 'tabletas' && <Devices />}
           {tab === 'textos' && <Texts canEdit={can(user, 'visitors.texts.manage')} />}
           {tab === 'registros' && <Registrations />}

@@ -29,7 +29,7 @@ from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
 from access_control import (
-    VISITORS_DEVICES_MANAGE, VISITORS_READ, VISITORS_RESTRICTED_READ, VISITORS_TEXTS_MANAGE, VISITORS_WELCOME_OPERATE,
+    VISITORS_DEVICES_MANAGE, VISITORS_FOLLOWUP_MANAGE, VISITORS_READ, VISITORS_RESTRICTED_READ, VISITORS_TEXTS_MANAGE, VISITORS_WELCOME_OPERATE,
     has_capability, is_global_pastoral_authority,
 )
 from server import db, get_current_user
@@ -412,11 +412,15 @@ REQUEST_LABELS = {"prayer": "Oración", "visit": "Una visita", "info": "Informac
 MATCH_LABELS = {"created": "Persona nueva en Persona 360", "linked": "Vinculado a su perfil existente", "possible": "Posible coincidencia: revisar"}
 
 
-def staff_view(doc: dict) -> dict:
+def staff_view(doc: dict, restricted_ok: bool = False) -> dict:
+    requests = doc.get("requests") or []
+    shown = [REQUEST_LABELS[item] for item in requests if restricted_ok or item not in RESTRICTED_REQUESTS]
+    if not restricted_ok and any(item in RESTRICTED_REQUESTS for item in requests):
+        shown.append("Pedido confidencial")
     return {"registration_id": doc["registration_id"], "visitor_number": doc["visitor_number"], "first_name": doc["first_name"], "last_name": doc["last_name"],
             "preferred_name": doc["welcome"]["preferred_name"], "service": doc["service"], "device_name": doc.get("device_name"), "created_at": doc["created_at"].isoformat(),
             "person_id": doc.get("person_id"), "match_status": doc["match_status"], "match_label": MATCH_LABELS.get(doc["match_status"]), "possible_person_ids": doc.get("possible_person_ids") or [],
-            "contact": doc["contact"], "visit": doc["visit"], "family": doc["family"], "requests": [REQUEST_LABELS[item] for item in doc.get("requests") or []],
+            "contact": doc["contact"], "visit": doc["visit"], "family": doc["family"], "requests": shown,
             "has_restricted": doc.get("has_restricted"), "consents": doc["consents"], "privacy_version": doc["privacy"]["version"], "followup": doc.get("followup"), "test_data": doc.get("test_data")}
 
 
@@ -424,7 +428,8 @@ def staff_view(doc: dict) -> dict:
 async def list_registrations(service_date: Optional[str] = None, limit: int = 200, current_user: dict = Depends(get_current_user)):
     require(current_user, VISITORS_READ)
     query = {"service.date": service_date} if service_date else {}
-    items = [staff_view(doc) async for doc in db.visitor_registrations.find(query, {"_id": 0}).sort("created_at", -1).limit(max(1, min(limit, 500)))]
+    restricted_ok = can(current_user, VISITORS_RESTRICTED_READ)
+    items = [staff_view(doc, restricted_ok) async for doc in db.visitor_registrations.find(query, {"_id": 0}).sort("created_at", -1).limit(max(1, min(limit, 500)))]
     await audit("registrations_viewed", current_user["user_id"], {"service_date": service_date, "count": len(items)})
     return {"items": items}
 
@@ -435,10 +440,215 @@ async def get_registration(registration_id: str, current_user: dict = Depends(ge
     doc = await db.visitor_registrations.find_one({"registration_id": registration_id}, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="Registro no encontrado")
-    view = staff_view(doc)
+    view = staff_view(doc, can(current_user, VISITORS_RESTRICTED_READ))
     if doc.get("has_restricted") and can(current_user, VISITORS_RESTRICTED_READ):
         restricted = await db.visitor_restricted.find_one({"registration_id": registration_id}, {"_id": 0, "prayer_request": 1, "counseling_note": 1, "needs_note": 1})
         view["restricted"] = restricted
         await audit("restricted_viewed", current_user["user_id"], {"registration_id": registration_id})
     await audit("registration_viewed", current_user["user_id"], {"registration_id": registration_id})
     return view
+
+
+# ------------------------------------------------------------------ V2: seguimiento por servicio y fecha
+RESTRICTED_REQUESTS = {"counseling_personal", "counseling_marriage", "counseling_family", "support_child", "other_help"}
+FOLLOWUP_LABELS = {"pending": "Pendiente de asignar", "assigned": "Asignado", "in_progress": "En contacto", "done": "Completado", "not_requested": "No pidió seguimiento"}
+ATTEMPT_KINDS = {"call": "Llamada", "visit": "Visita", "message": "Mensaje"}
+OUTCOMES = {"reached": "Se habló con la persona", "no_answer": "No contestó", "wrong_number": "Número equivocado", "visit_done": "Visita realizada",
+            "wants_more": "Quiere más información o acompañamiento", "declined": "Prefiere no recibir seguimiento", "other": "Otro resultado"}
+
+
+def followup_view(doc: dict, current_user: dict, names: dict) -> dict:
+    """Lo necesario para dar seguimiento. Consejería y necesidades: el tipo de pedido
+    solo lo ve quien tiene el permiso restringido; el resto ve «Pedido confidencial»."""
+    restricted_ok = can(current_user, VISITORS_RESTRICTED_READ)
+    requests = doc.get("requests") or []
+    shown = [REQUEST_LABELS[item] for item in requests if restricted_ok or item not in RESTRICTED_REQUESTS]
+    if not restricted_ok and (any(item in RESTRICTED_REQUESTS for item in requests) or doc.get("has_restricted")):
+        shown.append("Pedido confidencial (lo atiende el equipo pastoral)")
+    followup = doc.get("followup") or {}
+    return {"registration_id": doc["registration_id"], "visitor_number": doc["visitor_number"], "name": f"{doc['first_name']} {doc['last_name']}", "preferred_name": doc["welcome"]["preferred_name"],
+            "service": doc["service"], "created_at": doc["created_at"].isoformat(), "person_id": doc.get("person_id"), "match_status": doc["match_status"], "match_label": MATCH_LABELS.get(doc["match_status"]),
+            "possible_person_ids": doc.get("possible_person_ids") or [], "possible_people": [{"person_id": pid, "name": names.get(pid) or "Persona sin nombre"} for pid in doc.get("possible_person_ids") or []],
+            "phone": doc["contact"].get("phone"), "email": doc["contact"].get("email"), "contact_method": doc["contact"].get("method"), "city": doc["contact"].get("city"),
+            "first_visit": doc["visit"].get("first_visit"), "requests": shown, "has_restricted": bool(doc.get("has_restricted") or any(item in RESTRICTED_REQUESTS for item in requests)),
+            "status": followup.get("status", "pending"), "status_label": FOLLOWUP_LABELS.get(followup.get("status", "pending")),
+            "assigned_person_id": followup.get("assigned_person_id"), "assigned_name": names.get(followup.get("assigned_person_id")) if followup.get("assigned_person_id") else None,
+            "attempts": [{**item, "at": item["at"].isoformat() if isinstance(item.get("at"), datetime) else item.get("at"), "kind_label": ATTEMPT_KINDS.get(item.get("kind")), "outcome_label": OUTCOMES.get(item.get("outcome"))}
+                         for item in followup.get("results") or []], "consent_followup": doc["consents"]["followup"]}
+
+
+async def names_for(docs: list) -> dict:
+    from front_groups import person_names
+    ids = set()
+    for doc in docs:
+        ids |= set(doc.get("possible_person_ids") or [])
+        ids.add((doc.get("followup") or {}).get("assigned_person_id"))
+    return await person_names(ids)
+
+
+def is_assignee(doc: dict, current_user: dict) -> bool:
+    return bool(current_user.get("person_id")) and (doc.get("followup") or {}).get("assigned_person_id") == current_user["person_id"]
+
+
+@admin_router.get("/followup", response_model=dict)
+async def followup_list(service_date: Optional[str] = None, service_kind: Optional[str] = None, status: Optional[str] = None, mine: bool = False,
+                        current_user: dict = Depends(get_current_user)):
+    """Seguimiento por servicio y fecha. Quien no administra el seguimiento solo ve lo que le asignaron."""
+    manager = can(current_user, VISITORS_FOLLOWUP_MANAGE)
+    query: dict = {}
+    if service_date:
+        query["service.date"] = service_date
+    if service_kind:
+        query["service.kind"] = service_kind
+    if status:
+        query["followup.status"] = status
+    if mine or not manager:
+        if not current_user.get("person_id"):
+            return {"items": [], "can_manage": False}
+        query["followup.assigned_person_id"] = current_user["person_id"]
+    docs = await db.visitor_registrations.find(query, {"_id": 0}).sort("created_at", -1).to_list(500)
+    names = await names_for(docs)
+    counts: dict = {}
+    for doc in docs:
+        key = (doc.get("followup") or {}).get("status", "pending")
+        counts[key] = counts.get(key, 0) + 1
+    await audit("followup_viewed", current_user["user_id"], {"service_date": service_date, "count": len(docs)})
+    return {"items": [followup_view(doc, current_user, names) for doc in docs], "can_manage": manager, "can_restricted": can(current_user, VISITORS_RESTRICTED_READ),
+            "counts": [{"status": key, "label": FOLLOWUP_LABELS[key], "count": counts.get(key, 0)} for key in FOLLOWUP_LABELS]}
+
+
+@admin_router.get("/followup/mine-count", response_model=dict)
+async def followup_mine_count(current_user: dict = Depends(get_current_user)):
+    """Para el menú: visitantes asignados a esta persona que siguen abiertos."""
+    if not current_user.get("person_id"):
+        return {"count": 0}
+    return {"count": await db.visitor_registrations.count_documents({"followup.assigned_person_id": current_user["person_id"], "followup.status": {"$in": ["assigned", "in_progress"]}})}
+
+
+@admin_router.get("/followup/assignees", response_model=dict)
+async def followup_assignees(q: str = "", current_user: dict = Depends(get_current_user)):
+    """Servidores con cuenta en la plataforma a quienes se puede asignar el seguimiento."""
+    require(current_user, VISITORS_FOLLOWUP_MANAGE)
+    from front_groups import person_names
+    from person_matching import normalize_text
+    person_ids = list({item["person_id"] async for item in db.users.find({"person_id": {"$nin": [None, ""]}, "is_active": {"$ne": False}}, {"_id": 0, "person_id": 1})})
+    names = await person_names(person_ids)
+    words = normalize_text(q).split()
+    items = [{"person_id": pid, "name": names.get(pid) or "Persona sin nombre"} for pid in person_ids]
+    # Sin acentos y por palabras: «luis eduardo» encuentra «Luis Eduardo Jiménez».
+    items = [item for item in items if all(word in normalize_text(item["name"]) for word in words)]
+    return {"items": sorted(items, key=lambda item: item["name"])[:30]}
+
+
+async def load_registration(registration_id: str) -> dict:
+    doc = await db.visitor_registrations.find_one({"registration_id": registration_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Registro no encontrado")
+    return doc
+
+
+async def followup_reply(registration_id: str, current_user: dict) -> dict:
+    doc = await load_registration(registration_id)
+    return followup_view(doc, current_user, await names_for([doc]))
+
+
+class AssignFollowupInput(BaseModel):
+    person_id: Optional[str] = Field(default=None, max_length=80)
+
+
+@admin_router.post("/registrations/{registration_id}/assign", response_model=dict)
+async def assign_followup(registration_id: str, payload: AssignFollowupInput, current_user: dict = Depends(get_current_user)):
+    require(current_user, VISITORS_FOLLOWUP_MANAGE)
+    doc = await load_registration(registration_id)
+    if payload.person_id and not await db.users.find_one({"person_id": payload.person_id, "is_active": {"$ne": False}}, {"_id": 1}):
+        raise HTTPException(status_code=422, detail="Esa persona no tiene una cuenta activa en la plataforma")
+    status = (doc.get("followup") or {}).get("status", "pending")
+    if status in ("pending", "assigned", "not_requested") or not payload.person_id:
+        status = "assigned" if payload.person_id else "pending"
+    await db.visitor_registrations.update_one({"registration_id": registration_id}, {"$set": {"followup.assigned_person_id": payload.person_id, "followup.status": status,
+                                                                                            "followup.assigned_at": now_utc(), "followup.assigned_by": current_user["user_id"]}})
+    await audit("followup_assigned", current_user["user_id"], {"registration_id": registration_id, "person_id": payload.person_id})
+    return await followup_reply(registration_id, current_user)
+
+
+class AttemptInput(BaseModel):
+    kind: Literal["call", "visit", "message"]
+    outcome: Literal["reached", "no_answer", "wrong_number", "visit_done", "wants_more", "declined", "other"]
+    note: Optional[str] = Field(default=None, max_length=1000)
+    complete: bool = False
+    idempotency_key: str = Field(min_length=8, max_length=120)
+
+
+@admin_router.post("/registrations/{registration_id}/attempts", response_model=dict)
+async def add_attempt(registration_id: str, payload: AttemptInput, current_user: dict = Depends(get_current_user)):
+    """Llamada, visita o mensaje con su resultado (quien administra o la persona asignada)."""
+    doc = await load_registration(registration_id)
+    if not (can(current_user, VISITORS_FOLLOWUP_MANAGE) or is_assignee(doc, current_user)):
+        raise HTTPException(status_code=403, detail="Solo quien administra el seguimiento o la persona asignada")
+    if any(item.get("key") == payload.idempotency_key for item in (doc.get("followup") or {}).get("results") or []):
+        return await followup_reply(registration_id, current_user)
+    entry = {"key": payload.idempotency_key, "kind": payload.kind, "outcome": payload.outcome, "note": (payload.note or "").strip() or None, "at": now_utc(),
+             "by_user_id": current_user["user_id"], "by_name": current_user.get("nombre")}
+    status = "done" if payload.complete or payload.outcome == "declined" else "in_progress"
+    await db.visitor_registrations.update_one({"registration_id": registration_id, "followup.results.key": {"$ne": payload.idempotency_key}},
+                                              {"$push": {"followup.results": entry}, "$set": {"followup.status": status, "followup.updated_at": now_utc()}})
+    await audit("followup_attempt", current_user["user_id"], {"registration_id": registration_id, "kind": payload.kind, "outcome": payload.outcome})
+    return await followup_reply(registration_id, current_user)
+
+
+class ReopenInput(BaseModel):
+    status: Literal["pending", "assigned", "in_progress", "done"]
+
+
+@admin_router.post("/registrations/{registration_id}/followup-status", response_model=dict)
+async def set_followup_status(registration_id: str, payload: ReopenInput, current_user: dict = Depends(get_current_user)):
+    require(current_user, VISITORS_FOLLOWUP_MANAGE)
+    await load_registration(registration_id)
+    await db.visitor_registrations.update_one({"registration_id": registration_id}, {"$set": {"followup.status": payload.status, "followup.updated_at": now_utc()}})
+    await audit("followup_status", current_user["user_id"], {"registration_id": registration_id, "status": payload.status})
+    return await followup_reply(registration_id, current_user)
+
+
+class ResolveMatchInput(BaseModel):
+    person_id: Optional[str] = Field(default=None, max_length=80)
+    create_new: bool = False
+
+
+@admin_router.post("/registrations/{registration_id}/resolve-match", response_model=dict)
+async def resolve_match(registration_id: str, payload: ResolveMatchInput, current_user: dict = Depends(get_current_user)):
+    """Revisión humana de «posible coincidencia»: es la misma persona (vincular) o es otra (crear)."""
+    require(current_user, VISITORS_FOLLOWUP_MANAGE)
+    doc = await load_registration(registration_id)
+    if doc["match_status"] != "possible":
+        raise HTTPException(status_code=409, detail="Este registro ya está vinculado a Persona 360")
+    if payload.create_new:
+        person_id = await create_distinct_person(doc, current_user)
+        status = "created"
+    elif payload.person_id and payload.person_id in (doc.get("possible_person_ids") or []):
+        person_id, status = payload.person_id, "linked"
+    else:
+        raise HTTPException(status_code=422, detail="Elija una de las personas sugeridas o «Es otra persona»")
+    await db.visitor_registrations.update_one({"registration_id": registration_id, "match_status": "possible"},
+                                              {"$set": {"person_id": person_id, "match_status": status, "match_resolved": {"by_user_id": current_user["user_id"], "at": now_utc()}}})
+    await audit("match_resolved", current_user["user_id"], {"registration_id": registration_id, "person_id": person_id, "result": status})
+    return await followup_reply(registration_id, current_user)
+
+
+async def create_distinct_person(doc: dict, current_user: dict) -> str:
+    """Crea la persona confirmada como distinta (p. ej. familiares que comparten teléfono)."""
+    from core_person import next_person_number
+    from person_matching import normalize_phone, normalize_text
+    existing = await db.persons.find_one({"idempotency_key": f"visitor-distinct:{doc['registration_id']}"}, {"_id": 1})
+    if existing:
+        return str(existing["_id"])
+    now = now_utc()
+    person = {"nombre": doc["first_name"], "apellido": doc["last_name"], "fecha_nacimiento": doc["contact"].get("birth_date"), "person_number": await next_person_number(),
+              "search_key": normalize_text(f"{doc['first_name']} {doc['last_name']}"), "idempotency_key": f"visitor-distinct:{doc['registration_id']}", "version": 1,
+              "created_by_user_id": current_user["user_id"], "created_source": "visitor_review", "created_at": now, "updated_at": now,
+              "distinct_person_confirmed": {"reason": "Revisión del registro de visitantes", "candidates": doc.get("possible_person_ids") or [], "by_user_id": current_user["user_id"], "at": now}}
+    result = await db.persons.insert_one(person)
+    person_id = str(result.inserted_id)
+    if doc["contact"].get("phone"):
+        await db.person_contacts.insert_one({"person_id": person_id, "tipo": "telefono", "valor": doc["contact"]["phone"], "valor_normalizado": normalize_phone(doc["contact"]["phone"]), "es_principal": True,
+                                             "created_by_user_id": current_user["user_id"], "created_at": now, "updated_at": now})
+    return person_id
