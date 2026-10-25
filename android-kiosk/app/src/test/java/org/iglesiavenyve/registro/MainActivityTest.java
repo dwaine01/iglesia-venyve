@@ -161,6 +161,23 @@ public class MainActivityTest {
     }
 
     @Test
+    public void neverBlankIfTheRegistrationDoesNotDraw() {
+        MainActivity activity = configured();
+        assertEquals("web", activity.screen);
+        // El navegador interno no contesta (como una página en blanco): a los 20 + 5 segundos sale el aviso.
+        shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(26));
+        assertEquals("render_problem", activity.screen);
+        assertTrue(hasText(activity.root, "El registro no se pudo mostrar") && hasText(activity.root, "The registration could not be displayed"));
+        assertTrue(hasText(activity.root, "Cambiar código") && hasText(activity.root, "Reintentar") && hasText(activity.root, "Detalle:"));
+        System.out.println("PANTALLA EN BLANCO → aviso «El registro no se pudo mostrar» con «Cambiar código»");
+        // «Reintentar» vuelve a abrir el registro.
+        MainActivity.checkerForTests = (code, detail) -> KioskPolicy.Check.OK;
+        activity.showWeb();
+        activity.loadTablet();
+        assertEquals("web", activity.screen);
+    }
+
+    @Test
     public void backDoesNotLeaveAndScreenStaysOn() {
         MainActivity activity = configured();
         activity.onBackPressed();
