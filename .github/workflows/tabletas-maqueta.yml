@@ -69,7 +69,8 @@ jobs:
           arch: x86_64
           target: default
           disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          # Pantalla de tableta (1200 × 1920); el script la pone en 800 × 1280 o 1200 × 1920, vertical u horizontal.
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -skin 1200x1920
           script: bash .github/scripts/tabletas-maqueta.sh
       - name: Hojas de capturas (todas las pantallas de un tamaño juntas)
         if: always()
