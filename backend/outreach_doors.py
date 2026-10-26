@@ -348,6 +348,9 @@ async def record_attempt(household: dict, payload: AttemptInput, current_user: d
     books = await discount_books(payload.books, mentor_person_id, target_person_id, household.get("campaign_id"), current_user["user_id"],
                                  base_key=payload.client_request_id, household_id=household["household_id"], visit_event_id=event_id,
                                  visit_id=(visit or {}).get("visit_id")) if payload.books else []
+    if visit and books:
+        from mentorship_outreach import link_visit_books
+        await link_visit_books({**visit, "visit_event_id": event_id}, target_person_id)  # «Recibió MCD/NPT» en la visita
     updates = {"books": books, "books_inventory_pending": any(item["inventory_status"] != "discounted" for item in books)}
     if person_warning:
         updates["person_warning"] = person_warning

@@ -604,7 +604,47 @@ async def resolve_or_create_target_person(
             {"_id": ObjectId(person_id), "$or": [{"fecha_nacimiento": None}, {"fecha_nacimiento": {"$exists": False}}]},
             {"$set": {"fecha_nacimiento": visit["contact_birth_date"], "updated_at": now_utc()}},
         )
+    await link_visit_books(visit, person_id)  # los libros de la puerta pasan a ser de esta persona
     return person_id, created_person
+
+
+VISIT_BOOK_FLAGS = {"MCD": ("received_mcd", "mcd_delivery_movement_id"), "NPT": ("received_npt", "npt_delivery_movement_id")}
+
+
+async def link_visit_books(visit: dict, person_id: Optional[str] = None) -> dict:
+    """Auditoría 9/10: los libros entregados en la puerta quedan ligados a la visita y a la persona.
+
+    Antes, el MCD entregado en la puerta a un contacto nuevo quedaba sin persona y la visita sin
+    «Recibió MCD»; el informe o la Consolidación volvían a entregarlo y el inventario bajaba dos
+    veces. Aquí: (1) la visita marca los MCD/NPT que ya salieron en su intento, y (2) en cuanto la
+    visita tiene persona, esos movimientos la reciben (solo se completa el destinatario: no se
+    mueve inventario ni se crea otra entrega). Devuelve {sku: movement_id} de lo ya entregado."""
+    links = [{"visit_id": visit["visit_id"]}]
+    # Libros del intento sin visita propia: solo si en ese intento hubo UNA sola persona (si no, no se adivina).
+    if visit.get("visit_event_id") and await db.outreach_visits.count_documents({"visit_event_id": visit["visit_event_id"]}) <= 1:
+        links.append({"visit_event_id": visit["visit_event_id"], "visit_id": {"$in": [None, ""]}})
+    movements = await db.library_movements.find(
+        {"$or": links, "movement_type": {"$in": ["DELIVERY", "LOAN", "DELIVERY_PENDING"]}, "is_reversal": {"$ne": True}, "reversed_by_movement_id": {"$in": [None, ""]}},
+        {"_id": 0, "movement_id": 1, "book_id": 1, "person_id": 1, "occurred_at": 1}).sort("occurred_at", 1).to_list(50)
+    if not movements:
+        return {}
+    skus = {doc["book_id"]: (doc.get("sku") or "").upper() async for doc in db.library_books.find({"book_id": {"$in": list({item["book_id"] for item in movements if item.get("book_id")})}}, {"_id": 0, "book_id": 1, "sku": 1})}
+    delivered, flags = {}, {}
+    for item in movements:
+        sku = skus.get(item.get("book_id"))
+        if sku in VISIT_BOOK_FLAGS and sku not in delivered:
+            delivered[sku] = item["movement_id"]
+            field_name, movement_field = VISIT_BOOK_FLAGS[sku]
+            if not visit.get(movement_field):
+                flags.update({field_name: True, movement_field: item["movement_id"]})
+    if flags:
+        await db.outreach_visits.update_one({"visit_id": visit["visit_id"]}, {"$set": {**flags, "updated_at": now_utc()}})
+        visit.update(flags)
+    unlinked = [item["movement_id"] for item in movements if not item.get("person_id")]
+    if person_id and unlinked:
+        await db.library_movements.update_many({"movement_id": {"$in": unlinked}, "person_id": {"$in": [None, ""]}},
+                                               {"$set": {"person_id": person_id, "person_linked_at": now_utc(), "person_linked_from_visit_id": visit["visit_id"], "recipient_status": "identified"}})
+    return delivered
 
 
 async def deliver_outreach_book(visit: dict, sku: str, target_person_id: str, current_user: dict) -> str:
@@ -1236,7 +1276,8 @@ async def update_visit_report(visit_id: str, payload: VisitReportInput, current_
         already_delivered = bool(visit.get(movement_field))
         if fields[field_name] is True and not already_delivered:
             target_person_id, _ = await resolve_or_create_target_person(visit, current_user, person_override, confirm_distinct, distinct_reason)
-            movement_id = await deliver_outreach_book(visit, sku, target_person_id, current_user)
+            # ¿Ya salió en la puerta? Entonces solo se marca (no se descuenta otra vez).
+            movement_id = (await link_visit_books(visit, target_person_id)).get(sku) or await deliver_outreach_book(visit, sku, target_person_id, current_user)
             # Se persiste de inmediato (no solo en `fields`): si la entrega del
             # siguiente libro falla, esta ya quedó marcada y un reintento no
             # vuelve a descontarla ni a duplicar el movimiento DELIVERY.
