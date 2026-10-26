@@ -35,12 +35,16 @@ jobs:
         run: |
           found() {
             HTML=$(curl -fsS "$PANEL/r/PRUEBA?t=$(date +%s)") || return 2
-            echo "$HTML" | grep -qi "$TEXTO" && return 0
             MAIN=$(echo "$HTML" | grep -o '/static/js/main\.[0-9a-f]*\.js' | head -1)
+            WHERE="página (principal: ${MAIN:-?})"
+            echo "$HTML" | grep -qi "$TEXTO" && return 0
+            WHERE="$MAIN"
             [ -n "$MAIN" ] && curl -fsS "$PANEL$MAIN" | grep -qi "$TEXTO" && return 0
             for part in $(curl -fsS "$PANEL/asset-manifest.json" | grep -o '/static/js/[0-9]*\.[0-9a-f]*\.chunk\.js' | sort -u); do
+              WHERE="$part"
               curl -fsS "$PANEL$part" | grep -qi "$TEXTO" && return 0
             done
+            WHERE="ningún archivo (principal: ${MAIN:-?})"
             return 1
           }
           for i in $(seq 1 60); do
@@ -49,7 +53,7 @@ jobs:
             if [ "$STATE" = 2 ]; then echo "$NOW el panel no respondió";
             elif [ "$MODO" = ausente ] && [ "$STATE" = 1 ]; then echo "EN PRODUCCIÓN desde $NOW: «$TEXTO» ya no está en el panel"; exit 0;
             elif [ "$MODO" != ausente ] && [ "$STATE" = 0 ]; then echo "EN PRODUCCIÓN desde $NOW: «$TEXTO» ya está en el panel"; exit 0;
-            else echo "$NOW todavía no"; fi
+            else echo "$NOW todavía no · «$TEXTO» en: $WHERE"; fi
             sleep 30
           done
           echo "::error::Después de 30 minutos el panel todavía no tiene el cambio."
