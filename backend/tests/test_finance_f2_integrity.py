@@ -18,6 +18,8 @@ async def test_f2_corrected_deposit_adjustment_void_and_fiscal_budget():
     created = {"contributions": [], "deposits": [], "budgets": [], "journals": []}
     try:
         pastora = await fx.account(await fx.person(f"PastoraF{tag}"), "pastora")
+        # Nuevo flujo: la pastora consulta; registra y deposita el equipo de Finanzas.
+        fin = await fx.account(await fx.person(f"FinanzasF{tag}"), "lider", privilege_groups=["finance"], capabilities=["finance.read", "finance.manage"], permissions_mode="manual")
         donor = await fx.person(f"DonanteF{tag}")
         funds = {item["code"]: item["fund_id"] for item in (await pastora.get("/api/finance/catalog")).json()["funds"]}
         accounts = {item["code"]: item["account_id"] for item in (await pastora.get("/api/finance/catalog")).json()["accounts"]}
@@ -26,15 +28,15 @@ async def test_f2_corrected_deposit_adjustment_void_and_fiscal_budget():
         def contribution(fund, cents, **extra):
             return {"person_id": donor, "contribution_type": "tithe", "amount_cents": cents, "received_date": today, "payment_method": "cash",
                     "allocations": [{"fund_id": funds[fund], "amount_cents": cents}], **extra}
-        original = (await pastora.post("/api/finance/contributions", json=contribution("GENERAL", 10000))).json()
+        original = (await fin.post("/api/finance/contributions", json=contribution("GENERAL", 10000))).json()
         created["contributions"].append(original["contribution_id"])
-        deposit = await pastora.post("/api/finance/deposits", json={"deposit_date": today, "bank_account_id": accounts["1020"], "contribution_ids": [original["contribution_id"]]})
+        deposit = await fin.post("/api/finance/deposits", json={"deposit_date": today, "bank_account_id": accounts["1020"], "contribution_ids": [original["contribution_id"]]})
         assert deposit.status_code == 201, deposit.text
         deposit_id = deposit.json()["deposit_id"]
         created["deposits"].append(deposit_id)
 
         # Se corrige (otro fondo y otro monto) DESPUÉS de depositada.
-        fixed = await pastora.post(f"/api/finance/contributions/{original['contribution_id']}/correct",
+        fixed = await fin.post(f"/api/finance/contributions/{original['contribution_id']}/correct",
                                    json={"reason": "Era para Misiones y fueron 120", "replacement": contribution("MISSIONS", 12000)})
         assert fixed.status_code == 201, fixed.text
         replacement_id = fixed.json()["replacement_contribution_id"]
@@ -42,13 +44,13 @@ async def test_f2_corrected_deposit_adjustment_void_and_fiscal_budget():
         assert (await db.finance_deposits.find_one({"deposit_id": deposit_id}))["status"] == "adjustment_required"
 
         # La corregida ya no se puede depositar ni contar otra vez.
-        again = await pastora.post("/api/finance/deposits", json={"deposit_date": today, "bank_account_id": accounts["1020"], "contribution_ids": [original["contribution_id"]]})
+        again = await fin.post("/api/finance/deposits", json={"deposit_date": today, "bank_account_id": accounts["1020"], "contribution_ids": [original["contribution_id"]]})
         assert again.status_code == 422
-        assert (await pastora.post("/api/finance/batches", json={"batch_date": today, "contribution_ids": [original["contribution_id"]]})).status_code == 422
+        assert (await fin.post("/api/finance/batches", json={"batch_date": today, "contribution_ids": [original["contribution_id"]]})).status_code == 422
 
         # Ajuste: el reemplazo queda en el mismo depósito; asiento por fondo (GENERAL −100, MISIONES +120).
-        assert (await pastora.post(f"/api/finance/deposits/{deposit_id}/resolve-adjustment", json={"reason": "x"})).status_code == 422
-        adjusted = await pastora.post(f"/api/finance/deposits/{deposit_id}/resolve-adjustment", json={"reason": "Corrección de fondo y monto"})
+        assert (await fin.post(f"/api/finance/deposits/{deposit_id}/resolve-adjustment", json={"reason": "x"})).status_code == 422
+        adjusted = await fin.post(f"/api/finance/deposits/{deposit_id}/resolve-adjustment", json={"reason": "Corrección de fondo y monto"})
         assert adjusted.status_code == 200, adjusted.text
         body = adjusted.json()
         assert body["status"] == "pending_reconciliation" and body["total_cents"] == 12000
@@ -58,7 +60,7 @@ async def test_f2_corrected_deposit_adjustment_void_and_fiscal_budget():
         assert journal["status"] == "submitted" and journal["total_debit_cents"] == 22000  # sigue el flujo normal de aprobación
         bank = sum(line["debit_cents"] - line["credit_cents"] for line in journal["lines"] if line["account_id"] == accounts["1020"])
         assert bank == 2000
-        assert (await pastora.post(f"/api/finance/deposits/{deposit_id}/resolve-adjustment", json={"reason": "Otra vez"})).status_code == 409
+        assert (await fin.post(f"/api/finance/deposits/{deposit_id}/resolve-adjustment", json={"reason": "Otra vez"})).status_code == 409
 
         # Un asiento que no debe contar (p. ej. transacción externa duplicada) se ANULA: no se borra y conserva su auditoría.
         from finance_engine import create_journal
@@ -77,7 +79,7 @@ async def test_f2_corrected_deposit_adjustment_void_and_fiscal_budget():
         assert "finance_journal_entries.delete_one" not in inspect.getsource(finance_routes) + inspect.getsource(finance_expansion_routes)
 
         # Tablero: presupuesto solo del año fiscal en curso; banco separado de «por depositar».
-        old_budget = await pastora.post("/api/finance/budgets", json={"fiscal_year": 2001, "fund_id": funds["GENERAL"], "account_id": accounts["5000"], "amount_cents": 99999900})
+        old_budget = await fin.post("/api/finance/budgets", json={"fiscal_year": 2001, "fund_id": funds["GENERAL"], "account_id": accounts["5000"], "amount_cents": 99999900})
         created["budgets"].append(old_budget.json()["budget_id"])
         dashboard = (await pastora.get("/api/finance/dashboard")).json()
         assert dashboard["fiscal_year_from"] <= today <= dashboard["fiscal_year_to"]

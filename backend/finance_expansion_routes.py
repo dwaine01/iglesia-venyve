@@ -321,6 +321,8 @@ async def contributor_history(person_id: str, current_user: dict = Depends(reade
 
 @router.post("/contributions/{contribution_id}/correct", response_model=dict, status_code=201)
 async def contribution_correct(contribution_id: str, payload: ContributionCorrectionRequest, current_user: dict = Depends(manager)):
+    from finance_engine import deny_pastoral_registration
+    deny_pastoral_registration(current_user)
     original = await db.finance_contributions.find_one({"contribution_id": contribution_id})
     if not original:
         raise HTTPException(status_code=404, detail="Contribución no encontrada")

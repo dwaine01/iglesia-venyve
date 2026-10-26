@@ -213,3 +213,9 @@ def without_donor(item: dict) -> dict:
 async def log_donor_view(current_user: dict, what: str, person_id: str | None = None, detail: dict | None = None) -> None:
     """Cada consulta de datos por persona queda en la auditoría de Finanzas."""
     await audit(current_user["user_id"], "donor_data_viewed", "person" if person_id else "contributions", person_id or what, {"what": what, **(detail or {})})
+
+
+def deny_pastoral_registration(current_user: dict) -> None:
+    """Nuevo flujo (decisión del dueño): la pastora no cuenta, registra, valida, recibe ni deposita."""
+    if is_global_pastoral_authority(current_user):
+        raise HTTPException(status_code=403, detail="La pastora consulta Finanzas pero no registra, cuenta, valida, recibe ni deposita; use la Colecta con el equipo de Finanzas")

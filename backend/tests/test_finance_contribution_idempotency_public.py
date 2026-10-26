@@ -19,13 +19,9 @@ def api(path: str) -> str:
 
 
 def auth_headers() -> dict:
-    response = requests.post(
-        api("/api/auth/login"),
-        json={"email": PASTOR[0], "password": PASTOR[1]},
-        timeout=30,
-    )
-    assert response.status_code == 200, response.text
-    return {"Authorization": f"Bearer {response.json()['token']}"}
+    # Nuevo flujo: la pastora solo consulta; registra el equipo de Finanzas.
+    from tests.conftest import finance_team_token
+    return {"Authorization": f"Bearer {finance_team_token(api(''))}"}
 
 
 def cleanup_finance_regression(reference_prefix: str) -> None:

@@ -55,6 +55,28 @@ def create_persona_account(email: str, password: str, nombre: str = "QA Persona"
         client.close()
 
 
+FINANCE_TEAM = ("qa.finance.team@example.com", "QaFinanceTeam2026!")
+
+
+def finance_team_token(base_url: str) -> str:
+    """Nuevo flujo de Finanzas: la pastora solo consulta, así que las pruebas que REGISTRAN contribuciones o
+    depósitos usan una cuenta del equipo de Finanzas (grupo Finanzas + Consultar/Administrar + roles de la
+    colecta), creada en la base de PRUEBAS."""
+    client = MongoClient(os.environ["MONGO_URL"])
+    try:
+        client[os.environ["DB_NAME"]].users.update_one({"email": FINANCE_TEAM[0]}, {"$set": {
+            "nombre": "QA Equipo Finanzas", "password": bcrypt.hashpw(FINANCE_TEAM[1].encode(), bcrypt.gensalt()).decode(), "rol": "lider", "access_level": "lider",
+            "is_active": True, "token_version": 1, "must_change_password": False, "onboarding_required": False, "permissions_mode": "manual",
+            "privilege_groups": ["finance"], "capabilities": ["finance.read", "finance.manage", "finance.collection.record", "finance.treasury"],
+            "access_scope": {"persons": "created_by"}}, "$setOnInsert": {"created_at": datetime.now(timezone.utc)}}, upsert=True)
+        client[os.environ["DB_NAME"]].login_attempts.delete_many({})
+    finally:
+        client.close()
+    response = requests.post(f"{base_url.rstrip('/')}/api/auth/login", json={"email": FINANCE_TEAM[0], "password": FINANCE_TEAM[1]}, timeout=30)
+    assert response.status_code == 200, response.text
+    return response.json()["token"]
+
+
 BACKEND_DIR = str(APP_DIR / "backend")
 if BACKEND_DIR not in sys.path:
     sys.path.insert(0, BACKEND_DIR)
