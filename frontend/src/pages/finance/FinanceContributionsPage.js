@@ -63,7 +63,8 @@ export default function FinanceContributionsPage() {
     if (!correctionId || correctionLoaded || !items.length) return;
     const original = items.find((item) => item.contribution_id === correctionId);
     if (!original) return;
-    setSelectedPerson(original.person_id ? { person_id: original.person_id, name: searchParams.get('person_name') || 'Persona seleccionada' } : null);
+    // F1: si no se ve quién dio, el reemplazo conserva la misma persona (el servidor la toma del original).
+    setSelectedPerson(original.donor_hidden && !original.anonymous ? { person_id: null, name: 'Donante reservado (se conserva)', hidden: true } : original.person_id ? { person_id: original.person_id, name: searchParams.get('person_name') || 'Persona seleccionada' } : null);
     setSearch(searchParams.get('person_name') || '');
     setForm({ anonymous: original.anonymous, received_date: original.received_date, payment_method: original.payment_method, reference: original.reference || '', envelope_number: original.envelope_number || '', notes: original.notes || '', batch_id: '', allocations: (original.allocations || []).map((line) => ({ contribution_type: line.contribution_type || original.contribution_type, fund_id: line.fund_id, campaign_id: line.campaign_id || '', description: line.description || '', amount: String((line.amount_cents || 0) / 100) })) });
     setCorrectionLoaded(true);
@@ -95,7 +96,7 @@ export default function FinanceContributionsPage() {
     setSaving(true);
     try {
       const payload = {
-        person_id: form.anonymous ? null : selectedPerson?.person_id,
+        person_id: form.anonymous || selectedPerson?.hidden ? null : selectedPerson?.person_id,
         anonymous: form.anonymous,
         amount_cents: totalCents,
         received_date: form.received_date,
@@ -142,7 +143,7 @@ export default function FinanceContributionsPage() {
               <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
               <Input id="finance-person-search" className="pl-9" value={selectedPerson?.name || search} onChange={(event) => { setSelectedPerson(null); setSearch(event.target.value); }} disabled={form.anonymous} placeholder="Buscar por nombre" data-testid="contribution-person-search" />
             </div>
-            {people.length > 0 && <div className="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto border bg-white shadow-xl" data-testid="contribution-person-results">{people.map((person) => <button type="button" key={person.person_id} className="flex w-full items-center justify-between border-b p-3 text-left text-sm hover:bg-[#F3F5F4]" onClick={() => { setSelectedPerson(person); setSearch(person.name); setPeople([]); }} data-testid={`contribution-person-option-${person.person_id}`}><span>{person.name}</span><span className="text-xs text-slate-500">{person.contribution_count} registros</span></button>)}</div>}
+            {people.length > 0 && <div className="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto border bg-white shadow-xl" data-testid="contribution-person-results">{people.map((person) => <button type="button" key={person.person_id} className="flex w-full items-center justify-between border-b p-3 text-left text-sm hover:bg-[#F3F5F4]" onClick={() => { setSelectedPerson(person); setSearch(person.name); setPeople([]); }} data-testid={`contribution-person-option-${person.person_id}`}><span>{person.name}</span>{person.contribution_count != null && <span className="text-xs text-slate-500">{person.contribution_count} registros</span>}</button>)}</div>}
             {selectedPerson && <div className="mt-2 flex items-center gap-2 text-xs text-emerald-700" data-testid="selected-contribution-person"><UserRoundCheck className="h-4 w-4" />{selectedPerson.name}<Link className="ml-auto underline" to={`/finanzas/contribuyentes/${selectedPerson.person_id}`}>Ver historial</Link></div>}
             <label className="mt-2 flex items-center gap-2 text-sm"><Checkbox checked={form.anonymous} onCheckedChange={(value) => { setForm({ ...form, anonymous: Boolean(value) }); if (value) setSelectedPerson(null); }} data-testid="anonymous-contribution-checkbox" />Anónima</label>
           </div>
@@ -169,7 +170,7 @@ export default function FinanceContributionsPage() {
         <div className="flex flex-col gap-3 border-t pt-5 sm:flex-row sm:items-center sm:justify-between"><p className="text-2xl font-semibold" data-testid="contribution-total">Total: <Money cents={totalCents} /></p><Button disabled={saving || !totalCents || form.allocations.some((line) => !line.fund_id || !line.contribution_type)} data-testid="create-contribution-button">{saving ? 'Guardando…' : correctionId ? 'Registrar corrección' : 'Registrar contribución'}</Button></div>
       </form>
 
-      <section className="mt-8 space-y-2" data-testid="recent-contributions-list"><h2 className="font-['Spectral'] text-2xl font-semibold">Registros recientes</h2>{items.length ? items.slice(0, 30).map((item) => <article key={item.contribution_id} className="flex flex-col justify-between gap-2 border bg-white p-4 sm:flex-row"><div><p className="font-semibold">{item.contribution_type === 'mixed' ? 'Sobre con varios conceptos' : displayLabel(item.contribution_type)} · {item.allocations?.length || 0} concepto(s){item.campaign_name && <span className="ml-2 rounded-full bg-[#B5953F]/15 px-2 py-0.5 text-xs font-semibold text-[#8a6d1f]">{item.campaign_name}</span>}</p><p className="text-xs text-slate-500">{item.received_date} · {displayLabel(item.payment_method)} · {item.anonymous ? 'Anónima' : (item.person_name || `Persona ${item.person_id?.slice(-8)}`)}</p></div><Money cents={item.amount_cents} /></article>) : <FinanceEmpty>No hay contribuciones registradas.</FinanceEmpty>}</section>
+      <section className="mt-8 space-y-2" data-testid="recent-contributions-list"><h2 className="font-['Spectral'] text-2xl font-semibold">Registros recientes</h2>{items.length ? items.slice(0, 30).map((item) => <article key={item.contribution_id} className="flex flex-col justify-between gap-2 border bg-white p-4 sm:flex-row"><div><p className="font-semibold">{item.contribution_type === 'mixed' ? 'Sobre con varios conceptos' : displayLabel(item.contribution_type)} · {item.allocations?.length || 0} concepto(s){item.campaign_name && <span className="ml-2 rounded-full bg-[#B5953F]/15 px-2 py-0.5 text-xs font-semibold text-[#8a6d1f]">{item.campaign_name}</span>}</p><p className="text-xs text-slate-500">{item.received_date} · {displayLabel(item.payment_method)} · {item.anonymous ? 'Anónima' : ((item.donor_hidden ? 'Donante reservado' : item.person_name || `Persona ${item.person_id?.slice(-8)}`))}</p></div><Money cents={item.amount_cents} /></article>) : <FinanceEmpty>No hay contribuciones registradas.</FinanceEmpty>}</section>
     </FinanceShell>
   );
 }

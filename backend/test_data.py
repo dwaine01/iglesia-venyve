@@ -54,7 +54,12 @@ async def inventory() -> dict:
                   "archived": bool(doc.get("archived")), "reasons": ["Ya marcada como prueba"] if doc.get("is_test") else ["Nombre de prueba"]}
                  async for doc in db.outreach_campaigns.find({"$or": [{"is_test": True}, {"name": {"$regex": NAME_HINT.pattern, "$options": "i"}}]},
                                                              {"_id": 0, "campaign_id": 1, "name": 1, "start_date": 1, "is_test": 1, "archived": 1}).limit(LIMIT)]
+    # Finanzas F1: contribuciones a nombre de personas candidatas o marcadas (solo total, sin nombres ni montos por persona).
+    finance_ids = [row["person_id"] for row in people_rows]
+    finance_rows = await db.finance_contributions.aggregate([
+        {"$match": {"person_id": {"$in": finance_ids}, "status": {"$ne": "corrected"}}}, {"$group": {"_id": None, "count": {"$sum": 1}, "cents": {"$sum": "$amount_cents"}}}]).to_list(1) if finance_ids else []
     return {
+        "finance_contributions": {"count": finance_rows[0]["count"] if finance_rows else 0, "amount_cents": finance_rows[0]["cents"] if finance_rows else 0},
         "people": people_rows, "campaigns": campaigns,
         "visitor_registrations_marked": await db.visitor_registrations.count_documents({"test_data": True}),
         "counts": {"people": len(people_rows), "people_marked": sum(1 for row in people_rows if row["is_test"]),
