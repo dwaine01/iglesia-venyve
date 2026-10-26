@@ -11,8 +11,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from './ui/alert-dialog';
+import { WorkHandoverSection } from './WorkHandoverSection';
 
-export const PersonArchiveDialog = ({ open, onOpenChange, personName, busy, error, onConfirm }) => (
+export const PersonArchiveDialog = ({ open, onOpenChange, personName, busy, error, onConfirm, handover, handoverTo, onHandoverTo, personId }) => (
   <AlertDialog open={open} onOpenChange={onOpenChange}>
     <AlertDialogContent className="max-h-[85vh] overflow-y-auto border border-slate-200 bg-white shadow-2xl" data-testid="person-archive-dialog">
       <AlertDialogHeader>
@@ -27,10 +28,12 @@ export const PersonArchiveDialog = ({ open, onOpenChange, personName, busy, erro
         </AlertDialogDescription>
       </AlertDialogHeader>
       {error && <p className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700" data-testid="person-archive-error-alert">{error}</p>}
+      {/* Si es líder o mentor con pendientes, primero se elige a quién pasarlos. */}
+      {handover && <WorkHandoverSection work={handover.pending_work} value={handoverTo} onChange={onHandoverTo} excludePersonId={personId} />}
       <AlertDialogFooter>
         <AlertDialogCancel disabled={busy} data-testid="person-archive-cancel-button">Cancelar</AlertDialogCancel>
         <AlertDialogAction
-          disabled={busy}
+          disabled={busy || Boolean(handover && !handoverTo)}
           onClick={(event) => { event.preventDefault(); onConfirm(); }}
           className="bg-red-700 text-white hover:bg-red-800"
           data-testid="person-archive-confirm-button"

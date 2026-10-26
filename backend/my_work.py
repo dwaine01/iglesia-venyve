@@ -479,16 +479,21 @@ async def reassign_pending(payload: ReassignInput, current_user: dict = Depends(
     (los intentos y actividades guardan su autor); queda el historial de la
     reasignación y el nuevo mentor recibe un aviso."""
     require_supervisor(current_user)
+    return await reassign_items([item.model_dump() for item in payload.items], payload.to_mentor_person_id, current_user, payload.reason.strip())
+
+
+async def reassign_items(items: list[dict], target: str, current_user: dict, reason: str) -> dict:
+    """Mueve pendientes ({kind, id}) a otro mentor activo, con historial y aviso. Lo usa también la entrega
+    de trabajo al eliminar o desactivar a un líder o mentor (work_handover)."""
     from mentorship_outreach import is_active_mentor, log_visit_history, supervision_snapshot
-    target = payload.to_mentor_person_id
     if not await is_active_mentor(target):
         raise HTTPException(status_code=422, detail="El nuevo responsable debe ser un mentor activo")
     now = datetime.now(timezone.utc)
-    reason = payload.reason.strip()
     entry = {"to_mentor_person_id": target, "by_user_id": current_user["user_id"], "at": now, "reason": reason}
     snapshot = await supervision_snapshot(target)
     done, skipped = [], []
-    for item in payload.items:
+    for raw in items:
+        item = ReassignItem(**raw)
         if item.kind == "household":
             house = await db.outreach_households.find_one({"household_id": item.id, "archived": {"$ne": True}}, {"_id": 0, "mentor_person_id": 1})
             if not house or house.get("mentor_person_id") == target:

@@ -382,7 +382,7 @@ async def cleanup_qa_demo(payload: QaDemoCleanupRequest, current_user: dict = De
 
 
 @router.delete("/persons/{person_id}", response_model=PersonArchiveResponse)
-async def archive_person(person_id: str, current_user: dict = Depends(require_pastor)):
+async def archive_person(person_id: str, reassign_to_person_id: Optional[str] = None, current_user: dict = Depends(require_pastor)):
     try:
         oid = ObjectId(person_id)
     except InvalidId:
@@ -406,6 +406,13 @@ async def archive_person(person_id: str, current_user: dict = Depends(require_pa
     ).to_list(20)
     if any(item.get("rol") in {"pastor", "admin", "superadmin"} for item in linked_users):
         raise HTTPException(status_code=409, detail="No se puede eliminar el Perfil 360 de otra cuenta pastoral")
+    # Si es líder o mentor con trabajo pendiente, primero se pasa a otro mentor (no queda huérfano).
+    from work_handover import blocked, hand_over, pending_work, require_handover_target
+    work = await pending_work(person_id, [str(item["_id"]) for item in linked_users])
+    if work["blocking"]:
+        if not reassign_to_person_id:
+            raise blocked(work, "eliminar este Perfil 360")
+        await hand_over(person_id, work, await require_handover_target(person_id, reassign_to_person_id), current_user, "Perfil 360 eliminado")
 
     now = now_utc()
     archived = await db.persons.update_one(

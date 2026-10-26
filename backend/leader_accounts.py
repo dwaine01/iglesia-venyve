@@ -2,8 +2,13 @@
 
 Solo la autoridad pastoral. Nunca a sí misma ni a otro pastor.
 
-Qué se borra: la cuenta de usuario (sus sesiones dejan de valer al instante,
-porque cada petición busca la cuenta en la base) y sus avisos del portal.
+Qué pasa con la cuenta: queda DESACTIVADA y marcada como eliminada (no se borra de la base; se puede
+revisar o reactivar). Sus sesiones dejan de valer al instante (cada petición busca la cuenta) y se
+borran sus avisos del portal.
+
+Su trabajo pendiente NO puede quedar huérfano (auditoría 5/10): la vista previa muestra discípulos en
+Consolidación, contactos y visitas por hacer, viviendas, seguimientos de tableta, transferencias y
+libros en su poder; si tiene algo, hay que elegir a qué mentor pasarlo (work_handover).
 
 Qué NO se borra: las personas ni su historial de Persona 360, incluida la ficha
 360 del propio líder. Las personas asignadas al líder quedan sin líder
@@ -42,6 +47,8 @@ PASTOR_ROLES = {"pastor", "pastora", "admin", "superadmin"}
 class LeaderDeleteInput(BaseModel):
     confirm_name: str = Field(min_length=1, max_length=200)
     reason: Optional[str] = Field(default=None, max_length=500)
+    # A quién pasar su trabajo pendiente (obligatorio si tiene algo).
+    reassign_to_person_id: Optional[str] = Field(default=None, max_length=80)
 
 
 def _plain(value: Optional[str]) -> str:
@@ -60,7 +67,7 @@ async def load_target(user_id: str, current_user: dict) -> dict:
         raise HTTPException(status_code=404, detail="Líder no encontrado")
     if user_id == current_user.get("user_id"):
         raise HTTPException(status_code=400, detail="No puedes eliminar tu propia cuenta")
-    target = await db.users.find_one({"_id": ObjectId(user_id)})
+    target = await db.users.find_one({"_id": ObjectId(user_id), "account_deleted_at": {"$exists": False}})
     if not target:
         raise HTTPException(status_code=404, detail="Líder no encontrado")
     if is_global_pastoral_authority(target) or target.get("rol") in PASTOR_ROLES:
@@ -75,9 +82,11 @@ async def _activity_in(campaign_id: str, person_id: str) -> bool:
     return bool(household_ids and await db.outreach_visit_events.find_one({"household_id": {"$in": household_ids}}, {"_id": 1}))
 
 
-async def impact(target: dict) -> dict:
+async def impact(target: dict, work: Optional[dict] = None) -> dict:
+    from work_handover import pending_work, public
     user_id = str(target["_id"])
     person_id = target.get("person_id")
+    work = work or await pending_work(person_id, [user_id])
     today = date.today().isoformat()
     active_campaigns = await db.outreach_campaigns.find(
         {"assigned_mentor_ids": person_id, "end_date": {"$gte": today}}, {"_id": 0, "campaign_id": 1, "name": 1},
@@ -90,6 +99,7 @@ async def impact(target: dict) -> dict:
         "groups_led": await db.front_groups.count_documents({"status": {"$ne": "archived"}, "$or": [{"primary_leader_person_id": person_id}, {"co_leader_person_id": person_id}]}) if person_id else 0,
         "active_invasions": [item["name"] for item in active_campaigns],
         "mentor_badge_active": bool(person_id and await db.mentor_badges.find_one({"person_id": person_id, "active": True}, {"_id": 1})),
+        "pending_work": public(work),
     }
 
 
@@ -103,12 +113,22 @@ async def delete_leader(user_id: str, payload: LeaderDeleteInput, current_user: 
     target = await load_target(user_id, current_user)
     if _plain(payload.confirm_name) != _plain(target.get("nombre")):
         raise HTTPException(status_code=422, detail="Escribe el nombre del líder exactamente para confirmar")
-    summary = await impact(target)
+    from work_handover import blocked, hand_over, pending_work, require_handover_target
     person_id = target.get("person_id")
+    work = await pending_work(person_id, [user_id])
+    summary = await impact(target, work)
     now = utc_now()
     actor = current_user["user_id"]
     today = date.today().isoformat()
     result: dict = {}
+
+    # Primero su trabajo pendiente pasa a otro mentor (nunca queda asignado a una cuenta eliminada).
+    if work["blocking"]:
+        if not payload.reassign_to_person_id:
+            raise blocked(work, "eliminar la cuenta")
+        new_owner = await require_handover_target(person_id, payload.reassign_to_person_id)
+        reason = (payload.reason or "").strip() or "Cuenta del líder eliminada"
+        result["handover"] = {**await hand_over(person_id, work, new_owner, current_user, reason), "to_person_id": new_owner["person_id"]}
 
     # Personas asignadas: quedan sin líder (no se borran) y visibles para reasignar.
     result["people_unassigned"] = (await db.people.update_many(
@@ -151,7 +171,9 @@ async def delete_leader(user_id: str, payload: LeaderDeleteInput, current_user: 
     )
     await db.users.update_many({"parent_user_id": user_id}, {"$set": {"parent_user_id": actor}})
     await db.portal_notifications.delete_many({"recipient_user_id": user_id})
-    await db.users.delete_one({"_id": target["_id"]})
+    # La cuenta no se borra: queda desactivada y marcada (sin acceso, fuera de las listas de líderes).
+    await db.users.update_one({"_id": target["_id"]}, {"$set": {"is_active": False, "account_deleted_at": now, "account_deleted_by_user_id": actor,
+                                                                  "updated_at": now}, "$inc": {"token_version": 1}})
     await db.admin_deletions.insert_one({
         "_id": str(uuid4()), "collection": "users", "target_id": user_id,
         "reason": (payload.reason or "").strip() or "Eliminación de cuenta de líder desde el Panel General",
