@@ -83,6 +83,7 @@ const FinanceSetupPage = lazyPage(() => import('./pages/finance/FinanceSetupPage
 const FinanceJournalsPage = lazyPage(() => import('./pages/finance/FinanceJournalsPage'));
 const FinanceContributionsPage = lazyPage(() => import('./pages/finance/FinanceContributionsPage'));
 const FinanceContributorsPage = lazyPage(() => import('./pages/finance/FinanceContributorsPage'));
+const FinanceCollectionsPage = lazyPage(() => import('./pages/finance/FinanceCollectionsPage'));
 const FinanceOperationsPage = lazyPage(() => import('./pages/finance/FinanceOperationsPage'));
 const FinanceReconciliationPage = lazyPage(() => import('./pages/finance/FinanceReconciliationPage'));
 const FinanceReportsPage = lazyPage(() => import('./pages/finance/FinanceReportsPage'));
@@ -327,6 +328,8 @@ function App() {
             <Route path="junta/minutas" element={<BoardAccessRoute><BoardMinutesPage /></BoardAccessRoute>} />
             <Route path="finanzas" element={<FinanceRoute><FinanceDashboardPage /></FinanceRoute>} />
             <Route path="finanzas/configuracion" element={<FinanceRoute><FinanceSetupPage /></FinanceRoute>} />
+            <Route path="finanzas/colecta" element={<FinanceRoute><FinanceCollectionsPage /></FinanceRoute>} />
+            <Route path="finanzas/colecta/:collectionId" element={<FinanceRoute><FinanceCollectionsPage /></FinanceRoute>} />
             <Route path="finanzas/asientos" element={<FinanceRoute><FinanceJournalsPage /></FinanceRoute>} />
             <Route path="finanzas/contribuciones" element={<FinanceRoute><FinanceContributionsPage /></FinanceRoute>} />
             <Route path="finanzas/contribuyentes" element={<FinanceRoute><FinanceContributorsPage /></FinanceRoute>} />
