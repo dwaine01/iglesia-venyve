@@ -514,25 +514,26 @@ async def resolve_and_insert_contact_visit(
         leader = is_outreach_leader(current_user)
         if not leader:
             await require_existing_person_proof(person, contact_phone, current_user)
+        # Auditoría 10/10: la misma persona puede ser visitada en otra invasión; solo se evita repetirla en la MISMA.
         duplicate = await db.outreach_visits.find_one(
-            {"$or": [{"person_id": person_id}, {"converted_person_id": person_id}], "archived": {"$ne": True}},
+            {"$or": [{"person_id": person_id}, {"converted_person_id": person_id}], "archived": {"$ne": True}, "campaign_id": campaign_id},
             {"_id": 0, "mentor_person_id": 1},
         )
         if duplicate:
             if not leader:
-                raise HTTPException(status_code=409, detail="Esta persona ya tiene una visita activa con otro mentor. Pida a su líder que la reasigne.")
+                raise HTTPException(status_code=409, detail="Esta persona ya tiene una visita en esta invasión con otro mentor. Pida a su líder que la reasigne.")
             mentor_name = await person_display_name(duplicate.get("mentor_person_id"))
-            raise HTTPException(status_code=409, detail=f"Esta persona ya tiene una visita activa registrada (mentor: {mentor_name or 'desconocido'})")
+            raise HTTPException(status_code=409, detail=f"Esta persona ya tiene una visita registrada en esta invasión (mentor: {mentor_name or 'desconocido'})")
         resolved_person_id = person_id
     else:
         if not contact_name or not contact_name.strip():
             raise HTTPException(status_code=422, detail="El nombre del contacto es obligatorio")
         phone_digits = normalize_phone(contact_phone)
         if phone_digits:
-            duplicate = await db.outreach_visits.find_one({"phone_normalized": phone_digits, "archived": {"$ne": True}}, {"_id": 0, "mentor_person_id": 1})
+            duplicate = await db.outreach_visits.find_one({"phone_normalized": phone_digits, "archived": {"$ne": True}, "campaign_id": campaign_id}, {"_id": 0, "mentor_person_id": 1})
             if duplicate:
                 mentor_name = await person_display_name(duplicate.get("mentor_person_id"))
-                raise HTTPException(status_code=409, detail=f"Ya existe una visita registrada con ese teléfono (mentor: {mentor_name or 'desconocido'})")
+                raise HTTPException(status_code=409, detail=f"Ya existe una visita con ese teléfono en esta invasión (mentor: {mentor_name or 'desconocido'})")
     if campaign_id and not await db.outreach_campaigns.find_one({"campaign_id": campaign_id}, {"_id": 1}):
         raise HTTPException(status_code=404, detail="Campaña no encontrada")
     snapshot = await supervision_snapshot(mentor_person_id)

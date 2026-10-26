@@ -873,7 +873,7 @@ def followup_view(doc: dict, current_user: dict, names: dict) -> dict:
         shown.append("Pedido confidencial (lo atiende el equipo pastoral)")
     followup = doc.get("followup") or {}
     return {"registration_id": doc["registration_id"], "visitor_number": doc["visitor_number"], "name": f"{doc['first_name']} {doc['last_name']}", "preferred_name": doc["welcome"]["preferred_name"],
-            "service": doc["service"], "created_at": doc["created_at"].isoformat(), "person_id": doc.get("person_id"), "match_status": doc["match_status"], "match_label": MATCH_LABELS.get(doc["match_status"]),
+            "service": doc["service"], "created_at": doc["created_at"].isoformat(), "person_id": doc.get("person_id"), "enrollment_id": (doc.get("followup") or {}).get("enrollment_id"), "match_status": doc["match_status"], "match_label": MATCH_LABELS.get(doc["match_status"]),
             "possible_person_ids": doc.get("possible_person_ids") or [], "possible_people": [{"person_id": pid, "name": names.get(pid) or "Persona sin nombre"} for pid in doc.get("possible_person_ids") or []],
             "phone": doc["contact"].get("phone"), "email": doc["contact"].get("email"), "contact_methods": doc["contact"].get("methods") or ([doc["contact"]["method"]] if doc["contact"].get("method") in ("call", "text", "whatsapp", "email") else []),
             "visit_mode": doc["visit"].get("visit_mode"), "new_in_area": doc["visit"].get("new_in_area"),
