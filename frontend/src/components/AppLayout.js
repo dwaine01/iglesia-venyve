@@ -7,7 +7,7 @@ import PageSkeleton from './PageSkeleton';
 import { Button } from './ui/button';
 import { Separator } from './ui/separator';
 import {
-  LayoutDashboard, BookOpen, Map, Calendar, Users, BarChart3, LogOut, Menu, ChevronRight,
+  FlaskConical, LayoutDashboard, BookOpen, Map, Calendar, Users, BarChart3, LogOut, Menu, ChevronRight,
   Crown, Star, Trophy, Presentation, NotebookPen, KeyRound, IdCard, Church, Search, DatabaseZap,
   Activity, Award, BookHeart, Compass, GraduationCap, HeartHandshake, Network, RadioTower, DoorOpen, Gavel, Landmark, MapPinned,
   PanelLeftClose, PanelLeftOpen, ShieldCheck, Droplets, Baby, Bus, Footprints, ClipboardCheck, Trash2, DatabaseBackup, UserCircle, UserPlus
