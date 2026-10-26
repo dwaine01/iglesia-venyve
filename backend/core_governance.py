@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr, Field
 
 from access_control import (
+    FINANCE_DEFAULT_CAPABILITIES,
     ACCESS_POLICY_VERSION,
     BOARD_ACCESS,
     BOARD_CONFIDENTIAL_ACCESS,
@@ -219,7 +220,8 @@ def access_defaults(level: str, privilege_groups: Optional[list[str]] = None) ->
     if "board" in groups:
         defaults["capabilities"] = sorted(set([*defaults["capabilities"], BOARD_ACCESS]))
     if "finance" in groups:
-        defaults["capabilities"] = sorted(set([*defaults["capabilities"], *FINANCE_CAPABILITIES, "person.directory.search", "person.profile.read"]))
+        # Solo Consultar/Administrar por defecto: los roles de la colecta y «ver aportes por persona» se asignan a mano.
+        defaults["capabilities"] = sorted(set([*defaults["capabilities"], *FINANCE_DEFAULT_CAPABILITIES, "person.directory.search", "person.profile.read"]))
     defaults["access_scope"] = {"persons": "all" if level == "coordinador_general" else "created_by" if role == "lider" else defaults["access_scope"]["persons"]}
     return {"rol": role, "access_level": level, "privilege_groups": groups, **defaults}
 

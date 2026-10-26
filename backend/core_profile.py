@@ -223,6 +223,11 @@ async def profile_viewer(person_id: str, current_user: dict = Depends(get_curren
         raise
 
 
+def _can_see_donors(current_user: dict) -> bool:
+    from finance_engine import can_see_donors
+    return can_see_donors(current_user)
+
+
 async def contact_mentor_profile(person: dict, relation: Optional[str]) -> dict:
     """Identidad básica (el resto lo da /api/persons/{id}/contact-origin) y, si hoy la acompaña,
     su teléfono principal para poder llamarla."""
@@ -316,7 +321,7 @@ async def get_person_profile(person_id: str, current_user: dict = Depends(profil
     planned = []
     response = {
         "profile_can_write": can_write_profile,
-        "private_finance_can_read": is_global_pastoral_authority(current_user),
+        "private_finance_can_read": _can_see_donors(current_user),
     }
     linked_user = await db.users.find_one(
         {"person_id": person_id},

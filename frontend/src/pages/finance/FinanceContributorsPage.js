@@ -11,13 +11,15 @@ import { Input } from '../../components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { useAuth } from '../../context/AuthContext';
 import { displayLabel } from '../../lib/displayLabels';
-import { isPastoralAuthority } from '../../lib/accessControl';
 
 export default function FinanceContributorsPage() {
-  const { user } = useAuth();
-  // F1 (decisión del dueño): lo que da cada persona solo lo ve la pastora; el servidor también lo exige.
-  if (!isPastoralAuthority(user)) {
-    return <FinanceShell title="Contribuyentes" description="Lo que da cada persona."><FinanceEmpty><span data-testid="finance-donors-pastoral-only">Lo que da cada persona solo lo ve la pastora. El resto de Finanzas trabaja con totales sin nombres.</span></FinanceEmpty></FinanceShell>;
+  const { API, getAuthHeaders } = useAuth();
+  const [roles, setRoles] = useState(null);
+  useEffect(() => { axios.get(`${API}/api/finance/my-roles`, getAuthHeaders()).then((response) => setRoles(response.data)).catch(() => setRoles({ donors: false })); }, [API, getAuthHeaders]);
+  if (!roles) return <FinanceShell title="Contribuyentes" description="Lo que da cada persona."><p>Cargando…</p></FinanceShell>;
+  // Decisión del dueño: lo ven la pastora y quien ella autorice («Ver aportes por persona»); el servidor también lo exige.
+  if (!roles.donors) {
+    return <FinanceShell title="Contribuyentes" description="Lo que da cada persona."><FinanceEmpty><span data-testid="finance-donors-pastoral-only">Lo que da cada persona solo lo ven la pastora y quien ella autorice. El resto de Finanzas trabaja con totales sin nombres.</span></FinanceEmpty></FinanceShell>;
   }
   return <ContributorsContent />;
 }

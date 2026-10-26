@@ -9,7 +9,7 @@ from bson import ObjectId
 from dotenv import dotenv_values
 from pymongo import MongoClient
 
-from access_control import BOARD_ACCESS, FINANCE_CAPABILITIES, access_defaults_for_role
+from access_control import BOARD_ACCESS, FINANCE_DEFAULT_CAPABILITIES as FINANCE_CAPABILITIES, access_defaults_for_role  # Consultar + Administrar (sin «ver aportes por persona»)
 
 
 FRONTEND_ENV = {**os.environ, **dotenv_values("/app/frontend/.env")}
@@ -237,14 +237,15 @@ def test_finance_role_operates_module_but_cannot_open_board_or_private_profile_f
     )
     assert vendor.status_code == 201, vendor.text
     state["vendors"].append(vendor.json()["vendor_id"])
-    assert requests.get(f"{BASE_URL}/api/finance/contributors/{person_id}", headers=auth(token), timeout=30).status_code == 200
+    # Decisión del dueño (F1): lo que da cada persona solo lo ven la pastora y quien ella autorice.
+    assert requests.get(f"{BASE_URL}/api/finance/contributors/{person_id}", headers=auth(token), timeout=30).status_code == 403
     assert requests.get(f"{BASE_URL}/api/finance/persons/{person_id}/contributions", headers=auth(token), timeout=30).status_code == 403
     assert requests.get(f"{BASE_URL}/api/board", headers=auth(token), timeout=30).status_code == 403
     profile = requests.get(f"{BASE_URL}/api/core/persons/{person_id}/profile", headers=auth(token), timeout=30)
     assert profile.status_code == 200 and profile.json()["private_finance_can_read"] is False
 
 
-def test_finance_role_reads_names_amounts_and_history_inside_finance(rbac_matrix):
+def test_finance_role_registers_with_name_but_sees_totals_without_names(rbac_matrix):
     state = rbac_matrix
     token = state["tokens"]["finance"]
     person_id = state["accounts"]["finance"]["person_id"]
@@ -271,15 +272,12 @@ def test_finance_role_reads_names_amounts_and_history_inside_finance(rbac_matrix
     created = contribution.json()
     state["contributions"].append(created["contribution_id"])
     state["journals"].append(created["journal_entry_id"])
-    summary = requests.get(f"{BASE_URL}/api/finance/contributors/{person_id}", headers=auth(token), timeout=30)
-    assert summary.status_code == 200, summary.text
-    body = summary.json()
-    assert body["person"]["name"] == "QA Finance"
-    assert any(item["amount_cents"] == 12345 and item["reference"] == reference for item in body["items"])
-    history = requests.get(f"{BASE_URL}/api/finance/contributors/{person_id}/history", headers=auth(token), timeout=30)
-    assert history.status_code == 200
+    # Registra con nombre, pero sin «ver aportes por persona» no ve el detalle ni quién dio (F1).
+    assert requests.get(f"{BASE_URL}/api/finance/contributors/{person_id}", headers=auth(token), timeout=30).status_code == 403
+    assert requests.get(f"{BASE_URL}/api/finance/contributors/{person_id}/history", headers=auth(token), timeout=30).status_code == 403
     listed = requests.get(f"{BASE_URL}/api/finance/contributions", headers=auth(token), timeout=30)
-    assert listed.status_code == 200 and any(item["contribution_id"] == created["contribution_id"] for item in listed.json()["items"])
+    row = next(item for item in listed.json()["items"] if item["contribution_id"] == created["contribution_id"])
+    assert row["amount_cents"] == 12345 and row.get("donor_hidden") is True and "person_id" not in row and "reference" not in row
 
 
 def test_board_member_has_functional_access_without_finance(rbac_matrix):
