@@ -50,7 +50,7 @@ export const LogVisitAttemptDialog = ({ household, open, onOpenChange, onLogged 
     const payloadPersons = result === 'contacted' ? persons
       .filter((item) => (item.contactType === 'new' && item.name.trim()) || (item.contactType === 'existing' && item.selected))
       .map((item) => (item.contactType === 'existing'
-        ? { contact_type: 'existing', person_id: item.selected.person_id }
+        ? { contact_type: 'existing', person_id: item.selected.person_id, contact_phone: item.phone || null }
         : { contact_type: 'new', contact_name: item.name.trim(), contact_phone: item.phone || null })) : [];
     if (result === 'contacted' && payloadPersons.length === 0 && !isDraft) {
       toast.error('Registre al menos un contacto, o guarde este intento como borrador');
@@ -125,6 +125,7 @@ export const LogVisitAttemptDialog = ({ household, open, onOpenChange, onLogged 
                         </div>
                       )}
                       {person.selected && <p className="text-xs text-emerald-700">Seleccionado: {person.selected.name}</p>}
+                      {person.selected && <Input placeholder="Teléfono de la persona (el que tiene registrado)" inputMode="tel" value={person.phone} onChange={(event) => updatePerson(index, { phone: event.target.value })} data-testid={`outreach-attempt-existing-phone-${index}`} />}
                     </div>
                   )}
                 </div>

@@ -477,6 +477,26 @@ async def serialize_visits(visits: list[dict], current_user: dict) -> list[dict]
     return results
 
 
+async def require_existing_person_proof(person: dict, contact_phone: Optional[str], current_user: dict) -> None:
+    """Auditoría 6/10: un mentor ya no puede volverse «mentor de contacto» de cualquier persona
+    buscándola por nombre. Para vincular a alguien que no acompaña debe escribir su teléfono (el
+    que tiene en Persona 360): así demuestra que la tiene delante. Los líderes y quien ya tiene
+    relación o alcance sobre la persona no lo necesitan."""
+    from access_control import can_access_person
+    from person_contact import relationship
+    person_id = str(person["_id"])
+    if can_access_person(current_user, {"person_id": person_id, "created_by": person.get("created_by"), "auth_user_id": person.get("auth_user_id")}):
+        return
+    if await relationship(person_id, current_user):
+        return
+    digits = normalize_phone(contact_phone)
+    if len(digits) >= 7:
+        for item in await db.person_contacts.find({"person_id": person_id, "tipo": "telefono"}, {"_id": 0, "valor": 1, "valor_normalizado": 1}).to_list(20):
+            if normalize_phone(item.get("valor_normalizado") or item.get("valor")) == digits:
+                return
+    raise HTTPException(status_code=422, detail="Para vincular a esta persona escriba su teléfono (el que tiene registrado). Si no coincide, regístrela como contacto nuevo o pida ayuda a su líder.")
+
+
 async def resolve_and_insert_contact_visit(
     contact_type: str, person_id: Optional[str], contact_name: Optional[str], contact_phone: Optional[str],
     contact_zone: Optional[str], campaign_id: Optional[str], mentor_person_id: str, note: Optional[str],
@@ -490,12 +510,17 @@ async def resolve_and_insert_contact_visit(
     if contact_type == "existing":
         if not person_id:
             raise HTTPException(status_code=422, detail="Seleccione la persona existente")
-        await load_person(db, person_id)
+        person = await load_person(db, person_id)
+        leader = is_outreach_leader(current_user)
+        if not leader:
+            await require_existing_person_proof(person, contact_phone, current_user)
         duplicate = await db.outreach_visits.find_one(
             {"$or": [{"person_id": person_id}, {"converted_person_id": person_id}], "archived": {"$ne": True}},
             {"_id": 0, "mentor_person_id": 1},
         )
         if duplicate:
+            if not leader:
+                raise HTTPException(status_code=409, detail="Esta persona ya tiene una visita activa con otro mentor. Pida a su líder que la reasigne.")
             mentor_name = await person_display_name(duplicate.get("mentor_person_id"))
             raise HTTPException(status_code=409, detail=f"Esta persona ya tiene una visita activa registrada (mentor: {mentor_name or 'desconocido'})")
         resolved_person_id = person_id
@@ -1714,6 +1739,11 @@ async def create_visit_event(household_id: str, payload: VisitEventInput, curren
         raise HTTPException(status_code=422, detail="Un intento sin contacto no debe llevar personas registradas (no se inventan datos)")
     if payload.result == "contacted" and not payload.persons and not payload.is_draft:
         raise HTTPException(status_code=422, detail="Registre al menos un contacto, o guarde este intento como borrador")
+    if not is_outreach_leader(current_user):
+        # Antes de guardar nada: cada persona existente necesita su prueba (auditoría 6/10).
+        for entry in payload.persons:
+            if entry.contact_type == "existing" and entry.person_id:
+                await require_existing_person_proof(await load_person(db, entry.person_id), entry.contact_phone, current_user)
     now = now_utc()
     event_id = str(uuid4())
     event_doc = {

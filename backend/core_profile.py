@@ -7,6 +7,7 @@ modulo unicamente los presenta cuando existen y estan autorizados.
 No modifica people/contacts/checklists/progress/Ley7.
 """
 import asyncio
+from typing import Optional
 from bson import ObjectId
 from bson.errors import InvalidId
 from fastapi import APIRouter, HTTPException, Depends
@@ -215,18 +216,26 @@ async def profile_viewer(person_id: str, current_user: dict = Depends(get_curren
     try:
         return require_person_profile_or_self(person_id, current_user)
     except HTTPException as exc:
-        from person_contact import is_contact_mentor
-        if exc.status_code == 403 and await is_contact_mentor(person_id, current_user):
-            return {**current_user, "contact_mentor_view": True}
+        from person_contact import relationship
+        relation = await relationship(person_id, current_user) if exc.status_code == 403 else None
+        if relation:
+            return {**current_user, "contact_mentor_view": True, "contact_relation": relation}
         raise
 
 
-def contact_mentor_profile(person: dict) -> dict:
-    """Solo identidad básica: el resto lo da /api/persons/{id}/contact-origin."""
+async def contact_mentor_profile(person: dict, relation: Optional[str]) -> dict:
+    """Identidad básica (el resto lo da /api/persons/{id}/contact-origin) y, si hoy la acompaña,
+    su teléfono principal para poder llamarla."""
+    header_phone = {}
+    if relation == "active":
+        phones = await db.person_contacts.find({"person_id": person["person_id"], "tipo": "telefono"}, {"_id": 0, "valor": 1, "es_principal": 1}).to_list(20)
+        phone = next((item for item in phones if item.get("es_principal")), phones[0] if phones else None)
+        if phone:
+            header_phone = {"primary_phone": phone.get("valor")}
     return {
         "canonical_profile_path": f"/personas/{person['person_id']}",
         "header": {"person_id": person["person_id"], "person_number": person["person_number"], "nombre": person.get("nombre"), "apellido": person.get("apellido"),
-                   "nombre_completo": f"{person.get('nombre', '')} {person.get('apellido', '')}".strip(), "initials": _initials(person.get("nombre"), person.get("apellido"))},
+                   "nombre_completo": f"{person.get('nombre', '')} {person.get('apellido', '')}".strip(), "initials": _initials(person.get("nombre"), person.get("apellido")), **header_phone},
         "sections": [], "sections_available": ["resumen"], "sections_planned": [], "journey_status": None,
         "profile_can_write": False, "private_finance_can_read": False, "contact_mentor_view": True,
     }
@@ -248,9 +257,10 @@ async def get_person_profile(person_id: str, current_user: dict = Depends(profil
 
     in_scope = not current_user.get("contact_mentor_view") and can_access_person(current_user, person)
     if not in_scope:
-        from person_contact import is_contact_mentor
-        if current_user.get("contact_mentor_view") or await is_contact_mentor(person_id, current_user):
-            return contact_mentor_profile(person)
+        from person_contact import relationship
+        relation = current_user.get("contact_relation") or await relationship(person_id, current_user)
+        if relation:
+            return await contact_mentor_profile(person, relation)
         # Una cuenta sin alcance sobre esta Persona no abre su ficha.
         raise HTTPException(status_code=403, detail="No autorizado para ver esta Persona")
     can_read_contacts = in_scope and has_capability(current_user, PERSON_CONTACTS_READ)

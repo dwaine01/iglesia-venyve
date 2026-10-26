@@ -29,7 +29,7 @@ export function RecipientTasks({ refreshKey = 0, onChanged }) {
   const save = async () => {
     setBusy(true);
     try {
-      const body = mode === 'existing' ? { contact_type: 'existing', person_id: form.person?.person_id } : { contact_type: 'new', contact_name: form.name.trim(), contact_phone: form.phone.trim() || null };
+      const body = mode === 'existing' ? { contact_type: 'existing', person_id: form.person?.person_id, contact_phone: form.phone.trim() || null } : { contact_type: 'new', contact_name: form.name.trim(), contact_phone: form.phone.trim() || null };
       await axios.post(`${API}/api/library/ledger/movements/${target.movement_id}/recipient`, body, getAuthHeaders());
       toast.success('Destinatario completado (el libro no se volvió a descontar)');
       setTarget(null); load(); onChanged?.();
@@ -51,7 +51,10 @@ export function RecipientTasks({ refreshKey = 0, onChanged }) {
           {mode === 'new' ? <>
             <label className="block"><span className="text-sm font-semibold text-slate-700">Nombre</span><input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} autoComplete="off" className="mt-1 h-12 w-full rounded-lg border border-[#D9D4C7] px-3 text-base" data-testid="recipient-name" /></label>
             <label className="block"><span className="text-sm font-semibold text-slate-700">Teléfono (opcional)</span><input value={form.phone} onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))} inputMode="tel" autoComplete="off" className="mt-1 h-12 w-full rounded-lg border border-[#D9D4C7] px-3 text-base" data-testid="recipient-phone" /></label>
-          </> : <PersonPicker value={form.person} onChange={(person) => setForm((current) => ({ ...current, person }))} testId="recipient-person" />}
+          </> : <>
+            <PersonPicker value={form.person} onChange={(person) => setForm((current) => ({ ...current, person }))} testId="recipient-person" />
+            {form.person && <label className="block"><span className="text-sm font-semibold text-slate-700">Teléfono de la persona</span><input value={form.phone} onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))} inputMode="tel" autoComplete="off" placeholder="El que tiene registrado" className="mt-1 h-12 w-full rounded-lg border border-[#D9D4C7] px-3 text-base" data-testid="recipient-existing-phone" /></label>}
+          </>}
           <div className="sticky-actions"><button type="button" onClick={save} disabled={busy || !ready} className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#132443] text-base font-semibold text-white disabled:opacity-50" data-testid="recipient-save">{busy && <Loader2 className="h-5 w-5 animate-spin" />}Guardar destinatario</button></div>
         </DialogContent>
       </Dialog>

@@ -129,7 +129,7 @@ async def load_scoped(enrollment_id: str, current_user: dict, leader_required: b
 @router.get("/dashboard", response_model=dict)
 async def consolidation_dashboard(current_user: dict = Depends(require_read)):
     query = {"process_key": "consolidation", "definition_version": 2, "status": {"$ne": "archived"}}
-    if not is_global_pastoral_authority(current_user) and not has_capability(current_user, CONSOLIDATION_ASSIGN):
+    if not is_global_pastoral_authority(current_user) and not has_capability(current_user, CONSOLIDATION_ASSIGN) and not is_general_coordinator(current_user):
         group_ids = list(await readable_group_ids(db, current_user) or [])
         query["$or"] = [{"front_group_id": {"$in": group_ids}}, {"person_id": current_user.get("person_id")}, {"mentor_person_id": current_user.get("person_id")}]
     # Personas únicas (los expedientes repetidos de una persona son historial).

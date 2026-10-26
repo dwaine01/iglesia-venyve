@@ -103,13 +103,40 @@ async def can_read(person: dict, current_user: dict, data: dict) -> bool:
     if can_assign(current_user):
         return True
     # El mentor que la contactó o la acompaña ve solo esto (sin datos sensibles).
-    return bool(current_user.get("person_id")) and current_user["person_id"] in contact_mentor_ids(data)
+    return bool(await relationship(person["person_id"], current_user, data))
+
+
+OPEN_FOLLOWUP = ["pending", "assigned", "in_progress"]
+
+
+async def relationship(person_id: str, current_user: dict, data: Optional[dict] = None) -> Optional[str]:
+    """Relación de trabajo real con la persona (auditoría 6/10): «active» si hoy la acompaña
+    (seguimiento de la tableta abierto, mentor o responsable de un expediente abierto, asignación
+    de mentor activa o integrante de una rama que lidera), «past» si la acompañó (visita, libro,
+    vivienda, expediente terminado, seguimiento cerrado) y None si no hay relación."""
+    me = current_user.get("person_id")
+    if not me or not ObjectId.is_valid(person_id):
+        return None
+    mine = {"$or": [{"mentor_person_id": me}, {"responsible_person_id": me}]}
+    if (await db.visitor_registrations.find_one({"person_id": person_id, "followup.assigned_person_id": me, "followup.status": {"$in": OPEN_FOLLOWUP},
+                                                 "status": {"$nin": ["discarded", "merged"]}}, {"_id": 1})
+            or await db.process_enrollments.find_one({"person_id": person_id, "status": {"$in": ACTIVE}, **mine}, {"_id": 1})
+            or await db.mentor_assignments.find_one({"person_id": person_id, "mentor_person_id": me, "active": True}, {"_id": 1})):
+        return "active"
+    from front_group_tree import direct_assignments, readable_group_ids
+    readable = await readable_group_ids(db, current_user)
+    if readable and {item["front_group_id"] for item in await direct_assignments(db, person_id)} & readable:
+        return "active"
+    if me in contact_mentor_ids(data or await gather(person_id)):
+        return "past"
+    if (await db.process_enrollments.find_one({"person_id": person_id, **mine}, {"_id": 1})
+            or await db.visitor_registrations.find_one({"person_id": person_id, "followup.assigned_person_id": me}, {"_id": 1})):
+        return "past"
+    return None
 
 
 async def is_contact_mentor(person_id: str, current_user: dict) -> bool:
-    if not current_user.get("person_id") or not ObjectId.is_valid(person_id):
-        return False
-    return current_user["person_id"] in contact_mentor_ids(await gather(person_id))
+    return bool(await relationship(person_id, current_user))
 
 
 def build(data: dict, names: dict) -> dict:
