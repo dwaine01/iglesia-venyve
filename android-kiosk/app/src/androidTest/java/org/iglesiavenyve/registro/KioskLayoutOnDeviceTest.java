@@ -199,6 +199,7 @@ public class KioskLayoutOnDeviceTest {
         try (ActivityScenario<MainActivity> launched = ActivityScenario.launch(MainActivity.class)) {
             scenario = launched;
             SystemClock.sleep(2000);
+            shell("am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS");
             walk();
         }
     }
