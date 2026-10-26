@@ -444,8 +444,13 @@ async def finance_document_upload(
     file: UploadFile = File(...),
     entity_type: str = Form(...),
     entity_id: str = Form(...),
-    current_user: dict = Depends(manager),
+    current_user: dict = Depends(get_current_user),
 ):
+    # El comprobante de un depósito lo sube Tesorería (nuevo flujo de la colecta); el resto, Administrar Finanzas.
+    from access_control import FINANCE_TREASURY
+    from finance_engine import has_finance_role
+    if not (entity_type == "deposit" and has_finance_role(current_user, FINANCE_TREASURY)):
+        require_finance_manage(current_user)
     await ensure_finance_entity(entity_type, entity_id)
     filename = file.filename or ""
     if not re.fullmatch(r"[A-Za-z0-9áéíóúÁÉÍÓÚñÑ _.-]{1,160}", filename) or ".." in filename:

@@ -130,6 +130,8 @@ async def view(collection: dict, current_user: dict, with_items: bool = True) ->
     """La colecta con su cuadre. Quién dio: solo la pastora, quien ella autorice y quienes trabajan la colecta
     (registrar/verificar/Tesorería necesitan el detalle para cuadrar sobres); cada vista con nombres queda registrada."""
     out = {**collection, "summary": await summary(collection)}
+    if collection.get("reception"):  # P5: saldo pendiente de depositar frente al efectivo recibido
+        out["deposit_pending_cents"], _ = deposit_balance(collection, await cash_by_fund(collection))
     if with_items:
         items = await db.finance_collection_items.find({"collection_id": collection["collection_id"]}, {"_id": 0}).sort("created_at", 1).to_list(5000)
         sees_names = can_see_donors(current_user) or any(has_finance_role(current_user, cap) for cap in (FINANCE_COLLECTION_RECORD, "finance.collection.verify", FINANCE_TREASURY))
@@ -507,7 +509,8 @@ async def post_collection(collection: dict, current_user: dict) -> dict:
     types = {doc["type_key"]: doc async for doc in db.finance_contribution_types.find({}, {"_id": 0})}
     lines, contributions = [], []
     for item in items:
-        debit_account = accounts["1020"] if item["method"] == "zelle" else accounts["1010"]
+        # Solo el efectivo pasa por «fondos no depositados» (Tesorería lo deposita); Zelle y otros medios llegan al banco.
+        debit_account = accounts["1010"] if item["method"] == "cash" else accounts["1020"]
         name = types.get(item["contribution_type"], {}).get("name", item["contribution_type"])
         lines += [{"account_id": debit_account, "fund_id": item["fund_id"], "debit_cents": item["amount_cents"], "credit_cents": 0, "description": f"Colecta · {name}"},
                   {"account_id": types[item["contribution_type"]]["revenue_account_id"], "fund_id": item["fund_id"], "debit_cents": 0, "credit_cents": item["amount_cents"], "description": f"Colecta · {name}"}]
@@ -524,7 +527,7 @@ async def post_collection(collection: dict, current_user: dict) -> dict:
                               "accounting_date": collection["service_date"], "payment_method": {"cash": "cash", "zelle": "zelle"}.get(item["method"], "other"),
                               "reference": item.get("reference"), "allocations": [{"fund_id": item["fund_id"], "amount_cents": item["amount_cents"], "contribution_type": item["contribution_type"]}],
                               "source": "collection", "collection_id": collection["collection_id"], "collection_item_id": item["item_id"], "journal_entry_id": journal["entry_id"],
-                              "deposit_id": None, "batch_id": None, "status": "recorded", "is_test": bool(collection.get("is_test")),
+                              "deposit_id": None if item["method"] == "cash" else "directo_al_banco", "batch_id": None, "status": "recorded", "is_test": bool(collection.get("is_test")),
                               "created_by_user_id": item.get("created_by_user_id"), "validated_by_user_id": current_user["user_id"], "created_at": now, "updated_at": now})
     if contributions:
         await db.finance_contributions.insert_many(contributions)
@@ -748,4 +751,89 @@ async def clarify_cash(collection_id: str, payload: ClarifyInput, current_user: 
     clarification = {"note": payload.note.strip(), "by_user_id": current_user["user_id"], "by_name": current_user.get("nombre"), "at": now_utc()}
     await db.finance_collections.update_one({"collection_id": collection_id}, {"$set": {"reception.difference_status": "clarified", "reception.clarification": clarification}})
     await touch(collection_id, current_user, "cash_difference_clarified", {"note": clarification["note"]})
+    return await view(await load_collection(collection_id), current_user)
+
+
+# ------------------------------------------------------------------ P5: depósito de Tesorería
+class DepositInput(BaseModel):
+    deposit_date: date
+    bank_account_id: str
+    amount_cents: int = Field(gt=0, le=1_000_000_000)
+    reference: Optional[str] = Field(default=None, max_length=160)
+    note: Optional[str] = Field(default=None, max_length=500)
+
+
+async def cash_by_fund(collection: dict) -> dict:
+    """Efectivo recibido por fondo (la diferencia al recibir ajusta el Fondo General)."""
+    totals: dict = {}
+    async for item in db.finance_collection_items.find({"collection_id": collection["collection_id"], "status": "active", "method": "cash"}, {"_id": 0, "fund_id": 1, "amount_cents": 1}):
+        totals[item["fund_id"]] = totals.get(item["fund_id"], 0) + item["amount_cents"]
+    difference = (collection.get("reception") or {}).get("difference_vs_detail_cents") or 0
+    if difference:
+        general = await db.finance_funds.find_one({"code": "GENERAL"}, {"_id": 0, "fund_id": 1})
+        totals[general["fund_id"]] = totals.get(general["fund_id"], 0) + difference
+    return totals
+
+
+def deposit_balance(collection: dict, received_by_fund: dict) -> tuple[int, dict]:
+    pending = dict(received_by_fund)
+    for deposit in collection.get("deposits") or []:
+        for fund_id, amount in (deposit.get("fund_totals") or {}).items():
+            pending[fund_id] = pending.get(fund_id, 0) - amount
+    return sum(pending.values()), pending
+
+
+@router.post("/{collection_id}/deposits", response_model=dict, status_code=201)
+async def register_deposit(collection_id: str, payload: DepositInput, current_user: dict = Depends(treasurer)):
+    """Tesorería registra el depósito (monto, fecha, banco o cuenta y comprobante). Se compara con el efectivo
+    recibido y queda el saldo pendiente. Un fondo con banco designado (p. ej. Pro-Templo) va a su cuenta."""
+    from finance_engine import create_journal
+    collection = await load_collection(collection_id)
+    if collection.get("status") not in ("cash_received", "deposited"):
+        raise HTTPException(status_code=409, detail="Primero Tesorería debe confirmar que recibió el efectivo")
+    bank = await db.finance_accounts.find_one({"account_id": payload.bank_account_id, "account_type": "asset", "active": True}, {"_id": 0})
+    if not bank or bank.get("code") in ("1010", "1090"):
+        raise HTTPException(status_code=422, detail="Elija la cuenta de banco donde se depositó")
+    received = (collection.get("reception") or {}).get("received_cents") or 0
+    pending_total, pending = deposit_balance(collection, await cash_by_fund(collection))
+    if payload.amount_cents > pending_total:
+        raise HTTPException(status_code=422, detail=f"El depósito supera el efectivo pendiente de depositar ({pending_total / 100:.2f})")
+    funds = {doc["fund_id"]: doc async for doc in db.finance_funds.find({"fund_id": {"$in": list(pending)}}, {"_id": 0})}
+    eligible = [fund_id for fund_id, amount in pending.items() if amount > 0 and funds.get(fund_id, {}).get("default_bank_account_id") in (None, "", payload.bank_account_id)]
+    if payload.amount_cents > sum(pending[fund_id] for fund_id in eligible):
+        designated = [funds[fund_id]["name"] for fund_id, amount in pending.items() if amount > 0 and fund_id not in eligible]
+        raise HTTPException(status_code=409, detail=f"El efectivo de {', '.join(designated)} se deposita en su cuenta designada; separe el depósito")
+    remaining, fund_totals = payload.amount_cents, {}
+    for fund_id in sorted(eligible, key=lambda key: funds.get(key, {}).get("code") != "GENERAL"):
+        take = min(remaining, pending[fund_id])
+        if take > 0:
+            fund_totals[fund_id] = take
+            remaining -= take
+    accounts = {doc["code"]: doc["account_id"] async for doc in db.finance_accounts.find({"code": "1010"}, {"_id": 0, "code": 1, "account_id": 1})}
+    lines = []
+    for fund_id, amount in fund_totals.items():
+        lines += [{"account_id": payload.bank_account_id, "fund_id": fund_id, "debit_cents": amount, "credit_cents": 0, "description": "Depósito de la colecta"},
+                  {"account_id": accounts["1010"], "fund_id": fund_id, "debit_cents": 0, "credit_cents": amount, "description": "Depósito de la colecta"}]
+    deposit_id = str(uuid4())
+    now = now_utc()
+    journal = await create_journal(current_user["user_id"], payload.deposit_date.isoformat(), f"Depósito · colecta {collection['service_name']} {collection['service_date']}", "collection_deposit", deposit_id, lines, "submitted")
+    await db.finance_journal_entries.update_one({"entry_id": journal["entry_id"]}, {"$set": {"status": "posted", "posted_at": now, "posting_policy": "colecta_dos_personas",
+                                                                                           "is_test": bool(collection.get("is_test")), "updated_at": now}})
+    deposit = {"_id": deposit_id, "deposit_id": deposit_id, "collection_id": collection_id, "deposit_date": payload.deposit_date.isoformat(), "bank_account_id": payload.bank_account_id,
+               "total_cents": payload.amount_cents, "fund_totals": fund_totals, "reference": payload.reference, "note": payload.note, "journal_entry_id": journal["entry_id"],
+               "status": "pending_reconciliation", "is_test": bool(collection.get("is_test")), "contribution_ids": [], "created_by_user_id": current_user["user_id"],
+               "created_by_name": current_user.get("nombre"), "created_at": now, "updated_at": now}
+    await db.finance_deposits.insert_one(deposit)
+    summary_entry = {key: deposit[key] for key in ("deposit_id", "deposit_date", "bank_account_id", "total_cents", "fund_totals", "reference", "journal_entry_id", "created_by_name", "created_at")}
+    summary_entry["bank_name"] = f"{bank.get('code')} · {bank.get('name')}"
+    collection.setdefault("deposits", []).append(summary_entry)
+    left, _ = deposit_balance(collection, await cash_by_fund(collection))
+    update: dict = {"$push": {"deposits": summary_entry}, "$set": {"deposit_pending_cents": left, "cash_received_cents": received}}
+    if left == 0:
+        stage = {"stage": "deposited", "label": "Depositada", "by_user_id": current_user["user_id"], "by_name": current_user.get("nombre"), "at": now}
+        update["$set"]["status"] = "deposited"
+        update["$push"]["timeline"] = stage
+        await db.finance_contributions.update_many({"collection_id": collection_id, "status": "recorded", "payment_method": "cash"}, {"$set": {"deposit_id": deposit_id, "updated_at": now}})
+    await db.finance_collections.update_one({"collection_id": collection_id}, update)
+    await touch(collection_id, current_user, "deposit_registered", {"deposit_id": deposit_id, "amount_cents": payload.amount_cents, "pending_cents": left})
     return await view(await load_collection(collection_id), current_user)
