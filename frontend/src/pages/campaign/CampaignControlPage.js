@@ -14,7 +14,7 @@ import { CampaignMessagingPanel } from '../../components/campaign/CampaignMessag
 import { formatUsdCents } from '../../lib/campaignFormat';
 
 export default function CampaignControlPage() {
-  const { API, getAuthHeaders, token } = useAuth();
+  const { API, getAuthHeaders } = useAuth();
   const base = `${API}/api/campaigns/venycome`;
   const [settings, setSettings] = useState(null);
   const [summary, setSummary] = useState(null);
@@ -46,7 +46,18 @@ export default function CampaignControlPage() {
     return <div className="flex min-h-[50vh] items-center justify-center" data-testid="campaign-control-loading">Cargando panel de campaña…</div>;
   }
 
-  const screenUrl = `${window.location.origin}/campanas/ven-y-come/pantalla?token=${token}`;
+  // «Ver pantalla»: enlace de presentación temporal (12 h); nunca la sesión del usuario en la dirección.
+  const openScreen = async () => {
+    const screen = window.open('', '_blank');
+    try {
+      const { data } = await axios.post(`${base}/screen-link`, {}, getAuthHeaders());
+      const url = `${window.location.origin}/campanas/ven-y-come/pantalla?token=${encodeURIComponent(data.token)}`;
+      if (screen) screen.location.href = url; else window.location.assign(url);
+    } catch (error) {
+      if (screen) screen.close();
+      toast.error('No se pudo abrir la pantalla');
+    }
+  };
 
   return (
     <div className="space-y-6" data-testid="campaign-control-page">
@@ -59,7 +70,7 @@ export default function CampaignControlPage() {
           <Badge data-testid="campaign-mode-badge" className={settings.mode === 'production' ? 'bg-emerald-600' : 'bg-amber-500'}>
             {settings.mode === 'production' ? 'PRODUCCIÓN' : 'ENSAYO'}
           </Badge>
-          <Button variant="outline" size="sm" onClick={() => window.open(screenUrl, '_blank')} data-testid="campaign-open-screen-button">
+          <Button variant="outline" size="sm" onClick={openScreen} data-testid="campaign-open-screen-button">
             <ExternalLink className="h-4 w-4" />Ver pantalla
           </Button>
         </div>

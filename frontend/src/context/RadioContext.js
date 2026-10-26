@@ -217,8 +217,35 @@ export function RadioProvider({ children }) {
     clearTimeout(r.retryTimer);
     const token = localStorage.getItem('token') || '';
     if (!token) return;
+    if (r.ticketPending) return;
     setStatus((current) => (current === 'online' ? current : 'connecting'));
-    const ws = new WebSocket(`${API.replace(/^http/, 'ws')}/api/radio/ws/${r.channelId}?token=${encodeURIComponent(token)}`);
+    const channelId = r.channelId;
+    const retryLater = () => {
+      setStatus(navigator.onLine === false ? 'offline' : 'connecting');
+      const delay = [800, 2000, 4000, 8000, 15000][Math.min(r.retry, 4)];
+      r.retry += 1;
+      r.retryTimer = setTimeout(connect, delay);
+    };
+    // Boleto de UN SOLO USO (60 s) para abrir el canal: la sesión nunca va en la dirección del WebSocket.
+    r.ticketPending = true;
+    fetch(`${API}/api/radio/ticket/${channelId}`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } })
+      .then((response) => response.json().catch(() => ({})).then((data) => {
+        if (!response.ok) { const failure = new Error(typeof data.detail === 'string' ? data.detail : 'Sin acceso al canal'); failure.status = response.status; throw failure; }
+        return data.ticket;
+      }))
+      .then((ticket) => { r.ticketPending = false; if (r.channelId === channelId && !r.fatal) openSocket(ticket); })
+      .catch((failure) => {
+        r.ticketPending = false;
+        if (r.channelId !== channelId) return;
+        // Sin acceso (no participa, cerrado, fuera de fecha, sesión vencida): no se reintenta. Sin red: se reintenta.
+        if (failure.status && failure.status < 500 && failure.status !== 429) { r.fatal = true; setError(failure.message); setStatus('error'); return; }
+        retryLater();
+      });
+  }, [API, r]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const openSocket = (ticket) => {
+    const ws = new WebSocket(`${API.replace(/^http/, 'ws')}/api/radio/ws/${r.channelId}?ticket=${encodeURIComponent(ticket)}`);
     ws.binaryType = 'arraybuffer';
     r.ws = ws;
     ws.onopen = () => { r.retry = 0; r.lastSeen = Date.now(); };
@@ -266,7 +293,7 @@ export function RadioProvider({ children }) {
       if (Date.now() - r.lastSeen > STALE_MS) { try { ws.close(); } catch (error) { /* nada */ } return; }
       try { ws.send(JSON.stringify({ type: 'ping' })); } catch (error) { /* nada */ }
     }, PING_MS);
-  }, [API, r]);
+  };
 
   useEffect(() => {
     r.fatal = false; r.retry = 0;

@@ -15,7 +15,16 @@ export default function CampaignScreenPage() {
   const [searchParams] = useSearchParams();
   const { token: sessionToken, user, loading: authLoading } = useAuth();
   const urlToken = searchParams.get('token');
-  const resolvedToken = urlToken || (user ? sessionToken : null);
+  // Sin enlace en la dirección y con sesión: se pide un enlace de presentación temporal (12 h).
+  // La sesión del usuario ya no viaja en la dirección ni en el WebSocket.
+  const [screenToken, setScreenToken] = useState(null);
+  useEffect(() => {
+    if (urlToken || !user || !sessionToken || screenToken) return;
+    axios.post(`${API}/api/campaigns/venycome/screen-link`, {}, { headers: { Authorization: `Bearer ${sessionToken}` } })
+      .then(({ data }) => setScreenToken(data.token))
+      .catch(() => setScreenToken(null));
+  }, [urlToken, user, sessionToken, screenToken]);
+  const resolvedToken = urlToken || screenToken;
 
   const [summary, setSummary] = useState(null);
   const [connected, setConnected] = useState(false);

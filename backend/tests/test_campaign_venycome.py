@@ -284,10 +284,18 @@ class TestPublic:
         r2 = requests.get(f"{API}/public/summary", params={"token": token})
         assert r2.status_code == 403
 
-    def test_public_summary_with_user_jwt(self, pastor_jwt):
+    def test_public_summary_rejects_user_jwt(self, pastor_jwt):
+        # La sesión de un usuario ya no sirve como enlace público (quedaba en historial, proyector y registros).
         r = requests.get(f"{API}/public/summary", params={"token": pastor_jwt})
-        assert r.status_code == 200
-        assert "percent" in r.json()
+        assert r.status_code == 403
+
+    def test_screen_link_is_temporary_and_hidden(self, pastor_headers):
+        created = requests.post(f"{API}/screen-link", headers=pastor_headers)
+        assert created.status_code == 201, created.text
+        token = created.json()["token"]
+        assert requests.get(f"{API}/public/summary", params={"token": token}).status_code == 200
+        listed = requests.get(f"{API}/presentation-links", headers=pastor_headers).json()["items"]
+        assert all(item.get("token") != token for item in listed)
 
     def test_list_presentation_links(self, pastor_headers):
         r = requests.get(f"{API}/presentation-links", headers=pastor_headers)
