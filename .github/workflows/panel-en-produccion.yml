@@ -1,0 +1,48 @@
+# ¿Ya está en producción? Espera (hasta 30 min) a que el panel publicado en Railway sirva un
+# texto que solo existe en el cambio nuevo y dice a qué hora apareció. No cambia nada.
+name: Panel · ¿Ya está en producción?
+
+on:
+  push:
+    branches: ['claude/**']
+    paths: ['.github/workflows/panel-en-produccion.yml']
+  workflow_dispatch:
+    inputs:
+      texto:
+        description: 'Texto que debe aparecer en el código del panel publicado'
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  esperar:
+    name: Esperar el despliegue
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      # Por defecto: el registro de tabletas rediseñado (#142).
+      TEXTO: ${{ github.event.inputs.texto || 'kiosk-requests-help' }}
+    steps:
+      - name: Buscar el cambio en https://panel.iglesiavenyve.org
+        run: |
+          for i in $(seq 1 60); do
+            MAIN=$(curl -fsS "https://panel.iglesiavenyve.org/r/PRUEBA?t=$(date +%s)" | grep -o '/static/js/main\.[0-9a-f]*\.js' | head -1)
+            if [ -n "$MAIN" ]; then
+              FOUND=no
+              # El texto puede estar en el archivo principal o en una parte que se carga aparte.
+              if curl -fsS "https://panel.iglesiavenyve.org$MAIN" | grep -q "$TEXTO"; then FOUND=yes; fi
+              if [ "$FOUND" = no ]; then
+                for part in $(curl -fsS "https://panel.iglesiavenyve.org/asset-manifest.json" | grep -o '/static/js/[0-9]*\.[0-9a-f]*\.chunk\.js' | sort -u); do
+                  if curl -fsS "https://panel.iglesiavenyve.org$part" | grep -q "$TEXTO"; then FOUND=yes; break; fi
+                done
+              fi
+              if [ "$FOUND" = yes ]; then echo "EN PRODUCCIÓN desde $(TZ=America/New_York date '+%Y-%m-%d %H:%M %Z') ($MAIN)"; exit 0; fi
+              echo "$(date -u +%H:%M) todavía no ($MAIN)"
+            else
+              echo "$(date -u +%H:%M) el panel no respondió"
+            fi
+            sleep 30
+          done
+          echo "::error::Después de 30 minutos el panel todavía no tiene el cambio."
+          exit 1
