@@ -13,8 +13,8 @@ from pymongo import MongoClient
 
 
 # Module: public endpoint configuration and helper routines
-BASE_URL = (os.environ.get("REACT_APP_BACKEND_URL") or dotenv_values("/app/frontend/.env").get("REACT_APP_BACKEND_URL") or "").rstrip("/")
-BACKEND_ENV = dotenv_values("/app/backend/.env")
+BASE_URL = (os.environ.get("REACT_APP_BACKEND_URL") or {**os.environ, **dotenv_values("/app/frontend/.env")}.get("REACT_APP_BACKEND_URL") or "").rstrip("/")
+BACKEND_ENV = {**os.environ, **dotenv_values("/app/backend/.env")}
 PASTOR_EMAIL = "coreqa.pastor@example.com"
 PASTOR_PASSWORD = "CoreQA2026!Pastor"
 

@@ -1,4 +1,5 @@
 """Cleanup verificable para fixtures QA de Junta restringida."""
+import os
 import re
 
 from bson import ObjectId
@@ -7,7 +8,7 @@ from gridfs import GridFSBucket
 from pymongo import MongoClient
 
 
-ENV = dotenv_values("/app/backend/.env")
+ENV = {**os.environ, **dotenv_values("/app/backend/.env")}
 
 
 def test_cleanup_iteration39_qa_fixtures_and_gridfs():

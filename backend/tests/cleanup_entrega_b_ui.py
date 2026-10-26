@@ -1,9 +1,10 @@
 """Cleanup of seed_entrega_b_ui.py / test_entrega_b_public_api.py artifacts (qa.entregab.t41.* users)."""
+import os
 import re
 from dotenv import dotenv_values
 from pymongo import MongoClient
 
-env = dotenv_values("/app/backend/.env")
+env = {**os.environ, **dotenv_values("/app/backend/.env")}
 db = MongoClient(env["MONGO_URL"])[env["DB_NAME"]]
 users = list(db.users.find({"email": {"$regex": r"^qa\.entregab\.t41\."}}, {"_id": 1, "person_id": 1}))
 pids = [u.get("person_id") for u in users if u.get("person_id")]

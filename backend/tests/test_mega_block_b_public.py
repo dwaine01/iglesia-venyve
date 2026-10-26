@@ -12,8 +12,8 @@ from pymongo import MongoClient
 
 
 # Module: public URL + fixed QA credentials loaded from memory/test_credentials.md
-FRONTEND_ENV = dotenv_values("/app/frontend/.env")
-BACKEND_ENV = dotenv_values("/app/backend/.env")
+FRONTEND_ENV = {**os.environ, **dotenv_values("/app/frontend/.env")}
+BACKEND_ENV = {**os.environ, **dotenv_values("/app/backend/.env")}
 MONGO_URL = BACKEND_ENV["MONGO_URL"]
 DB_NAME = BACKEND_ENV["DB_NAME"]
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL") or FRONTEND_ENV.get("REACT_APP_BACKEND_URL")
@@ -28,7 +28,7 @@ PERSONA_PASSWORD = "CoreQA2026!Member"
 LEADER_EMAIL = "access01.ui@example.com"
 LEADER_PASSWORD = "Access01UiTest!"
 
-BACKEND_ENV = dotenv_values("/app/backend/.env")
+BACKEND_ENV = {**os.environ, **dotenv_values("/app/backend/.env")}
 MONGO_URL = (os.environ.get("MONGO_URL") or BACKEND_ENV.get("MONGO_URL") or "").strip('"')
 DB_NAME = (os.environ.get("DB_NAME") or BACKEND_ENV.get("DB_NAME") or "").strip('"')
 

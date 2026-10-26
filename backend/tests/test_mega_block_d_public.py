@@ -12,8 +12,8 @@ from bson import ObjectId
 from dotenv import dotenv_values
 from pymongo import MongoClient
 
-BASE_URL = (os.environ.get("REACT_APP_BACKEND_URL") or dotenv_values("/app/frontend/.env")["REACT_APP_BACKEND_URL"]).rstrip("/")
-ENV = dotenv_values("/app/backend/.env"); RUN = uuid.uuid4().hex[:8]
+BASE_URL = (os.environ.get("REACT_APP_BACKEND_URL") or {**os.environ, **dotenv_values("/app/frontend/.env")}["REACT_APP_BACKEND_URL"]).rstrip("/")
+ENV = {**os.environ, **dotenv_values("/app/backend/.env")}; RUN = uuid.uuid4().hex[:8]
 CREDS = {"pastor": ("coreqa.pastor@example.com", "CoreQA2026!Pastor"), "leader": ("coreqa.leader@example.com", "CoreQA2026!Leader"), "member": ("coreqa.member@example.com", "CoreQA2026!Member")}
 
 

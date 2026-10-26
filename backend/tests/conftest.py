@@ -35,6 +35,14 @@ if "test" not in _db_name.lower() or os.environ.get("RAILWAY_ENVIRONMENT") or os
                      "Las pruebas nunca deben escribir en producción.")
 
 
+# Muchas pruebas hablan por HTTP con REACT_APP_BACKEND_URL: solo se permite un servidor local
+# (auditoría, datos 1.2). Un candado de base «test» no sirve si las peticiones van a producción.
+_backend_url = (os.environ.get("REACT_APP_BACKEND_URL") or "").lower()
+if _backend_url and not any(host in _backend_url for host in ("://localhost", "://127.0.0.1", "://0.0.0.0")):
+    raise SystemExit(f"Pruebas bloqueadas: REACT_APP_BACKEND_URL={_backend_url!r} no es un servidor local. "
+                     "Las pruebas nunca deben escribir en producción.")
+
+
 def create_persona_account(email: str, password: str, nombre: str = "QA Persona") -> None:
     """Cuenta Persona de prueba directo en la base de PRUEBAS (el registro libre está cerrado)."""
     client = MongoClient(os.environ["MONGO_URL"])

@@ -9,7 +9,7 @@ import requests
 from dotenv import dotenv_values
 
 
-BASE_URL = os.environ.get("REACT_APP_BACKEND_URL") or dotenv_values("/app/frontend/.env").get("REACT_APP_BACKEND_URL")
+BASE_URL = os.environ.get("REACT_APP_BACKEND_URL") or {**os.environ, **dotenv_values("/app/frontend/.env")}.get("REACT_APP_BACKEND_URL")
 BASE_URL_NORM = BASE_URL.rstrip("/") if BASE_URL else None
 QA_EMAIL = "qa.geo.ui@example.com"
 QA_PASSWORD = "GeoUI2026!"

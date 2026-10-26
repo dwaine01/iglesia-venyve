@@ -14,10 +14,10 @@ from dotenv import dotenv_values
 from pymongo import MongoClient
 
 
-FRONTEND_ENV = dotenv_values("/app/frontend/.env")
+FRONTEND_ENV = {**os.environ, **dotenv_values("/app/frontend/.env")}
 BASE_URL = (os.environ.get("REACT_APP_BACKEND_URL") or FRONTEND_ENV.get("REACT_APP_BACKEND_URL") or "").rstrip("/")
-MONGO_URL = (os.environ.get("MONGO_URL") or dotenv_values("/app/backend/.env").get("MONGO_URL") or "").strip('"')
-DB_NAME = (os.environ.get("DB_NAME") or dotenv_values("/app/backend/.env").get("DB_NAME") or "").strip('"')
+MONGO_URL = (os.environ.get("MONGO_URL") or {**os.environ, **dotenv_values("/app/backend/.env")}.get("MONGO_URL") or "").strip('"')
+DB_NAME = (os.environ.get("DB_NAME") or {**os.environ, **dotenv_values("/app/backend/.env")}.get("DB_NAME") or "").strip('"')
 
 
 def _db():

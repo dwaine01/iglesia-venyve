@@ -12,7 +12,7 @@ from dotenv import dotenv_values
 
 
 # Module: public backend URL health validation
-BASE_URL = (os.environ.get("REACT_APP_BACKEND_URL") or dotenv_values("/app/frontend/.env").get("REACT_APP_BACKEND_URL") or "")
+BASE_URL = (os.environ.get("REACT_APP_BACKEND_URL") or {**os.environ, **dotenv_values("/app/frontend/.env")}.get("REACT_APP_BACKEND_URL") or "")
 
 
 def _railway_min_env() -> dict:

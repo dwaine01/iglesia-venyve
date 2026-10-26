@@ -9,7 +9,7 @@ from dotenv import dotenv_values
 
 
 # Public URL regression for direct membership, import DRY-RUN and minicenso flows.
-FRONTEND_ENV = dotenv_values("/app/frontend/.env")
+FRONTEND_ENV = {**os.environ, **dotenv_values("/app/frontend/.env")}
 BASE_URL = (os.environ.get("REACT_APP_BACKEND_URL") or FRONTEND_ENV.get("REACT_APP_BACKEND_URL") or "").rstrip("/")
 
 PASTOR_EMAIL = "qa.features.pastor@example.com"

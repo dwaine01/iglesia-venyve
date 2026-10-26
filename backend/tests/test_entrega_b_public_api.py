@@ -12,8 +12,8 @@ from bson import ObjectId
 from dotenv import dotenv_values
 from pymongo import MongoClient
 
-FRONT_ENV = dotenv_values("/app/frontend/.env")
-BACK_ENV = dotenv_values("/app/backend/.env")
+FRONT_ENV = {**os.environ, **dotenv_values("/app/frontend/.env")}
+BACK_ENV = {**os.environ, **dotenv_values("/app/backend/.env")}
 BASE_URL = FRONT_ENV["REACT_APP_BACKEND_URL"].rstrip("/")
 API = f"{BASE_URL}/api/processes/consolidation"
 PASSWORD = "EntregaBT41Pass!"
