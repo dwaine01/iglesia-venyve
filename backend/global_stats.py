@@ -430,7 +430,7 @@ async def contributions_by_type(first: date, last: date) -> dict:
     """Igual que el reporte «contributions» de Finanzas: sin las corregidas, por fecha de recibido."""
     totals: dict = defaultdict(int)
     async for row in db.finance_contributions.aggregate([
-        {"$match": {"status": {"$ne": "corrected"}, "received_date": {"$gte": first.isoformat(), "$lte": last.isoformat()}}},
+        {"$match": {"status": {"$ne": "corrected"}, "is_test": {"$ne": True}, "received_date": {"$gte": first.isoformat(), "$lte": last.isoformat()}}},
         {"$unwind": "$allocations"},
         {"$group": {"_id": {"$ifNull": ["$allocations.contribution_type", "$contribution_type"]}, "amount": {"$sum": "$allocations.amount_cents"}}}]):
         totals[row["_id"] or "other"] += row["amount"]
@@ -441,7 +441,7 @@ async def income_expense(first: date, last: date) -> dict:
     """Igual que el reporte «income-expense» de Finanzas: asientos contabilizados por fecha contable."""
     result = {"revenue": 0, "expense": 0}
     async for row in db.finance_journal_entries.aggregate([
-        {"$match": {"status": "posted", "entry_date": {"$gte": first.isoformat(), "$lte": last.isoformat()}}}, {"$unwind": "$lines"},
+        {"$match": {"status": "posted", "is_test": {"$ne": True}, "entry_date": {"$gte": first.isoformat(), "$lte": last.isoformat()}}}, {"$unwind": "$lines"},
         {"$lookup": {"from": "finance_accounts", "localField": "lines.account_id", "foreignField": "account_id", "as": "account"}}, {"$unwind": "$account"},
         {"$group": {"_id": "$account.account_type", "debit": {"$sum": "$lines.debit_cents"}, "credit": {"$sum": "$lines.credit_cents"}}}]):
         if row["_id"] == "revenue":
@@ -482,7 +482,7 @@ async def finance(period: Literal["today", "week", "month", "quarter", "year", "
     # Tendencia: por semana (períodos de hasta 3 meses) o por mes.
     by_month = p["days"] > 93
     buckets: dict = defaultdict(lambda: defaultdict(int))
-    async for item in db.finance_contributions.find({"status": {"$ne": "corrected"}, "received_date": {"$gte": p["first"].isoformat(), "$lte": p["last"].isoformat()}}, {"_id": 0, "received_date": 1, "allocations": 1, "contribution_type": 1}):
+    async for item in db.finance_contributions.find({"status": {"$ne": "corrected"}, "is_test": {"$ne": True}, "received_date": {"$gte": p["first"].isoformat(), "$lte": p["last"].isoformat()}}, {"_id": 0, "received_date": 1, "allocations": 1, "contribution_type": 1}):
         day = date.fromisoformat(str(item["received_date"])[:10])
         key = day.strftime("%Y-%m") if by_month else (day - timedelta(days=day.weekday())).isoformat()
         for allocation in item.get("allocations") or []:
@@ -494,10 +494,10 @@ async def finance(period: Literal["today", "week", "month", "quarter", "year", "
     async for campaign in db.finance_campaigns.find({}, {"_id": 0}).sort("start_date", -1).limit(100):
         cid = campaign["campaign_id"]
         raised = 0
-        async for item in db.finance_contributions.find({"status": {"$ne": "corrected"}, "$or": [{"campaign_id": cid}, {"allocations.campaign_id": cid}]}, {"_id": 0, "campaign_id": 1, "allocations": 1}):
+        async for item in db.finance_contributions.find({"status": {"$ne": "corrected"}, "is_test": {"$ne": True}, "$or": [{"campaign_id": cid}, {"allocations.campaign_id": cid}]}, {"_id": 0, "campaign_id": 1, "allocations": 1}):
             raised += sum(allocation.get("amount_cents") or 0 for allocation in item.get("allocations") or [] if (allocation.get("campaign_id") or item.get("campaign_id")) == cid)
         spent = 0
-        async for row in db.finance_journal_entries.aggregate([{"$match": {"status": "posted", "lines.campaign_id": cid}}, {"$unwind": "$lines"}, {"$match": {"lines.campaign_id": cid}},
+        async for row in db.finance_journal_entries.aggregate([{"$match": {"status": "posted", "is_test": {"$ne": True}, "lines.campaign_id": cid}}, {"$unwind": "$lines"}, {"$match": {"lines.campaign_id": cid}},
                                                                {"$lookup": {"from": "finance_accounts", "localField": "lines.account_id", "foreignField": "account_id", "as": "account"}}, {"$unwind": "$account"},
                                                                {"$match": {"account.account_type": "expense"}}, {"$group": {"_id": None, "debit": {"$sum": "$lines.debit_cents"}, "credit": {"$sum": "$lines.credit_cents"}}}]):
             spent += row["debit"] - row["credit"]

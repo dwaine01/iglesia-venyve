@@ -234,7 +234,7 @@ def fiscal_year_bounds(today: date, start_month: int) -> tuple[date, date, int]:
 
 async def posted_expense_cents(start: str, end: str) -> int:
     rows = await db.finance_journal_entries.aggregate([
-        {"$match": {"status": "posted", "entry_date": {"$gte": start, "$lte": end}}}, {"$unwind": "$lines"},
+        {"$match": {"status": "posted", "is_test": {"$ne": True}, "entry_date": {"$gte": start, "$lte": end}}}, {"$unwind": "$lines"},
         {"$lookup": {"from": "finance_accounts", "localField": "lines.account_id", "foreignField": "account_id", "as": "account"}}, {"$unwind": "$account"},
         {"$match": {"account.account_type": "expense"}}, {"$group": {"_id": None, "debits": {"$sum": "$lines.debit_cents"}, "credits": {"$sum": "$lines.credit_cents"}}}]).to_list(1)
     return (rows[0]["debits"] - rows[0]["credits"]) if rows else 0
@@ -242,7 +242,7 @@ async def posted_expense_cents(start: str, end: str) -> int:
 
 async def asset_balances_by_code() -> dict:
     rows = await db.finance_journal_entries.aggregate([
-        {"$match": {"status": "posted"}}, {"$unwind": "$lines"},
+        {"$match": {"status": "posted", "is_test": {"$ne": True}}}, {"$unwind": "$lines"},
         {"$lookup": {"from": "finance_accounts", "localField": "lines.account_id", "foreignField": "account_id", "as": "account"}}, {"$unwind": "$account"},
         {"$match": {"account.account_type": "asset"}}, {"$group": {"_id": "$account.code", "debits": {"$sum": "$lines.debit_cents"}, "credits": {"$sum": "$lines.credit_cents"}}}]).to_list(500)
     return {row["_id"]: row["debits"] - row["credits"] for row in rows}
@@ -258,7 +258,7 @@ async def void_journal(entry_id: str, user_id: str, reason: str) -> None:
 
 @router.get("/dashboard", response_model=dict)
 async def dashboard(current_user: dict = Depends(reader)):
-    pipeline = [{"$match": {"status": "posted"}}, {"$unwind": "$lines"}, {"$lookup": {"from": "finance_accounts", "localField": "lines.account_id", "foreignField": "account_id", "as": "account"}}, {"$unwind": "$account"}, {"$group": {"_id": {"fund_id": "$lines.fund_id", "account_type": "$account.account_type"}, "debits": {"$sum": "$lines.debit_cents"}, "credits": {"$sum": "$lines.credit_cents"}}}]
+    pipeline = [{"$match": {"status": "posted", "is_test": {"$ne": True}}}, {"$unwind": "$lines"}, {"$lookup": {"from": "finance_accounts", "localField": "lines.account_id", "foreignField": "account_id", "as": "account"}}, {"$unwind": "$account"}, {"$group": {"_id": {"fund_id": "$lines.fund_id", "account_type": "$account.account_type"}, "debits": {"$sum": "$lines.debit_cents"}, "credits": {"$sum": "$lines.credit_cents"}}}]
     rows = await db.finance_journal_entries.aggregate(pipeline).to_list(5000); balances_by_fund = {}
     for row in rows:
         account_type = row["_id"]["account_type"]
@@ -485,7 +485,7 @@ async def enrich_campaign_names(items: list) -> list:
 
 @router.get("/contributions", response_model=dict)
 async def contributions(current_user: dict = Depends(reader)):
-    items = await db.finance_contributions.find({"status": {"$ne": "corrected"}}, {"_id": 0}).sort("received_date", -1).to_list(3000)
+    items = await db.finance_contributions.find({"status": {"$ne": "corrected"}, "is_test": {"$ne": True}}, {"_id": 0}).sort("received_date", -1).to_list(3000)
     items = await enrich_campaign_names(items)
     if not can_see_donors(current_user):
         return {"items": serialize([without_donor(item) for item in items]), "donors_hidden": True}
@@ -500,7 +500,7 @@ async def person_contributions(person_id: str, scope: Literal["person", "family"
         memberships = await db.household_memberships.find({"person_id": person_id, "active": {"$ne": False}}, {"_id": 0, "household_id": 1}).to_list(100)
         household_ids = [item["household_id"] for item in memberships]
         if household_ids: person_ids = await db.household_memberships.distinct("person_id", {"household_id": {"$in": household_ids}, "active": {"$ne": False}})
-    items = await db.finance_contributions.find({"person_id": {"$in": person_ids}, "status": {"$ne": "corrected"}}, {"_id": 0}).sort("received_date", -1).to_list(5000)
+    items = await db.finance_contributions.find({"person_id": {"$in": person_ids}, "status": {"$ne": "corrected"}, "is_test": {"$ne": True}}, {"_id": 0}).sort("received_date", -1).to_list(5000)
     items = await enrich_campaign_names(items)
     await log_donor_view(current_user, "person_profile_contributions", person_id, {"scope": scope})
     return {"scope": scope, "person_ids": person_ids, "total_cents": sum(item.get("amount_cents", 0) for item in items), "items": serialize(items)}
@@ -937,7 +937,7 @@ async def reconciliation_create(payload: ReconciliationCreate, current_user: dic
 
 @router.get("/reports/{report_key}", response_model=dict)
 async def report(report_key: Literal["income-expense", "fund-balances", "budget-vs-actual", "activity", "financial-position", "cash-flow", "contributions", "contributions-by-family", "expenses-by-ministry", "payables", "deposits", "reconciliations", "recurring", "audit"], start: Optional[str] = None, end: Optional[str] = None, current_user: dict = Depends(reader)):
-    match = {"status": "posted"}
+    match = {"status": "posted", "is_test": {"$ne": True}}
     if start or end: match["entry_date"] = {**({"$gte": start} if start else {}), **({"$lte": end} if end else {})}
     if report_key == "audit":
         events = await db.finance_audit_events.find({}, {"_id": 0}).sort("created_at", -1).limit(5000).to_list(5000)
@@ -957,7 +957,7 @@ async def report(report_key: Literal["income-expense", "fund-balances", "budget-
     if report_key == "recurring":
         return {"items": serialize(await db.finance_recurring_obligations.find({}, {"_id": 0}).sort("next_due_date", 1).to_list(5000))}
     if report_key == "contributions":
-        pipeline = [{"$match": {"status": {"$ne": "corrected"}, **({"received_date": match["entry_date"]} if "entry_date" in match else {})}}, {"$unwind": "$allocations"}, {"$lookup": {"from": "finance_funds", "localField": "allocations.fund_id", "foreignField": "fund_id", "as": "fund"}}, {"$unwind": "$fund"}, {"$group": {"_id": {"contribution_type": {"$ifNull": ["$allocations.contribution_type", "$contribution_type"]}, "fund_id": "$allocations.fund_id", "fund_name": "$fund.name", "payment_method": "$payment_method"}, "amount_cents": {"$sum": "$allocations.amount_cents"}, "count": {"$sum": 1}}}]; return {"items": serialize(await db.finance_contributions.aggregate(pipeline).to_list(1000))}
+        pipeline = [{"$match": {"status": {"$ne": "corrected"}, "is_test": {"$ne": True}, **({"received_date": match["entry_date"]} if "entry_date" in match else {})}}, {"$unwind": "$allocations"}, {"$lookup": {"from": "finance_funds", "localField": "allocations.fund_id", "foreignField": "fund_id", "as": "fund"}}, {"$unwind": "$fund"}, {"$group": {"_id": {"contribution_type": {"$ifNull": ["$allocations.contribution_type", "$contribution_type"]}, "fund_id": "$allocations.fund_id", "fund_name": "$fund.name", "payment_method": "$payment_method"}, "amount_cents": {"$sum": "$allocations.amount_cents"}, "count": {"$sum": 1}}}]; return {"items": serialize(await db.finance_contributions.aggregate(pipeline).to_list(1000))}
     if report_key == "contributions-by-family":
         require_donor_access(current_user)  # por familia = por persona: solo la pastora
         await log_donor_view(current_user, "report_contributions_by_family", detail={"start": start, "end": end})
