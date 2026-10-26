@@ -222,6 +222,40 @@ class BatchVarianceResolution(BaseModel):
     reason: str = Field(min_length=5, max_length=1000)
 
 
+def fiscal_year_bounds(today: date, start_month: int) -> tuple[date, date, int]:
+    """Año fiscal que contiene `today` (se nombra por el año en que empieza)."""
+    start_month = start_month if 1 <= start_month <= 12 else 1
+    year = today.year if today.month >= start_month else today.year - 1
+    start = date(year, start_month, 1)
+    end = date(year + 1, start_month, 1) if start_month > 1 else date(year + 1, 1, 1)
+    from datetime import timedelta
+    return start, end - timedelta(days=1), year
+
+
+async def posted_expense_cents(start: str, end: str) -> int:
+    rows = await db.finance_journal_entries.aggregate([
+        {"$match": {"status": "posted", "entry_date": {"$gte": start, "$lte": end}}}, {"$unwind": "$lines"},
+        {"$lookup": {"from": "finance_accounts", "localField": "lines.account_id", "foreignField": "account_id", "as": "account"}}, {"$unwind": "$account"},
+        {"$match": {"account.account_type": "expense"}}, {"$group": {"_id": None, "debits": {"$sum": "$lines.debit_cents"}, "credits": {"$sum": "$lines.credit_cents"}}}]).to_list(1)
+    return (rows[0]["debits"] - rows[0]["credits"]) if rows else 0
+
+
+async def asset_balances_by_code() -> dict:
+    rows = await db.finance_journal_entries.aggregate([
+        {"$match": {"status": "posted"}}, {"$unwind": "$lines"},
+        {"$lookup": {"from": "finance_accounts", "localField": "lines.account_id", "foreignField": "account_id", "as": "account"}}, {"$unwind": "$account"},
+        {"$match": {"account.account_type": "asset"}}, {"$group": {"_id": "$account.code", "debits": {"$sum": "$lines.debit_cents"}, "credits": {"$sum": "$lines.credit_cents"}}}]).to_list(500)
+    return {row["_id"]: row["debits"] - row["credits"] for row in rows}
+
+
+async def void_journal(entry_id: str, user_id: str, reason: str) -> None:
+    """F2: un asiento que no debe contar se ANULA (queda con motivo y auditoría); nunca se borra."""
+    now = now_utc()
+    await db.finance_journal_entries.update_one({"entry_id": entry_id, "status": {"$ne": "posted"}},
+                                                {"$set": {"status": "voided", "void_reason": reason, "voided_by_user_id": user_id, "voided_at": now, "updated_at": now}})
+    await audit(user_id, "journal_voided", "journal_entry", entry_id, {"reason": reason})
+
+
 @router.get("/dashboard", response_model=dict)
 async def dashboard(current_user: dict = Depends(reader)):
     pipeline = [{"$match": {"status": "posted"}}, {"$unwind": "$lines"}, {"$lookup": {"from": "finance_accounts", "localField": "lines.account_id", "foreignField": "account_id", "as": "account"}}, {"$unwind": "$account"}, {"$group": {"_id": {"fund_id": "$lines.fund_id", "account_type": "$account.account_type"}, "debits": {"$sum": "$lines.debit_cents"}, "credits": {"$sum": "$lines.credit_cents"}}}]
@@ -240,20 +274,32 @@ async def dashboard(current_user: dict = Depends(reader)):
         {"status": {"$nin": ["paid", "rejected", "void"]}},
         {"_id": 0, "total_cents": 1, "due_date": 1, "status": 1},
     ).to_list(5000)
-    budget_total_cents = sum(item.get("amount_cents", 0) for item in await db.finance_budgets.find({}, {"_id": 0, "amount_cents": 1}).to_list(5000))
-    upcoming_date = date.today().isoformat()
+    from count_rules import church_today
+    today = await church_today()
+    upcoming_date = today.isoformat()
+    # F2: presupuesto y gasto del MISMO año fiscal (antes: todos los años contra toda la historia).
+    settings = await db.finance_settings.find_one({"_id": "primary"}, {"_id": 0, "fiscal_year_start_month": 1}) or {}
+    fy_start, fy_end, fiscal_year = fiscal_year_bounds(today, int(settings.get("fiscal_year_start_month") or 1))
+    budget_total_cents = sum(item.get("amount_cents", 0) for item in await db.finance_budgets.find({"fiscal_year": fiscal_year}, {"_id": 0, "amount_cents": 1}).to_list(5000))
+    fiscal_expense_cents = await posted_expense_cents(fy_start.isoformat(), fy_end.isoformat())
+    asset_balances = await asset_balances_by_code()
+    undeposited_cents = asset_balances.get("1010", 0)
     upcoming_expenses = sum(1 for item in unpaid_items if item.get("due_date") and item["due_date"] >= upcoming_date)
     upcoming_recurring = await db.finance_recurring_obligations.count_documents({"active": True, "next_due_date": {"$gte": upcoming_date}})
     return {
         "fund_balances": [{"fund_id": fund_id, "fund_name": funds.get(fund_id, {}).get("name", "Fondo"), "balance_cents": amount} for fund_id, amount in balances_by_fund.items()],
         "income_cents": income_cents,
         "expense_cents": expense_cents,
-        "cash_cents": cash_cents,
+        "cash_cents": cash_cents,  # todas las cuentas de activo (compatibilidad)
+        "undeposited_cents": undeposited_cents,  # recibido y aún no depositado
+        "bank_and_cash_cents": cash_cents - undeposited_cents,  # en banco y en caja
+        "fiscal_year": fiscal_year, "fiscal_year_from": fy_start.isoformat(), "fiscal_year_to": fy_end.isoformat(),
+        "fiscal_expense_cents": fiscal_expense_cents,
         "net_cents": income_cents - expense_cents,
         "outstanding_payables_cents": sum(item.get("total_cents", 0) for item in unpaid_items),
         "upcoming_payments": upcoming_expenses + upcoming_recurring,
         "budget_total_cents": budget_total_cents,
-        "budget_remaining_cents": budget_total_cents - expense_cents,
+        "budget_remaining_cents": budget_total_cents - fiscal_expense_cents,
         "pending_entries": await db.finance_journal_entries.count_documents({"status": {"$in": ["submitted", "reviewed"]}}),
         "unreconciled_deposits": await db.finance_deposits.count_documents({"status": {"$ne": "reconciled"}}),
         "unpaid_expenses": len(unpaid_items),
@@ -540,8 +586,7 @@ async def contribution_create(payload: ContributionCreate, current_user: dict = 
     doc = {"_id": contribution_id, "contribution_id": contribution_id, **contribution_data, "journal_entry_id": journal["entry_id"], "deposit_id": None, "batch_id": payload.batch_id, "status": "recorded", "created_by_user_id": current_user["user_id"], "updated_by_user_id": current_user["user_id"], "created_at": now, "updated_at": now}
     try: await db.finance_contributions.insert_one(doc)
     except DuplicateKeyError:
-        await db.finance_journal_entries.delete_one({"entry_id": journal["entry_id"]})
-        await db.finance_audit_events.delete_many({"entity_type": "journal_entry", "entity_id": journal["entry_id"]})
+        await void_journal(journal["entry_id"], current_user["user_id"], "Transacción externa duplicada: la contribución no se registró")
         raise HTTPException(status_code=409, detail="La transacción externa ya fue importada")
     if payload.batch_id:
         await db.finance_batches.update_one({"batch_id": payload.batch_id}, {"$addToSet": {"contribution_ids": contribution_id}})
@@ -613,8 +658,8 @@ async def batches(current_user: dict = Depends(reader)):
 
 @router.post("/batches", response_model=dict, status_code=201)
 async def batch_create(payload: BatchCreate, current_user: dict = Depends(manager)):
-    contributions = await db.finance_contributions.find({"contribution_id": {"$in": payload.contribution_ids}, "batch_id": {"$in": [None, ""]}}, {"_id": 0}).to_list(2000)
-    if len(contributions) != len(set(payload.contribution_ids)): raise HTTPException(status_code=422, detail="Hay contribuciones inexistentes o ya incluidas en otro conteo")
+    contributions = await db.finance_contributions.find({"contribution_id": {"$in": payload.contribution_ids}, "batch_id": {"$in": [None, ""]}, "status": {"$ne": "corrected"}}, {"_id": 0}).to_list(2000)
+    if len(contributions) != len(set(payload.contribution_ids)): raise HTTPException(status_code=422, detail="Hay contribuciones inexistentes, corregidas o ya incluidas en otro conteo")
     batch_id = str(uuid4()); expected = sum(item["amount_cents"] for item in contributions)
     payment_totals = {}; concept_totals = {}; fund_totals = {}
     for contribution in contributions:
@@ -743,8 +788,9 @@ async def deposits(current_user: dict = Depends(reader)): return {"items": seria
 
 @router.post("/deposits", response_model=dict, status_code=201)
 async def deposit_create(payload: DepositCreate, current_user: dict = Depends(manager)):
-    contributions = await db.finance_contributions.find({"contribution_id": {"$in": payload.contribution_ids}, "deposit_id": None}, {"_id": 0}).to_list(1000)
-    if len(contributions) != len(set(payload.contribution_ids)): raise HTTPException(status_code=422, detail="Hay contribuciones inexistentes o ya depositadas")
+    # F2: una contribución corregida ya no existe para el banco (su reemplazo es la que vale).
+    contributions = await db.finance_contributions.find({"contribution_id": {"$in": payload.contribution_ids}, "deposit_id": None, "status": {"$ne": "corrected"}}, {"_id": 0}).to_list(1000)
+    if len(contributions) != len(set(payload.contribution_ids)): raise HTTPException(status_code=422, detail="Hay contribuciones inexistentes, corregidas o ya depositadas")
     if payload.batch_id:
         batch = await db.finance_batches.find_one({"batch_id": payload.batch_id})
         if not batch or batch.get("status") != "ready_for_deposit" or set(batch.get("contribution_ids", [])) != set(payload.contribution_ids): raise HTTPException(status_code=409, detail="El conteo no está listo o no coincide con el depósito")
@@ -769,12 +815,69 @@ async def deposit_create(payload: DepositCreate, current_user: dict = Depends(ma
     await audit(current_user["user_id"], "deposit_created", "deposit", deposit_id, {"total_cents": doc["total_cents"]}); return serialize(doc)
 
 
+class DepositAdjustment(BaseModel):
+    reason: str = Field(min_length=5, max_length=1000)
+
+
+@router.post("/deposits/{deposit_id}/resolve-adjustment", response_model=dict)
+async def deposit_resolve_adjustment(deposit_id: str, payload: DepositAdjustment, current_user: dict = Depends(manager)):
+    """F2: una contribución corregida que ya estaba depositada deja el depósito en «ajuste requerido».
+    Aquí se cierra ese ajuste: el reemplazo queda dentro del mismo depósito (no se vuelve a depositar) y,
+    si cambió el fondo o el monto, un asiento de ajuste mueve banco ↔ fondos no depositados por fondo.
+    El asiento sigue el flujo normal de aprobación; no se borra nada."""
+    deposit = await db.finance_deposits.find_one({"deposit_id": deposit_id}, {"_id": 0})
+    if not deposit:
+        raise HTTPException(status_code=404, detail="Depósito no encontrado")
+    if deposit.get("status") != "adjustment_required":
+        raise HTTPException(status_code=409, detail="Este depósito no tiene un ajuste pendiente")
+    originals = await db.finance_contributions.find({"deposit_id": deposit_id, "status": "corrected", "replaced_by_contribution_id": {"$nin": [None, ""]}, "deposit_adjusted": {"$ne": True}}, {"_id": 0}).to_list(500)
+    if not originals:
+        raise HTTPException(status_code=409, detail="No hay contribuciones corregidas por ajustar en este depósito")
+    replacements = {item["contribution_id"]: item for item in await db.finance_contributions.find(
+        {"contribution_id": {"$in": [item["replaced_by_contribution_id"] for item in originals]}}, {"_id": 0}).to_list(500)}
+    difference_by_fund: dict = {}
+    for original in originals:
+        replacement = replacements.get(original["replaced_by_contribution_id"])
+        if not replacement or replacement.get("deposit_id"):
+            raise HTTPException(status_code=409, detail="El reemplazo de una contribución corregida no está disponible o ya fue depositado aparte")
+        for allocation in replacement.get("allocations", []):
+            difference_by_fund[allocation["fund_id"]] = difference_by_fund.get(allocation["fund_id"], 0) + allocation["amount_cents"]
+        for allocation in original.get("allocations", []):
+            difference_by_fund[allocation["fund_id"]] = difference_by_fund.get(allocation["fund_id"], 0) - allocation["amount_cents"]
+    undeposited = await db.finance_accounts.find_one({"code": "1010"}, {"_id": 0, "account_id": 1})
+    lines = []
+    for fund_id, amount in difference_by_fund.items():
+        if amount > 0:
+            lines += [{"account_id": deposit["bank_account_id"], "fund_id": fund_id, "debit_cents": amount, "credit_cents": 0, "description": "Ajuste de depósito por corrección"},
+                      {"account_id": undeposited["account_id"], "fund_id": fund_id, "debit_cents": 0, "credit_cents": amount, "description": "Ajuste de depósito por corrección"}]
+        elif amount < 0:
+            lines += [{"account_id": undeposited["account_id"], "fund_id": fund_id, "debit_cents": -amount, "credit_cents": 0, "description": "Ajuste de depósito por corrección"},
+                      {"account_id": deposit["bank_account_id"], "fund_id": fund_id, "debit_cents": 0, "credit_cents": -amount, "description": "Ajuste de depósito por corrección"}]
+    journal = None
+    if lines:
+        from count_rules import church_today
+        journal = await create_journal(current_user["user_id"], (await church_today()).isoformat(), f"Ajuste de depósito · {payload.reason}", "deposit_adjustment", deposit_id, lines, "submitted")
+    now = now_utc()
+    replacement_ids = [item["replaced_by_contribution_id"] for item in originals]
+    await db.finance_contributions.update_many({"contribution_id": {"$in": replacement_ids}}, {"$set": {"deposit_id": deposit_id, "updated_at": now, "updated_by_user_id": current_user["user_id"]}})
+    await db.finance_contributions.update_many({"contribution_id": {"$in": [item["contribution_id"] for item in originals]}}, {"$set": {"deposit_adjusted": True, "updated_at": now}})
+    net = sum(difference_by_fund.values())
+    adjustment = {"adjustment_id": str(uuid4()), "reason": payload.reason, "journal_entry_id": (journal or {}).get("entry_id"), "difference_cents": net,
+                  "by_fund": difference_by_fund, "original_contribution_ids": [item["contribution_id"] for item in originals], "replacement_contribution_ids": replacement_ids,
+                  "by_user_id": current_user["user_id"], "at": now}
+    await db.finance_deposits.update_one({"deposit_id": deposit_id}, {"$set": {"status": "reconciled" if deposit.get("reconciliation_id") else "pending_reconciliation", "updated_at": now},
+                                                                      "$inc": {"total_cents": net}, "$push": {"adjustments": adjustment}})
+    await audit(current_user["user_id"], "deposit_adjusted", "deposit", deposit_id, {"difference_cents": net, "journal_entry_id": adjustment["journal_entry_id"], "reason": payload.reason})
+    return serialize(await db.finance_deposits.find_one({"deposit_id": deposit_id}, {"_id": 0}))
+
+
 @router.post("/transfers", response_model=dict, status_code=201)
 async def transfer(payload: dict, current_user: dict = Depends(manager)):
     amount = int(payload.get("amount_cents", 0)); source = payload.get("source_fund_id"); target = payload.get("target_fund_id"); account_id = payload.get("account_id")
     if amount <= 0 or not source or not target or source == target: raise HTTPException(status_code=422, detail="Transferencia no válida")
     transfer_id = str(uuid4()); lines = [{"account_id": account_id, "fund_id": target, "debit_cents": amount, "credit_cents": 0, "description": "Entrada por transferencia"}, {"account_id": account_id, "fund_id": source, "debit_cents": 0, "credit_cents": amount, "description": "Salida por transferencia"}]
-    journal = await create_journal(current_user["user_id"], payload.get("transfer_date", date.today().isoformat()), payload.get("memo", "Transferencia entre fondos"), "fund_transfer", transfer_id, lines, "submitted"); await audit(current_user["user_id"], "fund_transfer_created", "fund_transfer", transfer_id, {"amount_cents": amount}); return {"transfer_id": transfer_id, "journal_entry_id": journal["entry_id"], "status": "submitted"}
+    from count_rules import church_today
+    journal = await create_journal(current_user["user_id"], payload.get("transfer_date") or (await church_today()).isoformat(), payload.get("memo", "Transferencia entre fondos"), "fund_transfer", transfer_id, lines, "submitted"); await audit(current_user["user_id"], "fund_transfer_created", "fund_transfer", transfer_id, {"amount_cents": amount}); return {"transfer_id": transfer_id, "journal_entry_id": journal["entry_id"], "status": "submitted"}
 
 
 @router.get("/budgets", response_model=dict)
