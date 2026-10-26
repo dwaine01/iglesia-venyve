@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Solo el APK de PRUEBA: permite la página local de las pruebas de tamaño en el emulador
+     (http://localhost, nada más). La app final no lleva este archivo. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application android:networkSecurityConfig="@xml/red_pruebas" />
+</manifest>

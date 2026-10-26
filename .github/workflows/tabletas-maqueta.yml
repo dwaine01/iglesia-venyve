@@ -1,0 +1,112 @@
+# Tamaño y comodidad del registro de visitantes (/r/) en tabletas de 10": compila el panel, lo abre
+# con datos de PRUEBA en el navegador interno real de Android (7 y 11) y toma capturas de cada paso
+# en vertical y horizontal. No publica nada en el panel ni en la app.
+name: Tabletas · Tamaño del registro
+
+on:
+  push:
+    branches: [main, 'claude/**']
+    paths:
+      - 'frontend/src/pages/KioskPage.js'
+      - 'frontend/src/lib/kiosk*'
+      - 'frontend/src/lib/legacyPolyfills.js'
+      - 'frontend/public/index.html'
+      - 'android-kiosk/app/src/androidTest/**'
+      - '.github/scripts/kiosk-mock.js'
+      - '.github/scripts/tabletas-maqueta.sh'
+      - '.github/workflows/tabletas-maqueta.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tabletas-maqueta-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  maqueta:
+    name: Registro en tableta de 10" (API ${{ matrix.api }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write  # solo para subir las capturas
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [24, 30]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: yarn
+          cache-dependency-path: frontend/yarn.lock
+      - name: Compilar el panel (como en Railway)
+        working-directory: frontend
+        env:
+          REACT_APP_API_SAME_ORIGIN: '1'
+          CI: 'false'
+        run: |
+          yarn install --frozen-lockfile --network-timeout 120000
+          yarn build
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Activar la aceleración del emulador
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Recorrer el registro y tomar capturas
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          arch: x86_64
+          target: default
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: bash .github/scripts/tabletas-maqueta.sh
+      - name: Hojas de capturas (todas las pantallas de un tamaño juntas)
+        if: always()
+        run: |
+          ls capturas/*.png >/dev/null 2>&1 || exit 0
+          pip install --quiet pillow
+          python3 - <<'PY'
+          import glob, re
+          from PIL import Image
+          groups = {}
+          for name in sorted(glob.glob('capturas/maqueta-*.png')):
+              key = re.sub(r'-\d\d-[^/]*\.png$', '', name)
+              groups.setdefault(key, []).append(name)
+          for key, files in groups.items():
+              images = [Image.open(f).convert('RGB') for f in files]
+              w = max(i.width for i in images); h = max(i.height for i in images); cols = 5
+              rows = (len(images) + cols - 1) // cols
+              sheet = Image.new('RGB', (cols * w + (cols - 1) * 24, rows * h + (rows - 1) * 24), 'white')
+              for k, image in enumerate(images):
+                  sheet.paste(image, ((k % cols) * (w + 24), (k // cols) * (h + 24)))
+              scale = min(1.0, 2600 / sheet.width)
+              sheet.resize((int(sheet.width * scale), int(sheet.height * scale))).save(key.replace('maqueta-', 'hoja-') + '.png')
+          PY
+          ls capturas
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: maqueta-api${{ matrix.api }}
+          path: capturas/
+          if-no-files-found: ignore
+      - name: Capturas a «Releases» (tabletas-capturas)
+        if: always() && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          ls capturas/*.png >/dev/null 2>&1 || exit 0
+          gh release view tabletas-capturas --repo "$REPO" >/dev/null 2>&1 || gh release create tabletas-capturas --repo "$REPO" --prerelease \
+            --title "Capturas de las pruebas de tabletas" --notes "Capturas automáticas de los emuladores. No es una app para instalar."
+          gh release upload tabletas-capturas capturas/*.png --repo "$REPO" --clobber
