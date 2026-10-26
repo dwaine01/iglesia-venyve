@@ -494,16 +494,39 @@ async def contributions(current_user: dict = Depends(reader)):
 
 
 @router.get("/persons/{person_id}/contributions", response_model=dict)
-async def person_contributions(person_id: str, scope: Literal["person", "family"] = "person", current_user: dict = Depends(private_person_reader)):
+async def person_contributions(person_id: str, scope: Literal["person", "family"] = "person", start: Optional[date] = None, end: Optional[date] = None,
+                               current_user: dict = Depends(private_person_reader)):
     person_ids = [person_id]
     if scope == "family":
         memberships = await db.household_memberships.find({"person_id": person_id, "active": {"$ne": False}}, {"_id": 0, "household_id": 1}).to_list(100)
         household_ids = [item["household_id"] for item in memberships]
         if household_ids: person_ids = await db.household_memberships.distinct("person_id", {"household_id": {"$in": household_ids}, "active": {"$ne": False}})
-    items = await db.finance_contributions.find({"person_id": {"$in": person_ids}, "status": {"$ne": "corrected"}, "is_test": {"$ne": True}}, {"_id": 0}).sort("received_date", -1).to_list(5000)
+    # Perfil 360 · Finanzas (decisión del dueño): historial, último diezmo, totales del período elegido y meses
+    # sin registros. Solo lectura y SIN etiquetas automáticas. Por defecto: el año en curso (hora de la iglesia).
+    from count_rules import church_today
+    today = await church_today()
+    start = start or date(today.year, 1, 1)
+    end = end or today
+    if end < start:
+        raise HTTPException(status_code=422, detail="La fecha final debe ser posterior a la inicial")
+    base_query = {"person_id": {"$in": person_ids}, "status": {"$ne": "corrected"}, "is_test": {"$ne": True}}
+    items = await db.finance_contributions.find({**base_query, "received_date": {"$gte": start.isoformat(), "$lte": end.isoformat()}}, {"_id": 0}).sort("received_date", -1).to_list(5000)
     items = await enrich_campaign_names(items)
-    await log_donor_view(current_user, "person_profile_contributions", person_id, {"scope": scope})
-    return {"scope": scope, "person_ids": person_ids, "total_cents": sum(item.get("amount_cents", 0) for item in items), "items": serialize(items)}
+    last_tithe = await db.finance_contributions.find_one({**base_query, "$or": [{"contribution_type": "tithe"}, {"allocations.contribution_type": "tithe"}]}, {"_id": 0, "received_date": 1, "amount_cents": 1, "allocations": 1}, sort=[("received_date", -1)])
+    totals_by_type: dict = {}
+    for item in items:
+        for allocation in item.get("allocations") or [{"contribution_type": item.get("contribution_type"), "amount_cents": item.get("amount_cents", 0)}]:
+            key = allocation.get("contribution_type") or item.get("contribution_type") or "other"
+            totals_by_type[key] = totals_by_type.get(key, 0) + int(allocation.get("amount_cents", 0))
+    months, cursor = [], date(start.year, start.month, 1)
+    while cursor <= end:
+        months.append(cursor.strftime("%Y-%m"))
+        cursor = date(cursor.year + (cursor.month // 12), cursor.month % 12 + 1, 1)
+    with_records = {item["received_date"][:7] for item in items if item.get("received_date")}
+    await log_donor_view(current_user, "person_profile_contributions", person_id, {"scope": scope, "start": start.isoformat(), "end": end.isoformat()})
+    return {"scope": scope, "person_ids": person_ids, "start": start.isoformat(), "end": end.isoformat(), "total_cents": sum(item.get("amount_cents", 0) for item in items),
+            "totals_by_type": totals_by_type, "last_tithe": serialize(last_tithe and {"received_date": last_tithe["received_date"], "amount_cents": sum(int(a.get("amount_cents", 0)) for a in last_tithe.get("allocations") or [] if a.get("contribution_type") == "tithe") or last_tithe.get("amount_cents")}),
+            "months_without_records": [month for month in months if month not in with_records], "months_in_period": len(months), "items": serialize(items)}
 
 
 async def refresh_batch_totals(batch_id: str) -> dict:

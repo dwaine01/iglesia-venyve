@@ -31,7 +31,7 @@ const COMMON_LABELS = Object.freeze({
   excelente: 'Meta alcanzada', bien: 'En ritmo', recien_iniciado: 'Recién iniciado', meta_baja: 'Requiere acompañamiento', sin_personas: 'Sin personas asignadas',
   created_by: 'Creado por', created_at: 'Fecha de creación', updated_at: 'Última actualización', processed_at: 'Fecha de procesamiento',
   cash: 'Efectivo', modified_cash: 'Efectivo modificado', accrual: 'Devengado', asset: 'Activo', liability: 'Pasivo', net_assets: 'Activos netos', revenue: 'Ingreso', expense: 'Gasto',
-  tithe: 'Diezmo', offering: 'Ofrenda', donation: 'Donación', missions: 'Misiones', building: 'Pro-Templo', project: 'Proyecto / Campaña',
+  tithe: 'Diezmo', offering: 'Ofrenda', special_offering: 'Ofrenda especial', mixed: 'Varios conceptos', donation: 'Donación', missions: 'Misiones', building: 'Pro-Templo', project: 'Proyecto / Campaña',
   check: 'Cheque', zelle: 'Zelle', card: 'Tarjeta', ach: 'Transferencia ACH', transfer: 'Transferencia', pushpay: 'PushPay',
   unrestricted: 'Sin restricción', donor_restricted: 'Restricción del donante', board_designated: 'Designado por Junta', posted: 'Contabilizado', submitted: 'Enviado a revisión', reviewed: 'Revisado', payment_pending_posting: 'Pago pendiente de contabilizar', pending_reconciliation: 'Pendiente de conciliación', reconciled: 'Conciliado', balanced: 'Cuadrado', needs_review: 'Requiere revisión',
   person_id: 'Perfil 360', responsible_person_id: 'Responsable', meeting_id: 'Reunión', source_id: 'Registro de origen', source_type: 'Tipo de origen',
