@@ -14,7 +14,7 @@ load_dotenv("/app/frontend/.env")
 load_dotenv("/app/backend/.env")
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL").rstrip("/")
 API = f"{BASE_URL}/api/mentorship/outreach"
-SEED = json.load(open("/tmp/t1_add_mentors_seed.json"))
+SEED = json.load(open("/tmp/t1_add_mentors_seed.json")) if os.path.exists("/tmp/t1_add_mentors_seed.json") else {}  # lo crea tests/seed_t1_add_mentors.py
 db = MongoClient(os.environ["MONGO_URL"])[os.environ["DB_NAME"]]
 STATE = {}
 

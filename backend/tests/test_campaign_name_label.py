@@ -11,11 +11,12 @@ import time
 import requests
 import pytest
 
-BASE_URL = ""
-with open("/app/frontend/.env") as f:
-    for line in f:
-        if line.startswith("REACT_APP_BACKEND_URL="):
-            BASE_URL = line.split("=", 1)[1].strip().rstrip("/")
+BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/")
+if os.path.exists("/app/frontend/.env"):
+    with open("/app/frontend/.env") as f:
+        for line in f:
+            if line.startswith("REACT_APP_BACKEND_URL="):
+                BASE_URL = line.split("=", 1)[1].strip().rstrip("/")
 
 PASTOR_EMAIL = "qa.baptismui53.pastor@example.com"
 PASTOR_PASSWORD = "QaBaptismUI53!"

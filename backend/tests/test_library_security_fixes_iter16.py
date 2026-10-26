@@ -26,7 +26,7 @@ from openpyxl import load_workbook
 # Direct load of the sanitize_cell function for FIX 4 unit test — avoid importing the
 # module (which triggers server.py circular import). Load just the function via AST.
 import ast, textwrap
-_lib_reports_src = open("/app/backend/library_reports.py").read()
+_lib_reports_src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "library_reports.py")).read()
 _module_ast = ast.parse(_lib_reports_src)
 _ns = {}
 for _node in _module_ast.body:
