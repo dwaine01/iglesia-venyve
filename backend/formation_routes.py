@@ -9,7 +9,7 @@ from access_control import (
     FORMATION_ENROLL, FORMATION_GRADES_READ, FORMATION_GRADES_WRITE,
     FORMATION_HISTORICAL_CREDIT_MANAGE, FORMATION_PROGRAMS_MANAGE,
     FORMATION_PROGRESS_MANAGE, FORMATION_PROMOTE, FORMATION_READ,
-    can_access_person, has_capability, is_global_pastoral_authority,
+    can_access_person, has_capability, has_church_wide_reach, is_global_pastoral_authority,
 )
 from formation_engine import (
     audit, canonical_person, module_eligibility, next_recommended_module,
@@ -353,6 +353,9 @@ async def person_progress(person_id: str, current_user: dict = Depends(get_curre
 @router.get("/reports/{report_key}", response_model=dict)
 async def formation_report(report_key: str, program_id: Optional[str] = None, current_user: dict = Depends(get_current_user)):
     require(current_user, FORMATION_READ)
+    # Listados de alumnos de toda la iglesia: solo la administración educativa (no un Miembro con «consultar»).
+    if not (has_church_wide_reach(current_user) or has_capability(current_user, FORMATION_GRADES_READ) or has_capability(current_user, FORMATION_PROGRESS_MANAGE)):
+        raise HTTPException(status_code=403, detail="Los reportes de Formación solo los ve la administración educativa")
     if report_key not in {"graduates", "pending", "eligible"}: raise HTTPException(status_code=404, detail="Reporte no encontrado")
     items = []
     if report_key == "pending":

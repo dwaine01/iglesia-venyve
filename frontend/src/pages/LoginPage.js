@@ -20,7 +20,6 @@ export default function LoginPage() {
   const [nombre, setNombre] = useState('');
   const [inviteCode, setInviteCode] = useState('');
   const [inviteCodeError, setInviteCodeError] = useState('');
-  const rol = 'persona';
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
   const [quoteIdx, setQuoteIdx] = useState(0);
@@ -48,8 +47,12 @@ export default function LoginPage() {
     try {
       if (isRegister) {
         const codeClean = (inviteCode || '').trim().toUpperCase();
-        // Sin código, el alta siempre crea una cuenta Persona de autoservicio.
-        await register(nombre, email, password, codeClean || null, codeClean ? null : rol);
+        // Toda cuenta nueva necesita una invitación (el registro libre está cerrado).
+        if (!codeClean) {
+          setInviteCodeError('Necesita el código de invitación que le dio la administración de la iglesia.');
+          throw new Error('sin-codigo');
+        }
+        await register(nombre, email, password, codeClean, null);
         toast.success('Cuenta creada exitosamente');
       } else {
         await login(email, password);
@@ -57,7 +60,7 @@ export default function LoginPage() {
       }
       navigate('/');
     } catch (err) {
-      const detail = err.response?.data?.detail;
+      const detail = err.message === 'sin-codigo' ? 'Necesita el código de invitación que le dio la administración de la iglesia.' : err.response?.data?.detail;
       const msg = typeof detail === 'string' ? detail : 'No se pudo iniciar sesión';
       // Si el error viene del codigo, resaltar el campo
       if (isRegister && typeof detail === 'string' && detail.toLowerCase().includes('codigo')) {
@@ -177,13 +180,13 @@ export default function LoginPage() {
                       <>
                         <div className="space-y-1.5">
                           <Label htmlFor="invite_code" className={`text-[10px] uppercase tracking-wider font-semibold ${inviteCodeError ? 'text-red-400' : 'text-[#C8A951]'}`}>
-                            Código de invitación <span className="text-white/40 normal-case tracking-normal">(opcional)</span>
+                            Código de invitación
                           </Label>
                           <Input
                             id="invite_code"
                             value={inviteCode}
                             onChange={(e) => { setInviteCode(e.target.value.toUpperCase()); if (inviteCodeError) setInviteCodeError(''); }}
-                            placeholder="Ej: AB3XK7YP (dejar vacio si no tienes)"
+                            placeholder="Ej: AB3XK7YP"
                             maxLength={12}
                             aria-invalid={!!inviteCodeError}
                             data-testid="register-invite-code-input"
@@ -199,12 +202,10 @@ export default function LoginPage() {
                             </p>
                           ) : (
                             <p className="text-[10px] text-white/40 leading-tight">
-                              Sin código se crea una cuenta Persona. Los roles institucionales requieren invitación.
+                              Para crear una cuenta necesita una invitación de la administración de la iglesia (mínimo 10 caracteres en la contraseña).
                             </p>
                           )}
                         </div>
-
-                        {!inviteCode.trim() && <p className="rounded-md border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/60" data-testid="register-persona-role-notice">Cuenta de autoservicio: Persona</p>}
 
                         <div className="space-y-1.5">
                           <Label htmlFor="nombre" className="text-white/75 text-[10px] uppercase tracking-wider font-semibold">

@@ -11,7 +11,7 @@ from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
 
-from access_control import BAPTISM_CERTIFICATES_ISSUE, BAPTISM_EVENTS_MANAGE, BAPTISM_READ, has_capability, is_general_coordinator, is_global_pastoral_authority
+from access_control import BAPTISM_CERTIFICATES_ISSUE, BAPTISM_EVENTS_MANAGE, BAPTISM_READ, can_access_person, has_capability, has_church_wide_reach, is_general_coordinator, is_global_pastoral_authority
 from membership_documents import canonical_person, full_name, settings_document
 from server import db, get_current_user
 
@@ -73,6 +73,20 @@ async def certificate_manager_user(current_user: dict = Depends(get_current_user
 async def baptism_reader_user(current_user: dict = Depends(get_current_user)) -> dict:
     require_baptism_reader(current_user)
     return current_user
+
+
+async def church_baptism_reader_user(current_user: dict = Depends(get_current_user)) -> dict:
+    """Eventos y listas de candidatos: datos de toda la iglesia. Un Miembro solo ve su propio bautismo."""
+    require_baptism_reader(current_user)
+    if not (has_church_wide_reach(current_user) or is_events_manager(current_user) or is_certificate_manager(current_user)):
+        raise HTTPException(status_code=403, detail="Los eventos de bautismo solo los ve la administración. Usted puede ver su propio bautismo en su perfil.")
+    return current_user
+
+
+def require_person_reach(current_user: dict, person: dict) -> None:
+    if has_church_wide_reach(current_user) or is_events_manager(current_user) or is_certificate_manager(current_user) or can_access_person(current_user, person):
+        return
+    raise HTTPException(status_code=403, detail="Sin permiso para ver el bautismo de esta Persona")
 
 
 def valid_iso_date(value: Optional[str]) -> Optional[str]:
@@ -209,7 +223,7 @@ async def record_issuance(actor_id: str, record: dict, person: dict, action: str
 
 
 @router.get("/api/baptism/events", response_model=dict)
-async def list_baptism_events(current_user: dict = Depends(baptism_reader_user)):
+async def list_baptism_events(current_user: dict = Depends(church_baptism_reader_user)):
     events = await db.baptism_events.find({}, {"_id": 0}).sort("event_date", -1).to_list(500)
     counts = await db.person_baptisms.aggregate([
         {"$match": {"event_id": {"$in": [event["event_id"] for event in events]}}},
@@ -233,7 +247,7 @@ async def create_baptism_event(payload: BaptismEventInput, current_user: dict = 
 
 
 @router.get("/api/baptism/events/{event_id}", response_model=dict)
-async def get_baptism_event(event_id: str, current_user: dict = Depends(baptism_reader_user)):
+async def get_baptism_event(event_id: str, current_user: dict = Depends(church_baptism_reader_user)):
     event = await event_or_404(event_id)
     return {"event": serialize(event), "roster": await event_roster(event_id)}
 
@@ -312,6 +326,7 @@ async def complete_baptism_candidate(event_id: str, person_id: str, payload: Com
 @router.get("/api/baptism/persons/{person_id}", response_model=dict)
 async def person_baptism_document(person_id: str, current_user: dict = Depends(baptism_reader_user)):
     person = await canonical_person(person_id)
+    require_person_reach(current_user, person)
     record = await db.person_baptisms.find_one({"person_id": person["person_id"]}, {"_id": 0})
     return {"exists": bool(record), "data": await render_baptism_data(person, record) if record else {"person": {"person_id": person["person_id"], "full_name": full_name(person)}}}
 
@@ -339,6 +354,7 @@ async def issue_baptism_certificate(person_id: str, payload: IssueCertificateInp
 @router.get("/api/baptism/persons/{person_id}/issuances", response_model=dict)
 async def baptism_issuances(person_id: str, current_user: dict = Depends(baptism_reader_user)):
     person = await canonical_person(person_id)
+    require_person_reach(current_user, person)
     items = await db.baptism_document_issuances.find({"person_id": person["person_id"]}, {"_id": 0}).sort("created_at", -1).to_list(1000)
     return {"items": serialize(items)}
 
