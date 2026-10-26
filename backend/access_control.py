@@ -40,7 +40,14 @@ BOARD_ACCESS = "board.access"
 BOARD_CONFIDENTIAL_ACCESS = "board.confidential.access"
 FINANCE_READ = "finance.read"
 FINANCE_MANAGE = "finance.manage"
-FINANCE_CAPABILITIES = [FINANCE_READ, FINANCE_MANAGE]
+# Nuevo flujo de la colecta (decisión del dueño): roles independientes, cada uno asignado a mano.
+FINANCE_COLLECTION_RECORD = "finance.collection.record"   # Finanzas: abre la colecta y registra aportes
+FINANCE_COLLECTION_VERIFY = "finance.collection.verify"   # segunda persona: valida el cuadre
+FINANCE_TREASURY = "finance.treasury"                     # Tesorería: recibe el efectivo y deposita
+FINANCE_DONORS_READ = "finance.donors.read"               # ver aportes por persona (además de la pastora)
+FINANCE_FLOW_CAPABILITIES = [FINANCE_COLLECTION_RECORD, FINANCE_COLLECTION_VERIFY, FINANCE_TREASURY, FINANCE_DONORS_READ]
+FINANCE_DEFAULT_CAPABILITIES = [FINANCE_READ, FINANCE_MANAGE]  # lo que recibe el grupo Finanzas por defecto (como antes)
+FINANCE_CAPABILITIES = [FINANCE_READ, FINANCE_MANAGE, *FINANCE_FLOW_CAPABILITIES]
 FINANCE_PRIVILEGE_GROUP = "finance"
 BOARD_PRIVILEGE_GROUP = "board"
 MEMBERSHIP_DOCUMENTS_MANAGE = "membership.documents.manage"
@@ -281,6 +288,10 @@ CAPABILITY_CATALOG = [
     {"module_key": "finance", "label": "Finanzas (requiere grupo de privilegio Finanzas)", "items": [
         {"capability": FINANCE_READ, "action": "consultar", "label": "Consultar: Finanzas"},
         {"capability": FINANCE_MANAGE, "action": "administrar", "label": "Administrar: Finanzas"},
+        {"capability": FINANCE_COLLECTION_RECORD, "action": "agregar", "label": "Colecta: registrar aportes (Finanzas)"},
+        {"capability": FINANCE_COLLECTION_VERIFY, "action": "administrar", "label": "Colecta: validar el cuadre (segunda persona)"},
+        {"capability": FINANCE_TREASURY, "action": "administrar", "label": "Tesorería: recibir efectivo y depositar"},
+        {"capability": FINANCE_DONORS_READ, "action": "consultar", "label": "Ver aportes por persona (cada consulta queda registrada)"},
     ]},
     {"module_key": "board", "label": "Junta Directiva (requiere grupo de privilegio Junta)", "items": [
         {"capability": BOARD_ACCESS, "action": "consultar", "label": "Consultar: Junta Directiva"},
@@ -398,7 +409,7 @@ PERSON_DOMAIN_CAPABILITIES = [
 
 _ROLE_ACCESS_DEFAULTS = {
     "pastor": {
-        "capabilities": [*PERSON_DOMAIN_CAPABILITIES, *PROCESS_CAPABILITIES, *CELLULAR_CAPABILITIES, *DOOR_BOARD_CAPABILITIES, *FINANCE_CAPABILITIES, *JOURNEY_GOVERNANCE_CAPABILITIES, *OPERATIONS_CAPABILITIES, *CARE_CAPABILITIES, *FORMATION_CAPABILITIES, *LIBRARY_CAPABILITIES, *STAFF_TOOLS_CAPABILITIES, MEMBERSHIP_DOCUMENTS_MANAGE, MEMBERSHIP_DIRECT_IMPORT, PERSON_PASTORAL_NOTES_READ, CORE_GOVERNANCE_MANAGE, CORE_ACCESS_MANAGE],
+        "capabilities": [*PERSON_DOMAIN_CAPABILITIES, *PROCESS_CAPABILITIES, *CELLULAR_CAPABILITIES, *DOOR_BOARD_CAPABILITIES, *FINANCE_DEFAULT_CAPABILITIES, FINANCE_DONORS_READ, *JOURNEY_GOVERNANCE_CAPABILITIES, *OPERATIONS_CAPABILITIES, *CARE_CAPABILITIES, *FORMATION_CAPABILITIES, *LIBRARY_CAPABILITIES, *STAFF_TOOLS_CAPABILITIES, MEMBERSHIP_DOCUMENTS_MANAGE, MEMBERSHIP_DIRECT_IMPORT, PERSON_PASTORAL_NOTES_READ, CORE_GOVERNANCE_MANAGE, CORE_ACCESS_MANAGE],
         "access_scope": {"persons": "all"},
     },
     "lider": {

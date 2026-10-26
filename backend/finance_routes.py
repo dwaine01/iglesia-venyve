@@ -307,6 +307,13 @@ async def dashboard(current_user: dict = Depends(reader)):
     }
 
 
+@router.get("/my-roles", response_model=dict)
+async def my_roles(current_user: dict = Depends(get_current_user)):
+    """Roles de esta cuenta en Finanzas (la pantalla muestra solo lo que puede hacer)."""
+    from finance_engine import finance_roles
+    return finance_roles(current_user)
+
+
 @router.get("/settings", response_model=dict)
 async def settings(current_user: dict = Depends(reader)):
     return serialize(await db.finance_settings.find_one({"_id": "primary"}, {"_id": 0}))

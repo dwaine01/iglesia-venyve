@@ -6,9 +6,13 @@ from fastapi import HTTPException
 from pymongo import ReturnDocument
 
 from access_control import (
+    FINANCE_COLLECTION_RECORD,
+    FINANCE_COLLECTION_VERIFY,
+    FINANCE_DONORS_READ,
     FINANCE_MANAGE,
     FINANCE_PRIVILEGE_GROUP,
     FINANCE_READ,
+    FINANCE_TREASURY,
     is_global_pastoral_authority,
 )
 from server import db
@@ -40,8 +44,9 @@ def require_finance_manage(current_user: dict) -> None:
 
 
 def require_private_person_finance(current_user: dict) -> None:
-    if not is_global_pastoral_authority(current_user):
-        raise HTTPException(status_code=403, detail="El historial financiero de Persona 360 es exclusivamente pastoral")
+    """Perfil 360 · Finanzas: la pastora y quien ella autorice («Ver aportes por persona»)."""
+    if not can_see_donors(current_user):
+        raise HTTPException(status_code=403, detail="El historial financiero de Persona 360 lo ven la pastora y quien ella autorice")
 
 
 async def audit(user_id: str, action: str, entity_type: str, entity_id: str, changes: dict | None = None):
@@ -157,13 +162,43 @@ async def ensure_indexes_and_seed():
 DONOR_FIELDS = ("person_id", "person_name", "household_id", "envelope_number", "reference", "notes", "description", "replaced_by_contribution_id", "corrects_contribution_id")
 
 
+def has_finance_role(current_user: dict, capability: str) -> bool:
+    """Roles de la colecta (registrar, verificar, Tesorería): grupo Finanzas + el rol asignado a mano.
+    La pastora NO cuenta, valida, recibe ni aprueba en la colecta: para ella es solo lectura."""
+    if is_global_pastoral_authority(current_user):
+        return False
+    return FINANCE_PRIVILEGE_GROUP in (current_user.get("privilege_groups") or []) and capability in (current_user.get("capabilities") or [])
+
+
+def require_finance_role(current_user: dict, capability: str) -> None:
+    if not has_finance_role(current_user, capability):
+        labels = {FINANCE_COLLECTION_RECORD: "registrar la colecta", FINANCE_COLLECTION_VERIFY: "validar el cuadre de la colecta", FINANCE_TREASURY: "Tesorería (recibir y depositar)"}
+        detail = "La pastora consulta Finanzas pero no cuenta, valida, recibe ni deposita" if is_global_pastoral_authority(current_user) else f"Necesita el permiso de Finanzas para {labels.get(capability, capability)}"
+        raise HTTPException(status_code=403, detail=detail)
+
+
+def finance_roles(current_user: dict) -> dict:
+    """Qué puede hacer esta cuenta en Finanzas (para la pantalla; el servidor vuelve a validar)."""
+    try:
+        require_finance_read(current_user)
+        can_read = True
+    except HTTPException:
+        can_read = False
+    return {"read": can_read, "record": has_finance_role(current_user, FINANCE_COLLECTION_RECORD), "verify": has_finance_role(current_user, FINANCE_COLLECTION_VERIFY),
+            "treasury": has_finance_role(current_user, FINANCE_TREASURY), "donors": can_see_donors(current_user), "pastoral_read_only": is_global_pastoral_authority(current_user)}
+
+
 def can_see_donors(current_user: dict) -> bool:
-    return is_global_pastoral_authority(current_user)
+    """La pastora por defecto; cualquier otra persona solo si la pastora o el dueño le asignó a mano
+    «Ver aportes por persona» (y tiene el grupo Finanzas). Cada consulta se registra (log_donor_view)."""
+    if is_global_pastoral_authority(current_user):
+        return True
+    return FINANCE_PRIVILEGE_GROUP in (current_user.get("privilege_groups") or []) and FINANCE_DONORS_READ in (current_user.get("capabilities") or [])
 
 
 def require_donor_access(current_user: dict) -> None:
     if not can_see_donors(current_user):
-        raise HTTPException(status_code=403, detail="Lo que da cada persona solo lo ve la pastora")
+        raise HTTPException(status_code=403, detail="Lo que da cada persona solo lo ven la pastora y quien ella autorice")
 
 
 def without_donor(item: dict) -> dict:
