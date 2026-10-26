@@ -187,30 +187,19 @@ public class KioskLayoutOnDeviceTest {
 
     @Test
     public void everyStepFitsOnA10InchTablet() {
-        Assume.assumeTrue("solo con -e maqueta 1", "1".equals(InstrumentationRegistry.getArguments().getString("maqueta")));
+        // El script fija el tamaño y el giro de la pantalla (adb) y pasa su nombre: «-e pantalla 800x1280-vertical».
+        String screen = InstrumentationRegistry.getArguments().getString("pantalla");
+        Assume.assumeTrue("solo con -e maqueta 1", "1".equals(InstrumentationRegistry.getArguments().getString("maqueta")) && screen != null);
         ui = InstrumentationRegistry.getInstrumentation().getUiAutomation();
         Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
-        shell("rm -rf " + SHOTS);
-        shell("mkdir -p " + SHOTS);
         // Sin código guardado: la app queda en su pantalla de preparación y no toca la página de prueba.
         context.getSharedPreferences(MainActivity.PREFS, Context.MODE_PRIVATE).edit().clear().commit();
-        String[][] screens = {{"800x1280", "160"}, {"1200x1920", "160"}};
+        shell("mkdir -p " + SHOTS);
+        prefix = screen;
         try (ActivityScenario<MainActivity> launched = ActivityScenario.launch(MainActivity.class)) {
             scenario = launched;
-            for (String[] screen : screens) {
-                shell("wm size " + screen[0]);
-                shell("wm density " + screen[1]);
-                for (int rotation : new int[]{UiAutomation.ROTATION_FREEZE_0, UiAutomation.ROTATION_FREEZE_90}) {
-                    ui.setRotation(rotation);
-                    SystemClock.sleep(3000);
-                    prefix = screen[0] + (rotation == UiAutomation.ROTATION_FREEZE_0 ? "-vertical" : "-horizontal");
-                    walk();
-                }
-            }
-        } finally {
-            shell("wm size reset");
-            shell("wm density reset");
-            ui.setRotation(UiAutomation.ROTATION_UNFREEZE);
+            SystemClock.sleep(2000);
+            walk();
         }
     }
 }
