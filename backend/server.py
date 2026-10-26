@@ -2448,7 +2448,10 @@ async def get_dashboard_by_role(authorization: Optional[str] = Header(None), lea
     if is_global_pastoral_authority(payload):
         # Dashboard General del Pastor - ve todos los líderes
         # Solo cuentas de líder activas (una cuenta eliminada o desactivada ya no es «líder activo»).
-        lideres = await db.users.find({"rol": "lider", "is_active": {"$ne": False}}).to_list(1000)
+        # Las cuentas marcadas de prueba tampoco cuentan (misma regla que Estadísticas Globales).
+        from report_period import excluded_person_ids
+        excluded_people = await excluded_person_ids()
+        lideres = [lider for lider in await db.users.find({"rol": "lider", "is_active": {"$ne": False}}).to_list(1000) if not lider.get("person_id") or lider["person_id"] not in excluded_people]
         async def lider_row(lider: dict) -> dict:
             lider_id = str(lider["_id"])
             # Promedio de semana actual
@@ -2492,7 +2495,7 @@ async def get_dashboard_by_role(authorization: Optional[str] = Header(None), lea
         from participation_scope import principal_authority_person_ids
         authorities = set(await principal_authority_person_ids(db))
         person_of_leader = {str(lider["_id"]): lider.get("person_id") for lider in lideres}
-        badge_ids = [doc["person_id"] for doc in await db.mentor_badges.find({"active": True}, {"_id": 0, "person_id": 1}).to_list(5000) if doc.get("person_id")]
+        badge_ids = [doc["person_id"] for doc in await db.mentor_badges.find({"active": True}, {"_id": 0, "person_id": 1}).to_list(5000) if doc.get("person_id") and doc["person_id"] not in excluded_people]
         work = await mentor_work_rows([pid for pid in list(person_of_leader.values()) + badge_ids if pid and pid not in authorities])
         for row in lideres_data:
             row["person_id"] = person_of_leader.get(row["_id"])
@@ -2513,7 +2516,9 @@ async def get_dashboard_by_role(authorization: Optional[str] = Header(None), lea
             "rol": "pastor",
             "personas_sin_lider": [{"_id": str(doc["_id"]), "nombre": " ".join(filter(None, [doc.get("nombre"), doc.get("apellido")])), "estado": doc.get("estado"), "canonical_person_id": doc.get("canonical_person_id")} for doc in sin_lider_docs],
             "lideres": lideres_data,
-            "total_lideres": len(lideres),  # cuentas de líder (los mentores sin cuenta de líder se listan aparte)
+            # La tarjeta cuenta las MISMAS filas de la tabla: cuentas de líder + mentores con insignia sin cuenta de líder.
+            "total_lideres": len(lideres_data),
+            "total_lideres_desglose": {"lideres": sum(1 for row in lideres_data if not row.get("es_mentor")), "mentores": sum(1 for row in lideres_data if row.get("es_mentor"))},
         "total_personas_global": await db.persons.count_documents({"is_archived": {"$ne": True}}),
         "total_personas_en_proceso": sum(l["total_personas"] for l in lideres_data),
         }

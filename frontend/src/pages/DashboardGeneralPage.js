@@ -162,7 +162,7 @@ export default function DashboardGeneralPage() {
   if (loading) return <div className="p-8 text-center">Cargando...</div>;
   if (!data) return <div className="p-8 text-center">Error al cargar datos</div>;
 
-  const { lideres, total_lideres, total_personas_global } = data;
+  const { lideres, total_lideres, total_lideres_desglose: desglose, total_personas_global } = data;
   const lideresMetaBaja = lideres.filter(l => l.estado?.key === 'meta_baja');
   const lideresExcelente = lideres.filter(l => l.estado?.key === 'excelente');
 
@@ -256,7 +256,7 @@ export default function DashboardGeneralPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-2xl sm:text-3xl font-bold text-purple-600">{total_lideres}</p>
-                    <p className="text-[10px] sm:text-xs text-muted-foreground mt-1 hidden sm:block">Líderes activos</p>
+                    <p className="text-[10px] sm:text-xs text-muted-foreground mt-1 hidden sm:block" data-testid="total-lideres-desglose">{desglose ? `${desglose.lideres} líderes + ${desglose.mentores} mentores activos` : 'Líderes activos'}</p>
                   </div>
                   <Users className="w-8 h-8 sm:w-12 sm:h-12 text-purple-600/20 hidden xs:block" />
                 </div>
@@ -273,7 +273,7 @@ export default function DashboardGeneralPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-2xl sm:text-3xl font-bold text-indigo-600">{total_personas_global}</p>
-                    <p className="text-[10px] sm:text-xs text-muted-foreground mt-1 hidden sm:block">En consolidación</p>
+                    <p className="text-[10px] sm:text-xs text-muted-foreground mt-1 hidden sm:block">En el directorio Persona 360</p>
                   </div>
                   <TrendingUp className="w-8 h-8 sm:w-12 sm:h-12 text-indigo-600/20 hidden xs:block" />
                 </div>

@@ -83,7 +83,10 @@ async def load_population(current_user: dict, campaign_id: Optional[str], mentor
         query["front_group_id"] = front_group_id
     if stage_key:
         query["current_stage_key"] = stage_key
-    items = await db.process_enrollments.find(query, {"_id": 0}).to_list(20000)
+    # Las cuentas de prueba y la autoridad principal no cuentan (misma regla que Estadísticas Globales).
+    from report_period import excluded_person_ids
+    excluded = await excluded_person_ids()
+    items = [item for item in await db.process_enrollments.find(query, {"_id": 0}).to_list(20000) if item.get("person_id") not in excluded]
     # PERSONAS ÚNICAS: un expediente por persona (el activo, o el más avanzado/reciente);
     # los demás de la misma persona son historial y no inflan las cifras.
     from enrollment_cleanup import representatives
@@ -129,6 +132,9 @@ async def panorama(period: Literal["week", "month", "quarter", "invasion", "all"
     in_period = [item for item in items if start and created[item["enrollment_id"]] and created[item["enrollment_id"]] >= start]
     in_previous = [item for item in items if previous_start and created[item["enrollment_id"]] and previous_start <= created[item["enrollment_id"]] < start]
     active = [item for item in items if item.get("status") == "active"]
+    from count_rules import CONSOLIDATION_COUNTED, CONSOLIDATION_OPEN
+    counted = [item for item in items if item.get("status") in CONSOLIDATION_COUNTED]
+    open_items = [item for item in items if item.get("status") in CONSOLIDATION_OPEN]
     person_ids = list({item["person_id"] for item in items})
     members = set(await db.person_memberships.distinct("person_id", {"person_id": {"$in": person_ids}, "status": "active"})) if person_ids else set()
 
@@ -156,7 +162,8 @@ async def panorama(period: Literal["week", "month", "quarter", "invasion", "all"
 
     # Carga por mentor (la autoridad pastoral principal no cuenta) y desbalance.
     authorities = await principal_authority_person_ids(db)
-    load = Counter(item["mentor_person_id"] for item in active if item.get("mentor_person_id") and item["mentor_person_id"] not in authorities)
+    # «En Consolidación» por mentor = expedientes abiertos (misma regla que el Panel General y Mi Trabajo).
+    load = Counter(item["mentor_person_id"] for item in open_items if item.get("mentor_person_id") and item["mentor_person_id"] not in authorities)
     from mentorship_outreach import person_display_name
     loads = sorted([{"mentor_person_id": key, "name": await person_display_name(key) or "Mentor", "active": value} for key, value in load.items()], key=lambda row: -row["active"])
     average = round(sum(load.values()) / len(load), 1) if load else 0
@@ -174,8 +181,11 @@ async def panorama(period: Literal["week", "month", "quarter", "invasion", "all"
                           for key, rows in by_campaign_rows.items()), key=lambda row: -row["total"])
 
     # Tendencia semanal (8 semanas): expedientes nuevos y actividades realizadas.
-    week_start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
-    weeks = [week_start - timedelta(weeks=offset) for offset in range(7, -1, -1)]
+    # Semanas de lunes a domingo en la zona de la iglesia (no en UTC).
+    from count_rules import church_day_start_utc, church_today
+    today = await church_today()
+    monday = today - timedelta(days=today.weekday())
+    weeks = [await church_day_start_utc(monday - timedelta(weeks=offset)) for offset in range(7, -1, -1)]
     activities_done = []
     if items:
         activities_done = [aware(row.get("completed_at")) async for row in db.consolidation_activities.find({"enrollment_id": {"$in": [item["enrollment_id"] for item in items]}, "status": "done", "completed_at": {"$gte": weeks[0]}}, {"_id": 0, "completed_at": 1})]
@@ -192,7 +202,7 @@ async def panorama(period: Literal["week", "month", "quarter", "invasion", "all"
         "scope": scope["level"], "period": period, "period_start": start.isoformat() if start else None,
         "filters": {"campaign_id": campaign_id, "campaign_name": (campaign or {}).get("name"), "mentor_person_id": mentor_person_id if scope["level"] == "all" else scope.get("mentor_person_id"), "front_group_id": front_group_id, "stage_key": stage_key},
         "figures": {
-            "total": len(items), "active": len(active), "new": len(in_period), "new_previous": len(in_previous), "new_delta": delta(len(in_period), len(in_previous)),
+            "total": len(counted), "open": len(open_items), "active": len(active), "new": len(in_period), "new_previous": len(in_previous), "new_delta": delta(len(in_period), len(in_previous)),
             "unattended": len(unattended), "no_next_action": len(no_next), "transfers": len(transfers), "memberships": len(members),
             "first_contact_avg_hours": round(sum(first_hours) / len(first_hours), 1) if first_hours else None, "first_contact_count": len(first_hours),
         },
@@ -240,6 +250,9 @@ async def panorama_list(metric: str, campaign_id: Optional[str] = None, mentor_p
             rows = [item for item in items if stage_index(item) >= STAGES.index(thresholds[step])]
         else:
             rows = items
+    elif metric == "total":
+        from count_rules import CONSOLIDATION_COUNTED
+        rows = [item for item in items if item.get("status") in CONSOLIDATION_COUNTED]  # la misma lista que cuenta la cifra
     else:
         rows = items
     rows.sort(key=lambda item: aware(item.get("created_at")) or now, reverse=True)

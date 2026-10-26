@@ -22,10 +22,13 @@ const Block = ({ icon: Icon, title, subtitle, data, testId }) => (
     <h2 className="flex items-center gap-2 font-['Spectral'] text-lg font-semibold text-[#101D36]"><Icon className="h-4 w-4 text-[#9A7A2F]" />{title}</h2>
     <p className="mt-1 text-xs text-slate-500">{subtitle}</p>
     <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
-      <Stat label="Hogares visitados" value={data.invasion.households_visited} />
+      {/* Mismos nombres y mismas cifras que «Supervisar Mi Trabajo» y el Panel General. */}
+      <Stat label="Viviendas visitadas" value={data.invasion.households_visited} />
       <Stat label="Visitas" value={data.invasion.visits_total} />
-      <Stat label="Personas únicas contactadas" value={data.invasion.unique_persons_contacted} />
-      <Stat label="Interesados" value={data.invasion.interested} />
+      <Stat label="Personas contactadas" value={data.invasion.unique_persons_contacted} />
+      <Stat label="Quieren seguimiento" value={data.invasion.interested} />
+      <Stat label="En Consolidación" value={data.consolidation.in_consolidation} />
+      <Stat label="Libros entregados" value={data.library.mentor_custody.delivered} />
       <Stat label="Aceptaron consolidación" value={data.consolidation.accepted} />
       <Stat label="Procesos iniciados" value={data.consolidation.started} />
       <Stat label="Actividades realizadas" value={data.consolidation.activities_done} />

@@ -19,6 +19,7 @@ from library_module import compute_library_totals
 from process_engine import get_definition, now_utc, serialize
 from participation_scope import principal_authority_person_ids, without
 from server import db, get_current_user
+from count_rules import church_today  # «hoy» en la zona de la iglesia (auditoría 7/10)
 
 router = APIRouter(prefix="/api/supervision", tags=["supervision"])
 
@@ -165,7 +166,8 @@ async def invasion_metrics(ctx: dict) -> dict:
 
 
 async def consolidation_metrics(ctx: dict) -> dict:
-    enrollment_query = {**mentor_query(ctx), "process_key": CONSOLIDATION_KEY, **date_query(ctx, "created_at")}
+    # Los expedientes archivados (duplicados limpiados) son historial: no vuelven a contar.
+    enrollment_query = {**mentor_query(ctx), "process_key": CONSOLIDATION_KEY, "status": {"$ne": "archived"}, **date_query(ctx, "created_at")}
     if ctx["filters"].stage_key:
         enrollment_query["current_stage_key"] = ctx["filters"].stage_key
     accepted = await db.process_enrollments.count_documents({**enrollment_query, "decision_status": {"$in": ACCEPTED_OR_LATER}})
@@ -189,7 +191,7 @@ async def consolidation_metrics(ctx: dict) -> dict:
     paused_total = sum(row["total"] for row in paused_agg)
     enrollment_ids = await db.process_enrollments.distinct("enrollment_id", enrollment_query)
     activities_done = await db.consolidation_activities.count_documents({"enrollment_id": {"$in": enrollment_ids}, "status": "done"}) if enrollment_ids else 0
-    today_iso = date.today().isoformat()
+    today_iso = (await church_today()).isoformat()
     activities_overdue = await db.consolidation_activities.count_documents({"enrollment_id": {"$in": enrollment_ids}, "status": "pending", "scheduled_date": {"$lt": today_iso}}) if enrollment_ids else 0
     activities_total = await db.consolidation_activities.count_documents({"enrollment_id": {"$in": enrollment_ids}}) if enrollment_ids else 0
     return {
@@ -323,7 +325,7 @@ async def drilldown_groups(parent_group_id: Optional[str] = Query(default=None),
         branch_ids = await descendant_group_ids(db, group["front_group_id"])
         mentor_ids = without(await db.front_group_assignments.distinct("person_id", {"front_group_id": {"$in": branch_ids}, "active": True}), excluded)
         enrollment_ids = await db.process_enrollments.distinct("enrollment_id", {"mentor_person_id": {"$in": mentor_ids}, "process_key": CONSOLIDATION_KEY}) if mentor_ids else []
-        today_iso = date.today().isoformat()
+        today_iso = (await church_today()).isoformat()
         overdue = await db.consolidation_activities.count_documents({"enrollment_id": {"$in": enrollment_ids}, "status": "pending", "scheduled_date": {"$lt": today_iso}}) if enrollment_ids else 0
         total_activities = await db.consolidation_activities.count_documents({"enrollment_id": {"$in": enrollment_ids}}) if enrollment_ids else 0
         return {
@@ -349,7 +351,7 @@ async def drilldown_mentors(ctx: dict = Depends(build_filters)):
     thresholds = await load_thresholds()
     names = await person_names(mentor_ids)
     cutoff_inactive = now_utc() - timedelta(days=thresholds["mentor_inactivity_days"]["value"])
-    today_iso = date.today().isoformat()
+    today_iso = (await church_today()).isoformat()
     async def mentor_row(mentor_id: str) -> dict:
         visits = await db.outreach_visits.count_documents({"mentor_person_id": mentor_id, **campaign_query(ctx)})
         last_visit = await db.outreach_visits.find_one({"mentor_person_id": mentor_id}, {"_id": 0, "created_at": 1}, sort=[("created_at", -1)])
@@ -397,7 +399,7 @@ async def indicator_detail(indicator_key: str, ctx: dict = Depends(build_filters
     thresholds = await load_thresholds()
     if indicator_key == "activities_overdue":
         enrollment_ids = await db.process_enrollments.distinct("enrollment_id", {**mentor_query(ctx), "process_key": CONSOLIDATION_KEY})
-        today_iso = date.today().isoformat()
+        today_iso = (await church_today()).isoformat()
         query = {"enrollment_id": {"$in": enrollment_ids}, "status": "pending", "scheduled_date": {"$lt": today_iso}}
         total = await db.consolidation_activities.count_documents(query) if enrollment_ids else 0
         rows = await db.consolidation_activities.find(query, {"_id": 0}).sort("scheduled_date", 1).skip(skip).limit(limit).to_list(limit) if enrollment_ids else []

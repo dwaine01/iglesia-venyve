@@ -337,8 +337,8 @@ async def mentor_work_rows(mentor_ids: list[str]) -> dict:
         return {}
     houses = {row["_id"]: row["n"] async for row in db.outreach_households.aggregate([
         {"$match": {"mentor_person_id": {"$in": mentor_ids}, "archived": {"$ne": True}, "door_status": {"$in": PENDING_DOORS}}}, {"$group": {"_id": "$mentor_person_id", "n": {"$sum": 1}}}])}
-    people = {row["_id"]: row["n"] async for row in db.process_enrollments.aggregate([
-        {"$match": {"mentor_person_id": {"$in": mentor_ids}, "process_key": "consolidation", "status": {"$in": ACTIVE_ENROLLMENT}}}, {"$group": {"_id": "$mentor_person_id", "n": {"$sum": 1}}}])}
+    from count_rules import open_consolidation_by_mentor
+    people = await open_consolidation_by_mentor(mentor_ids)  # personas únicas, misma regla que Consolidación
     contacts = {row["_id"]: row["n"] async for row in db.outreach_visits.aggregate([
         {"$match": {"mentor_person_id": {"$in": mentor_ids}, "archived": {"$ne": True}, "enrollment_id": {"$in": [None, ""]}, "$or": [{"followup_accepted": True}, {"status": "wants_followup"}]}},
         {"$group": {"_id": "$mentor_person_id", "n": {"$sum": 1}}}])}
