@@ -23,6 +23,7 @@ const RegistroPage = lazyPage(() => import('./pages/RegistroPage'));
 const EstadisticasPage = lazyPage(() => import('./pages/EstadisticasPage'));
 const GlobalStatsPage = lazyPage(() => import('./pages/GlobalStatsPage'));
 const TestDataPage = lazyPage(() => import('./pages/TestDataPage'));
+const PersonMergePage = lazyPage(() => import('./pages/PersonMergePage'));
 const KioskPage = lazyPage(() => import('./pages/KioskPage'));
 const WelcomeScreenPage = lazyPage(() => import('./pages/WelcomeScreenPage'));
 const VisitorsAdminPage = lazyPage(() => import('./pages/VisitorsAdminPage'));
@@ -383,6 +384,7 @@ function App() {
             <Route path="codigos" element={<CapabilityRoute allowed={canManageInvitationCodes}><CodigosInvitacionPage /></CapabilityRoute>} />
             <Route path="estadisticas" element={<GlobalStatsPage />} />
             <Route path="admin/datos-de-prueba" element={<TestDataPage />} />
+            <Route path="admin/duplicados" element={<PersonMergePage />} />
             <Route path="visitantes" element={<VisitorsAdminPage />} />
             <Route path="mis-estadisticas/manual" element={<EstadisticasPage />} />
             <Route path="presentacion" element={<CapabilityRoute allowed={canViewPresentationManual}><PresentacionHomePage /></CapabilityRoute>} />

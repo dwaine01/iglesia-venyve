@@ -7,6 +7,32 @@ import { toast } from 'sonner';
 import { useAuth } from '../../context/AuthContext';
 import { apiErrorMessage } from '../../lib/apiErrors';
 
+/** Tableta → Consolidación (auditoría 10/10): abre o reutiliza el expediente con el mentor asignado y cierra este seguimiento. */
+function ToConsolidation({ item, onDone }) {
+  const { API, getAuthHeaders } = useAuth();
+  const [busy, setBusy] = useState(false);
+  if (item.enrollment_id) {
+    return <Link to={`/procesos/consolidacion/${item.enrollment_id}`} className="inline-flex min-h-12 items-center rounded-xl border border-emerald-300 bg-emerald-50 px-4 text-base font-semibold text-emerald-900" data-testid="followup-consolidation-link">En Consolidación: abrir expediente</Link>;
+  }
+  const ready = Boolean(item.person_id && item.assigned_person_id);
+  const send = async () => {
+    setBusy(true);
+    try {
+      const response = await axios.post(`${API}/api/visitors/registrations/${item.registration_id}/to-consolidation`, {}, getAuthHeaders());
+      toast.success(response.data.reused_enrollment ? 'Ya tenía expediente: se vinculó y se cerró este seguimiento' : 'Pasó a Consolidación con su mentor');
+      onDone(response.data);
+    } catch (error) { toast.error(apiErrorMessage(error, 'No se pudo pasar a Consolidación')); } finally { setBusy(false); }
+  };
+  return (
+    <div className="space-y-1">
+      <button type="button" onClick={send} disabled={busy || !ready} className="inline-flex min-h-12 items-center gap-2 rounded-xl bg-[#132443] px-4 text-base font-semibold text-white disabled:opacity-50" data-testid="followup-to-consolidation">
+        {busy && <Loader2 className="h-5 w-5 animate-spin" />}Pasar a Consolidación
+      </button>
+      {!ready && <p className="text-sm text-slate-600">{item.person_id ? 'Primero asígnelo a un mentor.' : 'Primero vincule el registro a su Persona 360.'}</p>}
+    </div>
+  );
+}
+
 /* Visitantes V2 › Seguimiento por servicio y fecha: asignar a un servidor,
  * registrar llamada, visita o mensaje con su resultado y revisar las posibles
  * coincidencias con Persona 360. La consejería y las necesidades solo las ve
@@ -230,6 +256,7 @@ function FollowupCard({ item: initial, canManage, canRestricted, onChanged }) {
           {canManage && <MarkTest item={item} onChanged={onChanged} />}
           {canManage && item.match_status === 'possible' && <MatchReview item={item} onDone={setItem} />}
           {canManage && <AssignBox item={item} onDone={setItem} />}
+          {(canManage || isAssignee) && <ToConsolidation item={item} onDone={setItem} />}
           {(canManage || isAssignee) && <AttemptForm item={item} onDone={setItem} />}
           {item.attempts.length > 0 && (
             <div><p className="text-[15px] font-semibold text-[#101D36]">Historial</p>

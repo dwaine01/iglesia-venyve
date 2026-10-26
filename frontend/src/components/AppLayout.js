@@ -7,7 +7,7 @@ import PageSkeleton from './PageSkeleton';
 import { Button } from './ui/button';
 import { Separator } from './ui/separator';
 import {
-  FlaskConical, LayoutDashboard, BookOpen, Map, Calendar, Users, BarChart3, LogOut, Menu, ChevronRight,
+  FlaskConical, GitMerge, LayoutDashboard, BookOpen, Map, Calendar, Users, BarChart3, LogOut, Menu, ChevronRight,
   Crown, Star, Trophy, Presentation, NotebookPen, KeyRound, IdCard, Church, Search, DatabaseZap,
   Activity, Award, BookHeart, Compass, GraduationCap, HeartHandshake, Network, RadioTower, DoorOpen, Gavel, Landmark, MapPinned,
   PanelLeftClose, PanelLeftOpen, ShieldCheck, Droplets, Baby, Bus, Footprints, ClipboardCheck, Trash2, DatabaseBackup, UserCircle, UserPlus
@@ -84,6 +84,7 @@ const getNavItems = (user, boardAllowed = false, isActiveMentor = false, hasVisi
       { type: 'separator', label: 'Administración' },
       { to: '/estadisticas', icon: BarChart3, label: 'Estadísticas Globales' },
       { to: '/admin/datos-de-prueba', icon: FlaskConical, label: 'Datos de prueba', testId: 'nav-test-data' },
+      { to: '/admin/duplicados', icon: GitMerge, label: 'Personas duplicadas', testId: 'nav-person-merge' },
       { to: '/admin/historial-borrados', icon: Trash2, label: 'Historial de Borrados', testId: 'nav-admin-deletions' },
       { to: '/admin/migracion-c11', icon: DatabaseBackup, label: 'Migración de Datos (C11)', testId: 'nav-migration-c11' },
     ];
@@ -163,7 +164,7 @@ const getNavItems = (user, boardAllowed = false, isActiveMentor = false, hasVisi
     { to: '/bitacora', icon: NotebookPen, label: 'Bitácora Evangelística' },
     { to: '/presentacion', icon: Presentation, label: 'Manual de 7 Semanas' },
     ...(isGeneralCoordinator(user) || hasCapability(user, 'consolidation.assign') ? [{ to: '/estadisticas', icon: BarChart3, label: 'Estadísticas Globales' }] : []),
-    ...(isGeneralCoordinator(user) ? [{ to: '/admin/datos-de-prueba', icon: FlaskConical, label: 'Datos de prueba', testId: 'nav-test-data' }] : []),
+    ...(isGeneralCoordinator(user) ? [{ to: '/admin/datos-de-prueba', icon: FlaskConical, label: 'Datos de prueba', testId: 'nav-test-data' }, { to: '/admin/duplicados', icon: GitMerge, label: 'Personas duplicadas', testId: 'nav-person-merge' }] : []),
     ...visitors,
   ];
   if (hasAnyCapability(user, ['core.access.manage'])) {
@@ -248,6 +249,7 @@ const breadcrumbMap = {
   '/codigos': 'Códigos de Invitación',
   '/estadisticas': 'Estadísticas Globales',
   '/admin/datos-de-prueba': 'Datos de prueba',
+  '/admin/duplicados': 'Personas duplicadas',
   '/visitantes': 'Registro de visitantes',
   '/mis-estadisticas/manual': 'Mi progreso del Manual de 7 Semanas',
   '/directorio': 'Directorio de Talentos',

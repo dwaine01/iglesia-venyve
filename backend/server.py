@@ -601,6 +601,10 @@ from report_period import router as report_period_router
 app.include_router(report_period_router)
 from test_data import router as test_data_router
 app.include_router(test_data_router)
+from visitor_consolidation import router as visitor_consolidation_router
+app.include_router(visitor_consolidation_router)
+from person_merge import router as person_merge_router
+app.include_router(person_merge_router)
 from person_contact import router as person_contact_router
 app.include_router(person_contact_router)
 from global_stats import router as global_stats_router
