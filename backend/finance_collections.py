@@ -69,6 +69,9 @@ async def ensure_indexes() -> None:
     await db.finance_zelle_received.create_index("dedupe_key", unique=True)
     # Una transacción Zelle solo puede coincidir con un aporte.
     await db.finance_zelle_received.create_index("matched_item_id", unique=True, partialFilterExpression={"matched_item_id": {"$type": "string"}})
+    if not await db.finance_accounts.find_one({"code": "1090"}):
+        await db.finance_accounts.update_one({"code": "1090"}, {"$setOnInsert": {"_id": str(uuid4()), "account_id": str(uuid4()), "code": "1090", "name": "Diferencias de efectivo por aclarar",
+                                                                                "account_type": "asset", "active": True, "created_at": now_utc()}}, upsert=True)
     if not await db.finance_contribution_types.find_one({"type_key": "special_offering"}):
         account = await db.finance_accounts.find_one({"code": "4010"}, {"_id": 0, "account_id": 1})
         if account:
@@ -650,7 +653,99 @@ async def correct(collection_id: str, payload: CorrectionInput, current_user: di
         await reverse_postings(collection, current_user, record["reason"])
     stage = {"stage": "corrected", "label": "Corregida · falta validar otra vez", "note": record["reason"], "by_user_id": current_user["user_id"], "by_name": current_user.get("nombre"), "at": now}
     await db.finance_collections.update_one({"collection_id": collection_id}, {
-        "$set": {"status": "registered", "registered_by_user_id": current_user["user_id"], "registered_at": now, "validated_by_user_id": None, "validated_at": None, "posted_journal_id": None},
+        "$set": {"status": "registered", "registered_by_user_id": current_user["user_id"], "registered_at": now, "validated_by_user_id": None, "validated_at": None, "posted_journal_id": None,
+                 "handover": None},
         "$push": {"corrections": record, "timeline": stage}})
     await touch(collection_id, current_user, "corrected", {"correction_id": record["correction_id"], "action": payload.action, "reason": record["reason"]})
+    return await view(await load_collection(collection_id), current_user)
+
+
+# ------------------------------------------------------------------ P4: entrega del efectivo a Tesorería
+async def treasurer(current_user: dict = Depends(get_current_user)) -> dict:
+    require_finance_role(current_user, FINANCE_TREASURY)
+    return await with_name(current_user)
+
+
+class HandoverInput(BaseModel):
+    delivered_cents: int = Field(ge=0, le=1_000_000_000)
+    note: Optional[str] = Field(default=None, max_length=500)
+
+
+@router.post("/{collection_id}/handover", response_model=dict)
+async def handover(collection_id: str, payload: HandoverInput, current_user: dict = Depends(recorder)):
+    """Finanzas registra cuánto efectivo entrega y quién lo entrega (el Zelle NO es parte del efectivo)."""
+    collection = await load_collection(collection_id)
+    if collection.get("status") != "validated":
+        raise HTTPException(status_code=409, detail="Primero otra persona debe validar el cuadre")
+    expected = (collection.get("validated_summary") or {}).get("cash_detail_cents") or 0
+    record = {"delivered_cents": payload.delivered_cents, "expected_cash_cents": expected, "note": payload.note, "delivered_by_user_id": current_user["user_id"],
+              "delivered_by_name": current_user.get("nombre"), "delivered_at": now_utc()}
+    await db.finance_collections.update_one({"collection_id": collection_id}, {"$set": {"handover": record}})
+    await touch(collection_id, current_user, "cash_handed_over", {"before": collection.get("handover"), "delivered_cents": payload.delivered_cents, "expected_cash_cents": expected})
+    return await view(await load_collection(collection_id), current_user)
+
+
+class ReceiveInput(BaseModel):
+    received_cents: int = Field(ge=0, le=1_000_000_000)
+    note: Optional[str] = Field(default=None, max_length=500)
+
+
+@router.post("/{collection_id}/receive", response_model=dict)
+async def receive(collection_id: str, payload: ReceiveInput, current_user: dict = Depends(treasurer)):
+    """Tesorería cuenta y confirma desde su usuario (puede no haber estado en el conteo, pero nunca recibe lo
+    que ella misma entregó). Si recibe otra cantidad registra el monto real y la diferencia queda por aclarar."""
+    from finance_engine import create_journal
+    collection = await load_collection(collection_id)
+    delivered = collection.get("handover")
+    if collection.get("status") != "validated" or not delivered:
+        raise HTTPException(status_code=409, detail="Finanzas aún no registra la entrega del efectivo")
+    if delivered.get("delivered_by_user_id") == current_user["user_id"]:
+        raise HTTPException(status_code=403, detail="Quien entrega el efectivo no puede confirmarlo: debe recibirlo otra persona de Tesorería")
+    now = now_utc()
+    difference = payload.received_cents - delivered["delivered_cents"]
+    against_expected = payload.received_cents - (delivered.get("expected_cash_cents") or 0)
+    reception = {"received_cents": payload.received_cents, "note": payload.note, "received_by_user_id": current_user["user_id"], "received_by_name": current_user.get("nombre"),
+                 "received_at": now, "difference_cents": difference, "difference_vs_detail_cents": against_expected,
+                 "difference_status": "pending" if (difference or against_expected) else "none", "journal_entry_id": None}
+    if against_expected:
+        # El efectivo que falta (o sobra) frente al detalle validado pasa a «Diferencias por aclarar».
+        accounts = {doc["code"]: doc["account_id"] async for doc in db.finance_accounts.find({"code": {"$in": ["1010", "1090"]}}, {"_id": 0, "code": 1, "account_id": 1})}
+        general = await db.finance_funds.find_one({"code": "GENERAL"}, {"_id": 0, "fund_id": 1})
+        amount = abs(against_expected)
+        source, target = (accounts["1010"], accounts["1090"]) if against_expected < 0 else (accounts["1090"], accounts["1010"])
+        lines = [{"account_id": target, "fund_id": general["fund_id"], "debit_cents": amount, "credit_cents": 0, "description": "Diferencia de efectivo por aclarar"},
+                 {"account_id": source, "fund_id": general["fund_id"], "debit_cents": 0, "credit_cents": amount, "description": "Diferencia de efectivo por aclarar"}]
+        journal = await create_journal(current_user["user_id"], (await _church_today()).isoformat(), f"Diferencia al recibir el efectivo · {collection['service_name']} {collection['service_date']}",
+                                       "collection_cash_difference", collection_id, lines, "submitted")
+        await db.finance_journal_entries.update_one({"entry_id": journal["entry_id"]}, {"$set": {"status": "posted", "posted_at": now, "posting_policy": "colecta_dos_personas",
+                                                                                               "is_test": bool(collection.get("is_test")), "updated_at": now}})
+        reception["journal_entry_id"] = journal["entry_id"]
+    stage = {"stage": "cash_received", "label": "Efectivo recibido por Tesorería", "by_user_id": current_user["user_id"], "by_name": current_user.get("nombre"), "at": now,
+             "note": f"Entregó {delivered.get('delivered_by_name')}: {delivered['delivered_cents'] / 100:.2f} · recibió {payload.received_cents / 100:.2f}"}
+    result = await db.finance_collections.update_one({"collection_id": collection_id, "status": "validated"},
+                                                     {"$set": {"status": "cash_received", "reception": reception}, "$push": {"timeline": stage}})
+    if not result.modified_count:
+        raise HTTPException(status_code=409, detail="La colecta cambió; recargue")
+    await touch(collection_id, current_user, "cash_received", {"received_cents": payload.received_cents, "difference_cents": difference, "difference_vs_detail_cents": against_expected})
+    return await view(await load_collection(collection_id), current_user)
+
+
+class ClarifyInput(BaseModel):
+    note: str = Field(min_length=5, max_length=1000)
+
+
+@router.post("/{collection_id}/clarify-cash", response_model=dict)
+async def clarify_cash(collection_id: str, payload: ClarifyInput, current_user: dict = Depends(get_current_user)):
+    """Aclarar la diferencia de efectivo (Finanzas o Tesorería): queda quién, cuándo y por qué. El ajuste
+    contable, si hace falta, se registra aparte; nada se borra."""
+    if not (has_finance_role(current_user, FINANCE_COLLECTION_RECORD) or has_finance_role(current_user, FINANCE_TREASURY)):
+        require_finance_role(current_user, FINANCE_TREASURY)
+    await with_name(current_user)
+    collection = await load_collection(collection_id)
+    reception = collection.get("reception") or {}
+    if reception.get("difference_status") != "pending":
+        raise HTTPException(status_code=409, detail="No hay una diferencia de efectivo pendiente")
+    clarification = {"note": payload.note.strip(), "by_user_id": current_user["user_id"], "by_name": current_user.get("nombre"), "at": now_utc()}
+    await db.finance_collections.update_one({"collection_id": collection_id}, {"$set": {"reception.difference_status": "clarified", "reception.clarification": clarification}})
+    await touch(collection_id, current_user, "cash_difference_clarified", {"note": clarification["note"]})
     return await view(await load_collection(collection_id), current_user)
