@@ -231,16 +231,25 @@ async def test_duplicate_existing_person_visit_is_rejected():
     client, headers = await auth_client(mentor_email)
     other_client, other_headers = await auth_client(other_email)
     try:
+        phone = f"305{uuid.uuid4().int % 10**7:07d}"
+        await server.db.person_contacts.insert_one({"person_id": target_pid, "tipo": "telefono", "valor": phone, "valor_normalizado": phone, "es_principal": True})
+        # Auditoría 6/10: sin relación con la persona, el mentor necesita su teléfono para vincularla.
+        blind = await client.post("/api/mentorship/outreach/visits", json={"contact_type": "existing", "person_id": target_pid}, headers=headers)
+        assert blind.status_code == 422
+        wrong = await client.post("/api/mentorship/outreach/visits", json={"contact_type": "existing", "person_id": target_pid, "contact_phone": "3050000000"}, headers=headers)
+        assert wrong.status_code == 422
         first = await client.post(
-            "/api/mentorship/outreach/visits", json={"contact_type": "existing", "person_id": target_pid}, headers=headers,
+            "/api/mentorship/outreach/visits", json={"contact_type": "existing", "person_id": target_pid, "contact_phone": f"+1 ({phone[:3]}) {phone[3:]}"}, headers=headers,
         )
         assert first.status_code == 201
 
         duplicate = await other_client.post(
-            "/api/mentorship/outreach/visits", json={"contact_type": "existing", "person_id": target_pid}, headers=other_headers,
+            "/api/mentorship/outreach/visits", json={"contact_type": "existing", "person_id": target_pid, "contact_phone": phone}, headers=other_headers,
         )
         assert duplicate.status_code == 409
+        assert "mentor:" not in duplicate.json()["detail"]  # a un mentor no se le revela quién la tiene
     finally:
+        await server.db.person_contacts.delete_many({"person_id": target_pid})
         await client.aclose()
         await other_client.aclose()
         await cleanup()

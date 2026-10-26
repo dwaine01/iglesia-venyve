@@ -69,7 +69,7 @@ export default function AddDiscipleDialog({ open, onOpenChange, mentorPersonId, 
         contact_type: contactType,
         person_id: contactType === 'existing' ? selectedPerson.person_id : null,
         contact_name: contactType === 'new' ? name.trim() : null,
-        contact_phone: contactType === 'new' ? (phone || null) : null,
+        contact_phone: phone || null,
         contact_zone: contactType === 'new' ? (zone || null) : null,
         mentor_person_id: mentorPersonId,
       }, getAuthHeaders());
@@ -128,6 +128,7 @@ export default function AddDiscipleDialog({ open, onOpenChange, mentorPersonId, 
                 </div>
               )}
               {selectedPerson && <p className="text-xs text-emerald-700" data-testid="add-disciple-selected">Seleccionado: {selectedPerson.name}</p>}
+              {selectedPerson && <div className="space-y-1.5"><Label>Teléfono de la persona</Label><Input value={phone} onChange={(event) => setPhone(event.target.value)} inputMode="tel" placeholder="El que tiene registrado" data-testid="add-disciple-existing-phone-input" /><p className="text-xs text-slate-500">Si no la acompaña todavía, se pide su teléfono para confirmar que es ella.</p></div>}
             </div>
           )}
 

@@ -6,7 +6,7 @@ from bson import ObjectId
 from fastapi import HTTPException
 
 from front_groups import group_in_scope
-from access_control import CONSOLIDATION_ASSIGN, has_capability, is_global_pastoral_authority
+from access_control import CONSOLIDATION_ASSIGN, has_capability, is_general_coordinator, is_global_pastoral_authority
 from process_engine import create_enrollment, get_definition, now_utc, record_event, serialize
 
 
@@ -51,6 +51,9 @@ async def load_consolidation(db, enrollment_id: str) -> dict:
 
 async def assert_consolidation_scope(db, enrollment: dict, current_user: dict, leader_required: bool = False) -> None:
     if is_global_pastoral_authority(current_user) or has_capability(current_user, CONSOLIDATION_ASSIGN):
+        return
+    # El coordinador general supervisa toda la Consolidación (el panorama ya se la muestra): abre cualquier expediente.
+    if is_general_coordinator(current_user) and not leader_required:
         return
     group_id = enrollment.get("front_group_id")
     if group_id and await group_in_scope(group_id, current_user, leader_required):

@@ -292,11 +292,12 @@ async def test_birth_date_fills_existing_person_only_when_missing():
     _, mentor_email = await create_user("Mentor Persona Existente", "persona", mentor_pid)
     existing_person_id = await create_person("Visitado Existente")
     await server.db.persons.update_one({"_id": ObjectId(existing_person_id)}, {"$set": {"fecha_nacimiento": "1985-01-01"}})
+    await server.db.person_contacts.insert_one({"person_id": existing_person_id, "tipo": "telefono", "valor": "3055550142", "valor_normalizado": "3055550142"})
     mentor_client, mentor_headers = await auth_client(mentor_email)
     try:
         visit = await mentor_client.post(
             "/api/mentorship/outreach/visits",
-            json={"contact_type": "existing", "person_id": existing_person_id, "mentor_person_id": mentor_pid},
+            json={"contact_type": "existing", "person_id": existing_person_id, "mentor_person_id": mentor_pid, "contact_phone": "305-555-0142"},
             headers=mentor_headers,
         )
         assert visit.status_code == 201, visit.text
@@ -313,6 +314,7 @@ async def test_birth_date_fills_existing_person_only_when_missing():
         assert person["fecha_nacimiento"] == "1985-01-01", "no debe pisar una fecha de nacimiento ya registrada"
     finally:
         await mentor_client.aclose()
+        await server.db.person_contacts.delete_many({"person_id": existing_person_id})
         await cleanup()
 
 

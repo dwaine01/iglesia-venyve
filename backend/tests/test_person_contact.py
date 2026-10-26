@@ -33,8 +33,9 @@ async def test_contact_origin_books_history_and_assign():
         await db.mentor_badges.insert_one({"_id": f"badge-{tag}-{luis_id}", "person_id": luis_id, "active": True})
         outsider = await fx.account(await fx.person(f"Ajeno{tag}"), "persona")
         assigner = await fx.account(await fx.person(f"Asigna{tag}"), "lider", capabilities=["consolidation.assign"], permissions_mode="manual")
-        for name in NAMES:
+        for index, name in enumerate(NAMES):
             people[name] = await fx.person(f"{name}{tag}")
+            await db.person_contacts.insert_one({"person_id": people[name], "tipo": "telefono", "valor": f"30555{index:05d}", "valor_normalizado": f"30555{index:05d}", "test_tag": tag})
         await db.library_books.insert_one({"_id": book_id, "book_id": book_id, "sku": f"T{tag}".upper(), "name": "MCD", "is_active": True, "member_price_cents": 0})
         await pastora.post("/api/library/adjustments", json={"book_id": book_id, "direction": "increase", "quantity": 10, "reason": "Compra"})
         await pastora.post("/api/library/movements", json={"book_id": book_id, "movement_type": "ASSIGNMENT", "quantity": 8, "from_holder": {"type": "warehouse", "id": "central"}, "to_holder": {"type": "user", "id": luis_user}})
@@ -47,7 +48,7 @@ async def test_contact_origin_books_history_and_assign():
         for index, name in enumerate(NAMES):
             number = "4247" if name == "Elvido" else str(4300 + index)
             response = await luis.post(f"{base}/doors", json=door(number, books=[{"book": book_id, "quantity": 1}], followup="yes" if name == "Karla" else "no",
-                                                                   person={"contact_type": "existing", "person_id": people[name]}))
+                                                                   person={"contact_type": "existing", "person_id": people[name], "contact_phone": f"30555{index:05d}"}))
             assert response.status_code == 201, response.text
         # Entregar el libro NO abre Consolidación.
         assert await db.process_enrollments.count_documents({"person_id": {"$in": list(people.values())}}) == 0
@@ -105,4 +106,5 @@ async def test_contact_origin_books_history_and_assign():
         await db.library_books.delete_many({"_id": book_id})
         await db.library_holdings.delete_many({"book_id": book_id})
         await db.mentor_badges.delete_many({"_id": {"$regex": f"^badge-{tag}"}})
+        await db.person_contacts.delete_many({"test_tag": tag})
         await fx.cleanup()

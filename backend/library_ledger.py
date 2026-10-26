@@ -390,8 +390,13 @@ async def complete_recipient(movement_id: str, payload: RecipientInput, current_
         raise HTTPException(status_code=422, detail="Elija la persona en Persona 360")
     if person_id:
         from bson import ObjectId
-        if not ObjectId.is_valid(person_id) or not await db.persons.find_one({"_id": ObjectId(person_id)}, {"_id": 1}):
+        person = await db.persons.find_one({"_id": ObjectId(person_id)}, {"_id": 1, "created_by": 1, "auth_user_id": 1}) if ObjectId.is_valid(person_id) else None
+        if not person:
             raise HTTPException(status_code=404, detail="Persona no encontrada")
+        # Misma prueba que una visita (auditoría 6/10): sin relación ni alcance, el teléfono de la persona.
+        from mentorship_outreach import is_outreach_leader, require_existing_person_proof
+        if not visit and not (is_library_manager(current_user) or is_outreach_leader(current_user)):
+            await require_existing_person_proof(person, payload.contact_phone, current_user)
     now = now_utc()
     completion_id = str(uuid4())
     completion = {

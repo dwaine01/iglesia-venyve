@@ -255,7 +255,7 @@ export default function PersonaPerfilPage({ personId: personIdProp, ownProfileEx
 
           <TabsContent value="resumen" className="mt-0">
             {mentorView ? (
-              <p className="rounded-xl border border-[#E8E5DE] bg-white p-4 text-[15px] text-slate-700" data-testid="profile-mentor-view-note">Ves esta ficha porque contactaste o acompañas a esta persona: cómo llegó, sus libros y su recorrido. Sus datos personales son privados.</p>
+              <p className="rounded-xl border border-[#E8E5DE] bg-white p-4 text-[15px] text-slate-700" data-testid="profile-mentor-view-note">Ves esta ficha porque contactaste o acompañas a esta persona: cómo llegó, sus libros y su recorrido. Si hoy la acompañas, también ves su teléfono; sus demás datos personales son privados.</p>
             ) : <Profile360Summary
               sections={sections}
               available={available}
