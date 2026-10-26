@@ -12,7 +12,7 @@ from pymongo.errors import DuplicateKeyError
 from bson import ObjectId
 
 from access_control import is_global_pastoral_authority
-from finance_engine import audit, create_journal, ensure_open_period, now_utc, require_finance_manage, require_finance_read, require_private_person_finance, serialize, validate_lines
+from finance_engine import audit, can_see_donors, create_journal, ensure_open_period, log_donor_view, now_utc, require_donor_access, require_finance_manage, require_finance_read, require_private_person_finance, serialize, validate_lines, without_donor
 from server import db, get_current_user
 
 router = APIRouter(prefix="/api/finance", tags=["finance"])
@@ -479,7 +479,11 @@ async def enrich_campaign_names(items: list) -> list:
 @router.get("/contributions", response_model=dict)
 async def contributions(current_user: dict = Depends(reader)):
     items = await db.finance_contributions.find({"status": {"$ne": "corrected"}}, {"_id": 0}).sort("received_date", -1).to_list(3000)
-    return {"items": serialize(await enrich_campaign_names(items))}
+    items = await enrich_campaign_names(items)
+    if not can_see_donors(current_user):
+        return {"items": serialize([without_donor(item) for item in items]), "donors_hidden": True}
+    await log_donor_view(current_user, "contributions_list", detail={"count": len(items)})
+    return {"items": serialize(items), "donors_hidden": False}
 
 
 @router.get("/persons/{person_id}/contributions", response_model=dict)
@@ -491,6 +495,7 @@ async def person_contributions(person_id: str, scope: Literal["person", "family"
         if household_ids: person_ids = await db.household_memberships.distinct("person_id", {"household_id": {"$in": household_ids}, "active": {"$ne": False}})
     items = await db.finance_contributions.find({"person_id": {"$in": person_ids}, "status": {"$ne": "corrected"}}, {"_id": 0}).sort("received_date", -1).to_list(5000)
     items = await enrich_campaign_names(items)
+    await log_donor_view(current_user, "person_profile_contributions", person_id, {"scope": scope})
     return {"scope": scope, "person_ids": person_ids, "total_cents": sum(item.get("amount_cents", 0) for item in items), "items": serialize(items)}
 
 
@@ -636,7 +641,11 @@ async def campaign_create(payload: CampaignCreate, current_user: dict = Depends(
 
 @router.get("/promises", response_model=dict)
 async def promises(campaign_id: Optional[str] = None, current_user: dict = Depends(reader)):
-    return {"items": serialize(await db.finance_promises.find({"campaign_id": campaign_id} if campaign_id else {}, {"_id": 0}).sort("created_at", -1).to_list(5000))}
+    items = await db.finance_promises.find({"campaign_id": campaign_id} if campaign_id else {}, {"_id": 0}).sort("created_at", -1).to_list(5000)
+    if not can_see_donors(current_user):
+        return {"items": serialize([without_donor(item) for item in items]), "donors_hidden": True}
+    await log_donor_view(current_user, "promises_list", detail={"campaign_id": campaign_id, "count": len(items)})
+    return {"items": serialize(items), "donors_hidden": False}
 
 
 @router.post("/promises", response_model=dict, status_code=201)
@@ -923,7 +932,12 @@ async def reconciliation_create(payload: ReconciliationCreate, current_user: dic
 async def report(report_key: Literal["income-expense", "fund-balances", "budget-vs-actual", "activity", "financial-position", "cash-flow", "contributions", "contributions-by-family", "expenses-by-ministry", "payables", "deposits", "reconciliations", "recurring", "audit"], start: Optional[str] = None, end: Optional[str] = None, current_user: dict = Depends(reader)):
     match = {"status": "posted"}
     if start or end: match["entry_date"] = {**({"$gte": start} if start else {}), **({"$lte": end} if end else {})}
-    if report_key == "audit": return {"items": serialize(await db.finance_audit_events.find({}, {"_id": 0}).sort("created_at", -1).limit(5000).to_list(5000))}
+    if report_key == "audit":
+        events = await db.finance_audit_events.find({}, {"_id": 0}).sort("created_at", -1).limit(5000).to_list(5000)
+        if not can_see_donors(current_user):  # sin la persona: el resto de Finanzas ve qué pasó, no de quién
+            events = [{**event, "entity_id": "persona" if event.get("entity_type") == "person" else event.get("entity_id"),
+                       "changes": {key: value for key, value in (event.get("changes") or {}).items() if key not in ("person_id", "before", "after")}} for event in events]
+        return {"items": serialize(events)}
     if report_key == "payables":
         query = {"expense_date": match["entry_date"]} if "entry_date" in match else {}
         return {"items": serialize(await db.finance_expenses.find(query, {"_id": 0}).sort("expense_date", -1).to_list(5000))}
@@ -938,6 +952,8 @@ async def report(report_key: Literal["income-expense", "fund-balances", "budget-
     if report_key == "contributions":
         pipeline = [{"$match": {"status": {"$ne": "corrected"}, **({"received_date": match["entry_date"]} if "entry_date" in match else {})}}, {"$unwind": "$allocations"}, {"$lookup": {"from": "finance_funds", "localField": "allocations.fund_id", "foreignField": "fund_id", "as": "fund"}}, {"$unwind": "$fund"}, {"$group": {"_id": {"contribution_type": {"$ifNull": ["$allocations.contribution_type", "$contribution_type"]}, "fund_id": "$allocations.fund_id", "fund_name": "$fund.name", "payment_method": "$payment_method"}, "amount_cents": {"$sum": "$allocations.amount_cents"}, "count": {"$sum": 1}}}]; return {"items": serialize(await db.finance_contributions.aggregate(pipeline).to_list(1000))}
     if report_key == "contributions-by-family":
+        require_donor_access(current_user)  # por familia = por persona: solo la pastora
+        await log_donor_view(current_user, "report_contributions_by_family", detail={"start": start, "end": end})
         pipeline = [{"$match": {"status": {"$ne": "corrected"}, "household_id": {"$nin": [None, ""]}, **({"received_date": match["entry_date"]} if "entry_date" in match else {})}}, {"$unwind": "$allocations"}, {"$group": {"_id": {"household_id": "$household_id", "contribution_type": {"$ifNull": ["$allocations.contribution_type", "$contribution_type"]}}, "amount_cents": {"$sum": "$allocations.amount_cents"}, "count": {"$sum": 1}}}]
         return {"items": serialize(await db.finance_contributions.aggregate(pipeline).to_list(5000))}
     if report_key == "expenses-by-ministry":

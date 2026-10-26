@@ -150,3 +150,31 @@ async def ensure_indexes_and_seed():
         account = await db.finance_accounts.find_one({"code": account_code}, {"_id": 0, "account_id": 1})
         await db.finance_contribution_types.update_one({"type_key": key}, {"$setOnInsert": {"_id": key, "type_key": key, "name": name, "revenue_account_id": account["account_id"], "annual_statement_eligible": annual_statement_eligible, "active": True, "created_at": now}}, upsert=True)
         await db.finance_contribution_types.update_one({"type_key": key, "annual_statement_eligible": {"$exists": False}}, {"$set": {"annual_statement_eligible": annual_statement_eligible, "updated_at": now}})
+
+# ------------------------------------------------------------------ F1: privacidad de lo que da cada persona
+# Decisión del dueño: lo que cada persona da lo ve SOLO la pastora (autoridad pastoral); el resto de
+# Finanzas ve totales sin nombres, y cada consulta de datos por persona queda registrada.
+DONOR_FIELDS = ("person_id", "person_name", "household_id", "envelope_number", "reference", "notes", "description", "replaced_by_contribution_id", "corrects_contribution_id")
+
+
+def can_see_donors(current_user: dict) -> bool:
+    return is_global_pastoral_authority(current_user)
+
+
+def require_donor_access(current_user: dict) -> None:
+    if not can_see_donors(current_user):
+        raise HTTPException(status_code=403, detail="Lo que da cada persona solo lo ve la pastora")
+
+
+def without_donor(item: dict) -> dict:
+    """La misma contribución, sin nada que identifique a quien dio (para el resto de Finanzas)."""
+    clean = {key: value for key, value in item.items() if key not in DONOR_FIELDS}
+    if "allocations" in clean:
+        clean["allocations"] = [{key: value for key, value in allocation.items() if key != "description"} for allocation in clean["allocations"] or []]
+    clean["donor_hidden"] = True
+    return clean
+
+
+async def log_donor_view(current_user: dict, what: str, person_id: str | None = None, detail: dict | None = None) -> None:
+    """Cada consulta de datos por persona queda en la auditoría de Finanzas."""
+    await audit(current_user["user_id"], "donor_data_viewed", "person" if person_id else "contributions", person_id or what, {"what": what, **(detail or {})})

@@ -14,7 +14,7 @@ from motor.motor_asyncio import AsyncIOMotorGridFSBucket
 from pydantic import BaseModel, Field
 
 from access_control import is_global_pastoral_authority
-from finance_engine import audit, create_journal, ensure_open_period, now_utc, require_finance_manage, require_finance_read, serialize
+from finance_engine import audit, can_see_donors, create_journal, ensure_open_period, log_donor_view, now_utc, require_donor_access, require_finance_manage, require_finance_read, serialize, without_donor
 from finance_routes import ContributionCreate, ExpenseCreate, contribution_create, expense_create
 from server import db, get_current_user
 
@@ -232,7 +232,10 @@ async def contributor_search(search: str = Query(min_length=2, max_length=120), 
     items = []
     for person in people:
         pid = person.get("person_id") or str(person.get("_id"))
-        items.append({"person_id": pid, "name": person_name(person), "vv_number": person.get("vv_number"), "contribution_count": await db.finance_contributions.count_documents({"person_id": pid, "status": {"$ne": "corrected"}})})
+        row = {"person_id": pid, "name": person_name(person), "vv_number": person.get("vv_number")}
+        if can_see_donors(current_user):  # cuántas veces dio = dato de ofrendas: solo la pastora
+            row["contribution_count"] = await db.finance_contributions.count_documents({"person_id": pid, "status": {"$ne": "corrected"}})
+        items.append(row)
     return {"items": items}
 
 
@@ -247,6 +250,8 @@ async def contributor_detail(
     payment_method: Optional[str] = None,
     current_user: dict = Depends(reader),
 ):
+    require_donor_access(current_user)
+    await log_donor_view(current_user, "contributor_detail", person_id, {"year": year})
     return await contribution_summary(person_id, year, start, end, contribution_type, fund_id, payment_method)
 
 
@@ -276,6 +281,7 @@ async def annual_statement_settings_update(payload: StatementSettingsInput, curr
 
 @router.post("/contributors/{person_id}/annual-statements/{year}", response_model=dict, status_code=201)
 async def annual_statement_generate(person_id: str, year: int, current_user: dict = Depends(manager)):
+    require_donor_access(current_user)
     if year < 2000 or year > 2200:
         raise HTTPException(status_code=422, detail="Año no válido")
     summary = await contribution_summary(person_id, year=year)
@@ -304,6 +310,8 @@ async def annual_statement_generate(person_id: str, year: int, current_user: dic
 
 @router.get("/contributors/{person_id}/history", response_model=dict)
 async def contributor_history(person_id: str, current_user: dict = Depends(reader)):
+    require_donor_access(current_user)
+    await log_donor_view(current_user, "contributor_history", person_id)
     person = await canonical_person(person_id)
     contribution_ids = await db.finance_contributions.distinct("contribution_id", {"person_id": person["person_id"]})
     corrections = await db.finance_contribution_corrections.find({"original_contribution_id": {"$in": contribution_ids}}, {"_id": 0}).sort("created_at", -1).to_list(1000)
@@ -318,6 +326,10 @@ async def contribution_correct(contribution_id: str, payload: ContributionCorrec
         raise HTTPException(status_code=404, detail="Contribución no encontrada")
     if original.get("status") == "corrected":
         raise HTTPException(status_code=409, detail="La contribución ya fue corregida")
+    # F1: quien no ve al donante corrige sin elegirlo; el reemplazo conserva la misma persona.
+    if not payload.replacement.person_id and not payload.replacement.anonymous and original.get("person_id"):
+        payload.replacement.person_id = original["person_id"]
+        payload.replacement.household_id = payload.replacement.household_id or original.get("household_id")
     if payload.correction_date is None:
         from count_rules import church_today
         payload.correction_date = await church_today()
@@ -479,6 +491,7 @@ async def finance_document_download(document_id: str, current_user: dict = Depen
     doc = await db["finance_documents.files"].find_one({"_id": oid, "metadata.kind": "financial_document"})
     if not doc:
         raise HTTPException(status_code=404, detail="Comprobante no encontrado")
+    await audit(current_user["user_id"], "financial_document_downloaded", (doc.get("metadata") or {}).get("entity_type") or "document", (doc.get("metadata") or {}).get("entity_id") or document_id, {"document_id": document_id})
     source = await document_bucket().open_download_stream(oid)
     metadata = doc.get("metadata") or {}
     return StreamingResponse(source, media_type=metadata.get("content_type", "application/octet-stream"), headers={"Content-Disposition": f'attachment; filename="{doc.get("filename", "comprobante")}"', "X-Content-SHA256": metadata.get("sha256", "")})
@@ -495,6 +508,7 @@ async def fund_activity(fund_id: str, current_user: dict = Depends(reader)):
     journals = await db.finance_journal_entries.find({"status": "posted", "lines.fund_id": fund_id}, {"_id": 0}).sort("entry_date", -1).to_list(5000)
     spent = sum(line.get("debit_cents", 0) - line.get("credit_cents", 0) for entry in journals for line in entry.get("lines", []) if line.get("fund_id") == fund_id and account_types.get(line.get("account_id")) == "expense")
     budgets = await db.finance_budgets.find({"fund_id": fund_id}, {"_id": 0}).to_list(5000)
+    contributions = contributions if can_see_donors(current_user) else [without_donor(item) for item in contributions]
     return {"fund": serialize(fund), "received_cents": received, "spent_cents": spent, "available_cents": received - spent, "budget_cents": sum(item.get("amount_cents", 0) for item in budgets), "contributions": serialize(contributions), "journals": serialize(journals), "budgets": serialize(budgets)}
 
 
@@ -510,4 +524,5 @@ async def campaign_activity(campaign_id: str, current_user: dict = Depends(reade
     spent = sum(line.get("debit_cents", 0) - line.get("credit_cents", 0) for entry in journals for line in entry.get("lines", []) if line.get("campaign_id") == campaign_id and account_types.get(line.get("account_id")) == "expense")
     budgets = await db.finance_budgets.find({"campaign_id": campaign_id}, {"_id": 0}).to_list(5000)
     budget_total = campaign.get("budget_cents", 0) + sum(item.get("amount_cents", 0) for item in budgets)
+    contributions = contributions if can_see_donors(current_user) else [without_donor(item) for item in contributions]
     return {"campaign": serialize(campaign), "received_cents": received, "spent_cents": spent, "available_cents": received - spent, "budget_cents": budget_total, "contributions": serialize(contributions), "journals": serialize(journals)}

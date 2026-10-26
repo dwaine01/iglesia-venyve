@@ -69,6 +69,7 @@ export default function TestDataPage() {
         ))}</ul>
       </section>
       <p className="text-xs text-slate-500">Registros de visitantes marcados «Es una prueba» en la tableta: {data.visitor_registrations_marked}.</p>
+      {data.finance_contributions && <p className="text-xs text-slate-500" data-testid="test-data-finance">Contribuciones de Finanzas a nombre de estas personas: {data.finance_contributions.count} (total ${((data.finance_contributions.amount_cents || 0) / 100).toFixed(2)}). Se revisan y corrigen desde Finanzas; aquí no se cambia nada.</p>}
     </div>
   );
 }
