@@ -196,6 +196,7 @@ function CollectionDetail({ id, roles }) {
           <button type="button" className={`${button} border border-amber-700 text-amber-800`} onClick={() => { const note = askReason('¿Qué debe revisar Finanzas?'); if (note) run(api('post', `/api/finance/collections/${id}/return`, { note }), 'Devuelta a Finanzas'); }}>Devolver con observaciones</button>
         </section>
       )}
+      <CashHandover data={data} roles={roles} run={run} api={api} id={id} />
       {(data.corrections || []).length > 0 && (
         <section className="mt-5 border bg-white p-4" data-testid="collection-corrections"><h2 className="text-lg font-semibold">Correcciones</h2>
           <ul className="mt-2 divide-y text-sm">{data.corrections.map((row) => <li key={row.correction_id} className="py-2"><b>{row.by_name}</b> · {new Date(row.at).toLocaleString('es')} · {row.reason}{row.before?.amount_cents != null && <> · antes <Money cents={row.before.amount_cents} /></>}{row.after?.amount_cents != null && <> · después <Money cents={row.after.amount_cents} /></>}{row.before?.counted_cash_cents != null && <> · conteo antes <Money cents={row.before.counted_cash_cents} /></>}</li>)}</ul>
@@ -203,6 +204,41 @@ function CollectionDetail({ id, roles }) {
       )}
       {editable && <button type="button" className={`${button} mt-5 w-full bg-emerald-700 text-white`} disabled={s.pending_explanations.length > 0 || !s.items} onClick={() => run(api('post', `/api/finance/collections/${id}/submit`), 'Enviada: falta que otra persona valide el cuadre')} data-testid="collection-submit"><Send className="h-5 w-5" />Enviar a validación</button>}
     </FinanceShell>
+  );
+}
+
+/** P4: Finanzas entrega el efectivo; Tesorería cuenta y confirma desde su usuario (el Zelle no es efectivo). */
+function CashHandover({ data, roles, run, api, id }) {
+  const expected = data.validated_summary?.cash_detail_cents ?? data.summary.cash_detail_cents;
+  const [amount, setAmount] = useState((expected / 100).toFixed(2));
+  const [received, setReceived] = useState('');
+  const [note, setNote] = useState('');
+  const handover = data.handover;
+  const reception = data.reception;
+  if (!['validated', 'cash_received', 'deposited'].includes(data.status)) return null;
+  return (
+    <section className="mt-5 space-y-3 border bg-white p-4" data-testid="collection-handover">
+      <h2 className="text-lg font-semibold">Entrega del efectivo a Tesorería</h2>
+      <p className="text-sm text-slate-600">Efectivo validado: <b><Money cents={expected} /></b>. El Zelle (<Money cents={data.summary.zelle_cents} />) es parte de la colecta pero no del efectivo que se entrega.</p>
+      {handover && <p className="text-sm">Entregó <b>{handover.delivered_by_name}</b>: <Money cents={handover.delivered_cents} /> · {new Date(handover.delivered_at).toLocaleString('es')}</p>}
+      {roles.record && data.status === 'validated' && (
+        <div className="flex flex-wrap gap-2"><input className={`${field} max-w-[12rem]`} inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} /><button type="button" className={`${button} bg-[#102A2D] text-white`} onClick={() => run(api('post', `/api/finance/collections/${id}/handover`, { delivered_cents: toCents(amount) }), 'Entrega registrada: falta que Tesorería confirme')} data-testid="collection-handover-register">{handover ? 'Cambiar entrega' : 'Registrar entrega'}</button></div>
+      )}
+      {roles.treasury && data.status === 'validated' && handover && (
+        <div className="flex flex-wrap gap-2 border-t pt-3"><input className={`${field} max-w-[12rem]`} inputMode="decimal" value={received} onChange={(event) => setReceived(event.target.value)} placeholder="Recibí $" /><input className={`${field} flex-1`} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Nota (opcional)" /><button type="button" className={`${button} bg-emerald-700 text-white`} disabled={received === ''} onClick={() => run(api('post', `/api/finance/collections/${id}/receive`, { received_cents: toCents(received), note: note || null }), 'Recepción confirmada')} data-testid="collection-receive">Confirmar lo que recibí</button></div>
+      )}
+      {reception && (
+        <div className="border-t pt-3 text-sm">
+          <p>Recibió <b>{reception.received_by_name}</b>: <Money cents={reception.received_cents} /> · {new Date(reception.received_at).toLocaleString('es')}{reception.note ? ` · ${reception.note}` : ''}</p>
+          {reception.difference_status === 'pending' && (
+            <div className="mt-2 space-y-2 border border-amber-300 bg-amber-50 p-3"><p className="font-semibold text-amber-900">Diferencia pendiente de aclarar: <Money cents={reception.difference_cents} /> frente a lo entregado</p>
+              {(roles.record || roles.treasury) && <button type="button" className={`${button} border border-amber-700 text-amber-800`} onClick={() => { const text = window.prompt('¿Qué pasó con la diferencia?'); if (text && text.trim().length >= 5) run(api('post', `/api/finance/collections/${id}/clarify-cash`, { note: text }), 'Diferencia aclarada'); }}>Aclarar diferencia</button>}
+            </div>
+          )}
+          {reception.difference_status === 'clarified' && <p className="mt-1 text-slate-700">Diferencia aclarada por {reception.clarification.by_name}: {reception.clarification.note}</p>}
+        </div>
+      )}
+    </section>
   );
 }
 
