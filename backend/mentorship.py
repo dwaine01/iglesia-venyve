@@ -56,6 +56,8 @@ class MentorBadgeInput(BaseModel):
     active: bool
     since: Optional[date] = None
     note: Optional[str] = Field(default=None, max_length=1000)
+    # Al quitar la insignia: a quién pasar su trabajo pendiente (obligatorio si tiene algo).
+    reassign_to_person_id: Optional[str] = Field(default=None, max_length=80)
 
 
 class MentorLbsInput(BaseModel):
@@ -152,6 +154,16 @@ async def set_mentor_badge(person_id: str, payload: MentorBadgeInput, current_us
     now = now_utc()
     previous = await db.mentor_badges.find_one({"person_id": person_id}, {"_id": 0, "active": 1})
     state_changed = bool(previous and previous.get("active")) != payload.active
+    handover = None
+    if state_changed and not payload.active:
+        # Quitar la insignia no puede dejar discípulos, visitas, seguimientos ni libros sin responsable.
+        from work_handover import blocked, hand_over, pending_work, require_handover_target
+        work = await pending_work(person_id)
+        if work["blocking"]:
+            if not payload.reassign_to_person_id:
+                raise blocked(work, "quitar la insignia de mentor")
+            new_owner = await require_handover_target(person_id, payload.reassign_to_person_id)
+            handover = await hand_over(person_id, work, new_owner, current_user, (payload.note or "").strip() or "Se quitó la insignia de mentor")
     since_value = payload.since.isoformat() if payload.since else (now.date().isoformat() if payload.active else None)
     fields = {
         "person_id": person_id,
@@ -172,7 +184,7 @@ async def set_mentor_badge(person_id: str, payload: MentorBadgeInput, current_us
         {"since": since_value, "note": payload.note},
     )
     badge = await db.mentor_badges.find_one({"person_id": person_id}, {"_id": 0})
-    return serialize(badge)
+    return {**serialize(badge), **({"handover": handover} if handover else {})}
 
 
 @router.put("/lbs/{person_id}", response_model=dict)

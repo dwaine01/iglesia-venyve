@@ -62,8 +62,9 @@ async def test_delete_leader_account_keeps_people_and_cleans_references():
         body = deleted.json()
         assert body["people_unassigned"] == 6 and body["invasions_removed"] == [campaign_ids[0]] and body["invasions_kept_as_history"] == [campaign_ids[1]]
 
-        # La cuenta ya no existe y su sesión deja de valer.
-        assert not await server.db.users.find_one({"_id": ObjectId(josue_user_id)})
+        # La cuenta no se borra (auditoría: nada de borrado permanente): queda desactivada y su sesión deja de valer.
+        kept = await server.db.users.find_one({"_id": ObjectId(josue_user_id)})
+        assert kept and kept["is_active"] is False and kept.get("account_deleted_at")
         assert (await josue.get("/api/core/me/profile")).status_code == 401
         # Personas y Persona 360 conservadas: quedan sin líder y visibles para reasignar.
         people = await server.db.people.find({"_id": {"$in": legacy_ids}}).to_list(10)

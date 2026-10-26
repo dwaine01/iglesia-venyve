@@ -29,6 +29,7 @@ import { toast } from 'sonner';
 import { canDeliverLibraryBooks, canIssueBaptismCertificates, canManageMembershipDocuments, canRegularizeMembership, canViewDirectory, canViewOtherMentorDisciples, canWriteBaptism, isPastoralAuthority } from '../lib/accessControl';
 import { LibraryPersonSection } from '../components/library/LibraryPersonSection';
 import { ContactHistory, ContactOriginCard, useContactOrigin } from '../components/PersonContactOrigin';
+import { handoverFromError } from '../components/WorkHandoverSection';
 
 // P-001 Slice 2A - Person Profile 360 (shell full-screen).
 // Consume unicamente el read-model /api/core/persons/{id}/profile.
@@ -65,6 +66,8 @@ export default function PersonaPerfilPage({ personId: personIdProp, ownProfileEx
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [archiving, setArchiving] = useState(false);
   const [archiveError, setArchiveError] = useState('');
+  const [archiveHandover, setArchiveHandover] = useState(null);
+  const [archiveHandoverTo, setArchiveHandoverTo] = useState('');
   const [mentorBadgeActive, setMentorBadgeActive] = useState(false);
   // L2: el mentor de esta persona (visita de invasión) también entrega libros desde el perfil (el backend lo valida).
   const [mentorLibraryAccess, setMentorLibraryAccess] = useState(false);
@@ -152,12 +155,15 @@ export default function PersonaPerfilPage({ personId: personIdProp, ownProfileEx
     setArchiving(true);
     setArchiveError('');
     try {
-      await axios.delete(`${API}/api/core/persons/${personId}`, getAuthHeaders());
+      await axios.delete(`${API}/api/core/persons/${personId}`, { ...getAuthHeaders(), params: archiveHandoverTo ? { reassign_to_person_id: archiveHandoverTo } : undefined });
       toast.success('Persona eliminada del directorio; su historial quedó conservado');
       setArchiveOpen(false);
       navigate('/personas', { replace: true });
     } catch (requestError) {
-      setArchiveError(requestError?.response?.data?.detail || 'No se pudo eliminar la Persona del directorio.');
+      const pending = handoverFromError(requestError);
+      if (pending) { setArchiveHandover(pending); setArchiveError(pending.message); return; }
+      const detail = requestError?.response?.data?.detail;
+      setArchiveError(typeof detail === 'string' ? detail : 'No se pudo eliminar la Persona del directorio.');
     } finally {
       setArchiving(false);
     }
@@ -197,7 +203,7 @@ export default function PersonaPerfilPage({ personId: personIdProp, ownProfileEx
           header={header}
           photoSrc={photoSrc}
           onEdit={profile.profile_can_write ? () => setEditorOpen(true) : undefined}
-          onArchive={canArchive ? () => { setArchiveError(''); setArchiveOpen(true); } : undefined}
+          onArchive={canArchive ? () => { setArchiveError(''); setArchiveHandover(null); setArchiveHandoverTo(''); setArchiveOpen(true); } : undefined}
           onSelectTab={setActiveTab}
           onBack={canViewDirectory(user) ? () => navigate('/personas') : undefined}
         />
@@ -208,6 +214,10 @@ export default function PersonaPerfilPage({ personId: personIdProp, ownProfileEx
           busy={archiving}
           error={archiveError}
           onConfirm={archivePerson}
+          handover={archiveHandover}
+          handoverTo={archiveHandoverTo}
+          onHandoverTo={setArchiveHandoverTo}
+          personId={personId}
         />
         <PersonJourneyStatusStrip status={profile.journey_status} contact={origin} />
         <ContactOriginCard personId={personId} origin={origin} onAssigned={() => { refreshOrigin(); refreshProfile().catch(() => {}); }} />

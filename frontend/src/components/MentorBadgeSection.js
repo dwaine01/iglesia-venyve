@@ -10,6 +10,8 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Switch } from './ui/switch';
 import { Textarea } from './ui/textarea';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
+import { WorkHandoverSection, handoverFromError } from './WorkHandoverSection';
 
 const ACTION_LABELS = {
   mentor_badge_activated: 'Insignia de Mentor activada',
@@ -26,6 +28,8 @@ export default function MentorBadgeSection({ personId, API, getAuthHeaders, onCh
   const [error, setError] = useState('');
   const [savingBadge, setSavingBadge] = useState(false);
   const [savingLbs, setSavingLbs] = useState(false);
+  const [handover, setHandover] = useState(null); // trabajo pendiente al quitar la insignia
+  const [handoverTo, setHandoverTo] = useState('');
   const [since, setSince] = useState('');
   const [note, setNote] = useState('');
   const [lbsNote, setLbsNote] = useState('');
@@ -51,15 +55,20 @@ export default function MentorBadgeSection({ personId, API, getAuthHeaders, onCh
 
   useEffect(() => { load(); }, [personId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const toggleBadge = async (active) => {
+  const toggleBadge = async (active, reassignTo = null) => {
     setSavingBadge(true);
     try {
-      await axios.put(`${API}/api/mentorship/badge/${personId}`, { active, since: since || null, note: note || null }, getAuthHeaders());
-      toast.success(active ? 'Insignia de Mentor activada' : 'Insignia de Mentor desactivada');
+      await axios.put(`${API}/api/mentorship/badge/${personId}`, { active, since: since || null, note: note || null, reassign_to_person_id: reassignTo }, getAuthHeaders());
+      toast.success(active ? 'Insignia de Mentor activada' : (reassignTo ? 'Insignia desactivada y su trabajo pasado a otro mentor' : 'Insignia de Mentor desactivada'));
+      setHandover(null); setHandoverTo('');
       await load();
       if (onChanged) onChanged();
     } catch (requestError) {
-      toast.error(requestError?.response?.data?.detail || 'No se pudo actualizar la insignia.');
+      // Tiene pendientes: antes de quitar la insignia hay que elegir a quién pasarlos.
+      const pending = handoverFromError(requestError);
+      if (pending) { setHandover(pending); return; }
+      const detail = requestError?.response?.data?.detail;
+      toast.error(typeof detail === 'string' ? detail : 'No se pudo actualizar la insignia.');
     } finally {
       setSavingBadge(false);
     }
@@ -195,6 +204,20 @@ export default function MentorBadgeSection({ personId, API, getAuthHeaders, onCh
           </div>
         </div>
       )}
+
+      <Dialog open={Boolean(handover)} onOpenChange={(open) => { if (!open) { setHandover(null); setHandoverTo(''); } }}>
+        <DialogContent className="max-h-[92vh] overflow-y-auto bg-white sm:max-w-lg" data-testid="mentor-badge-handover-dialog">
+          <DialogHeader>
+            <DialogTitle>Quitar la insignia de mentor</DialogTitle>
+            <DialogDescription>{handover?.message}</DialogDescription>
+          </DialogHeader>
+          <WorkHandoverSection work={handover?.pending_work} value={handoverTo} onChange={setHandoverTo} excludePersonId={personId} />
+          <DialogFooter className="grid grid-cols-2 gap-2 sm:flex">
+            <Button variant="outline" className="min-h-12" onClick={() => { setHandover(null); setHandoverTo(''); }}>Cancelar</Button>
+            <Button className="min-h-12 bg-[#132443]" disabled={!handoverTo || savingBadge} onClick={() => toggleBadge(false, handoverTo)} data-testid="mentor-badge-handover-submit">Pasar trabajo y quitar insignia</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <CreateMentorAccessDialog
         open={accessDialogOpen}

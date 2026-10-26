@@ -2447,7 +2447,8 @@ async def get_dashboard_by_role(authorization: Optional[str] = Header(None), lea
     
     if is_global_pastoral_authority(payload):
         # Dashboard General del Pastor - ve todos los líderes
-        lideres = await db.users.find({"rol": "lider"}).to_list(1000)
+        # Solo cuentas de líder activas (una cuenta eliminada o desactivada ya no es «líder activo»).
+        lideres = await db.users.find({"rol": "lider", "is_active": {"$ne": False}}).to_list(1000)
         async def lider_row(lider: dict) -> dict:
             lider_id = str(lider["_id"])
             # Promedio de semana actual
