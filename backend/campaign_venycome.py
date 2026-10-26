@@ -1,7 +1,7 @@
 """Campaña Ven y Come — panel de control del operador + pantalla pública en vivo."""
 import re
 import secrets
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Literal, Optional
 from uuid import uuid4
 
@@ -13,7 +13,7 @@ from access_control import CAMPAIGN_VENYCOME_MANAGE, has_capability, is_general_
 from core_person import _normalize as normalize_person_name, next_person_number
 from finance_engine import create_journal
 from person_domains import contact_items
-from server import db, get_authenticated_user, get_current_user
+from server import db, get_current_user
 
 router = APIRouter(prefix="/api/campaigns/venycome", tags=["campaign-venycome"])
 
@@ -591,9 +591,24 @@ async def create_presentation_link(payload: PresentationLinkInput, current_user:
     return serialize(doc)
 
 
+SCREEN_LINK_HOURS = 12
+
+
+@router.post("/screen-link", status_code=201, response_model=dict)
+async def create_screen_link(current_user: dict = Depends(get_current_user)):
+    """«Ver pantalla» desde el panel: un enlace de presentación TEMPORAL (12 h) en lugar de poner la sesión
+    del usuario en la dirección (quedaba en el historial, en el proyector y en los registros)."""
+    token_id = str(uuid4())
+    now = now_utc()
+    doc = {"_id": token_id, "token_id": token_id, "token": secrets.token_urlsafe(24), "label": "Pantalla abierta desde el panel", "active": True,
+           "temporary": True, "expires_at": now + timedelta(hours=SCREEN_LINK_HOURS), "created_by_user_id": current_user["user_id"], "created_at": now, "revoked_at": None}
+    await db.campaign_presentation_tokens.insert_one(doc)
+    return {"token": doc["token"], "expires_at": doc["expires_at"].isoformat()}
+
+
 @router.get("/presentation-links", response_model=dict)
 async def list_presentation_links(current_user: dict = Depends(operator)):
-    items = await db.campaign_presentation_tokens.find({}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    items = await db.campaign_presentation_tokens.find({"temporary": {"$ne": True}}, {"_id": 0}).sort("created_at", -1).to_list(200)
     return {"items": serialize(items)}
 
 
@@ -608,16 +623,18 @@ async def revoke_presentation_link(token_id: str, current_user: dict = Depends(o
 # ---------------- Public read-only (token de presentación o sesión autenticada) ----------------
 
 async def resolve_public_access(token: Optional[str]) -> bool:
+    """Solo enlaces de presentación activos (y no vencidos). Ya NO se acepta la sesión de un usuario en la dirección."""
     if not token:
         return False
     link = await db.campaign_presentation_tokens.find_one({"token": token, "active": True}, {"_id": 0})
-    if link:
-        return True
-    try:
-        await get_authenticated_user(f"Bearer {token}")
-        return True
-    except HTTPException:
+    if not link:
         return False
+    expires = link.get("expires_at")
+    if expires is not None:
+        expires = expires.replace(tzinfo=timezone.utc) if expires.tzinfo is None else expires
+        if expires < now_utc():
+            return False
+    return True
 
 
 @router.get("/public/summary", response_model=dict)

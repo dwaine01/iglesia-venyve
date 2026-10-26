@@ -436,6 +436,11 @@ async def get_authenticated_user(authorization: Optional[str] = Header(None)):
     if token_version != user_token_version(db_user):
         raise HTTPException(status_code=401, detail="No autorizado")
 
+    return session_payload(db_user, payload)
+
+
+def session_payload(db_user: dict, payload: dict) -> dict:
+    """La sesión con los permisos ACTUALES de la cuenta (también para boletos de un solo uso, p. ej. la radio)."""
     # ACCESS-01 is resolved from the current Mongo user, never trusted from JWT.
     payload["capabilities"] = normalized_capabilities(db_user)
     payload["access_scope"] = normalized_access_scope(db_user)

@@ -29,6 +29,7 @@ sobre WebSocket en este mismo backend (sin servicios ni dependencias nuevas).
 import asyncio
 import json
 import logging
+import secrets
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 from uuid import uuid4
@@ -40,7 +41,7 @@ from motor.motor_asyncio import AsyncIOMotorGridFSBucket
 
 from invasion_alerts import is_participant
 from invasion_participants import can_edit_participants
-from server import db, get_authenticated_user, get_current_user
+from server import db, get_current_user, session_payload, user_is_active, user_token_version
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/radio", tags=["radio"])
@@ -213,11 +214,38 @@ def room_for(campaign_id: str) -> Room:
     return ROOMS[campaign_id]
 
 
+TICKET_SECONDS = 60
+
+
+@router.post("/ticket/{campaign_id}", response_model=dict)
+async def radio_ticket(campaign_id: str, current_user: dict = Depends(get_current_user)):
+    """Boleto de UN SOLO USO y 60 segundos para abrir el canal. El navegador no puede mandar cabeceras en un
+    WebSocket; antes la sesión completa iba en la dirección (y quedaba en los registros). El boleto no sirve para nada más."""
+    await radio_access(campaign_id, current_user)
+    ticket = secrets.token_urlsafe(32)
+    await db.radio_tickets.insert_one({"_id": ticket, "user_id": current_user["user_id"], "campaign_id": campaign_id,
+                                       "token_version": current_user.get("token_version"), "expires_at": now_utc() + timedelta(seconds=TICKET_SECONDS)})
+    return {"ticket": ticket, "expires_in": TICKET_SECONDS}
+
+
+async def user_from_ticket(ticket: Optional[str], campaign_id: str) -> dict:
+    doc = await db.radio_tickets.find_one_and_delete({"_id": ticket or "", "campaign_id": campaign_id}) if ticket else None
+    expires = doc.get("expires_at") if doc else None
+    if expires is not None and expires.tzinfo is None:
+        expires = expires.replace(tzinfo=timezone.utc)
+    if not doc or expires is None or expires < now_utc() or not ObjectId.is_valid(doc.get("user_id") or ""):
+        raise HTTPException(status_code=401, detail="El acceso a la radio venció. Vuelva a abrir la radio.")
+    db_user = await db.users.find_one({"_id": ObjectId(doc["user_id"])})
+    if not db_user or not user_is_active(db_user) or doc.get("token_version") != user_token_version(db_user):
+        raise HTTPException(status_code=401, detail="No autorizado")
+    return session_payload(db_user, {"user_id": doc["user_id"], "email": db_user.get("email"), "rol": db_user.get("rol"), "token_version": user_token_version(db_user)})
+
+
 @router.websocket("/ws/{campaign_id}")
-async def radio_socket(websocket: WebSocket, campaign_id: str, token: Optional[str] = None):
-    """El navegador no puede mandar cabeceras en un WebSocket: el token va en la URL (wss)."""
+async def radio_socket(websocket: WebSocket, campaign_id: str, ticket: Optional[str] = None):
+    """Se entra con un boleto de un solo uso (POST /ticket), nunca con la sesión en la dirección."""
     try:
-        user = await get_authenticated_user(f"Bearer {token or ''}")
+        user = await user_from_ticket(ticket, campaign_id)
         if user.get("must_change_password") or (user.get("onboarding_required") and not user.get("onboarding_completed_at")):
             raise HTTPException(status_code=403, detail="Complete el ingreso antes de usar la radio")
         await radio_access(campaign_id, user)
@@ -359,5 +387,6 @@ async def ensure_indexes() -> None:
     await db.radio_voice_messages.create_index([("campaign_id", 1), ("created_at", -1)])
     await db.radio_voice_messages.create_index("expires_at")
     await db.radio_talk_log.create_index([("campaign_id", 1), ("started_at", -1)])
+    await db.radio_tickets.create_index("expires_at", expireAfterSeconds=0)  # los boletos sin usar se borran solos
     if _purge_task is None:
         _purge_task = asyncio.create_task(_purge_loop())

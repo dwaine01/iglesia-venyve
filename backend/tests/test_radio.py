@@ -18,8 +18,11 @@ db = server.db
 WS = "ws://127.0.0.1:8001/api/radio/ws"
 
 
-def token_of(client) -> str:
-    return client.headers["Authorization"].split(" ", 1)[1]
+async def ticket_url(client, campaign_id: str) -> str:
+    """La radio se abre con un boleto de un solo uso (la sesión ya no va en la dirección)."""
+    response = await client.post(f"/api/radio/ticket/{campaign_id}")
+    assert response.status_code == 200, response.text
+    return f"{WS}/{campaign_id}?ticket={response.json()['ticket']}"
 
 
 async def recv_until(ws, kind, timeout=3.0):
@@ -54,14 +57,22 @@ async def test_radio_channel_floor_audio_log_voice_messages_and_purge():
         active_id, future_id = campaign_ids
 
         # Permisos: ajeno 403; participante de una invasión futura 409.
-        async with websockets.connect(f"{WS}/{active_id}?token={token_of(outsider)}") as ws:
-            assert (await recv_until(ws, "error"))["status"] == 403
-        async with websockets.connect(f"{WS}/{future_id}?token={token_of(ana)}") as ws:
-            assert (await recv_until(ws, "error"))["status"] == 409
-        async with websockets.connect(f"{WS}/{active_id}?token=malo") as ws:
+        # El boleto solo se entrega a quien puede usar el canal.
+        assert (await outsider.post(f"/api/radio/ticket/{active_id}")).status_code == 403
+        assert (await ana.post(f"/api/radio/ticket/{future_id}")).status_code == 409
+        # La sesión en la dirección ya no abre el canal; un boleto sirve UNA sola vez.
+        session = ana.headers["Authorization"].split(" ", 1)[1]
+        async with websockets.connect(f"{WS}/{active_id}?token={session}") as ws:
+            assert (await recv_until(ws, "error"))["status"] == 401
+        once = await ticket_url(ana, active_id)
+        async with websockets.connect(once) as ws:
+            await recv_until(ws, "welcome")
+        async with websockets.connect(once) as ws:
+            assert (await recv_until(ws, "error"))["status"] == 401
+        async with websockets.connect(f"{WS}/{active_id}?ticket=malo") as ws:
             assert (await recv_until(ws, "error"))["status"] == 401
 
-        async with websockets.connect(f"{WS}/{active_id}?token={token_of(ana)}") as ws_ana, websockets.connect(f"{WS}/{active_id}?token={token_of(collab)}") as ws_col:
+        async with websockets.connect(await ticket_url(ana, active_id)) as ws_ana, websockets.connect(await ticket_url(collab, active_id)) as ws_col:
             assert (await recv_until(ws_ana, "welcome"))["sample_rate"] == 16000
             await recv_until(ws_col, "welcome")
             presence = await recv_until(ws_ana, "presence")
@@ -99,8 +110,8 @@ async def test_radio_channel_floor_audio_log_voice_messages_and_purge():
             await asyncio.sleep(0.3)
 
         # Misma cuenta en dos pestañas: cuenta como una persona y su voz no vuelve a su otra pestaña (eco).
-        async with websockets.connect(f"{WS}/{active_id}?token={token_of(ana)}") as tab1, websockets.connect(f"{WS}/{active_id}?token={token_of(ana)}") as tab2, \
-                websockets.connect(f"{WS}/{active_id}?token={token_of(collab)}") as other:
+        async with websockets.connect(await ticket_url(ana, active_id)) as tab1, websockets.connect(await ticket_url(ana, active_id)) as tab2, \
+                websockets.connect(await ticket_url(collab, active_id)) as other:
             for ws in (tab1, tab2, other):
                 await recv_until(ws, "welcome")
             # Tres conexiones (dos de Ana), pero dos personas: se lee la última presencia enviada.
