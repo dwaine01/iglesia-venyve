@@ -1046,6 +1046,8 @@ async def register(user: UserRegister):
     - Sin invite_code: solo se permite Persona; roles institucionales requieren asignación.
     """
     normalized_email = user.email.strip().lower()
+    if len(user.password or "") < 10:
+        raise HTTPException(status_code=422, detail="La contraseña debe tener al menos 10 caracteres")
     existing = await db.users.find_one({"email": normalized_email})
     if existing:
         raise HTTPException(status_code=400, detail="No se pudo completar el registro")
@@ -1095,26 +1097,12 @@ async def register(user: UserRegister):
 
     # ---------- Rama B: registro LIBRE (sin codigo) ----------
     else:
+        # Registro libre CERRADO (auditoría): cualquiera podía crearse una cuenta y leer datos de la
+        # iglesia. Toda cuenta nueva llega por invitación o la crea la administración en «Accesos».
         free_rol = (user.rol or "persona").strip().lower()
         if free_rol != "persona":
             raise HTTPException(status_code=403, detail="Los roles pastor o líder requieren invitación o asignación institucional")
-        assigned_rol = "persona"
-        assigned_leader_id = None
-
-        hashed = bcrypt.hashpw(user.password.encode(), bcrypt.gensalt())
-        user_doc = {
-            "nombre": user.nombre,
-            "email": normalized_email,
-            "password": hashed.decode(),
-            "rol": assigned_rol,
-            **access_defaults_for_role(assigned_rol),
-            "is_active": DEFAULT_IS_ACTIVE,
-            "token_version": DEFAULT_TOKEN_VERSION,
-            "leader_id": assigned_leader_id,
-            "created_at": datetime.utcnow(),
-        }
-        result = await db.users.insert_one(user_doc)
-        user_id = str(result.inserted_id)
+        raise HTTPException(status_code=403, detail="El registro necesita una invitación. Pida a la administración de la iglesia su invitación o su código.")
 
     # ---------- Inicialización canónica común ----------
     try:

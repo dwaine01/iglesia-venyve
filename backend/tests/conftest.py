@@ -35,6 +35,18 @@ if "test" not in _db_name.lower() or os.environ.get("RAILWAY_ENVIRONMENT") or os
                      "Las pruebas nunca deben escribir en producción.")
 
 
+def create_persona_account(email: str, password: str, nombre: str = "QA Persona") -> None:
+    """Cuenta Persona de prueba directo en la base de PRUEBAS (el registro libre está cerrado)."""
+    client = MongoClient(os.environ["MONGO_URL"])
+    try:
+        client[os.environ["DB_NAME"]].users.insert_one({
+            "nombre": nombre, "email": email.lower(), "password": bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode(),
+            "rol": "persona", "is_active": True, "token_version": 1, "created_at": datetime.now(timezone.utc),
+        })
+    finally:
+        client.close()
+
+
 BACKEND_DIR = str(APP_DIR / "backend")
 if BACKEND_DIR not in sys.path:
     sys.path.insert(0, BACKEND_DIR)

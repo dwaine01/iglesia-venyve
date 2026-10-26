@@ -1,6 +1,6 @@
 """BASE-01 regression tests for revocable, versioned JWT authentication."""
 import os
-from datetime import timedelta
+from datetime import datetime, timedelta
 import uuid
 
 import bcrypt
@@ -212,15 +212,21 @@ async def test_new_registration_persists_auth_defaults():
             },
         )
         assert denied.status_code == 403, denied.text
+        # Sin código el registro está cerrado (auditoría); con invitación se crea la cuenta Persona.
+        closed = await client.post("/api/auth/register", json={"nombre": "BASE-01 New User", "email": email, "password": "Base01TestPass!", "rol": "persona"})
+        assert closed.status_code == 403, closed.text
+        code = f"QA{unique[:6].upper()}"
+        await server.db.invite_codes.insert_one({"code": code, "role_to_assign": "persona", "leader_id_to_assign": None, "created_at": datetime.utcnow()})
         response = await client.post(
             "/api/auth/register",
             json={
                 "nombre": "BASE-01 New User",
                 "email": email,
                 "password": "Base01TestPass!",
-                "rol": "persona",
+                "invite_code": code,
             },
         )
+        await server.db.invite_codes.delete_one({"code": code})
         assert response.status_code == 200, response.text
         user = await server.db.users.find_one({"email": email})
         assert user["rol"] == "persona"

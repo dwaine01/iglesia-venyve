@@ -11,7 +11,7 @@ from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
 
-from access_control import DEDICATION_CERTIFICATES_ISSUE, DEDICATION_EVENTS_MANAGE, DEDICATION_READ, has_capability, is_general_coordinator, is_global_pastoral_authority
+from access_control import DEDICATION_CERTIFICATES_ISSUE, DEDICATION_EVENTS_MANAGE, DEDICATION_READ, can_access_person, has_capability, has_church_wide_reach, is_general_coordinator, is_global_pastoral_authority
 from membership_documents import canonical_person, full_name, settings_document
 from person_core_expansion import create_relationship
 from server import db, get_current_user
@@ -74,6 +74,24 @@ async def certificate_manager_user(current_user: dict = Depends(get_current_user
 async def dedication_reader_user(current_user: dict = Depends(get_current_user)) -> dict:
     require_dedication_reader(current_user)
     return current_user
+
+
+async def church_dedication_reader_user(current_user: dict = Depends(get_current_user)) -> dict:
+    """Eventos y listas de niños: datos de toda la iglesia (nombres de menores). Un Miembro solo ve a sus hijos."""
+    require_dedication_reader(current_user)
+    if not (has_church_wide_reach(current_user) or is_events_manager(current_user) or is_certificate_manager(current_user)):
+        raise HTTPException(status_code=403, detail="Las presentaciones de niños solo las ve la administración. Usted puede ver la de sus hijos.")
+    return current_user
+
+
+async def require_child_reach(current_user: dict, child: dict) -> None:
+    """La administración, quien ve a esa Persona, o el padre o la madre registrados en la presentación."""
+    if has_church_wide_reach(current_user) or is_events_manager(current_user) or is_certificate_manager(current_user) or can_access_person(current_user, child):
+        return
+    own = current_user.get("person_id")
+    if own and await db.person_dedications.count_documents({"child_person_id": child["person_id"], "$or": [{"mother_person_id": own}, {"father_person_id": own}]}, limit=1):
+        return
+    raise HTTPException(status_code=403, detail="Sin permiso para ver la presentación de este niño")
 
 
 def valid_iso_date(value: Optional[str]) -> Optional[str]:
@@ -256,7 +274,7 @@ async def record_issuance(actor_id: str, record: dict, child: dict, action: str)
 
 
 @router.get("/api/dedications/events", response_model=dict)
-async def list_dedication_events(current_user: dict = Depends(dedication_reader_user)):
+async def list_dedication_events(current_user: dict = Depends(church_dedication_reader_user)):
     events = await db.dedication_events.find({}, {"_id": 0}).sort("event_date", -1).to_list(500)
     counts = await db.person_dedications.aggregate([
         {"$match": {"event_id": {"$in": [event["event_id"] for event in events]}}},
@@ -280,7 +298,7 @@ async def create_dedication_event(payload: DedicationEventInput, current_user: d
 
 
 @router.get("/api/dedications/events/{event_id}", response_model=dict)
-async def get_dedication_event(event_id: str, current_user: dict = Depends(dedication_reader_user)):
+async def get_dedication_event(event_id: str, current_user: dict = Depends(church_dedication_reader_user)):
     event = await event_or_404(event_id)
     return {"event": serialize(event), "roster": await event_roster(event_id)}
 
@@ -376,6 +394,7 @@ async def complete_dedication_candidate(event_id: str, child_person_id: str, pay
 @router.get("/api/dedications/children/{child_person_id}", response_model=dict)
 async def child_dedication_document(child_person_id: str, current_user: dict = Depends(dedication_reader_user)):
     child = await canonical_person(child_person_id)
+    await require_child_reach(current_user, child)
     record = await db.person_dedications.find_one({"child_person_id": child["person_id"]}, {"_id": 0})
     return {"exists": bool(record), "data": await render_dedication_data(child, record) if record else {"child": {"person_id": child["person_id"], "full_name": full_name(child)}}}
 
@@ -403,6 +422,7 @@ async def issue_dedication_certificate(child_person_id: str, payload: IssueCerti
 @router.get("/api/dedications/children/{child_person_id}/issuances", response_model=dict)
 async def dedication_issuances(child_person_id: str, current_user: dict = Depends(dedication_reader_user)):
     child = await canonical_person(child_person_id)
+    await require_child_reach(current_user, child)
     items = await db.dedication_document_issuances.find({"child_person_id": child["person_id"]}, {"_id": 0}).sort("created_at", -1).to_list(1000)
     return {"items": serialize(items)}
 

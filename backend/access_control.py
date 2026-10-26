@@ -494,6 +494,12 @@ def can_access_person(user: dict, person: dict) -> bool:
     return False
 
 
+def has_church_wide_reach(user: dict) -> bool:
+    """Ve listados de toda la iglesia: autoridad pastoral, Coordinación General o alcance «todas las Personas».
+    Una cuenta de Miembro (alcance propio) solo ve lo suyo aunque tenga el permiso de consulta."""
+    return is_global_pastoral_authority(user) or is_general_coordinator(user) or normalized_access_scope(user).get("persons") == "all"
+
+
 def is_own_person(user: dict, person_id: str | None) -> bool:
     """La Persona vinculada a la propia cuenta."""
     own = user.get("person_id")

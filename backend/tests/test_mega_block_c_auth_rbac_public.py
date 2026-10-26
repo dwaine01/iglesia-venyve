@@ -112,12 +112,8 @@ def test_auth_bruteforce_lockout_after_five_failures():
     email = f"qa.lockout.{uuid.uuid4().hex[:8]}@example.com"
     password = "CoreQaLockout2026!"
 
-    register = requests.post(
-        url("/api/auth/register"),
-        json={"nombre": "QA Lockout", "email": email, "password": password, "rol": "persona"},
-        timeout=30,
-    )
-    assert register.status_code in (200, 201), register.text
+    from tests.conftest import create_persona_account
+    create_persona_account(email, password, "QA Lockout")  # el registro libre está cerrado
 
     for _ in range(5):
         failed = requests.post(url("/api/auth/login"), json={"email": email, "password": "wrong-pass"}, timeout=30)

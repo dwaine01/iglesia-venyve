@@ -50,6 +50,9 @@ export const canViewFinanceModule = (user) => (
 export const canViewPrivatePersonFinance = (user) => isPastoralAuthority(user);
 
 export const canViewFormation = (user) => hasCapability(user, 'formation.read');
+/** Ve listados de toda la iglesia (igual que el servidor): pastoral, Coordinación General o alcance «todas». */
+export const hasChurchWideReach = (user) => isPastoralAuthority(user) || isGeneralCoordinator(user) || user?.access_scope?.persons === 'all';
+export const canViewFormationReports = (user) => hasChurchWideReach(user) || hasCapability(user, 'formation.grades.read') || hasCapability(user, 'formation.progress.manage');
 export const canManageFormationPrograms = (user) => hasCapability(user, 'formation.programs.manage');
 export const canManageFormationCohorts = (user) => hasCapability(user, 'formation.cohorts.manage');
 export const canRegularizeMembership = (user) => hasCapability(user, 'membership.direct_import');

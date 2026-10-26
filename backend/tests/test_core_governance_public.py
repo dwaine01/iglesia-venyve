@@ -294,8 +294,8 @@ def test_login_sets_httponly_cookie():
 def test_bruteforce_lockout_after_five_failures():
     email = f"qa.lockout.core.{uuid.uuid4().hex[:8]}@example.com"
     password = "CoreQaLockout2026!"
-    registered = requests.post(api_url("/api/auth/register"), json={"nombre": "QA Lockout Core", "email": email, "password": password, "rol": "persona"}, timeout=20)
-    assert registered.status_code == 200, registered.text
+    from tests.conftest import create_persona_account
+    create_persona_account(email, password, "QA Lockout Core")  # el registro libre está cerrado
     try:
         for _ in range(5):
             failed = login(email, "WrongPass!2026")
