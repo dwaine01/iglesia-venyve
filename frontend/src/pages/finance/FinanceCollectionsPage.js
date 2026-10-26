@@ -100,11 +100,23 @@ function CollectionDetail({ id, roles }) {
   useEffect(() => { if (data && roles.record) api('get', `/api/finance/zelle?unmatched=true&include_test=${Boolean(data.is_test)}`).then((value) => setZelle(value.items)).catch(() => setZelle([])); }, [api, data, roles.record]);
   if (!data) return <FinanceShell title="Colecta" description=""><p>Cargando…</p></FinanceShell>;
   const editable = roles.record && data.status === 'registering';
+  // P3: enviada o validada → solo correcciones (guardan valor anterior, motivo y quién; piden validar otra vez).
+  const correcting = roles.record && ['registered', 'validated'].includes(data.status);
+  const canEdit = editable || correcting;
+  const askReason = (text) => { const reason = window.prompt(text || 'Motivo de la corrección'); return reason && reason.trim().length >= 5 ? reason.trim() : null; };
+  const correction = (body, message) => run(api('post', `/api/finance/collections/${id}/corrections`, body), message || 'Corrección guardada: falta validar otra vez');
   const run = async (promise, message) => { try { setData(await promise); if (message) toast.success(message); } catch (error) { toast.error(apiErrorMessage(error, 'No se pudo guardar')); } };
+  const itemBody = () => ({ person_id: item.anonymous ? null : item.person?.person_id, anonymous: item.anonymous, contribution_type: item.contribution_type, fund_id: item.fund_id, amount_cents: toCents(item.amount), method: item.method, reference: item.reference || null });
   const addItem = (event) => {
     event.preventDefault();
-    run(api('post', `/api/finance/collections/${id}/items`, { person_id: item.anonymous ? null : item.person?.person_id, anonymous: item.anonymous, contribution_type: item.contribution_type, fund_id: item.fund_id, amount_cents: toCents(item.amount), method: item.method, reference: item.reference || null }), 'Aporte registrado')
-      .then(() => setItem((old) => ({ ...empty, fund_id: old.fund_id, method: old.method })));
+    const reset = () => setItem((old) => ({ ...empty, fund_id: old.fund_id, method: old.method }));
+    if (correcting) { const reason = askReason('Motivo para agregar este aporte'); if (reason) correction({ action: 'add', reason, item: itemBody() }).then(reset); return; }
+    run(api('post', `/api/finance/collections/${id}/items`, itemBody()), 'Aporte registrado').then(reset);
+  };
+  const correctAmount = (row) => {
+    const amount = window.prompt('Monto correcto en dólares', (row.amount_cents / 100).toFixed(2)); if (!amount) return;
+    const reason = askReason(); if (!reason) return;
+    correction({ action: 'update', item_id: row.item_id, reason, item: { person_id: row.person_id || null, anonymous: Boolean(row.anonymous), contribution_type: row.contribution_type, fund_id: row.fund_id, amount_cents: toCents(amount), method: row.method, reference: row.reference || null } });
   };
   const s = data.summary;
   const typeName = (key) => catalog.contribution_types.find((row) => row.type_key === key)?.name || key;
@@ -123,7 +135,7 @@ function CollectionDetail({ id, roles }) {
           {s.differences.map((diff) => (
             <div key={diff.kind} className="space-y-1 border-t border-amber-200 pt-2 text-sm">
               <p><b>{diff.label}</b>{diff.difference_cents != null && <> · <Money cents={diff.difference_cents} /></>}{diff.difference != null && ` · ${diff.difference}`}{diff.amount_cents != null && <> · <Money cents={diff.amount_cents} /></>}</p>
-              {diff.explanation ? <p className="text-slate-700">Explicación: {diff.explanation.note} ({diff.explanation.by_name})</p> : editable && (
+              {diff.explanation ? <p className="text-slate-700">Explicación: {diff.explanation.note} ({diff.explanation.by_name})</p> : (editable || (roles.record && data.status === 'registered')) && (
                 <div className="flex flex-wrap gap-2"><input className={`${field} flex-1`} value={notes[diff.kind] || ''} onChange={(event) => setNotes({ ...notes, [diff.kind]: event.target.value })} placeholder="¿Por qué hay esta diferencia?" /><button type="button" className={`${button} bg-amber-700 text-white`} disabled={(notes[diff.kind] || '').trim().length < 5} onClick={() => run(api('post', `/api/finance/collections/${id}/explanations`, { kind: diff.kind, note: notes[diff.kind] }), 'Diferencia documentada')}>Documentar</button></div>
               )}
             </div>
@@ -131,7 +143,8 @@ function CollectionDetail({ id, roles }) {
         </section>
       )}
 
-      {editable && (
+      {correcting && <p className="mt-5 border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900">La colecta ya se envió: cada cambio es una corrección con motivo, queda el valor anterior y otra persona debe validar otra vez.</p>}
+      {canEdit && (
         <form onSubmit={addItem} className="mt-5 grid gap-3 border bg-white p-4 md:grid-cols-2 lg:grid-cols-4" data-testid="collection-item-form">
           <div className="md:col-span-2">{item.anonymous ? <p className="flex h-12 items-center border bg-slate-50 px-3 font-semibold">ANÓNIMO</p> : <PersonPicker value={item.person} onChange={(person) => setItem({ ...item, person })} />}</div>
           <label className="flex items-center gap-2 text-base"><input type="checkbox" checked={item.anonymous} onChange={(event) => setItem({ ...item, anonymous: event.target.checked, person: null })} />Anónimo</label>
@@ -140,7 +153,7 @@ function CollectionDetail({ id, roles }) {
           <input className={field} inputMode="decimal" value={item.amount} onChange={(event) => setItem({ ...item, amount: event.target.value })} placeholder="Monto $" required />
           <select className={field} value={item.method} onChange={(event) => setItem({ ...item, method: event.target.value })}>{Object.entries(METHODS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select>
           <input className={field} value={item.reference} onChange={(event) => setItem({ ...item, reference: event.target.value })} placeholder={item.method === 'zelle' ? 'Confirmación Zelle' : 'Número de sobre'} />
-          <button className={`${button} bg-[#102A2D] text-white lg:col-span-4`} disabled={!toCents(item.amount) || (!item.anonymous && !item.person)} data-testid="collection-item-add"><Plus className="h-5 w-5" />Registrar aporte</button>
+          <button className={`${button} bg-[#102A2D] text-white lg:col-span-4`} disabled={!toCents(item.amount) || (!item.anonymous && !item.person)} data-testid="collection-item-add"><Plus className="h-5 w-5" />{correcting ? 'Agregar aporte (corrección)' : 'Registrar aporte'}</button>
         </form>
       )}
 
@@ -151,7 +164,12 @@ function CollectionDetail({ id, roles }) {
               <td className="p-3">{row.person_name}</td><td className="p-3">{typeName(row.contribution_type)}</td><td className="p-3">{fundName(row.fund_id)}</td>
               <td className="p-3">{METHODS[row.method]}{row.method === 'zelle' && row.status === 'active' && (row.zelle_tx_id ? <span className="ml-1 text-emerald-700">· verificado</span> : <span className="ml-1 text-amber-700">· sin verificar</span>)}</td>
               <td className="p-3">{row.reference || '—'}</td><td className="p-3 text-right font-semibold"><Money cents={row.amount_cents} /></td>
-              <td className="p-3">{editable && row.status === 'active' && (
+              <td className="p-3">{correcting && row.status === 'active' && (
+                <span className="flex flex-wrap justify-end gap-1">
+                  <button type="button" className="inline-flex min-h-10 items-center gap-1 border px-2" onClick={() => correctAmount(row)}>Corregir monto</button>
+                  <button type="button" className="inline-flex min-h-10 items-center gap-1 border px-2 text-red-700" onClick={() => { const reason = askReason('Motivo para anular este aporte'); if (reason) correction({ action: 'void', item_id: row.item_id, reason }); }}><Ban className="h-4 w-4" />Anular</button>
+                </span>
+              )}{editable && row.status === 'active' && (
                 <span className="flex flex-wrap justify-end gap-1">
                   {row.method === 'zelle' && !row.zelle_tx_id && zelle.filter((tx) => tx.amount_cents === row.amount_cents).slice(0, 3).map((tx) => <button key={tx.tx_id} type="button" className="inline-flex min-h-10 items-center gap-1 border px-2" title={`${tx.received_date} · ${tx.sender_name}`} onClick={() => run(api('post', `/api/finance/collections/${id}/items/${row.item_id}/match-zelle`, { tx_id: tx.tx_id }), 'Zelle verificado')}><Link2 className="h-4 w-4" />{tx.received_date} {tx.sender_name}</button>)}
                   <button type="button" className="inline-flex min-h-10 items-center gap-1 border px-2 text-red-700" onClick={() => { const reason = window.prompt('Motivo para anular este aporte'); if (reason && reason.trim().length >= 3) run(api('post', `/api/finance/collections/${id}/items/${row.item_id}/void`, { reason }), 'Aporte anulado'); }}><Ban className="h-4 w-4" />Anular</button>
@@ -166,6 +184,21 @@ function CollectionDetail({ id, roles }) {
           <input className={field} inputMode="decimal" value={count.cash} onChange={(event) => setCount({ ...count, cash: event.target.value })} placeholder="Efectivo contado $" />
           <input className={field} inputMode="numeric" value={count.envelopes} onChange={(event) => setCount({ ...count, envelopes: event.target.value })} placeholder="Sobres contados" />
           <button type="button" className={`${button} border border-[#102A2D]`} onClick={() => run(api('post', `/api/finance/collections/${id}/cash-count`, { counted_cash_cents: toCents(count.cash), envelope_count: count.envelopes === '' ? null : Number(count.envelopes) }), 'Conteo guardado')}><CheckCircle2 className="h-5 w-5" />Guardar conteo</button>
+        </section>
+      )}
+      {correcting && (
+        <button type="button" className={`${button} mt-5 border border-[#102A2D]`} onClick={() => { const cash = window.prompt('Efectivo contado correcto en dólares'); if (!cash) return; const envelopes = window.prompt('Sobres contados', String(s.envelopes_counted ?? '')); const reason = askReason(); if (reason) correction({ action: 'cash_count', reason, cash_count: { counted_cash_cents: toCents(cash), envelope_count: envelopes === '' || envelopes == null ? null : Number(envelopes) } }); }}>Corregir conteo de efectivo</button>
+      )}
+      {roles.verify && data.status === 'registered' && (
+        <section className="mt-5 flex flex-wrap gap-3 border border-emerald-300 bg-emerald-50 p-4" data-testid="collection-verify">
+          <p className="w-full text-sm text-emerald-900">Segunda persona: revise el conteo y el detalle. Quien registró o corrigió la colecta no puede validarla.</p>
+          <button type="button" className={`${button} bg-emerald-700 text-white`} disabled={s.pending_explanations.length > 0} onClick={() => run(api('post', `/api/finance/collections/${id}/validate`), 'Cuadre confirmado')} data-testid="collection-validate"><CheckCircle2 className="h-5 w-5" />Confirmar cuadre</button>
+          <button type="button" className={`${button} border border-amber-700 text-amber-800`} onClick={() => { const note = askReason('¿Qué debe revisar Finanzas?'); if (note) run(api('post', `/api/finance/collections/${id}/return`, { note }), 'Devuelta a Finanzas'); }}>Devolver con observaciones</button>
+        </section>
+      )}
+      {(data.corrections || []).length > 0 && (
+        <section className="mt-5 border bg-white p-4" data-testid="collection-corrections"><h2 className="text-lg font-semibold">Correcciones</h2>
+          <ul className="mt-2 divide-y text-sm">{data.corrections.map((row) => <li key={row.correction_id} className="py-2"><b>{row.by_name}</b> · {new Date(row.at).toLocaleString('es')} · {row.reason}{row.before?.amount_cents != null && <> · antes <Money cents={row.before.amount_cents} /></>}{row.after?.amount_cents != null && <> · después <Money cents={row.after.amount_cents} /></>}{row.before?.counted_cash_cents != null && <> · conteo antes <Money cents={row.before.counted_cash_cents} /></>}</li>)}</ul>
         </section>
       )}
       {editable && <button type="button" className={`${button} mt-5 w-full bg-emerald-700 text-white`} disabled={s.pending_explanations.length > 0 || !s.items} onClick={() => run(api('post', `/api/finance/collections/${id}/submit`), 'Enviada: falta que otra persona valide el cuadre')} data-testid="collection-submit"><Send className="h-5 w-5" />Enviar a validación</button>}

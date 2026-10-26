@@ -36,21 +36,29 @@ OPEN_STATUSES = ("registering",)  # solo mientras se registra se edita librement
 DIFFERENCE_KINDS = ("cash", "envelopes", "zelle")
 
 
-def reader(current_user: dict = Depends(get_current_user)) -> dict:
+async def with_name(current_user: dict) -> dict:
+    """Cada etapa guarda el NOMBRE de quien actúa (no solo su id)."""
+    if not current_user.get("nombre"):
+        doc = await db.users.find_one({"_id": ObjectId(current_user["user_id"])}, {"nombre": 1, "person_id": 1}) if ObjectId.is_valid(current_user.get("user_id", "")) else None
+        current_user["nombre"] = (await person_label((doc or {}).get("person_id"))) or (doc or {}).get("nombre") or "Usuario"
+    return current_user
+
+
+async def reader(current_user: dict = Depends(get_current_user)) -> dict:
     require_finance_read(current_user)
-    return current_user
+    return await with_name(current_user)
 
 
-def recorder(current_user: dict = Depends(get_current_user)) -> dict:
+async def recorder(current_user: dict = Depends(get_current_user)) -> dict:
     require_finance_role(current_user, FINANCE_COLLECTION_RECORD)
-    return current_user
+    return await with_name(current_user)
 
 
-def zelle_loader(current_user: dict = Depends(get_current_user)) -> dict:
+async def zelle_loader(current_user: dict = Depends(get_current_user)) -> dict:
     """Las transacciones Zelle recibidas las carga Finanzas o Tesorería."""
     if not (has_finance_role(current_user, FINANCE_COLLECTION_RECORD) or has_finance_role(current_user, FINANCE_TREASURY)):
         require_finance_role(current_user, FINANCE_TREASURY)
-    return current_user
+    return await with_name(current_user)
 
 
 async def ensure_indexes() -> None:
@@ -293,7 +301,8 @@ class ExplanationInput(BaseModel):
 async def explain(collection_id: str, payload: ExplanationInput, current_user: dict = Depends(recorder)):
     """Toda diferencia queda documentada (quién, cuándo, por qué)."""
     collection = await load_collection(collection_id)
-    require_open(collection)
+    if collection.get("status") not in ("registering", "registered"):  # también tras una corrección, antes de validar
+        require_open(collection)
     entry = {"kind": payload.kind, "note": payload.note.strip(), "by_user_id": current_user["user_id"], "by_name": current_user.get("nombre"), "at": now_utc()}
     explanations = [item for item in collection.get("explanations") or [] if item["kind"] != payload.kind] + [entry]
     await db.finance_collections.update_one({"collection_id": collection_id}, {"$set": {"explanations": explanations}})
@@ -463,4 +472,185 @@ async def match_zelle(collection_id: str, item_id: str, payload: MatchInput, cur
         await db.finance_zelle_received.update_one({"tx_id": item["zelle_tx_id"], "matched_item_id": item_id}, {"$set": {"matched_item_id": None, "matched_at": None}})
     await db.finance_collection_items.update_one({"item_id": item_id}, {"$set": {"zelle_tx_id": payload.tx_id, "updated_at": now_utc()}})
     await touch(collection_id, current_user, "zelle_matched", {"item_id": item_id, "tx_id": payload.tx_id})
+    return await view(await load_collection(collection_id), current_user)
+
+
+# ------------------------------------------------------------------ P3: validación por una segunda persona
+VERIFY = "finance.collection.verify"
+CORRECTABLE = ("registered", "validated")  # después de que Tesorería recibe, la diferencia se registra en la entrega
+
+
+async def verifier(current_user: dict = Depends(get_current_user)) -> dict:
+    require_finance_role(current_user, VERIFY)
+    return await with_name(current_user)
+
+
+async def registration_people(collection: dict) -> set:
+    """Quienes registraron o cambiaron la colecta: ninguno puede validarla."""
+    people = {collection.get("opened_by_user_id"), collection.get("registered_by_user_id"), (collection.get("cash_count") or {}).get("counted_by_user_id")}
+    people |= {entry.get("by_user_id") for entry in collection.get("history") or [] if entry.get("action") not in ("validated", "returned")}
+    async for item in db.finance_collection_items.find({"collection_id": collection["collection_id"]}, {"_id": 0, "created_by_user_id": 1, "history": 1}):
+        people.add(item.get("created_by_user_id"))
+        people |= {entry.get("by_user_id") for entry in item.get("history") or []}
+    return {item for item in people if item}
+
+
+async def post_collection(collection: dict, current_user: dict) -> dict:
+    """Al validar: una contribución por aporte y UN asiento contabilizado (efectivo/otros → fondos no
+    depositados; Zelle → banco). Reemplaza la aprobación de 3 personas para la colecta (decisión del dueño)."""
+    from finance_engine import create_journal
+    items = await db.finance_collection_items.find({"collection_id": collection["collection_id"], "status": "active"}, {"_id": 0}).to_list(5000)
+    accounts = {doc["code"]: doc["account_id"] async for doc in db.finance_accounts.find({"code": {"$in": ["1010", "1020"]}}, {"_id": 0, "code": 1, "account_id": 1})}
+    types = {doc["type_key"]: doc async for doc in db.finance_contribution_types.find({}, {"_id": 0})}
+    lines, contributions = [], []
+    for item in items:
+        debit_account = accounts["1020"] if item["method"] == "zelle" else accounts["1010"]
+        name = types.get(item["contribution_type"], {}).get("name", item["contribution_type"])
+        lines += [{"account_id": debit_account, "fund_id": item["fund_id"], "debit_cents": item["amount_cents"], "credit_cents": 0, "description": f"Colecta · {name}"},
+                  {"account_id": types[item["contribution_type"]]["revenue_account_id"], "fund_id": item["fund_id"], "debit_cents": 0, "credit_cents": item["amount_cents"], "description": f"Colecta · {name}"}]
+    journal = await create_journal(collection["registered_by_user_id"], collection["service_date"], f"Colecta {collection['service_name']} · {collection['service_date']}",
+                                   "collection", collection["collection_id"], lines, "submitted")
+    now = now_utc()
+    await db.finance_journal_entries.update_one({"entry_id": journal["entry_id"]}, {"$set": {
+        "status": "posted", "reviewed_by_user_id": current_user["user_id"], "reviewed_at": now, "posted_at": now, "posting_policy": "colecta_dos_personas",
+        "is_test": bool(collection.get("is_test")), "updated_at": now}})
+    for item in items:
+        contribution_id = str(uuid4())
+        contributions.append({"_id": contribution_id, "contribution_id": contribution_id, "person_id": item.get("person_id"), "anonymous": bool(item.get("anonymous")),
+                              "contribution_type": item["contribution_type"], "amount_cents": item["amount_cents"], "received_date": collection["service_date"],
+                              "accounting_date": collection["service_date"], "payment_method": {"cash": "cash", "zelle": "zelle"}.get(item["method"], "other"),
+                              "reference": item.get("reference"), "allocations": [{"fund_id": item["fund_id"], "amount_cents": item["amount_cents"], "contribution_type": item["contribution_type"]}],
+                              "source": "collection", "collection_id": collection["collection_id"], "collection_item_id": item["item_id"], "journal_entry_id": journal["entry_id"],
+                              "deposit_id": None, "batch_id": None, "status": "recorded", "is_test": bool(collection.get("is_test")),
+                              "created_by_user_id": item.get("created_by_user_id"), "validated_by_user_id": current_user["user_id"], "created_at": now, "updated_at": now})
+    if contributions:
+        await db.finance_contributions.insert_many(contributions)
+    return {"journal_entry_id": journal["entry_id"], "contributions": len(contributions)}
+
+
+async def reverse_postings(collection: dict, current_user: dict, reason: str) -> None:
+    """Si se corrige una colecta ya validada: asiento de reversión (contabilizado) y sus contribuciones
+    quedan «corregidas». Nada se borra; al volver a validar se crean las nuevas."""
+    from finance_engine import create_journal
+    entry_id = collection.get("posted_journal_id")
+    original = await db.finance_journal_entries.find_one({"entry_id": entry_id}, {"_id": 0}) if entry_id else None
+    now = now_utc()
+    if original:
+        lines = [{**line, "debit_cents": line.get("credit_cents", 0), "credit_cents": line.get("debit_cents", 0), "description": f"Reversión: {line.get('description', '')}"} for line in original["lines"]]
+        reversal = await create_journal(current_user["user_id"], (await _church_today()).isoformat(), f"Reversión por corrección de la colecta · {reason}", "collection_reversal", collection["collection_id"], lines, "submitted")
+        await db.finance_journal_entries.update_one({"entry_id": reversal["entry_id"]}, {"$set": {"status": "posted", "posted_at": now, "posting_policy": "colecta_dos_personas",
+                                                                                               "is_test": bool(collection.get("is_test")), "reverses_entry_id": entry_id, "updated_at": now}})
+    await db.finance_contributions.update_many({"collection_id": collection["collection_id"], "status": "recorded"},
+                                               {"$set": {"status": "corrected", "correction_reason": reason, "corrected_by_user_id": current_user["user_id"], "corrected_at": now, "updated_at": now}})
+
+
+async def _church_today():
+    from count_rules import church_today
+    return await church_today()
+
+
+@router.post("/{collection_id}/validate", response_model=dict)
+async def validate(collection_id: str, current_user: dict = Depends(verifier)):
+    """Segunda persona: revisó conteo y detalle y confirma el cuadre. Quedan ambos nombres, fecha y hora."""
+    collection = await load_collection(collection_id)
+    if collection.get("status") != "registered":
+        raise HTTPException(status_code=409, detail="Solo una colecta registrada (enviada) se valida")
+    if current_user["user_id"] in await registration_people(collection):
+        raise HTTPException(status_code=403, detail="Quien registró o cambió esta colecta no puede validarla: debe hacerlo otra persona")
+    current = await summary(collection)
+    if current["pending_explanations"]:
+        raise HTTPException(status_code=409, detail="Hay diferencias sin explicar")
+    posting = await post_collection(collection, current_user)
+    now = now_utc()
+    stage = {"stage": "validated", "label": "Validada por segunda persona", "by_user_id": current_user["user_id"], "by_name": current_user.get("nombre"), "at": now}
+    result = await db.finance_collections.update_one({"collection_id": collection_id, "status": "registered"}, {"$set": {
+        "status": "validated", "validated_by_user_id": current_user["user_id"], "validated_by_name": current_user.get("nombre"), "validated_at": now,
+        "validated_summary": current, "posted_journal_id": posting["journal_entry_id"]}, "$push": {"timeline": stage}})
+    if not result.modified_count:
+        raise HTTPException(status_code=409, detail="La colecta cambió mientras se validaba; recargue")
+    await touch(collection_id, current_user, "validated", {"total_cents": current["total_cents"], "journal_entry_id": posting["journal_entry_id"]})
+    return await view(await load_collection(collection_id), current_user)
+
+
+class ReturnInput(BaseModel):
+    note: str = Field(min_length=5, max_length=1000)
+
+
+@router.post("/{collection_id}/return", response_model=dict)
+async def return_for_changes(collection_id: str, payload: ReturnInput, current_user: dict = Depends(verifier)):
+    """La segunda persona no confirma: la devuelve a Finanzas con sus observaciones."""
+    collection = await load_collection(collection_id)
+    if collection.get("status") != "registered":
+        raise HTTPException(status_code=409, detail="Solo una colecta registrada se puede devolver")
+    if current_user["user_id"] in await registration_people(collection):
+        raise HTTPException(status_code=403, detail="Quien registró esta colecta no puede revisarla")
+    now = now_utc()
+    stage = {"stage": "returned", "label": "Devuelta con observaciones", "note": payload.note, "by_user_id": current_user["user_id"], "by_name": current_user.get("nombre"), "at": now}
+    await db.finance_collections.update_one({"collection_id": collection_id}, {"$set": {"status": "registering", "registered_by_user_id": None}, "$push": {"timeline": stage}})
+    await touch(collection_id, current_user, "returned", {"note": payload.note})
+    return await view(await load_collection(collection_id), current_user)
+
+
+# ------------------------------------------------------------------ P3: correcciones con historial
+class CorrectionInput(BaseModel):
+    action: Literal["add", "update", "void", "cash_count"]
+    reason: str = Field(min_length=5, max_length=1000)
+    item_id: Optional[str] = None
+    item: Optional[ItemInput] = None
+    cash_count: Optional[CashCountInput] = None
+
+
+@router.post("/{collection_id}/corrections", response_model=dict)
+async def correct(collection_id: str, payload: CorrectionInput, current_user: dict = Depends(recorder)):
+    """Una colecta enviada o validada no se modifica en silencio: la corrección guarda valor anterior,
+    motivo y quién la hizo, y la colecta vuelve a «Registrada» para que otra persona la valide otra vez."""
+    collection = await load_collection(collection_id)
+    if collection.get("status") not in CORRECTABLE:
+        raise HTTPException(status_code=409, detail="Ya la recibió Tesorería: registre la diferencia en la entrega o en el depósito")
+    now = now_utc()
+    record = {"correction_id": str(uuid4()), "action": payload.action, "reason": payload.reason.strip(), "by_user_id": current_user["user_id"], "by_name": current_user.get("nombre"),
+              "at": now, "previous_status": collection["status"], "item_id": payload.item_id}
+    if payload.action == "add":
+        if not payload.item:
+            raise HTTPException(status_code=422, detail="Indique el aporte")
+        await validate_item(payload.item)
+        item_id = str(uuid4())
+        await db.finance_collection_items.insert_one({"_id": item_id, "item_id": item_id, "collection_id": collection_id, **item_fields(payload.item), "zelle_tx_id": None, "status": "active",
+                                                      "is_test": bool(collection.get("is_test")), "created_by_user_id": current_user["user_id"], "created_at": now, "updated_at": now,
+                                                      "history": [], "added_by_correction": record["correction_id"]})
+        record.update({"item_id": item_id, "before": None, "after": item_fields(payload.item)})
+    elif payload.action in ("update", "void"):
+        item = await load_item(collection_id, payload.item_id or "")
+        if item["status"] != "active":
+            raise HTTPException(status_code=409, detail="El aporte está anulado")
+        before = {key: item.get(key) for key in ("person_id", "anonymous", "contribution_type", "fund_id", "amount_cents", "method", "reference", "note", "zelle_tx_id")}
+        if payload.action == "update":
+            if not payload.item:
+                raise HTTPException(status_code=422, detail="Indique el aporte corregido")
+            await validate_item(payload.item)
+            after = item_fields(payload.item)
+            unset_zelle = item.get("zelle_tx_id") and (after["method"] != "zelle" or after["amount_cents"] != item["amount_cents"])
+            await db.finance_collection_items.update_one({"item_id": item["item_id"]}, {"$set": {**after, **({"zelle_tx_id": None} if unset_zelle else {}), "updated_at": now},
+                                                                                       "$push": {"history": {"before": before, "reason": record["reason"], "by_user_id": current_user["user_id"], "at": now}}})
+        else:
+            after = None
+            unset_zelle = bool(item.get("zelle_tx_id"))
+            await db.finance_collection_items.update_one({"item_id": item["item_id"]}, {"$set": {"status": "voided", "void_reason": record["reason"], "voided_by_user_id": current_user["user_id"],
+                                                                                                 "voided_at": now, "zelle_tx_id": None, "updated_at": now}})
+        if unset_zelle:
+            await db.finance_zelle_received.update_one({"tx_id": item["zelle_tx_id"], "matched_item_id": item["item_id"]}, {"$set": {"matched_item_id": None, "matched_at": None}})
+        record.update({"before": before, "after": after})
+    else:
+        if not payload.cash_count:
+            raise HTTPException(status_code=422, detail="Indique el conteo corregido")
+        count = {**payload.cash_count.model_dump(), "counted_by_user_id": current_user["user_id"], "counted_by_name": current_user.get("nombre"), "counted_at": now}
+        await db.finance_collections.update_one({"collection_id": collection_id}, {"$set": {"cash_count": count}})
+        record.update({"before": collection.get("cash_count"), "after": payload.cash_count.model_dump()})
+    if collection["status"] == "validated":
+        await reverse_postings(collection, current_user, record["reason"])
+    stage = {"stage": "corrected", "label": "Corregida · falta validar otra vez", "note": record["reason"], "by_user_id": current_user["user_id"], "by_name": current_user.get("nombre"), "at": now}
+    await db.finance_collections.update_one({"collection_id": collection_id}, {
+        "$set": {"status": "registered", "registered_by_user_id": current_user["user_id"], "registered_at": now, "validated_by_user_id": None, "validated_at": None, "posted_journal_id": None},
+        "$push": {"corrections": record, "timeline": stage}})
+    await touch(collection_id, current_user, "corrected", {"correction_id": record["correction_id"], "action": payload.action, "reason": record["reason"]})
     return await view(await load_collection(collection_id), current_user)

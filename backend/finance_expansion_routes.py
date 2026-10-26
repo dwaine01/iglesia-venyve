@@ -127,7 +127,7 @@ async def contribution_summary(
 ) -> dict:
     person = await canonical_person(person_id)
     canonical_id = person["person_id"]
-    query = {"person_id": canonical_id, "status": {"$ne": "corrected"}}
+    query = {"person_id": canonical_id, "status": {"$ne": "corrected"}, "is_test": {"$ne": True}}
     received = date_filter(year, start, end)
     if received:
         query["received_date"] = received
@@ -234,7 +234,7 @@ async def contributor_search(search: str = Query(min_length=2, max_length=120), 
         pid = person.get("person_id") or str(person.get("_id"))
         row = {"person_id": pid, "name": person_name(person), "vv_number": person.get("vv_number")}
         if can_see_donors(current_user):  # cuántas veces dio = dato de ofrendas: solo la pastora
-            row["contribution_count"] = await db.finance_contributions.count_documents({"person_id": pid, "status": {"$ne": "corrected"}})
+            row["contribution_count"] = await db.finance_contributions.count_documents({"person_id": pid, "status": {"$ne": "corrected"}, "is_test": {"$ne": True}})
         items.append(row)
     return {"items": items}
 
@@ -502,10 +502,10 @@ async def fund_activity(fund_id: str, current_user: dict = Depends(reader)):
     fund = await db.finance_funds.find_one({"fund_id": fund_id}, {"_id": 0})
     if not fund:
         raise HTTPException(status_code=404, detail="Fondo no encontrado")
-    contributions = await db.finance_contributions.find({"allocations.fund_id": fund_id, "status": {"$ne": "corrected"}}, {"_id": 0}).sort("received_date", -1).to_list(5000)
+    contributions = await db.finance_contributions.find({"allocations.fund_id": fund_id, "status": {"$ne": "corrected"}, "is_test": {"$ne": True}}, {"_id": 0}).sort("received_date", -1).to_list(5000)
     received = sum(allocation.get("amount_cents", 0) for item in contributions for allocation in item.get("allocations", []) if allocation.get("fund_id") == fund_id)
     account_types = {item["account_id"]: item["account_type"] for item in await db.finance_accounts.find({}, {"_id": 0, "account_id": 1, "account_type": 1}).to_list(2000)}
-    journals = await db.finance_journal_entries.find({"status": "posted", "lines.fund_id": fund_id}, {"_id": 0}).sort("entry_date", -1).to_list(5000)
+    journals = await db.finance_journal_entries.find({"status": "posted", "is_test": {"$ne": True}, "lines.fund_id": fund_id}, {"_id": 0}).sort("entry_date", -1).to_list(5000)
     spent = sum(line.get("debit_cents", 0) - line.get("credit_cents", 0) for entry in journals for line in entry.get("lines", []) if line.get("fund_id") == fund_id and account_types.get(line.get("account_id")) == "expense")
     budgets = await db.finance_budgets.find({"fund_id": fund_id}, {"_id": 0}).to_list(5000)
     contributions = contributions if can_see_donors(current_user) else [without_donor(item) for item in contributions]
@@ -517,10 +517,10 @@ async def campaign_activity(campaign_id: str, current_user: dict = Depends(reade
     campaign = await db.finance_campaigns.find_one({"campaign_id": campaign_id}, {"_id": 0})
     if not campaign:
         raise HTTPException(status_code=404, detail="Proyecto o campaña no encontrado")
-    contributions = await db.finance_contributions.find({"allocations.campaign_id": campaign_id, "status": {"$ne": "corrected"}}, {"_id": 0}).sort("received_date", -1).to_list(5000)
+    contributions = await db.finance_contributions.find({"allocations.campaign_id": campaign_id, "status": {"$ne": "corrected"}, "is_test": {"$ne": True}}, {"_id": 0}).sort("received_date", -1).to_list(5000)
     received = sum(allocation.get("amount_cents", 0) for item in contributions for allocation in item.get("allocations", []) if allocation.get("campaign_id") == campaign_id)
     account_types = {item["account_id"]: item["account_type"] for item in await db.finance_accounts.find({}, {"_id": 0, "account_id": 1, "account_type": 1}).to_list(2000)}
-    journals = await db.finance_journal_entries.find({"status": "posted", "lines.campaign_id": campaign_id}, {"_id": 0}).sort("entry_date", -1).to_list(5000)
+    journals = await db.finance_journal_entries.find({"status": "posted", "is_test": {"$ne": True}, "lines.campaign_id": campaign_id}, {"_id": 0}).sort("entry_date", -1).to_list(5000)
     spent = sum(line.get("debit_cents", 0) - line.get("credit_cents", 0) for entry in journals for line in entry.get("lines", []) if line.get("campaign_id") == campaign_id and account_types.get(line.get("account_id")) == "expense")
     budgets = await db.finance_budgets.find({"campaign_id": campaign_id}, {"_id": 0}).to_list(5000)
     budget_total = campaign.get("budget_cents", 0) + sum(item.get("amount_cents", 0) for item in budgets)
