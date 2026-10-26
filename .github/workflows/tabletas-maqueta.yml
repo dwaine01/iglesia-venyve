@@ -84,7 +84,14 @@ jobs:
               key = re.sub(r'-\d\d-[^/]*\.png$', '', name)
               groups.setdefault(key, []).append(name)
           for key, files in groups.items():
-              images = [Image.open(f).convert('RGB') for f in files]
+              images = []
+              for f in files:
+                  try:
+                      images.append(Image.open(f).convert('RGB'))
+                  except Exception:
+                      print('captura dañada:', f)
+              if not images:
+                  continue
               w = max(i.width for i in images); h = max(i.height for i in images); cols = 5
               rows = (len(images) + cols - 1) // cols
               sheet = Image.new('RGB', (cols * w + (cols - 1) * 24, rows * h + (rows - 1) * 24), 'white')

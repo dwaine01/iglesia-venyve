@@ -4,7 +4,6 @@ import static org.junit.Assert.assertTrue;
 
 import android.app.UiAutomation;
 import android.content.Context;
-import android.graphics.Bitmap;
 import android.os.ParcelFileDescriptor;
 import android.os.SystemClock;
 import android.util.Log;
@@ -21,9 +20,7 @@ import org.junit.Assume;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
-import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -36,6 +33,7 @@ import java.util.concurrent.atomic.AtomicReference;
 public class KioskLayoutOnDeviceTest {
     private static final String TAG = "RegistroVenyVeMaqueta";
     private static final String PAGE = "http://localhost:4310/r/PRUEBA";
+    private static final String SHOTS = "/data/local/tmp/maqueta";
     private static final String MEASURE = "(function(){var m=document.querySelector('[data-testid=kiosk-main]');"
             + "var f=document.querySelector('[data-testid=kiosk-next],[data-testid=kiosk-submit],[data-testid=kiosk-done]');"
             + "var small=0,els=document.querySelectorAll('[data-testid=kiosk-page] *');"
@@ -45,7 +43,6 @@ public class KioskLayoutOnDeviceTest {
 
     private UiAutomation ui;
     private ActivityScenario<MainActivity> scenario;
-    private File dir;
     private String prefix;
     private int count;
 
@@ -100,15 +97,8 @@ public class KioskLayoutOnDeviceTest {
         SystemClock.sleep(700);
         String measured = js(MEASURE);
         Log.i(TAG, prefix + " " + name + ": " + measured);
-        try {
-            Bitmap picture = ui.takeScreenshot();
-            File file = new File(dir, String.format("%s-%02d-%s.png", prefix, ++count, name));
-            try (FileOutputStream output = new FileOutputStream(file)) {
-                picture.compress(Bitmap.CompressFormat.PNG, 100, output);
-            }
-        } catch (Exception error) {
-            Log.w(TAG, "Sin captura " + name, error);
-        }
+        // Captura del sistema en /data/local/tmp (se puede descargar en Android 7 y 11, y queda al desinstalar).
+        shell("screencap -p " + String.format("%s/%s-%02d-%s.png", SHOTS, prefix, ++count, name));
     }
 
     /** Toque real (abre el teclado de la pantalla) en el centro de un campo. */
@@ -200,7 +190,8 @@ public class KioskLayoutOnDeviceTest {
         Assume.assumeTrue("solo con -e maqueta 1", "1".equals(InstrumentationRegistry.getArguments().getString("maqueta")));
         ui = InstrumentationRegistry.getInstrumentation().getUiAutomation();
         Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
-        dir = context.getExternalFilesDir(null);
+        shell("rm -rf " + SHOTS);
+        shell("mkdir -p " + SHOTS);
         // Sin código guardado: la app queda en su pantalla de preparación y no toca la página de prueba.
         context.getSharedPreferences(MainActivity.PREFS, Context.MODE_PRIVATE).edit().clear().commit();
         String[][] screens = {{"800x1280", "160"}, {"1200x1920", "160"}};
@@ -220,12 +211,6 @@ public class KioskLayoutOnDeviceTest {
             shell("wm size reset");
             shell("wm density reset");
             ui.setRotation(UiAutomation.ROTATION_UNFREEZE);
-            try (FileOutputStream done = new FileOutputStream(new File(dir, "listo.txt"))) {
-                done.write('1');
-            } catch (Exception ignored) {
-                // solo avisa al script que ya puede descargar las capturas
-            }
-            SystemClock.sleep(20000);
         }
     }
 }

@@ -4,21 +4,18 @@
 set -u
 OUT=capturas; mkdir -p "$OUT"
 API=$(adb shell getprop ro.build.version.sdk | tr -d '\r')
-DIR=/sdcard/Android/data/org.iglesiavenyve.registro.prueba/files
 node .github/scripts/kiosk-mock.js "$PWD/frontend/build" 4310 > mock.log 2>&1 &
 sleep 2
 adb reverse tcp:4310 tcp:4310
-(gradle -p android-kiosk --no-daemon connectedDebugAndroidTest \
+gradle -p android-kiosk --no-daemon connectedDebugAndroidTest \
   -Pandroid.testInstrumentationRunnerArguments.maqueta=1 \
-  -Pandroid.testInstrumentationRunnerArguments.class=org.iglesiavenyve.registro.KioskLayoutOnDeviceTest > gradle-maqueta.log 2>&1; echo $? > gradle-maqueta.exit) &
-pull_new() {
-  for f in $(adb shell ls "$DIR" 2>/dev/null | tr -d '\r' | grep '\.png$'); do
-    [ -f "$OUT/maqueta-api$API-$f" ] || adb pull "$DIR/$f" "$OUT/maqueta-api$API-$f" >/dev/null 2>&1
-  done
-}
-while [ ! -f gradle-maqueta.exit ]; do pull_new; sleep 3; done
-pull_new
-tail -40 gradle-maqueta.log
-adb logcat -d -s RegistroVenyVeMaqueta:I chromium:I | grep -v "INFO:library_loader" | tail -80
+  -Pandroid.testInstrumentationRunnerArguments.class=org.iglesiavenyve.registro.KioskLayoutOnDeviceTest > gradle-maqueta.log 2>&1
+STATUS=$?
+adb pull /data/local/tmp/maqueta crudas >/dev/null 2>&1
+for f in $(find crudas -name '*.png' -size +1k 2>/dev/null); do cp "$f" "$OUT/maqueta-api$API-$(basename "$f")"; done
+grep -E "tests completed|FAILED|Exception|Error|BUILD" gradle-maqueta.log | head -30
+# Medidas de cada pantalla (desborde = cuánto habría que desplazar; pie = dónde termina el botón).
+adb logcat -d -s RegistroVenyVeMaqueta:I | grep -v "	at " | tail -80
+adb logcat -d -s chromium:I | grep -iE "error|uncaught" | tail -20
 echo "capturas: $(ls "$OUT" | wc -l)"
-exit "$(cat gradle-maqueta.exit)"
+exit $STATUS
