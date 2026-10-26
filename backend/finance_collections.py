@@ -1,0 +1,466 @@
+"""Nuevo flujo de Finanzas · P2: registro y cuadre de la colecta (decisión del dueño).
+
+La encargada de Finanzas abre una colecta (fecha y servicio) y registra cada aporte: persona o
+ANÓNIMO, concepto, fondo, monto, medio (efectivo, Zelle u otro) y la referencia del sobre o de la
+transacción. El sistema separa efectivo, Zelle y total general:
+
+- el efectivo contado se compara con el detalle y con los sobres;
+- cada Zelle debe coincidir con UNA transacción recibida (escrita a mano o del CSV del banco), y
+  cada transacción solo puede coincidir con un aporte;
+- toda diferencia se muestra y queda documentada antes de enviar a validación.
+
+Nada se borra: un aporte se anula con motivo y cada cambio guarda el valor anterior. Los asientos
+contables se crean en los pasos siguientes (validación y depósito). La pastora solo consulta.
+"""
+import csv
+import hashlib
+import io
+import re
+from datetime import date, datetime
+from typing import Literal, Optional
+from uuid import uuid4
+
+from bson import ObjectId
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from pydantic import BaseModel, Field
+
+from access_control import FINANCE_COLLECTION_RECORD, FINANCE_TREASURY
+from finance_engine import audit, can_see_donors, has_finance_role, log_donor_view, now_utc, require_finance_read, require_finance_role, serialize
+from server import db, get_current_user
+
+router = APIRouter(prefix="/api/finance/collections", tags=["finance-collections"])
+zelle_router = APIRouter(prefix="/api/finance/zelle", tags=["finance-zelle"])
+
+METHODS = ("cash", "zelle", "other")
+OPEN_STATUSES = ("registering",)  # solo mientras se registra se edita libremente
+DIFFERENCE_KINDS = ("cash", "envelopes", "zelle")
+
+
+def reader(current_user: dict = Depends(get_current_user)) -> dict:
+    require_finance_read(current_user)
+    return current_user
+
+
+def recorder(current_user: dict = Depends(get_current_user)) -> dict:
+    require_finance_role(current_user, FINANCE_COLLECTION_RECORD)
+    return current_user
+
+
+def zelle_loader(current_user: dict = Depends(get_current_user)) -> dict:
+    """Las transacciones Zelle recibidas las carga Finanzas o Tesorería."""
+    if not (has_finance_role(current_user, FINANCE_COLLECTION_RECORD) or has_finance_role(current_user, FINANCE_TREASURY)):
+        require_finance_role(current_user, FINANCE_TREASURY)
+    return current_user
+
+
+async def ensure_indexes() -> None:
+    await db.finance_collections.create_index("collection_id", unique=True)
+    await db.finance_collection_items.create_index("item_id", unique=True)
+    await db.finance_collection_items.create_index([("collection_id", 1), ("status", 1)])
+    await db.finance_zelle_received.create_index("tx_id", unique=True)
+    await db.finance_zelle_received.create_index("dedupe_key", unique=True)
+    # Una transacción Zelle solo puede coincidir con un aporte.
+    await db.finance_zelle_received.create_index("matched_item_id", unique=True, partialFilterExpression={"matched_item_id": {"$type": "string"}})
+    if not await db.finance_contribution_types.find_one({"type_key": "special_offering"}):
+        account = await db.finance_accounts.find_one({"code": "4010"}, {"_id": 0, "account_id": 1})
+        if account:
+            await db.finance_contribution_types.update_one({"type_key": "special_offering"}, {"$setOnInsert": {
+                "_id": "special_offering", "type_key": "special_offering", "name": "Ofrenda especial", "revenue_account_id": account["account_id"],
+                "annual_statement_eligible": True, "active": True, "created_at": now_utc()}}, upsert=True)
+
+
+async def load_collection(collection_id: str) -> dict:
+    doc = await db.finance_collections.find_one({"collection_id": collection_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Colecta no encontrada")
+    return doc
+
+
+def require_open(collection: dict) -> None:
+    if collection.get("status") not in OPEN_STATUSES:
+        raise HTTPException(status_code=409, detail="La colecta ya se envió a validación; para cambiarla use una corrección (queda historial)")
+
+
+async def person_label(person_id: Optional[str]) -> Optional[str]:
+    if not person_id or not ObjectId.is_valid(person_id):
+        return None
+    doc = await db.persons.find_one({"_id": ObjectId(person_id)}, {"nombre": 1, "apellido": 1})
+    return " ".join(filter(None, [(doc or {}).get("nombre"), (doc or {}).get("apellido")])) or None
+
+
+async def summary(collection: dict) -> dict:
+    """Cuadre: efectivo (detalle vs. contado), sobres, Zelle (coincidencias) y total general."""
+    items = await db.finance_collection_items.find({"collection_id": collection["collection_id"], "status": "active"}, {"_id": 0}).to_list(5000)
+    by_method = {method: sum(item["amount_cents"] for item in items if item["method"] == method) for method in METHODS}
+    cash_items = [item for item in items if item["method"] == "cash"]
+    zelle_items = [item for item in items if item["method"] == "zelle"]
+    count = collection.get("cash_count") or {}
+    counted = count.get("counted_cash_cents")
+    envelopes_registered = len({item.get("reference") or item["item_id"] for item in cash_items})
+    envelopes_counted = count.get("envelope_count")
+    unmatched = [item["item_id"] for item in zelle_items if not item.get("zelle_tx_id")]
+    differences = []
+    if counted is not None and counted != by_method["cash"]:
+        differences.append({"kind": "cash", "label": "Efectivo contado distinto al detalle", "expected_cents": by_method["cash"], "actual_cents": counted, "difference_cents": counted - by_method["cash"]})
+    if envelopes_counted is not None and envelopes_counted != envelopes_registered:
+        differences.append({"kind": "envelopes", "label": "Sobres contados distintos a los registrados", "expected": envelopes_registered, "actual": envelopes_counted, "difference": envelopes_counted - envelopes_registered})
+    if unmatched:
+        differences.append({"kind": "zelle", "label": "Zelle sin transacción recibida que coincida", "items": len(unmatched), "amount_cents": sum(item["amount_cents"] for item in zelle_items if item["item_id"] in unmatched)})
+    explanations = {item["kind"]: item for item in collection.get("explanations") or []}
+    for item in differences:
+        item["explanation"] = explanations.get(item["kind"])
+    return {"cash_detail_cents": by_method["cash"], "cash_counted_cents": counted, "zelle_cents": by_method["zelle"], "other_cents": by_method["other"],
+            "total_cents": sum(by_method.values()), "items": len(items), "envelopes_registered": envelopes_registered, "envelopes_counted": envelopes_counted,
+            "zelle_unmatched": len(unmatched), "differences": differences, "pending_explanations": [item["kind"] for item in differences if not item["explanation"]],
+            "cash_counted": counted is not None}
+
+
+async def view(collection: dict, current_user: dict, with_items: bool = True) -> dict:
+    """La colecta con su cuadre. Quién dio: solo la pastora, quien ella autorice y quienes trabajan la colecta
+    (registrar/verificar/Tesorería necesitan el detalle para cuadrar sobres); cada vista con nombres queda registrada."""
+    out = {**collection, "summary": await summary(collection)}
+    if with_items:
+        items = await db.finance_collection_items.find({"collection_id": collection["collection_id"]}, {"_id": 0}).sort("created_at", 1).to_list(5000)
+        sees_names = can_see_donors(current_user) or any(has_finance_role(current_user, cap) for cap in (FINANCE_COLLECTION_RECORD, "finance.collection.verify", FINANCE_TREASURY))
+        for item in items:
+            if sees_names:
+                item["person_name"] = "Anónimo" if item.get("anonymous") else await person_label(item.get("person_id"))
+            else:
+                item.pop("person_id", None)
+                item["person_name"] = "Anónimo" if item.get("anonymous") else "Donante reservado"
+        if sees_names and any(item.get("person_id") for item in items):
+            await log_donor_view(current_user, "collection_detail", detail={"collection_id": collection["collection_id"]})
+        out["items"] = items
+    return serialize(out)
+
+
+async def touch(collection_id: str, current_user: dict, action: str, detail: Optional[dict] = None) -> None:
+    now = now_utc()
+    await db.finance_collections.update_one({"collection_id": collection_id}, {"$set": {"updated_at": now},
+                                                                              "$push": {"history": {"action": action, "by_user_id": current_user["user_id"], "by_name": current_user.get("nombre"), "at": now, **(detail or {})}}})
+    await audit(current_user["user_id"], f"collection_{action}", "collection", collection_id, detail or {})
+
+
+# ------------------------------------------------------------------ colectas
+class CollectionCreate(BaseModel):
+    service_date: date
+    service_name: str = Field(min_length=2, max_length=120)
+    notes: Optional[str] = Field(default=None, max_length=500)
+    is_test: bool = False
+
+
+@router.post("", response_model=dict, status_code=201)
+async def open_collection(payload: CollectionCreate, current_user: dict = Depends(recorder)):
+    collection_id = str(uuid4())
+    now = now_utc()
+    doc = {"_id": collection_id, "collection_id": collection_id, "service_date": payload.service_date.isoformat(), "service_name": payload.service_name.strip(),
+           "notes": payload.notes, "is_test": payload.is_test, "status": "registering", "cash_count": None, "explanations": [],
+           "opened_by_user_id": current_user["user_id"], "opened_by_name": current_user.get("nombre"), "opened_at": now,
+           "timeline": [{"stage": "opened", "label": "Abierta", "by_user_id": current_user["user_id"], "by_name": current_user.get("nombre"), "at": now}],
+           "history": [], "created_at": now, "updated_at": now}
+    await db.finance_collections.insert_one(doc)
+    await audit(current_user["user_id"], "collection_opened", "collection", collection_id, {"service_date": doc["service_date"], "is_test": payload.is_test})
+    return await view(await load_collection(collection_id), current_user)
+
+
+@router.get("", response_model=dict)
+async def list_collections(include_test: bool = False, current_user: dict = Depends(reader)):
+    query = {} if include_test else {"is_test": {"$ne": True}}
+    items = []
+    for doc in await db.finance_collections.find(query, {"_id": 0, "history": 0}).sort([("service_date", -1), ("created_at", -1)]).to_list(500):
+        items.append({**serialize(doc), "summary": await summary(doc)})
+    return {"items": items}
+
+
+@router.get("/{collection_id}", response_model=dict)
+async def get_collection(collection_id: str, current_user: dict = Depends(reader)):
+    return await view(await load_collection(collection_id), current_user)
+
+
+# ------------------------------------------------------------------ aportes
+class ItemInput(BaseModel):
+    person_id: Optional[str] = None
+    anonymous: bool = False
+    contribution_type: str = Field(min_length=2, max_length=80)
+    fund_id: str
+    amount_cents: int = Field(gt=0, le=100_000_000)
+    method: Literal["cash", "zelle", "other"]
+    reference: Optional[str] = Field(default=None, max_length=120)  # número de sobre o de transacción
+    note: Optional[str] = Field(default=None, max_length=500)
+
+
+async def validate_item(payload: ItemInput) -> None:
+    if not payload.anonymous and not payload.person_id:
+        raise HTTPException(status_code=422, detail="Elija la persona o marque ANÓNIMO")
+    if payload.person_id and (not ObjectId.is_valid(payload.person_id) or not await db.persons.find_one({"_id": ObjectId(payload.person_id)}, {"_id": 1})):
+        raise HTTPException(status_code=404, detail="Persona 360 no encontrada")
+    if not await db.finance_contribution_types.find_one({"type_key": payload.contribution_type, "active": True}, {"_id": 1}):
+        raise HTTPException(status_code=422, detail="Concepto no válido")
+    if not await db.finance_funds.find_one({"fund_id": payload.fund_id, "active": True}, {"_id": 1}):
+        raise HTTPException(status_code=422, detail="Fondo no válido")
+
+
+def item_fields(payload: ItemInput) -> dict:
+    return {"person_id": None if payload.anonymous else payload.person_id, "anonymous": payload.anonymous, "contribution_type": payload.contribution_type,
+            "fund_id": payload.fund_id, "amount_cents": payload.amount_cents, "method": payload.method,
+            "reference": (payload.reference or "").strip() or None, "note": payload.note}
+
+
+@router.post("/{collection_id}/items", response_model=dict, status_code=201)
+async def add_item(collection_id: str, payload: ItemInput, current_user: dict = Depends(recorder)):
+    collection = await load_collection(collection_id)
+    require_open(collection)
+    await validate_item(payload)
+    item_id = str(uuid4())
+    now = now_utc()
+    await db.finance_collection_items.insert_one({"_id": item_id, "item_id": item_id, "collection_id": collection_id, **item_fields(payload), "zelle_tx_id": None,
+                                                  "status": "active", "is_test": bool(collection.get("is_test")), "created_by_user_id": current_user["user_id"], "created_at": now,
+                                                  "updated_at": now, "history": []})
+    await touch(collection_id, current_user, "item_added", {"item_id": item_id, "amount_cents": payload.amount_cents, "method": payload.method})
+    return await view(await load_collection(collection_id), current_user)
+
+
+async def load_item(collection_id: str, item_id: str) -> dict:
+    item = await db.finance_collection_items.find_one({"collection_id": collection_id, "item_id": item_id}, {"_id": 0})
+    if not item:
+        raise HTTPException(status_code=404, detail="Aporte no encontrado")
+    return item
+
+
+@router.put("/{collection_id}/items/{item_id}", response_model=dict)
+async def update_item(collection_id: str, item_id: str, payload: ItemInput, current_user: dict = Depends(recorder)):
+    collection = await load_collection(collection_id)
+    require_open(collection)
+    item = await load_item(collection_id, item_id)
+    if item["status"] != "active":
+        raise HTTPException(status_code=409, detail="El aporte está anulado")
+    await validate_item(payload)
+    new = item_fields(payload)
+    before = {key: item.get(key) for key in new}
+    unset_zelle = item.get("zelle_tx_id") and (new["method"] != "zelle" or new["amount_cents"] != item["amount_cents"])
+    now = now_utc()
+    await db.finance_collection_items.update_one({"item_id": item_id}, {"$set": {**new, **({"zelle_tx_id": None} if unset_zelle else {}), "updated_at": now},
+                                                                        "$push": {"history": {"before": before, "by_user_id": current_user["user_id"], "at": now}}})
+    if unset_zelle:  # el monto o el medio cambió: la coincidencia con el Zelle ya no vale
+        await db.finance_zelle_received.update_one({"tx_id": item["zelle_tx_id"], "matched_item_id": item_id}, {"$set": {"matched_item_id": None, "matched_at": None}})
+    await touch(collection_id, current_user, "item_updated", {"item_id": item_id, "before": before})
+    return await view(await load_collection(collection_id), current_user)
+
+
+class VoidInput(BaseModel):
+    reason: str = Field(min_length=3, max_length=300)
+
+
+@router.post("/{collection_id}/items/{item_id}/void", response_model=dict)
+async def void_item(collection_id: str, item_id: str, payload: VoidInput, current_user: dict = Depends(recorder)):
+    """Quitar un aporte = anularlo con motivo (nunca se borra)."""
+    collection = await load_collection(collection_id)
+    require_open(collection)
+    item = await load_item(collection_id, item_id)
+    if item["status"] != "active":
+        return await view(collection, current_user)
+    now = now_utc()
+    await db.finance_collection_items.update_one({"item_id": item_id}, {"$set": {"status": "voided", "void_reason": payload.reason, "voided_by_user_id": current_user["user_id"], "voided_at": now, "zelle_tx_id": None, "updated_at": now}})
+    if item.get("zelle_tx_id"):
+        await db.finance_zelle_received.update_one({"tx_id": item["zelle_tx_id"], "matched_item_id": item_id}, {"$set": {"matched_item_id": None, "matched_at": None}})
+    await touch(collection_id, current_user, "item_voided", {"item_id": item_id, "reason": payload.reason})
+    return await view(await load_collection(collection_id), current_user)
+
+
+# ------------------------------------------------------------------ conteo, diferencias y envío
+class CashCountInput(BaseModel):
+    counted_cash_cents: int = Field(ge=0, le=1_000_000_000)
+    envelope_count: Optional[int] = Field(default=None, ge=0, le=5000)
+    note: Optional[str] = Field(default=None, max_length=500)
+
+
+@router.post("/{collection_id}/cash-count", response_model=dict)
+async def cash_count(collection_id: str, payload: CashCountInput, current_user: dict = Depends(recorder)):
+    collection = await load_collection(collection_id)
+    require_open(collection)
+    count = {**payload.model_dump(), "counted_by_user_id": current_user["user_id"], "counted_by_name": current_user.get("nombre"), "counted_at": now_utc()}
+    await db.finance_collections.update_one({"collection_id": collection_id}, {"$set": {"cash_count": count}})
+    await touch(collection_id, current_user, "cash_counted", {"before": collection.get("cash_count"), "counted_cash_cents": payload.counted_cash_cents, "envelope_count": payload.envelope_count})
+    return await view(await load_collection(collection_id), current_user)
+
+
+class ExplanationInput(BaseModel):
+    kind: Literal["cash", "envelopes", "zelle"]
+    note: str = Field(min_length=5, max_length=1000)
+
+
+@router.post("/{collection_id}/explanations", response_model=dict)
+async def explain(collection_id: str, payload: ExplanationInput, current_user: dict = Depends(recorder)):
+    """Toda diferencia queda documentada (quién, cuándo, por qué)."""
+    collection = await load_collection(collection_id)
+    require_open(collection)
+    entry = {"kind": payload.kind, "note": payload.note.strip(), "by_user_id": current_user["user_id"], "by_name": current_user.get("nombre"), "at": now_utc()}
+    explanations = [item for item in collection.get("explanations") or [] if item["kind"] != payload.kind] + [entry]
+    await db.finance_collections.update_one({"collection_id": collection_id}, {"$set": {"explanations": explanations}})
+    await touch(collection_id, current_user, "difference_explained", {"kind": payload.kind, "note": entry["note"]})
+    return await view(await load_collection(collection_id), current_user)
+
+
+@router.post("/{collection_id}/submit", response_model=dict)
+async def submit(collection_id: str, current_user: dict = Depends(recorder)):
+    """Registrada: lista para que una SEGUNDA persona valide el cuadre."""
+    collection = await load_collection(collection_id)
+    require_open(collection)
+    current = await summary(collection)
+    if not current["items"]:
+        raise HTTPException(status_code=409, detail="Registre al menos un aporte")
+    if current["cash_detail_cents"] and not current["cash_counted"]:
+        raise HTTPException(status_code=409, detail="Registre el efectivo contado y los sobres antes de enviar")
+    if current["pending_explanations"]:
+        raise HTTPException(status_code=409, detail="Hay diferencias sin explicar: " + ", ".join(current["pending_explanations"]))
+    now = now_utc()
+    stage = {"stage": "registered", "label": "Registrada", "by_user_id": current_user["user_id"], "by_name": current_user.get("nombre"), "at": now}
+    await db.finance_collections.update_one({"collection_id": collection_id, "status": "registering"},
+                                            {"$set": {"status": "registered", "registered_by_user_id": current_user["user_id"], "registered_at": now, "submitted_summary": current},
+                                             "$push": {"timeline": stage}})
+    await touch(collection_id, current_user, "submitted", {"total_cents": current["total_cents"], "cash_cents": current["cash_detail_cents"], "zelle_cents": current["zelle_cents"]})
+    return await view(await load_collection(collection_id), current_user)
+
+
+# ------------------------------------------------------------------ Zelle recibidos
+class ZelleInput(BaseModel):
+    received_date: date
+    amount_cents: int = Field(gt=0, le=100_000_000)
+    sender_name: str = Field(min_length=2, max_length=160)
+    confirmation: Optional[str] = Field(default=None, max_length=120)
+    memo: Optional[str] = Field(default=None, max_length=300)
+    is_test: bool = False
+
+
+def dedupe_key(received: str, amount_cents: int, sender: str, confirmation: Optional[str]) -> str:
+    """La misma transacción nunca entra dos veces (por confirmación del banco; si no hay, fecha+monto+nombre)."""
+    sender_key = re.sub(r"\s+", " ", sender.strip().lower())
+    base = f"conf:{confirmation.strip().upper()}" if confirmation and confirmation.strip() else f"{received}|{amount_cents}|{sender_key}"
+    return hashlib.sha256(base.encode("utf-8")).hexdigest()
+
+
+async def insert_zelle(fields: dict, source: str, current_user: dict) -> Optional[dict]:
+    key = dedupe_key(fields["received_date"], fields["amount_cents"], fields["sender_name"], fields.get("confirmation"))
+    if await db.finance_zelle_received.find_one({"dedupe_key": key}, {"_id": 1}):
+        return None
+    tx_id = str(uuid4())
+    doc = {"_id": tx_id, "tx_id": tx_id, **fields, "dedupe_key": key, "source": source, "matched_item_id": None, "matched_at": None,
+           "loaded_by_user_id": current_user["user_id"], "loaded_at": now_utc()}
+    try:
+        await db.finance_zelle_received.insert_one(doc)
+    except Exception:  # noqa: BLE001 — carrera con otra carga igual: ya existe
+        return None
+    return doc
+
+
+@zelle_router.post("", response_model=dict, status_code=201)
+async def zelle_manual(payload: ZelleInput, current_user: dict = Depends(zelle_loader)):
+    doc = await insert_zelle({**payload.model_dump(mode="json"), "sender_name": payload.sender_name.strip()}, "manual", current_user)
+    if not doc:
+        raise HTTPException(status_code=409, detail="Esa transacción Zelle ya está registrada")
+    await audit(current_user["user_id"], "zelle_loaded", "zelle", doc["tx_id"], {"amount_cents": payload.amount_cents, "source": "manual"})
+    return serialize(doc)
+
+
+def _cents(value: str) -> int:
+    clean = re.sub(r"[^0-9.\-]", "", value or "")
+    if not clean:
+        raise ValueError("monto vacío")
+    return int(round(abs(float(clean)) * 100))
+
+
+def _date(value: str) -> str:
+    value = (value or "").strip()
+    for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%m/%d/%y", "%d/%m/%Y"):
+        try:
+            return datetime.strptime(value, fmt).date().isoformat()
+        except ValueError:
+            continue
+    raise ValueError(f"fecha no reconocida: {value}")
+
+
+def _pick(row: dict, *names: str) -> str:
+    lowered = {key.strip().lower(): value for key, value in row.items() if key}
+    for name in names:
+        if lowered.get(name):
+            return lowered[name]
+    return ""
+
+
+@zelle_router.post("/import-csv", response_model=dict)
+async def zelle_import(file: UploadFile = File(...), is_test: bool = False, current_user: dict = Depends(zelle_loader)):
+    """CSV del banco (montos en DÓLARES). Columnas reconocidas: fecha/date/posting date, monto/amount,
+    nombre/name/description/sender, confirmación/confirmation/reference. Solo entran créditos (montos > 0)
+    y las transacciones repetidas se ignoran."""
+    content = await file.read()
+    if len(content) > 2_000_000:
+        raise HTTPException(status_code=413, detail="El archivo es demasiado grande")
+    try:
+        rows = list(csv.DictReader(io.StringIO(content.decode("utf-8-sig"))))
+    except Exception:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail="CSV no válido")
+    loaded, repeated, rejected = 0, 0, []
+    for index, row in enumerate(rows, start=2):
+        try:
+            raw_amount = _pick(row, "monto", "amount", "credit", "importe")
+            if raw_amount.strip().startswith("-"):
+                continue  # salidas de dinero: no son Zelle recibidos
+            fields = {"received_date": _date(_pick(row, "fecha", "date", "posting date", "transaction date")), "amount_cents": _cents(raw_amount),
+                      "sender_name": (_pick(row, "nombre", "name", "sender", "description", "descripción") or "Sin nombre").strip()[:160],
+                      "confirmation": (_pick(row, "confirmación", "confirmacion", "confirmation", "reference", "referencia") or None), "memo": None, "is_test": is_test}
+            if fields["amount_cents"] <= 0:
+                continue
+            if await insert_zelle(fields, "csv", current_user):
+                loaded += 1
+            else:
+                repeated += 1
+        except ValueError as error:
+            rejected.append({"row": index, "reason": str(error)[:200]})
+    await audit(current_user["user_id"], "zelle_csv_imported", "zelle", file.filename or "csv", {"loaded": loaded, "repeated": repeated, "rejected": len(rejected)})
+    return {"loaded": loaded, "repeated": repeated, "rejected": rejected, "total": len(rows)}
+
+
+@zelle_router.get("", response_model=dict)
+async def zelle_list(unmatched: bool = False, include_test: bool = False, current_user: dict = Depends(reader)):
+    query: dict = {} if include_test else {"is_test": {"$ne": True}}
+    if unmatched:
+        query["matched_item_id"] = None
+    items = await db.finance_zelle_received.find(query, {"_id": 0, "dedupe_key": 0}).sort("received_date", -1).to_list(2000)
+    if not can_see_donors(current_user) and not has_finance_role(current_user, FINANCE_COLLECTION_RECORD) and not has_finance_role(current_user, FINANCE_TREASURY):
+        for item in items:
+            item["sender_name"] = "Reservado"
+    return {"items": serialize(items)}
+
+
+class MatchInput(BaseModel):
+    tx_id: str
+
+
+@router.post("/{collection_id}/items/{item_id}/match-zelle", response_model=dict)
+async def match_zelle(collection_id: str, item_id: str, payload: MatchInput, current_user: dict = Depends(recorder)):
+    """Une un aporte Zelle con UNA transacción recibida (cada transacción solo con un aporte)."""
+    collection = await load_collection(collection_id)
+    require_open(collection)
+    item = await load_item(collection_id, item_id)
+    if item["status"] != "active" or item["method"] != "zelle":
+        raise HTTPException(status_code=409, detail="Solo un aporte Zelle activo se puede unir a una transacción")
+    tx = await db.finance_zelle_received.find_one({"tx_id": payload.tx_id}, {"_id": 0})
+    if not tx:
+        raise HTTPException(status_code=404, detail="Transacción Zelle no encontrada")
+    if tx["amount_cents"] != item["amount_cents"]:
+        raise HTTPException(status_code=422, detail="El monto del aporte no coincide con la transacción Zelle")
+    if bool(tx.get("is_test")) != bool(collection.get("is_test")):
+        raise HTTPException(status_code=422, detail="No se mezclan datos de prueba con datos reales")
+    if item.get("zelle_tx_id") == payload.tx_id:
+        return await view(collection, current_user)
+    try:
+        claimed = await db.finance_zelle_received.find_one_and_update({"tx_id": payload.tx_id, "matched_item_id": None}, {"$set": {"matched_item_id": item_id, "matched_at": now_utc(), "matched_by_user_id": current_user["user_id"]}})
+    except Exception:  # noqa: BLE001 — índice único: otra persona la tomó
+        claimed = None
+    if not claimed:
+        raise HTTPException(status_code=409, detail="Esa transacción Zelle ya coincide con otro aporte")
+    if item.get("zelle_tx_id"):
+        await db.finance_zelle_received.update_one({"tx_id": item["zelle_tx_id"], "matched_item_id": item_id}, {"$set": {"matched_item_id": None, "matched_at": None}})
+    await db.finance_collection_items.update_one({"item_id": item_id}, {"$set": {"zelle_tx_id": payload.tx_id, "updated_at": now_utc()}})
+    await touch(collection_id, current_user, "zelle_matched", {"item_id": item_id, "tx_id": payload.tx_id})
+    return await view(await load_collection(collection_id), current_user)

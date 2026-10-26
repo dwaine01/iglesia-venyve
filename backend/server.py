@@ -483,6 +483,9 @@ from finance_expansion_routes import router as finance_expansion_router
 from finance_engine import ensure_indexes_and_seed as finance_ensure_indexes
 app.include_router(finance_router)
 app.include_router(finance_expansion_router)
+from finance_collections import router as finance_collections_router, zelle_router as finance_zelle_router, ensure_indexes as finance_collections_indexes
+app.include_router(finance_collections_router)
+app.include_router(finance_zelle_router)
 
 from membership_documents import router as membership_documents_router, ensure_membership_documents
 app.include_router(membership_documents_router)
@@ -789,6 +792,7 @@ async def startup():
     await core_governance_ensure()
     await access_onboarding_ensure_indexes()
     await finance_ensure_indexes()
+    await finance_collections_indexes()
     await ensure_membership_documents()
     await ensure_baptism_documents()
     await ensure_dedication_documents()
