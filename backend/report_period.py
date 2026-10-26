@@ -58,7 +58,9 @@ async def excluded_person_ids() -> set:
     """Autoridad pastoral principal + cuentas marcadas como de prueba."""
     authorities = set(await principal_authority_person_ids(db))
     settings = await db.app_settings.find_one({"_id": SETTINGS_ID}, {"_id": 0, "person_ids": 1}) or {}
-    return authorities | set(settings.get("person_ids") or [])
+    # Personas marcadas `is_test` en «Datos de prueba» (auditoría 8/10): tampoco cuentan.
+    marked = {str(doc["_id"]) async for doc in db.persons.find({"is_test": True}, {"_id": 1})}
+    return authorities | set(settings.get("person_ids") or []) | marked
 
 
 def require_manager(current_user: dict) -> None:
@@ -111,7 +113,7 @@ async def presentable_campaigns(current_user: dict = Depends(get_current_user)):
     zone = await report_zone()
     today = datetime.now(zone).date().isoformat()
     items = []
-    async for campaign in db.outreach_campaigns.find({"archived": {"$ne": True}, "deleted": {"$ne": True}}, {"_id": 0}).sort("start_date", -1).limit(200):
+    async for campaign in db.outreach_campaigns.find({"archived": {"$ne": True}, "deleted": {"$ne": True}, "is_test": {"$ne": True}}, {"_id": 0}).sort("start_date", -1).limit(200):
         if not can_edit_participants(current_user, campaign):
             continue
         state = campaign_state(campaign)

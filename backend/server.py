@@ -599,6 +599,8 @@ from my_work import router as my_work_router
 app.include_router(my_work_router)
 from report_period import router as report_period_router
 app.include_router(report_period_router)
+from test_data import router as test_data_router
+app.include_router(test_data_router)
 from person_contact import router as person_contact_router
 app.include_router(person_contact_router)
 from global_stats import router as global_stats_router
@@ -2511,15 +2513,17 @@ async def get_dashboard_by_role(authorization: Optional[str] = Header(None), lea
         lideres_data.sort(key=lambda row: (order.get((row.get("trabajo") or {}).get("work_status"), 3), (row.get("nombre") or "").lower()))
         
         # Personas que quedaron sin líder (p. ej. al eliminar la cuenta de su líder): visibles para reasignar.
-        sin_lider_docs = await db.people.find({"leader_id": None, "previous_leader_id": {"$exists": True}}, {"nombre": 1, "apellido": 1, "canonical_person_id": 1, "estado": 1}).sort("nombre", 1).to_list(500)
+        # Auditoría 8/10: se calcula desde Persona 360 y baja sola al asignar un mentor (antes nunca bajaba).
+        from count_rules import people_without_mentor
+        sin_lider = await people_without_mentor()
         return {
             "rol": "pastor",
-            "personas_sin_lider": [{"_id": str(doc["_id"]), "nombre": " ".join(filter(None, [doc.get("nombre"), doc.get("apellido")])), "estado": doc.get("estado"), "canonical_person_id": doc.get("canonical_person_id")} for doc in sin_lider_docs],
+            "personas_sin_lider": sin_lider,
             "lideres": lideres_data,
             # La tarjeta cuenta las MISMAS filas de la tabla: cuentas de líder + mentores con insignia sin cuenta de líder.
             "total_lideres": len(lideres_data),
             "total_lideres_desglose": {"lideres": sum(1 for row in lideres_data if not row.get("es_mentor")), "mentores": sum(1 for row in lideres_data if row.get("es_mentor"))},
-        "total_personas_global": await db.persons.count_documents({"is_archived": {"$ne": True}}),
+        "total_personas_global": await db.persons.count_documents({"is_archived": {"$ne": True}, "is_test": {"$ne": True}}),
         "total_personas_en_proceso": sum(l["total_personas"] for l in lideres_data),
         }
     
