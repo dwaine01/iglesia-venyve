@@ -192,6 +192,30 @@ function ConsolidationSection({ data }) {
   );
 }
 
+const SERIES_GROUPS = [['week', 'Por semana'], ['month', 'Por mes'], ['year', 'Por año']];
+
+/** G1b: asistencia por semana, mes o año (calendario de Nueva York). */
+function AttendanceSeries() {
+  const { API, getAuthHeaders } = useAuth();
+  const [group, setGroup] = useState('week');
+  const [series, setSeries] = useState(null);
+  useEffect(() => {
+    setSeries(null);
+    axios.get(`${API}/api/global-stats/attendance/series`, { ...getAuthHeaders(), params: { group } }).then((response) => setSeries(response.data)).catch(() => setSeries({ points: [] }));
+  }, [API, getAuthHeaders, group]);
+  return (
+    <Panel title="Asistencia por semana, mes y año" note={series?.definition || 'Asistencias por período y por tipo de servicio.'} testId="gs-attendance-series">
+      <div className="mb-3 flex flex-wrap gap-2">{SERIES_GROUPS.map(([key, label]) => (
+        <button key={key} type="button" onClick={() => setGroup(key)} className={`min-h-11 rounded-lg border px-4 text-[15px] font-semibold ${group === key ? 'border-[#132443] bg-[#132443] text-white' : 'border-[#D9D4C7] bg-white text-[#101D36]'}`} data-testid={`gs-series-${key}`}>{label}</button>
+      ))}</div>
+      {!series ? <Loader2 className="h-5 w-5 animate-spin text-slate-400" /> : (
+        <Table columns={[['label', group === 'week' ? 'Semana del' : group === 'month' ? 'Mes' : 'Año'], ['total', 'Asistencias'], ['unique_people', 'Personas distintas'], ['service_average', 'Promedio por servicio', (row) => (row.service_average == null ? '—' : fmt(row.service_average))],
+          ['sunday', 'Domingo'], ['wednesday', 'Miércoles'], ['special', 'Actividades especiales'], ['cell', 'Células']]} rows={[...series.points].reverse()} empty="Sin asistencias registradas." />
+      )}
+    </Panel>
+  );
+}
+
 function AttendanceSection({ data }) {
   return (
     <div className="space-y-4">
@@ -200,9 +224,7 @@ function AttendanceSection({ data }) {
         <Table columns={[['label', 'Servicio'], ['sessions', 'Servicios o reuniones'], ['attendance', 'Asistencias'], ['average', 'Promedio por servicio', (row) => (row.average == null ? 'Sin registros' : fmt(row.average))], ['unique_people', 'Personas distintas'],
           ['change', 'Cambio del promedio', (row) => (row.change_pct == null ? '—' : `${row.change_pct > 0 ? '+' : ''}${row.change_pct} %`)]]} rows={data.by_service.filter((row) => row.sessions || row.previous_average != null)} empty="Aún no se ha registrado asistencia en este período." />
       </Panel>
-      <Panel title="Tendencia semanal (12 semanas)" note="Asistencias por semana y por tipo de servicio.">
-        <Table columns={[['label', 'Semana del'], ['sunday', 'Domingo'], ['wednesday', 'Miércoles'], ['special', 'Actividades especiales'], ['cell', 'Células']]} rows={data.trend} empty="Sin asistencias en las últimas 12 semanas." />
-      </Panel>
+      <AttendanceSeries />
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Panel title="Ausentes frecuentes" note="Asistían con regularidad y no han venido en las últimas 3 semanas." testId="gs-absent">
           {data.frequent_absent.length === 0 ? <p className="text-[15px] text-slate-600">No hay personas que hayan dejado de asistir.</p> : (
