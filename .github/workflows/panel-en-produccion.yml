@@ -1,5 +1,6 @@
 # ¿Ya está en producción? Espera (hasta 30 min) a que el panel publicado en Railway sirva un
-# texto que solo existe en el cambio nuevo y dice a qué hora apareció. No cambia nada.
+# texto que solo existe en el cambio nuevo (o a que deje de servir uno que se quitó) y dice a qué
+# hora ocurrió. Busca en la página, el archivo principal y las partes que se cargan aparte. No cambia nada.
 name: Panel · ¿Ya está en producción?
 
 on:
@@ -9,8 +10,12 @@ on:
   workflow_dispatch:
     inputs:
       texto:
-        description: 'Texto que debe aparecer en el código del panel publicado'
+        description: 'Texto a buscar en el panel publicado'
         required: true
+      modo:
+        description: 'presente = esperar a que aparezca · ausente = esperar a que desaparezca'
+        required: false
+        default: presente
 
 permissions:
   contents: read
@@ -21,27 +26,30 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     env:
-      # Por defecto: el registro de tabletas rediseñado (#142).
-      TEXTO: ${{ github.event.inputs.texto || 'kiosk-requests-help' }}
+      # En un push de prueba: que PostHog ya no esté en el panel.
+      TEXTO: ${{ github.event.inputs.texto || 'posthog' }}
+      MODO: ${{ github.event.inputs.modo || 'ausente' }}
+      PANEL: https://panel.iglesiavenyve.org
     steps:
-      - name: Buscar el cambio en https://panel.iglesiavenyve.org
+      - name: Buscar en el panel publicado
         run: |
+          found() {
+            HTML=$(curl -fsS "$PANEL/r/PRUEBA?t=$(date +%s)") || return 2
+            echo "$HTML" | grep -qi "$TEXTO" && return 0
+            MAIN=$(echo "$HTML" | grep -o '/static/js/main\.[0-9a-f]*\.js' | head -1)
+            [ -n "$MAIN" ] && curl -fsS "$PANEL$MAIN" | grep -qi "$TEXTO" && return 0
+            for part in $(curl -fsS "$PANEL/asset-manifest.json" | grep -o '/static/js/[0-9]*\.[0-9a-f]*\.chunk\.js' | sort -u); do
+              curl -fsS "$PANEL$part" | grep -qi "$TEXTO" && return 0
+            done
+            return 1
+          }
           for i in $(seq 1 60); do
-            MAIN=$(curl -fsS "https://panel.iglesiavenyve.org/r/PRUEBA?t=$(date +%s)" | grep -o '/static/js/main\.[0-9a-f]*\.js' | head -1)
-            if [ -n "$MAIN" ]; then
-              FOUND=no
-              # El texto puede estar en el archivo principal o en una parte que se carga aparte.
-              if curl -fsS "https://panel.iglesiavenyve.org$MAIN" | grep -q "$TEXTO"; then FOUND=yes; fi
-              if [ "$FOUND" = no ]; then
-                for part in $(curl -fsS "https://panel.iglesiavenyve.org/asset-manifest.json" | grep -o '/static/js/[0-9]*\.[0-9a-f]*\.chunk\.js' | sort -u); do
-                  if curl -fsS "https://panel.iglesiavenyve.org$part" | grep -q "$TEXTO"; then FOUND=yes; break; fi
-                done
-              fi
-              if [ "$FOUND" = yes ]; then echo "EN PRODUCCIÓN desde $(TZ=America/New_York date '+%Y-%m-%d %H:%M %Z') ($MAIN)"; exit 0; fi
-              echo "$(date -u +%H:%M) todavía no ($MAIN)"
-            else
-              echo "$(date -u +%H:%M) el panel no respondió"
-            fi
+            found; STATE=$?
+            NOW=$(TZ=America/New_York date '+%Y-%m-%d %H:%M %Z')
+            if [ "$STATE" = 2 ]; then echo "$NOW el panel no respondió";
+            elif [ "$MODO" = ausente ] && [ "$STATE" = 1 ]; then echo "EN PRODUCCIÓN desde $NOW: «$TEXTO» ya no está en el panel"; exit 0;
+            elif [ "$MODO" != ausente ] && [ "$STATE" = 0 ]; then echo "EN PRODUCCIÓN desde $NOW: «$TEXTO» ya está en el panel"; exit 0;
+            else echo "$NOW todavía no"; fi
             sleep 30
           done
           echo "::error::Después de 30 minutos el panel todavía no tiene el cambio."
