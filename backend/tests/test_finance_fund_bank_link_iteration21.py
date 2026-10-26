@@ -15,11 +15,9 @@ PASTOR_PASSWORD = "QaBaptismUI53!"
 def pastor_client():
     s = requests.Session()
     s.headers.update({"Content-Type": "application/json"})
-    r = s.post(f"{BASE_URL}/api/auth/login", json={"email": PASTOR_EMAIL, "password": PASTOR_PASSWORD}, timeout=20)
-    assert r.status_code == 200, f"Pastor login failed: {r.status_code} {r.text}"
-    data = r.json()
-    token = data.get("token") or data.get("access_token")
-    assert token, f"No token in login response: {data}"
+    # Nuevo flujo: la pastora solo consulta; registra y deposita el equipo de Finanzas.
+    from tests.conftest import finance_team_token
+    token = finance_team_token(BASE_URL)
     s.headers.update({"Authorization": f"Bearer {token}"})
     return s
 

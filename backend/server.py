@@ -486,6 +486,8 @@ app.include_router(finance_expansion_router)
 from finance_collections import router as finance_collections_router, zelle_router as finance_zelle_router, ensure_indexes as finance_collections_indexes
 app.include_router(finance_collections_router)
 app.include_router(finance_zelle_router)
+from finance_migration import router as finance_migration_router
+app.include_router(finance_migration_router)
 
 from membership_documents import router as membership_documents_router, ensure_membership_documents
 app.include_router(membership_documents_router)

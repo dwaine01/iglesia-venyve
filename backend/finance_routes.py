@@ -12,7 +12,7 @@ from pymongo.errors import DuplicateKeyError
 from bson import ObjectId
 
 from access_control import is_global_pastoral_authority
-from finance_engine import audit, can_see_donors, create_journal, ensure_open_period, log_donor_view, now_utc, require_donor_access, require_finance_manage, require_finance_read, require_private_person_finance, serialize, validate_lines, without_donor
+from finance_engine import audit, can_see_donors, deny_pastoral_registration, create_journal, ensure_open_period, log_donor_view, now_utc, require_donor_access, require_finance_manage, require_finance_read, require_private_person_finance, serialize, validate_lines, without_donor
 from server import db, get_current_user
 
 router = APIRouter(prefix="/api/finance", tags=["finance"])
@@ -552,6 +552,7 @@ async def refresh_batch_totals(batch_id: str) -> dict:
 
 @router.post("/contributions", response_model=dict, status_code=201)
 async def contribution_create(payload: ContributionCreate, current_user: dict = Depends(manager)):
+    deny_pastoral_registration(current_user)
     if not payload.anonymous and not payload.person_id:
         raise HTTPException(status_code=422, detail="Seleccione una Persona 360 o marque contribución anónima")
     person_doc = None
@@ -642,6 +643,7 @@ async def contribution_create(payload: ContributionCreate, current_user: dict = 
 
 @router.post("/contributions/import-csv", response_model=dict)
 async def import_contributions_csv(file: UploadFile = File(...), current_user: dict = Depends(manager)):
+    deny_pastoral_registration(current_user)
     content = await file.read()
     try: rows = list(csv.DictReader(io.StringIO(content.decode("utf-8-sig"))))
     except Exception: raise HTTPException(status_code=400, detail="CSV no válido")
@@ -697,6 +699,7 @@ async def batches(current_user: dict = Depends(reader)):
 
 @router.post("/batches", response_model=dict, status_code=201)
 async def batch_create(payload: BatchCreate, current_user: dict = Depends(manager)):
+    deny_pastoral_registration(current_user)
     contributions = await db.finance_contributions.find({"contribution_id": {"$in": payload.contribution_ids}, "batch_id": {"$in": [None, ""]}, "status": {"$ne": "corrected"}}, {"_id": 0}).to_list(2000)
     if len(contributions) != len(set(payload.contribution_ids)): raise HTTPException(status_code=422, detail="Hay contribuciones inexistentes, corregidas o ya incluidas en otro conteo")
     batch_id = str(uuid4()); expected = sum(item["amount_cents"] for item in contributions)
@@ -716,6 +719,7 @@ async def batch_create(payload: BatchCreate, current_user: dict = Depends(manage
 
 @router.post("/batches/{batch_id}/start-count", response_model=dict)
 async def batch_start_count(batch_id: str, current_user: dict = Depends(manager)):
+    deny_pastoral_registration(current_user)
     batch = await refresh_batch_totals(batch_id)
     if batch.get("status") != "collecting":
         raise HTTPException(status_code=409, detail="La sesión ya inició el conteo")
@@ -729,6 +733,7 @@ async def batch_start_count(batch_id: str, current_user: dict = Depends(manager)
 
 @router.post("/batches/{batch_id}/counts", response_model=dict)
 async def batch_count(batch_id: str, payload: BatchCount, current_user: dict = Depends(manager)):
+    deny_pastoral_registration(current_user)
     item = await db.finance_batches.find_one({"batch_id": batch_id})
     if not item: raise HTTPException(status_code=404, detail="Conteo no encontrado")
     if item.get("status") not in {"awaiting_first_count", "awaiting_second_count"}: raise HTTPException(status_code=409, detail="La sesión no está en etapa de conteo")
@@ -746,8 +751,10 @@ async def batch_count(batch_id: str, payload: BatchCount, current_user: dict = D
 
 @router.post("/batches/{batch_id}/resolve-variance", response_model=dict)
 async def batch_resolve_variance(batch_id: str, payload: BatchVarianceResolution, current_user: dict = Depends(manager)):
-    if not is_global_pastoral_authority(current_user):
-        raise HTTPException(status_code=403, detail="La diferencia requiere autorización pastoral")
+    from access_control import FINANCE_TREASURY
+    from finance_engine import has_finance_role
+    if not has_finance_role(current_user, FINANCE_TREASURY):  # antes la pastora; ahora Tesorería (la pastora ya no aprueba)
+        raise HTTPException(status_code=403, detail="La diferencia del conteo la autoriza Tesorería")
     item = await db.finance_batches.find_one({"batch_id": batch_id, "status": "variance_review"})
     if not item:
         raise HTTPException(status_code=404, detail="Conteo con diferencia no encontrado")
@@ -827,6 +834,7 @@ async def deposits(current_user: dict = Depends(reader)): return {"items": seria
 
 @router.post("/deposits", response_model=dict, status_code=201)
 async def deposit_create(payload: DepositCreate, current_user: dict = Depends(manager)):
+    deny_pastoral_registration(current_user)
     # F2: una contribución corregida ya no existe para el banco (su reemplazo es la que vale).
     contributions = await db.finance_contributions.find({"contribution_id": {"$in": payload.contribution_ids}, "deposit_id": None, "status": {"$ne": "corrected"}}, {"_id": 0}).to_list(1000)
     if len(contributions) != len(set(payload.contribution_ids)): raise HTTPException(status_code=422, detail="Hay contribuciones inexistentes, corregidas o ya depositadas")
@@ -860,6 +868,7 @@ class DepositAdjustment(BaseModel):
 
 @router.post("/deposits/{deposit_id}/resolve-adjustment", response_model=dict)
 async def deposit_resolve_adjustment(deposit_id: str, payload: DepositAdjustment, current_user: dict = Depends(manager)):
+    deny_pastoral_registration(current_user)
     """F2: una contribución corregida que ya estaba depositada deja el depósito en «ajuste requerido».
     Aquí se cierra ese ajuste: el reemplazo queda dentro del mismo depósito (no se vuelve a depositar) y,
     si cambió el fondo o el monto, un asiento de ajuste mueve banco ↔ fondos no depositados por fondo.
