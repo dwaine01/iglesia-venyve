@@ -180,9 +180,9 @@ async def summary(period: Literal["today", "week", "month", "quarter", "year", "
     require_section(current_user, "summary")
     p = await resolve(period, date_from, date_to)
     excluded = await excluded_ids()
-    persons_total = await db.persons.count_documents({"is_archived": {"$ne": True}})
-    new_now = await db.persons.count_documents({"is_archived": {"$ne": True}, "created_at": {"$gte": p["start"], "$lt": p["end"]}})
-    new_prev = await db.persons.count_documents({"is_archived": {"$ne": True}, "created_at": {"$gte": p["prev_start"], "$lt": p["prev_end"]}})
+    persons_total = await db.persons.count_documents({"is_archived": {"$ne": True}, "is_test": {"$ne": True}})
+    new_now = await db.persons.count_documents({"is_archived": {"$ne": True}, "is_test": {"$ne": True}, "created_at": {"$gte": p["start"], "$lt": p["end"]}})
+    new_prev = await db.persons.count_documents({"is_archived": {"$ne": True}, "is_test": {"$ne": True}, "created_at": {"$gte": p["prev_start"], "$lt": p["prev_end"]}})
     rows_now, rows_prev = await attendance_rows(p["first"], p["last"], p["zone"]), await attendance_rows(p["prev_first"], p["prev_last"], p["zone"])
     att_now, att_prev = attendance_figures(rows_now, excluded), attendance_figures(rows_prev, excluded)
     campaigns_now = await db.outreach_campaigns.count_documents({"start_date": {"$lte": p["last"].isoformat()}, "$or": [{"end_date": {"$gte": p["first"].isoformat()}}, {"end_date": None, "start_date": {"$gte": p["first"].isoformat()}}], "archived": {"$ne": True}})
@@ -338,7 +338,7 @@ async def attendance(period: Literal["today", "week", "month", "quarter", "year"
 
 async def invasion_attendance(p: dict, excluded: set) -> list[dict]:
     rows = []
-    async for campaign in db.outreach_campaigns.find({"start_date": {"$lte": p["last"].isoformat()}, "archived": {"$ne": True}}, {"_id": 0, "campaign_id": 1, "name": 1, "start_date": 1, "end_date": 1}).sort("start_date", -1).limit(40):
+    async for campaign in db.outreach_campaigns.find({"start_date": {"$lte": p["last"].isoformat()}, "archived": {"$ne": True}, "is_test": {"$ne": True}}, {"_id": 0, "campaign_id": 1, "name": 1, "start_date": 1, "end_date": 1}).sort("start_date", -1).limit(40):
         if (campaign.get("end_date") or campaign.get("start_date") or "") < p["first"].isoformat():
             continue
         participants = [item async for item in db.invasion_participants.find({"campaign_id": campaign["campaign_id"]}, {"_id": 0, "person_id": 1, "attended_days": 1, "attended": 1}) if item["person_id"] not in excluded]
@@ -509,7 +509,7 @@ async def invasions(period: Literal["today", "week", "month", "quarter", "year",
     from invasion_report import compute_report
     p = await resolve(period, date_from, date_to)
     rows = []
-    async for campaign in db.outreach_campaigns.find({"start_date": {"$lte": p["last"].isoformat()}, "archived": {"$ne": True}}, {"_id": 0}).sort("start_date", -1).limit(60):
+    async for campaign in db.outreach_campaigns.find({"start_date": {"$lte": p["last"].isoformat()}, "archived": {"$ne": True}, "is_test": {"$ne": True}}, {"_id": 0}).sort("start_date", -1).limit(60):
         if (campaign.get("end_date") or campaign.get("start_date") or "") < p["first"].isoformat():
             continue
         report = await compute_report(campaign)

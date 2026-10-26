@@ -83,6 +83,7 @@ const getNavItems = (user, boardAllowed = false, isActiveMentor = false, hasVisi
       { to: '/presentacion', icon: Presentation, label: 'Manual de 7 Semanas' },
       { type: 'separator', label: 'Administración' },
       { to: '/estadisticas', icon: BarChart3, label: 'Estadísticas Globales' },
+      { to: '/admin/datos-de-prueba', icon: FlaskConical, label: 'Datos de prueba', testId: 'nav-test-data' },
       { to: '/admin/historial-borrados', icon: Trash2, label: 'Historial de Borrados', testId: 'nav-admin-deletions' },
       { to: '/admin/migracion-c11', icon: DatabaseBackup, label: 'Migración de Datos (C11)', testId: 'nav-migration-c11' },
     ];
@@ -162,6 +163,7 @@ const getNavItems = (user, boardAllowed = false, isActiveMentor = false, hasVisi
     { to: '/bitacora', icon: NotebookPen, label: 'Bitácora Evangelística' },
     { to: '/presentacion', icon: Presentation, label: 'Manual de 7 Semanas' },
     ...(isGeneralCoordinator(user) || hasCapability(user, 'consolidation.assign') ? [{ to: '/estadisticas', icon: BarChart3, label: 'Estadísticas Globales' }] : []),
+    ...(isGeneralCoordinator(user) ? [{ to: '/admin/datos-de-prueba', icon: FlaskConical, label: 'Datos de prueba', testId: 'nav-test-data' }] : []),
     ...visitors,
   ];
   if (hasAnyCapability(user, ['core.access.manage'])) {
@@ -245,6 +247,7 @@ const breadcrumbMap = {
   '/bitacora': 'Bitácora Evangelística',
   '/codigos': 'Códigos de Invitación',
   '/estadisticas': 'Estadísticas Globales',
+  '/admin/datos-de-prueba': 'Datos de prueba',
   '/visitantes': 'Registro de visitantes',
   '/mis-estadisticas/manual': 'Mi progreso del Manual de 7 Semanas',
   '/directorio': 'Directorio de Talentos',

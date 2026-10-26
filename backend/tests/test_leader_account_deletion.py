@@ -71,7 +71,9 @@ async def test_delete_leader_account_keeps_people_and_cleans_references():
         assert len(people) == 6 and all(item["leader_id"] is None and item["previous_leader_id"] == josue_user_id for item in people)
         assert await server.db.persons.find_one({"_id": ObjectId(josue_id)})
         dashboard = (await pastora.get("/api/dashboard/role-based")).json()
-        assert {f"Persona{index}{tag}" for index in range(6)} <= {item["nombre"] for item in dashboard["personas_sin_lider"]}
+        # Auditoría 8/10: «sin líder» sale de Persona 360; estas personas solo existen en el Manual antiguo
+        # (sin Perfil 360 que abrir), así que ya no se listan. Quedan desvinculadas, no borradas (arriba).
+        assert not {f"Persona{index}{tag}" for index in range(6)} & {item["nombre"] for item in dashboard["personas_sin_lider"]}
         assert josue_user_id not in {item["_id"] for item in dashboard["lideres"]}
         # Referencias limpiadas.
         assert not await server.db.front_group_assignments.find_one({"person_id": josue_id, "active": True})
