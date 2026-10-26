@@ -17,7 +17,7 @@ BASE_URL = BASE_URL.rstrip("/")
 
 LOGIN_EMAIL = "coreqa.pastor@example.com"
 LOGIN_PASSWORD = "CoreQA2026!Pastor"
-BACKEND_ENV = dotenv_values("/app/backend/.env")
+BACKEND_ENV = {**os.environ, **dotenv_values("/app/backend/.env")}
 DB = MongoClient(BACKEND_ENV["MONGO_URL"])[BACKEND_ENV["DB_NAME"]]
 
 

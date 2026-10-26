@@ -62,6 +62,15 @@ async def cleanup():
     await server.db.users.delete_many({"_id": {"$in": [item["_id"] for item in users]}})
 
 
+@pytest.fixture(autouse=True)
+def vault_key(monkeypatch):
+    """La bóveda necesita su llave; en pruebas se genera una al azar en cada corrida (nunca se guarda)."""
+    import base64
+    import os
+    if not os.environ.get("PASTORAL_NOTES_ENCRYPTION_KEY"):
+        monkeypatch.setenv("PASTORAL_NOTES_ENCRYPTION_KEY", base64.urlsafe_b64encode(os.urandom(32)).decode("ascii"))
+
+
 @pytest.mark.asyncio
 async def test_care_full_flow_unique_op72_vault_privacy_reactivation_escalation_and_household_visit():
     await cleanup(); await ensure_care_indexes(server.db)

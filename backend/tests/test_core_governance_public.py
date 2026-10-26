@@ -11,8 +11,8 @@ from pymongo import MongoClient
 
 
 # Module: env + credentials bootstrap for public endpoint testing
-FRONTEND_ENV = dotenv_values("/app/frontend/.env")
-BACKEND_ENV = dotenv_values("/app/backend/.env")
+FRONTEND_ENV = {**os.environ, **dotenv_values("/app/frontend/.env")}
+BACKEND_ENV = {**os.environ, **dotenv_values("/app/backend/.env")}
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL") or FRONTEND_ENV.get("REACT_APP_BACKEND_URL")
 if not BASE_URL:

@@ -10,8 +10,8 @@ from bson import ObjectId
 from pymongo import MongoClient
 
 
-BASE_URL = (os.environ.get("REACT_APP_BACKEND_URL") or dotenv_values("/app/frontend/.env").get("REACT_APP_BACKEND_URL", "")).rstrip("/")
-BACKEND_ENV = dotenv_values("/app/backend/.env")
+BASE_URL = (os.environ.get("REACT_APP_BACKEND_URL") or {**os.environ, **dotenv_values("/app/frontend/.env")}.get("REACT_APP_BACKEND_URL", "")).rstrip("/")
+BACKEND_ENV = {**os.environ, **dotenv_values("/app/backend/.env")}
 MONGO_URL = (os.environ.get("MONGO_URL") or BACKEND_ENV.get("MONGO_URL") or "").strip('"')
 DB_NAME = (os.environ.get("DB_NAME") or BACKEND_ENV.get("DB_NAME") or "").strip('"')
 

@@ -14,10 +14,10 @@ from pymongo import MongoClient
 from access_control import access_defaults_for_role
 
 
-FRONTEND_ENV = dotenv_values("/app/frontend/.env")
+FRONTEND_ENV = {**os.environ, **dotenv_values("/app/frontend/.env")}
 BASE_URL = (os.environ.get("REACT_APP_BACKEND_URL") or FRONTEND_ENV.get("REACT_APP_BACKEND_URL") or "").rstrip("/")
-MONGO_URL = (os.environ.get("MONGO_URL") or dotenv_values("/app/backend/.env").get("MONGO_URL") or "").strip('"')
-DB_NAME = (os.environ.get("DB_NAME") or dotenv_values("/app/backend/.env").get("DB_NAME") or "").strip('"')
+MONGO_URL = (os.environ.get("MONGO_URL") or {**os.environ, **dotenv_values("/app/backend/.env")}.get("MONGO_URL") or "").strip('"')
+DB_NAME = (os.environ.get("DB_NAME") or {**os.environ, **dotenv_values("/app/backend/.env")}.get("DB_NAME") or "").strip('"')
 PASSWORD = "Iteration29SelfContained!"
 PASTOR_EMAIL = "qa.iter29.self.pastor@example.com"
 PERSON_EMAIL = "qa.iter29.self.person@example.com"

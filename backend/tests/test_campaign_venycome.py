@@ -9,7 +9,7 @@ import uuid
 import pytest
 import requests
 
-BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://invasiones-mentor.preview.emergentagent.com").rstrip("/")
+BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "http://localhost:8001").rstrip("/")
 PASTOR = ("qa.baptismui53.pastor@example.com", "QaBaptismUI53!")
 LIDER = ("qa.baptismui53.lider@example.com", "QaBaptismUI53!")
 

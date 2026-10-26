@@ -409,6 +409,7 @@ async def test_only_leader_capability_can_create_campaigns_assign_others_and_vie
         assert campaign.status_code == 201, campaign.text
         assert campaign.json()["location"] == "Barrio Las Flores"
 
+        before = (await leader_client.get("/api/mentorship/outreach/dashboard", headers=leader_headers)).json()["totals"]["total"]  # cuenta relativa
         assign_to_mentor = await leader_client.post(
             "/api/mentorship/outreach/visits",
             json={"contact_type": "new", "contact_name": "Asignado por lider", "mentor_person_id": mentor_pid, "campaign_id": campaign.json()["campaign_id"]},
@@ -419,7 +420,7 @@ async def test_only_leader_capability_can_create_campaigns_assign_others_and_vie
 
         dashboard = await leader_client.get("/api/mentorship/outreach/dashboard", headers=leader_headers)
         assert dashboard.status_code == 200
-        assert dashboard.json()["totals"]["total"] == 1
+        assert dashboard.json()["totals"]["total"] == before + 1
     finally:
         await mentor_client.aclose()
         await leader_client.aclose()

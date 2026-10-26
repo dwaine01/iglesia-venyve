@@ -12,7 +12,7 @@ import requests
 from dotenv import dotenv_values
 
 
-BASE_URL = (os.environ.get("REACT_APP_BACKEND_URL") or dotenv_values("/app/frontend/.env").get("REACT_APP_BACKEND_URL") or "").rstrip("/")
+BASE_URL = (os.environ.get("REACT_APP_BACKEND_URL") or {**os.environ, **dotenv_values("/app/frontend/.env")}.get("REACT_APP_BACKEND_URL") or "").rstrip("/")
 PASSWORD = "OperationsFlow2026!"
 PASTOR_EMAIL = "qa.operations.pastor@example.com"
 LEADER_EMAIL = "qa.operations.leader@example.com"

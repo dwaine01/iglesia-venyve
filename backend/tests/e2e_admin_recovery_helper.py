@@ -14,7 +14,7 @@ from pymongo import MongoClient
 sys.path.insert(0, "/app/backend")
 from access_control import access_defaults_for_role  # noqa: E402
 
-cfg = dotenv_values("/app/backend/.env")
+cfg = {**os.environ, **dotenv_values("/app/backend/.env")}
 db = MongoClient(cfg["MONGO_URL"])[cfg["DB_NAME"]]
 STATE = "/tmp/e2e_recovery_state.json"
 ORIG = "OrigPastorPass2026!"

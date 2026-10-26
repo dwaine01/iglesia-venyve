@@ -12,7 +12,7 @@ from pymongo import MongoClient
 from access_control import access_defaults_for_role
 
 
-FRONTEND_ENV = dotenv_values("/app/frontend/.env"); BACKEND_ENV = dotenv_values("/app/backend/.env")
+FRONTEND_ENV = {**os.environ, **dotenv_values("/app/frontend/.env")}; BACKEND_ENV = {**os.environ, **dotenv_values("/app/backend/.env")}
 BASE_URL = (os.environ.get("REACT_APP_BACKEND_URL") or FRONTEND_ENV["REACT_APP_BACKEND_URL"]).rstrip("/")
 DB = MongoClient(BACKEND_ENV["MONGO_URL"])[BACKEND_ENV["DB_NAME"]]; PASSWORD = "QaFormation45!"
 

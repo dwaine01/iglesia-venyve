@@ -17,7 +17,7 @@ if not BASE_URL:
     raise RuntimeError("REACT_APP_BACKEND_URL is required")
 BASE_URL = BASE_URL.rstrip("/")
 
-BACKEND_ENV = dotenv_values("/app/backend/.env")
+BACKEND_ENV = {**os.environ, **dotenv_values("/app/backend/.env")}
 MONGO_URL = BACKEND_ENV.get("MONGO_URL")
 DB_NAME = BACKEND_ENV.get("DB_NAME")
 if not MONGO_URL or not DB_NAME:

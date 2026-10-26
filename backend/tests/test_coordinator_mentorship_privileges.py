@@ -176,6 +176,8 @@ async def test_coordinator_general_can_manage_mentors_campaigns_and_assign_to_an
         campaign = await coord_client.post("/api/mentorship/outreach/campaigns", json={"name": "Invasion QA Coordinador", "location": "Zona QA Coordinador", "start_date": "2026-03-01", "end_date": "2026-03-07"}, headers=coord_headers)
         assert campaign.status_code == 201, campaign.text
 
+        # Cuenta relativa: la base de pruebas puede traer visitas de otras corridas.
+        before = (await coord_client.get("/api/mentorship/outreach/dashboard", headers=coord_headers)).json()["totals"]["total"]
         visit = await coord_client.post(
             "/api/mentorship/outreach/visits",
             json={"contact_type": "new", "contact_name": "Visitante Asignado", "mentor_person_id": target_pid},
@@ -186,7 +188,7 @@ async def test_coordinator_general_can_manage_mentors_campaigns_and_assign_to_an
 
         dashboard = await coord_client.get("/api/mentorship/outreach/dashboard", headers=coord_headers)
         assert dashboard.status_code == 200
-        assert dashboard.json()["totals"]["total"] == 1
+        assert dashboard.json()["totals"]["total"] == before + 1
     finally:
         await coord_client.aclose()
         await cleanup()

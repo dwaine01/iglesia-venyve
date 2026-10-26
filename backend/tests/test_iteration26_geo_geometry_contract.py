@@ -7,7 +7,7 @@ import pytest
 import requests
 from dotenv import dotenv_values
 
-backend_env = dotenv_values("/app/backend/.env")
+backend_env = {**os.environ, **dotenv_values("/app/backend/.env")}
 for key in (
     "CENSUS_GEOCODER_URL",
     "CENSUS_GEOCODER_BENCHMARK",
@@ -21,7 +21,7 @@ for key in (
 from geo_provider import FallbackGeocodingProvider, geocoding_providers_status
 
 
-BASE_URL = os.environ.get("REACT_APP_BACKEND_URL") or dotenv_values("/app/frontend/.env").get("REACT_APP_BACKEND_URL")
+BASE_URL = os.environ.get("REACT_APP_BACKEND_URL") or {**os.environ, **dotenv_values("/app/frontend/.env")}.get("REACT_APP_BACKEND_URL")
 BASE_URL_NORM = BASE_URL.rstrip("/") if BASE_URL else None
 QA_EMAIL = "qa.geo.ui@example.com"
 QA_PASSWORD = "GeoUI2026!"

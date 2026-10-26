@@ -40,8 +40,8 @@ async def test_global_stats_permissions_consolidation_and_attendance():
         assert stats["funnel"] == panorama["funnel"]
 
         # Asistencia en un rango propio: un domingo y un miércoles de servicio, una actividad especial y una célula.
-        today = date.today()
-        sunday = today - timedelta(days=(today.weekday() + 1) % 7 or 7) - timedelta(weeks=1)
+        # Semana fija del pasado (domingo 10-mar-2019): ningún otro dato de prueba cae ahí, así la cuenta es exacta.
+        sunday = date(2019, 3, 10)
         wednesday = sunday + timedelta(days=3)
         saturday = sunday + timedelta(days=6)
         event_service, event_special = f"ev-{tag}", f"ev2-{tag}"

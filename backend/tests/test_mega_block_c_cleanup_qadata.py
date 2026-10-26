@@ -6,7 +6,7 @@ from bson import ObjectId
 from pymongo import MongoClient
 
 
-BACKEND_ENV = dotenv_values("/app/backend/.env")
+BACKEND_ENV = {**os.environ, **dotenv_values("/app/backend/.env")}
 MONGO_URL = (BACKEND_ENV.get("MONGO_URL") or os.environ.get("MONGO_URL") or "").strip('"')
 DB_NAME = (BACKEND_ENV.get("DB_NAME") or os.environ.get("DB_NAME") or "").strip('"')
 

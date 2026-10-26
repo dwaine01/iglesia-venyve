@@ -17,6 +17,8 @@ LIDER = ("qa.baptismui53.lider@example.com", "QaBaptismUI53!")
 
 
 def _read_env_secret():
+    if not os.path.exists("/app/backend/.env"):
+        return os.environ.get("WEBHOOK_CRON_SECRET")
     with open("/app/backend/.env") as f:
         for line in f:
             if line.startswith("WEBHOOK_CRON_SECRET="):
