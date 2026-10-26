@@ -48,7 +48,7 @@ jobs:
             return 1
           }
           for i in $(seq 1 60); do
-            found; STATE=$?
+            STATE=0; found || STATE=$?  # «|| » evita que bash -e corte el paso cuando no se encuentra
             NOW=$(TZ=America/New_York date '+%Y-%m-%d %H:%M %Z')
             if [ "$STATE" = 2 ]; then echo "$NOW el panel no respondió";
             elif [ "$MODO" = ausente ] && [ "$STATE" = 1 ]; then echo "EN PRODUCCIÓN desde $NOW: «$TEXTO» ya no está en el panel"; exit 0;
