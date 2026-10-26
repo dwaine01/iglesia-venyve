@@ -310,7 +310,9 @@ async def create_finance_deposit_for_donation(donation: dict, payment_method: st
         {"account_id": contribution_type["revenue_account_id"], "fund_id": fund["fund_id"], "campaign_id": finance_campaign["campaign_id"], "debit_cents": 0, "credit_cents": amount_cents, "description": description},
     ]
     created_at = donation.get("created_at")
-    received_date = (created_at.date() if isinstance(created_at, datetime) else now_utc().date()).isoformat()
+    # F2: el día del donativo en la zona de la iglesia (no en UTC).
+    from report_period import local_day, report_zone
+    received_date = local_day(created_at if isinstance(created_at, datetime) else now_utc(), await report_zone())
     journal = await create_journal(current_user["user_id"], received_date, description, "contribution", donation["donation_id"], lines, "submitted")
     contribution_id = str(uuid4())
     now = now_utc()

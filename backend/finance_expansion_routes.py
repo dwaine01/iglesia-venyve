@@ -54,7 +54,7 @@ class StatementSettingsInput(BaseModel):
 
 class ContributionCorrectionRequest(BaseModel):
     reason: str = Field(min_length=5, max_length=1000)
-    correction_date: date = Field(default_factory=date.today)
+    correction_date: Optional[date] = None  # por defecto: hoy en la zona de la iglesia
     replacement: ContributionCreate
 
 
@@ -318,6 +318,9 @@ async def contribution_correct(contribution_id: str, payload: ContributionCorrec
         raise HTTPException(status_code=404, detail="Contribución no encontrada")
     if original.get("status") == "corrected":
         raise HTTPException(status_code=409, detail="La contribución ya fue corregida")
+    if payload.correction_date is None:
+        from count_rules import church_today
+        payload.correction_date = await church_today()
     await ensure_open_period(payload.correction_date.isoformat())
     payload.replacement.accounting_date = payload.correction_date
     original_journal = await db.finance_journal_entries.find_one({"entry_id": original.get("journal_entry_id")})
@@ -329,8 +332,8 @@ async def contribution_correct(contribution_id: str, payload: ContributionCorrec
         replacement = await contribution_create(payload.replacement, current_user)
     except Exception:
         if reversal:
-            await db.finance_journal_entries.delete_one({"entry_id": reversal["entry_id"]})
-            await db.finance_audit_events.delete_many({"entity_id": reversal["entry_id"]})
+            from finance_routes import void_journal
+            await void_journal(reversal["entry_id"], current_user["user_id"], "La corrección no se completó (falló el reemplazo)")
         raise
     now = now_utc()
     if original_journal and original_journal.get("status") != "posted":
@@ -374,7 +377,10 @@ async def recurring_obligation_create(payload: RecurringObligationInput, current
 
 
 @router.post("/recurring-obligations/generate", response_model=dict)
-async def recurring_obligations_generate(through_date: date = Query(default_factory=date.today), current_user: dict = Depends(manager)):
+async def recurring_obligations_generate(through_date: Optional[date] = None, current_user: dict = Depends(manager)):
+    if through_date is None:
+        from count_rules import church_today
+        through_date = await church_today()
     obligations = await db.finance_recurring_obligations.find({"active": True, "next_due_date": {"$lte": through_date.isoformat()}}, {"_id": 0}).to_list(2000)
     generated = []
     for obligation in obligations:
