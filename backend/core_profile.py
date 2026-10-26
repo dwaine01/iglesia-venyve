@@ -639,3 +639,21 @@ async def get_person_profile(person_id: str, current_user: dict = Depends(profil
         "journey_status": journey_status,
         **response,
     }
+
+
+@router.get("/persons/{person_id}/attendance-summary")
+async def person_attendance_summary(person_id: str, year: Optional[int] = None, current_user: dict = Depends(get_current_user)):
+    """G1b: cuántas veces asistió la persona en el año (calendario de la iglesia), por tipo y por mes.
+    La propia persona siempre lo ve; para otra hace falta permiso de asistencia y alcance sobre ella."""
+    from access_control import is_own_person
+    if not is_own_person(current_user, person_id):
+        viewer = require_person_profile_or_self(person_id, current_user)
+        doc = await db.persons.find_one({"_id": ObjectId(person_id)}, {"created_by": 1, "auth_user_id": 1}) if ObjectId.is_valid(person_id) else None
+        if not doc:
+            raise HTTPException(status_code=404, detail="Persona no encontrada")
+        if not has_capability(viewer, PERSON_ATTENDANCE_READ) or not can_access_person(viewer, {"person_id": person_id, "created_by": doc.get("created_by"), "auth_user_id": doc.get("auth_user_id")}):
+            raise HTTPException(status_code=403, detail="Sin permiso para ver la asistencia de esta Persona")
+    if year is not None and not 2000 <= year <= 2100:
+        raise HTTPException(status_code=422, detail="Año inválido")
+    from global_stats import person_year_summary
+    return await person_year_summary(person_id, year)

@@ -115,11 +115,14 @@ async def excluded_ids() -> set:
 
 
 # ------------------------------------------------------------------ asistencia (fuente: Persona 360)
-async def attendance_rows(first: date, last: date, zone) -> list[dict]:
-    """Asistencias PRESENTES por persona y día, clasificadas por tipo de servicio."""
+async def attendance_rows(first: date, last: date, zone, person_id: Optional[str] = None) -> list[dict]:
+    """Asistencias PRESENTES por persona y día, clasificadas por tipo de servicio (o de una sola persona)."""
     from report_period import local_day
     lo, hi = (first - timedelta(days=1)).isoformat(), (last + timedelta(days=2)).isoformat()
-    docs = await db.person_attendance.find({"fecha": {"$gte": lo, "$lt": hi}, "estado": {"$in": ["presente", "present", None]}},
+    query = {"fecha": {"$gte": lo, "$lt": hi}, "estado": {"$in": ["presente", "present", None]}}
+    if person_id:
+        query["person_id"] = person_id
+    docs = await db.person_attendance.find(query,
                                            {"_id": 1, "person_id": 1, "fecha": 1, "activity_type": 1, "notas": 1, "actividad": 1, "source_id": 1}).to_list(200000)
     occurrence_ids = {str(doc.get("notas") or "").split("· ")[-1].strip() for doc in docs if str(doc.get("_id", "")).startswith("operation:")}
     occurrences = {item["occurrence_id"]: item async for item in db.operation_event_occurrences.find({"occurrence_id": {"$in": list(occurrence_ids)}}, {"_id": 0, "occurrence_id": 1, "event_id": 1, "starts_at": 1})} if occurrence_ids else {}
@@ -334,6 +337,75 @@ async def attendance(period: Literal["today", "week", "month", "quarter", "year"
             "trend": trend, "frequent_absent": absent, "invasions": invasions,
             "notes": {"service": "El tipo de servicio sale del día de la actividad: los servicios del domingo y del miércoles; el resto son actividades especiales.",
                       "invasions": "Asistencia por jornada de las invasiones (servidores que asistieron cada día)."}}
+
+
+MONTHS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"]
+
+
+def bucket_bounds(group: str, today: date, count: int) -> list[tuple[date, date, str]]:
+    """Semanas (lunes a domingo), meses o años en el calendario de la iglesia, del más antiguo al actual."""
+    out = []
+    if group == "week":
+        monday = today - timedelta(days=today.weekday())
+        for offset in range(count - 1, -1, -1):
+            begin = monday - timedelta(weeks=offset)
+            out.append((begin, begin + timedelta(days=6), f"{begin.day}/{begin.month}"))
+    elif group == "month":
+        year, month = today.year, today.month
+        for offset in range(count - 1, -1, -1):
+            y, m = divmod((year * 12 + month - 1) - offset, 12)
+            begin = date(y, m + 1, 1)
+            end = (date(y + (m + 1) // 12, (m + 1) % 12 + 1, 1) - timedelta(days=1))
+            out.append((begin, end, f"{MONTHS[m]} {y}"))
+    else:
+        for offset in range(count - 1, -1, -1):
+            out.append((date(today.year - offset, 1, 1), date(today.year - offset, 12, 31), str(today.year - offset)))
+    return out
+
+
+def series_point(rows: list[dict], begin: date, end: date, label: str) -> dict:
+    items = [row for row in rows if begin.isoformat() <= row["day"] <= end.isoformat()]
+    figures = attendance_figures(items, set())
+    point = {"from": begin.isoformat(), "to": end.isoformat(), "label": label, "unique_people": figures["unique_people"],
+             "service_average": figures["service_average"], "service_sessions": figures["service_sessions"]}
+    for kind in ("sunday", "wednesday", "special", "cell", "other"):
+        point[kind] = figures["by_kind"][kind]["attendance"]
+    point["total"] = sum(point[kind] for kind in ("sunday", "wednesday", "special", "cell", "other"))
+    return point
+
+
+@router.get("/attendance/series", response_model=dict)
+async def attendance_series(group: Literal["week", "month", "year"] = "week", periods: int = 0,
+                            service: Literal["all", "sunday", "wednesday", "special", "cell"] = "all", current_user: dict = Depends(get_current_user)):
+    """G1b: asistencia por semana, mes o año (calendario de Nueva York), con la misma regla que la sección de asistencia."""
+    require_section(current_user, "attendance")
+    from count_rules import church_today
+    count = max(1, min(periods or {"week": 12, "month": 12, "year": 3}[group], {"week": 52, "month": 36, "year": 10}[group]))
+    today = await church_today()
+    buckets = bucket_bounds(group, today, count)
+    from report_period import report_zone
+    excluded = await excluded_ids()
+    rows = [row for row in await attendance_rows(buckets[0][0], buckets[-1][1], await report_zone())
+            if row["person_id"] and row["person_id"] not in excluded and (service == "all" or row["kind"] == service)]
+    return {"group": group, "service": service, "points": [series_point(rows, begin, end, label) for begin, end, label in buckets],
+            "definition": "Asistencias registradas (personas presentes por servicio o actividad), sin la autoridad principal ni cuentas de prueba. "
+                          "El período actual va hasta hoy."}
+
+
+async def person_year_summary(person_id: str, year: Optional[int] = None) -> dict:
+    """Cuántas veces asistió una persona en el año (calendario de la iglesia), por tipo."""
+    from count_rules import church_today
+    from report_period import report_zone
+    today = await church_today()
+    year = year or today.year
+    rows = await attendance_rows(date(year, 1, 1), date(year, 12, 31), await report_zone(), person_id=person_id)
+    unique = {(row["session"], row["kind"], row["day"]) for row in rows}  # el mismo servicio no cuenta dos veces
+    sessions = {item[0] for item in unique}
+    by_kind = Counter(kind for _, kind, _ in {(session, kind, "") for session, kind, _ in unique})
+    by_month = Counter(int(day[5:7]) for _, day in {(session, day) for session, _, day in unique})
+    return {"year": year, "total": len(sessions), "by_kind": {kind: by_kind.get(kind, 0) for kind in ("sunday", "wednesday", "special", "cell", "other")},
+            "labels": SERVICE_LABELS, "by_month": [{"month": m, "label": MONTHS[m - 1], "count": by_month.get(m, 0)} for m in range(1, 13)],
+            "last_day": max((row["day"] for row in rows), default=None)}
 
 
 async def invasion_attendance(p: dict, excluded: set) -> list[dict]:

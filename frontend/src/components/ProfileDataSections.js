@@ -149,6 +149,33 @@ export function ProcessesSection({ personId, arrival, processes = [], ministries
   );
 }
 
+const KIND_SHORT = { sunday: 'domingos', wednesday: 'miércoles', special: 'actividades especiales', cell: 'células', other: 'otras' };
+
+/** G1b: cuántas veces asistió en el año (calendario de la iglesia), con el desglose por tipo y por mes. */
+function YearAttendance({ personId, API, getAuthHeaders, refreshKey }) {
+  const [data, setData] = useState(null);
+  useEffect(() => {
+    request(API, getAuthHeaders, 'get', `/api/core/persons/${personId}/attendance-summary`).then((response) => setData(response.data)).catch(() => setData(null));
+  }, [API, getAuthHeaders, personId, refreshKey]);
+  if (!data) return null;
+  const parts = Object.entries(data.by_kind).filter(([, count]) => count > 0).map(([kind, count]) => `${count} ${KIND_SHORT[kind] || kind}`);
+  const top = Math.max(1, ...data.by_month.map((row) => row.count));
+  return (
+    <div className="rounded-xl border border-[#E8E5DE] bg-[#FBFAF7] p-4" data-testid="profile-year-attendance">
+      <p className="text-lg font-semibold text-[#101D36]">En {data.year} asistió {data.total} {data.total === 1 ? 'vez' : 'veces'}</p>
+      <p className="text-sm text-gray-600">{parts.length ? parts.join(' · ') : 'Sin asistencias registradas este año.'}{data.last_day ? ` · Última: ${data.last_day}` : ''}</p>
+      <div className="mt-3 grid grid-cols-12 items-end gap-1" aria-label="Asistencias por mes">
+        {data.by_month.map((row) => (
+          <div key={row.month} className="flex flex-col items-center gap-1" title={`${row.label}: ${row.count}`}>
+            <div className="w-full rounded-sm bg-[#C8A951]" style={{ height: `${Math.max(2, Math.round((row.count / top) * 48))}px`, opacity: row.count ? 1 : 0.25 }} />
+            <span className="text-[10px] text-gray-500">{row.label}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function AttendanceSection({ personId, items = [], canWrite, API, getAuthHeaders, onChanged }) {
   const [form, setForm] = useState({ fecha: new Date().toISOString().slice(0, 10), actividad: '', estado: 'presente', notas: '' });
   const [saving, setSaving] = useState(false);
@@ -156,6 +183,7 @@ export function AttendanceSection({ personId, items = [], canWrite, API, getAuth
   const remove = async (id) => { if (!window.confirm('¿Eliminar este registro de asistencia?')) return; await request(API, getAuthHeaders, 'delete', `/api/core/persons/${personId}/attendance/${id}`); await onChanged(); };
   return (
     <Shell title="Asistencia" description="Registro cronológico de reuniones y actividades." icon={CalendarCheck2}>
+      <YearAttendance personId={personId} API={API} getAuthHeaders={getAuthHeaders} refreshKey={items.length} />
       {canWrite && <form onSubmit={add} className="grid gap-3 rounded-xl border bg-[#FBFAF7] p-4 md:grid-cols-4"><Input type="date" value={form.fecha} onChange={(e) => setForm((old) => ({ ...old, fecha: e.target.value }))} required /><Input value={form.actividad} onChange={(e) => setForm((old) => ({ ...old, actividad: e.target.value }))} placeholder="Actividad" required /><select value={form.estado} onChange={(e) => setForm((old) => ({ ...old, estado: e.target.value }))} className="h-9 rounded-md border bg-white px-3 text-sm"><option value="presente">Presente</option><option value="ausente">Ausente</option><option value="justificado">Justificado</option></select><Button disabled={saving} className="bg-[#132443]"><Plus className="mr-2 h-4 w-4" />Registrar</Button></form>}
       <div className="space-y-2">{items.length === 0 ? <div className="rounded-xl border border-dashed p-10 text-center text-sm text-gray-500">Sin asistencias registradas.</div> : items.map((item) => <div key={item.attendance_id} className="flex items-center gap-3 rounded-xl border bg-white p-4"><CalendarCheck2 className="h-5 w-5 text-[#755B21]" /><div className="flex-1"><p className="font-semibold text-[#101D36]">{item.actividad}</p><p className="text-sm text-gray-500">{item.fecha} · {statusLabel(item.estado)}</p></div>{canWrite && <Button variant="ghost" size="icon" onClick={() => remove(item.attendance_id)} className="text-red-600" aria-label="Eliminar asistencia" data-testid={`delete-attendance-${item.attendance_id}`}><Trash2 className="h-4 w-4" /></Button>}</div>)}</div>
     </Shell>
