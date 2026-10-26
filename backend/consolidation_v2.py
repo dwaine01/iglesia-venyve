@@ -134,7 +134,10 @@ async def consolidation_dashboard(current_user: dict = Depends(require_read)):
         query["$or"] = [{"front_group_id": {"$in": group_ids}}, {"person_id": current_user.get("person_id")}, {"mentor_person_id": current_user.get("person_id")}]
     # Personas únicas (los expedientes repetidos de una persona son historial).
     from enrollment_cleanup import representatives
-    items, _ = representatives(await db.process_enrollments.find(query, {"_id": 0}).to_list(10000))
+    from count_rules import CONSOLIDATION_COUNTED
+    from report_period import excluded_person_ids
+    excluded = await excluded_person_ids()
+    items, _ = representatives([item for item in await db.process_enrollments.find(query, {"_id": 0}).to_list(10000) if item.get("person_id") not in excluded])
     by_entry = {key: 0 for key in ["complete_cycle", "direct_church", "cell", "visitor_followup", "invasion"]}
     by_stage = {}
     for item in items:
@@ -154,7 +157,8 @@ async def consolidation_dashboard(current_user: dict = Depends(require_read)):
     by_front_group = [{"front_group_id": group["front_group_id"], "name": group["name"], "total": sum(1 for item in items if item.get("front_group_id") == group["front_group_id"]), "completed": sum(1 for item in items if item.get("front_group_id") == group["front_group_id"] and item.get("status") == "completed")} for group in groups]
     active_alerts = await db.process_alerts.count_documents({"enrollment_id": {"$in": [item["enrollment_id"] for item in items]}, "status": "open"}) if items else 0
     return {
-        "total": len(items),
+        # Misma definición que «Personas en Consolidación» (abiertas o terminadas; los retirados no).
+        "total": sum(1 for item in items if item.get("status") in CONSOLIDATION_COUNTED),
         "active": sum(1 for item in items if item.get("status") == "active"),
         "followup_pending": sum(1 for item in items if item.get("consolidation_status") == "followup_pending"),
         "members": len(memberships),

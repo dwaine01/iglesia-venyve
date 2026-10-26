@@ -54,7 +54,9 @@ async def _occurrence_summaries(event_id: str) -> list[dict]:
 
 @router.get("/dashboard", response_model=dict)
 async def operations_dashboard(current_user: dict = Depends(require_operations_view)):
-    now = now_utc(); week_end = now + timedelta(days=7); day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    now = now_utc(); week_end = now + timedelta(days=7)
+    from count_rules import church_day_start_utc
+    day_start = await church_day_start_utc()  # medianoche en la zona de la iglesia, no en UTC
     upcoming = await db.operation_event_occurrences.find({"starts_at": {"$gte": now, "$lte": week_end}, "status": {"$in": ["scheduled", "checkin_open"]}}, {"_id": 0}).sort("starts_at", 1).limit(12).to_list(12)
     event_ids = list({item["event_id"] for item in upcoming}); events = await db.operation_events.find({"event_id": {"$in": event_ids}}, {"_id": 0, "event_id": 1, "title": 1, "location": 1, "event_type": 1, "recurrence.frequency": 1}).to_list(100)
     event_map = {item["event_id"]: item for item in events}

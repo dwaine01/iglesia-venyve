@@ -28,7 +28,6 @@ Referencias que se limpian o se marcan inactivas:
 Todo queda en `admin_deletions` (Historial de borrados)."""
 import re
 import unicodedata
-from datetime import date
 from typing import Optional
 from uuid import uuid4
 
@@ -38,6 +37,7 @@ from pydantic import BaseModel, Field
 
 from access_control import is_global_pastoral_authority
 from server import db, get_current_user, utc_now
+from count_rules import church_today  # «hoy» en la zona de la iglesia (auditoría 7/10)
 
 router = APIRouter(prefix="/api/pastor/leaders", tags=["leader-accounts"])
 
@@ -87,7 +87,7 @@ async def impact(target: dict, work: Optional[dict] = None) -> dict:
     user_id = str(target["_id"])
     person_id = target.get("person_id")
     work = work or await pending_work(person_id, [user_id])
-    today = date.today().isoformat()
+    today = (await church_today()).isoformat()
     active_campaigns = await db.outreach_campaigns.find(
         {"assigned_mentor_ids": person_id, "end_date": {"$gte": today}}, {"_id": 0, "campaign_id": 1, "name": 1},
     ).to_list(200) if person_id else []
@@ -119,7 +119,7 @@ async def delete_leader(user_id: str, payload: LeaderDeleteInput, current_user: 
     summary = await impact(target, work)
     now = utc_now()
     actor = current_user["user_id"]
-    today = date.today().isoformat()
+    today = (await church_today()).isoformat()
     result: dict = {}
 
     # Primero su trabajo pendiente pasa a otro mentor (nunca queda asignado a una cuenta eliminada).

@@ -128,6 +128,25 @@ async def my_stats(current_user: dict = Depends(get_current_user)):
     return await person_activity(current_user.get("person_id"))
 
 
+async def with_my_work(overview: dict, mentor_ids: list[str]) -> dict:
+    """Auditoría 7/10: las cifras del trabajo salen de la MISMA fuente que «Supervisar Mi Trabajo»
+    y el Panel General (`my_work.mentor_work_rows`), así un mentor ve el mismo número en las tres."""
+    from my_work import mentor_work_rows
+    rows = list((await mentor_work_rows(mentor_ids)).values()) if mentor_ids else []
+    visits = {"mentor_person_id": {"$in": mentor_ids}, "archived": {"$ne": True}}
+    overview["invasion"].update({
+        "households_visited": sum(row["houses_visited"] for row in rows),
+        "unique_persons_contacted": sum(row["people_contacted"] for row in rows),
+        "visits_total": await db.outreach_visits.count_documents(visits) if mentor_ids else 0,
+        "interested": await db.outreach_visits.count_documents({**visits, "$or": [{"followup_accepted": True}, {"status": "wants_followup"}]}) if mentor_ids else 0,
+    })
+    overview["consolidation"]["in_consolidation"] = sum(row["in_consolidation"] for row in rows)
+    overview["library"].pop("global", None)  # el inventario de toda la iglesia no es «mi» estadística
+    custody = overview["library"].setdefault("mentor_custody", {})
+    custody.update({"in_custody": sum(row["inventory"]["available"] for row in rows), "delivered": sum(row["books_delivered"] for row in rows)})
+    return overview
+
+
 async def person_activity(person_id: str | None) -> dict:
     if not person_id:
         return {"as_mentor": None, "as_leader": None, "has_any_activity": False}
@@ -141,13 +160,15 @@ async def person_activity(person_id: str | None) -> dict:
             all_branch_ids.update(branch)
         from participation_scope import participants_only
         branch_mentor_ids = await participants_only(db, await db.front_group_assignments.distinct("person_id", {"front_group_id": {"$in": sorted(all_branch_ids)}, "active": True}))
-        branch_ctx = {"scope": {"level": "branch", "group_ids": sorted(all_branch_ids), "self_person_id": person_id}, "filters": Filters(), "mentor_ids": branch_mentor_ids or None}
-        result = await supervision_overview(ctx=branch_ctx)
+        # Rama vacía = nadie (nunca «toda la iglesia»): antes `[] or None` mostraba las cifras globales.
+        branch_ctx = {"scope": {"level": "branch", "group_ids": sorted(all_branch_ids), "self_person_id": person_id}, "filters": Filters(), "mentor_ids": list(branch_mentor_ids)}
+        result = await with_my_work(await supervision_overview(ctx=branch_ctx), list(branch_mentor_ids))
         result["led_group_count"] = len(led_group_ids)
         return result
 
     led_group_ids = await db.front_group_assignments.distinct("front_group_id", {"person_id": person_id, "role": {"$in": ["leader", "co_leader"]}, "active": True})
     as_mentor, as_leader = await asyncio.gather(supervision_overview(ctx=self_ctx), leader_overview(led_group_ids))
+    as_mentor = await with_my_work(as_mentor, [person_id])
     has_activity = bool(
         as_mentor["invasion"]["visits_total"] or as_mentor["consolidation"]["accepted"]
         or (as_leader and (as_leader["invasion"]["visits_total"] or as_leader["consolidation"]["accepted"]))

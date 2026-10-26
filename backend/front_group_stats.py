@@ -23,6 +23,7 @@ from front_groups import person_name, person_names, roster_view
 from self_portal import person_activity
 from participation_scope import participants_only, principal_authority_person_ids, without
 from server import db, get_current_user
+from count_rules import church_today  # «hoy» en la zona de la iglesia (auditoría 7/10)
 from access_control import is_general_coordinator, is_global_pastoral_authority
 from supervision_analytics import ACCEPTED_OR_LATER, CONSOLIDATION_KEY, compute_semaphore, load_thresholds
 
@@ -146,7 +147,7 @@ async def person_metrics(person_ids: list[str], period: dict) -> dict[str, dict]
         done_match = {"enrollment_id": {"$in": list(mentor_by_enrollment)}, "status": "done"}
         if period["date_from"]:
             done_match["completed_at"] = {"$gte": period["date_from"], "$lte": period["date_to"]}
-        today_iso = date.today().isoformat()
+        today_iso = (await church_today()).isoformat()
         targets = (
             (activities_done, done_match),
             (activities_overdue, {"enrollment_id": {"$in": list(mentor_by_enrollment)}, "status": "pending", "scheduled_date": {"$lt": today_iso}}),
