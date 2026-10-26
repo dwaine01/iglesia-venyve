@@ -197,6 +197,7 @@ function CollectionDetail({ id, roles }) {
         </section>
       )}
       <CashHandover data={data} roles={roles} run={run} api={api} id={id} />
+      <Deposits data={data} roles={roles} run={run} api={api} id={id} accounts={catalog.accounts || []} />
       {(data.corrections || []).length > 0 && (
         <section className="mt-5 border bg-white p-4" data-testid="collection-corrections"><h2 className="text-lg font-semibold">Correcciones</h2>
           <ul className="mt-2 divide-y text-sm">{data.corrections.map((row) => <li key={row.correction_id} className="py-2"><b>{row.by_name}</b> · {new Date(row.at).toLocaleString('es')} · {row.reason}{row.before?.amount_cents != null && <> · antes <Money cents={row.before.amount_cents} /></>}{row.after?.amount_cents != null && <> · después <Money cents={row.after.amount_cents} /></>}{row.before?.counted_cash_cents != null && <> · conteo antes <Money cents={row.before.counted_cash_cents} /></>}</li>)}</ul>
@@ -236,6 +237,40 @@ function CashHandover({ data, roles, run, api, id }) {
             </div>
           )}
           {reception.difference_status === 'clarified' && <p className="mt-1 text-slate-700">Diferencia aclarada por {reception.clarification.by_name}: {reception.clarification.note}</p>}
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** P5: Tesorería deposita (monto, fecha, cuenta y comprobante); el sistema muestra el saldo pendiente. */
+function Deposits({ data, roles, run, api, id, accounts }) {
+  const banks = accounts.filter((account) => account.account_type === 'asset' && account.active && !['1010', '1090'].includes(account.code));
+  const [form, setForm] = useState({ deposit_date: today(), bank_account_id: '', amount: '', reference: '' });
+  const [file, setFile] = useState(null);
+  if (!['cash_received', 'deposited'].includes(data.status)) return null;
+  const save = async () => {
+    try {
+      const result = await api('post', `/api/finance/collections/${id}/deposits`, { deposit_date: form.deposit_date, bank_account_id: form.bank_account_id, amount_cents: toCents(form.amount), reference: form.reference || null });
+      const depositId = result.deposits[result.deposits.length - 1].deposit_id;
+      if (file) { const body = new FormData(); body.append('file', file); body.append('entity_type', 'deposit'); body.append('entity_id', depositId); await api('post', '/api/finance/documents', body); }
+      setForm({ ...form, amount: '', reference: '' }); setFile(null);
+      run(Promise.resolve(result), file ? 'Depósito y comprobante guardados' : 'Depósito guardado (puede subir el comprobante después)');
+    } catch (error) { toast.error(apiErrorMessage(error, 'No se pudo registrar el depósito')); }
+  };
+  return (
+    <section className="mt-5 space-y-3 border bg-white p-4" data-testid="collection-deposits">
+      <h2 className="text-lg font-semibold">Depósito</h2>
+      <p className="text-sm">Efectivo recibido por Tesorería: <b><Money cents={data.reception?.received_cents || 0} /></b> · Pendiente de depositar: <b data-testid="collection-deposit-pending"><Money cents={data.deposit_pending_cents || 0} /></b></p>
+      <ul className="divide-y text-sm">{(data.deposits || []).map((deposit) => <li key={deposit.deposit_id} className="py-2"><b><Money cents={deposit.total_cents} /></b> · {deposit.deposit_date} · {deposit.bank_name}{deposit.reference ? ` · ${deposit.reference}` : ''} · {deposit.created_by_name}</li>)}</ul>
+      {roles.treasury && data.status === 'cash_received' && (
+        <div className="grid gap-2 md:grid-cols-[1fr_2fr_1fr_1fr]">
+          <input type="date" className={field} value={form.deposit_date} onChange={(event) => setForm({ ...form, deposit_date: event.target.value })} />
+          <select className={field} value={form.bank_account_id} onChange={(event) => setForm({ ...form, bank_account_id: event.target.value })}><option value="">Banco o cuenta</option>{banks.map((account) => <option key={account.account_id} value={account.account_id}>{account.code} · {account.name}</option>)}</select>
+          <input className={field} inputMode="decimal" value={form.amount} onChange={(event) => setForm({ ...form, amount: event.target.value })} placeholder="Monto $" />
+          <input className={field} value={form.reference} onChange={(event) => setForm({ ...form, reference: event.target.value })} placeholder="Número de boleta" />
+          <label className={`${button} cursor-pointer border border-[#102A2D] md:col-span-2`}><FileUp className="h-5 w-5" />{file ? file.name : 'Comprobante (PDF o foto)'}<input type="file" accept="application/pdf,image/jpeg,image/png" className="hidden" onChange={(event) => setFile(event.target.files?.[0] || null)} /></label>
+          <button type="button" className={`${button} bg-emerald-700 text-white md:col-span-2`} disabled={!form.bank_account_id || !toCents(form.amount)} onClick={save} data-testid="collection-deposit-save">Registrar depósito</button>
         </div>
       )}
     </section>
