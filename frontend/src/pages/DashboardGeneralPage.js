@@ -407,14 +407,14 @@ export default function DashboardGeneralPage() {
           <Card className="border border-amber-200 bg-amber-50/40" data-testid="personas-sin-lider">
             <CardHeader>
               <CardTitle style={{ fontFamily: 'Spectral, serif' }}>Personas sin líder ({data.personas_sin_lider.length})</CardTitle>
-              <p className="text-sm text-muted-foreground">Personas en Consolidación sin mentor activo (o cuyo líder fue eliminado). Abre su Perfil 360 para asignarles un mentor: la lista baja sola.</p>
+              <p className="text-sm text-muted-foreground">Personas con un expediente de Consolidación abierto sin mentor activo (o cuyo líder fue eliminado). No incluye cuentas del sistema ni a líderes y mentores con solo el expediente migrado del Manual antiguo. Abre su Perfil 360 para asignarles un mentor: la lista baja sola.</p>
             </CardHeader>
             <CardContent>
               <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
                 {data.personas_sin_lider.map((persona) => (
                   <li key={persona._id}>
                     {persona.canonical_person_id
-                      ? <button type="button" onClick={() => navigate(`/personas/${persona.canonical_person_id}`)} className="flex min-h-12 w-full items-center justify-between gap-2 rounded-lg border border-[#E7E2D6] bg-white px-3 text-left text-sm font-medium text-[#1B2A4A] hover:border-[#1B2A4A]"><span className="min-w-0"><span className="block truncate">{persona.nombre || 'Persona'}</span>{persona.motivo && <span className="block text-xs font-normal text-muted-foreground">{persona.motivo}</span>}</span><ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" /></button>
+                      ? <button type="button" onClick={() => navigate(`/personas/${persona.canonical_person_id}`)} className="flex min-h-12 w-full items-center justify-between gap-2 rounded-lg border border-[#E7E2D6] bg-white px-3 text-left text-sm font-medium text-[#1B2A4A] hover:border-[#1B2A4A]"><span className="min-w-0"><span className="block truncate">{persona.nombre || 'Persona'}</span>{persona.motivo && <span className="block text-xs font-normal text-muted-foreground">{persona.motivo}{persona.origen ? ` · ${persona.origen}` : ''}</span>}</span><ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" /></button>
                       : <span className="flex min-h-12 items-center rounded-lg border border-[#E7E2D6] bg-white px-3 text-sm text-[#1B2A4A]">{persona.nombre || 'Persona'}</span>}
                   </li>
                 ))}

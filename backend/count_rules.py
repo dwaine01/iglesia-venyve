@@ -50,32 +50,68 @@ async def open_consolidation_by_mentor(mentor_ids: list[str]) -> dict[str, int]:
     return counts
 
 
+async def staff_and_team_person_ids() -> tuple[set, set]:
+    """(cuentas del sistema/pastorales, líderes y mentores) por person_id, enlazados por la cuenta
+    (users.person_id) o por la persona (persons.auth_user_id)."""
+    from bson import ObjectId
+    from access_control import is_global_pastoral_authority
+    users = await db.users.find({}, {"_id": 1, "person_id": 1, "rol": 1, "role": 1, "access_level": 1, "is_active": 1}).to_list(20000)
+    by_user = {str(user["_id"]): user for user in users}
+    staff, team = set(), set(await db.mentor_badges.distinct("person_id", {"active": True}))
+    def classify(person_id, user):
+        if is_global_pastoral_authority(user):
+            staff.add(person_id)
+        elif str(user.get("rol") or "").lower() == "lider" and user.get("is_active") is not False:
+            team.add(person_id)
+    for user in users:
+        if user.get("person_id"):
+            classify(user["person_id"], user)
+    async for person in db.persons.find({"auth_user_id": {"$nin": [None, ""]}}, {"_id": 1, "auth_user_id": 1}):
+        user = by_user.get(str(person["auth_user_id"]))
+        if user:
+            classify(str(person["_id"]), user)
+    return staff, team
+
+
 async def people_without_mentor(limit: int = 500) -> list[dict]:
     """«Personas sin líder» desde Persona 360 (auditoría 8/10): personas con un expediente de
     Consolidación abierto cuyo mentor falta o ya no tiene insignia activa, más las que quedaron sin
     líder en el Manual antiguo y todavía nadie acompaña. Baja sola en cuanto alguien recibe un mentor.
-    No cuentan las archivadas, las de prueba ni la demostración antigua."""
+    No cuentan las archivadas, las de prueba ni la demostración antigua.
+    Revisión de producción: tampoco las cuentas del sistema/pastorales (Pastor Admin…), ni los líderes y
+    mentores cuyo único expediente es el migrado del Manual antiguo («Ley 7 Semanas»): solo cuentan si
+    tienen un expediente de Consolidación propio, abierto de verdad."""
     from bson import ObjectId
     from enrollment_cleanup import representatives
     from report_period import excluded_person_ids
     excluded = await excluded_person_ids()
+    staff, team = await staff_and_team_person_ids()
     active_mentors = set(await db.mentor_badges.distinct("person_id", {"active": True}))
     open_items, _ = representatives(await db.process_enrollments.find(
         {"process_key": "consolidation", "status": {"$in": CONSOLIDATION_OPEN}},
-        {"_id": 0, "enrollment_id": 1, "person_id": 1, "process_key": 1, "mentor_person_id": 1, "status": 1, "progress_pct": 1, "updated_at": 1, "created_at": 1}).to_list(50000))
+        {"_id": 0, "enrollment_id": 1, "person_id": 1, "process_key": 1, "mentor_person_id": 1, "status": 1, "progress_pct": 1, "updated_at": 1, "created_at": 1, "source": 1}).to_list(50000))
     accompanied = {item["person_id"] for item in open_items if item.get("mentor_person_id") in active_mentors}
     accompanied |= set(await db.mentor_assignments.distinct("person_id", {"active": True, "mentor_person_id": {"$in": list(active_mentors)}}))
     reasons: dict[str, str] = {}
+    origins: dict[str, str] = {}
     for item in open_items:
-        if item["person_id"] not in accompanied:
-            reasons[item["person_id"]] = "Su mentor ya no está activo" if item.get("mentor_person_id") else "En Consolidación sin mentor"
+        person_id = item["person_id"]
+        if person_id in accompanied or person_id in staff:
+            continue
+        migrated = str(item.get("source") or "").startswith("legacy_")
+        if migrated and person_id in team:
+            continue  # líder o mentor con el expediente migrado del Manual antiguo: no está «sin líder»
+        reasons[person_id] = "Su mentor ya no está activo" if item.get("mentor_person_id") else "En Consolidación sin mentor"
+        origins[person_id] = "Expediente migrado del Manual antiguo" if migrated else "Expediente de Consolidación"
     async for doc in db.people.find({"leader_id": None, "previous_leader_id": {"$exists": True}, "demo": {"$ne": True}, "canonical_person_id": {"$nin": [None, ""]}},
                                     {"_id": 0, "canonical_person_id": 1}):
-        if doc["canonical_person_id"] not in accompanied:
-            reasons.setdefault(doc["canonical_person_id"], "Su líder fue eliminado")
+        person_id = doc["canonical_person_id"]
+        if person_id not in accompanied and person_id not in staff and person_id not in team:
+            reasons.setdefault(person_id, "Su líder fue eliminado")
+            origins.setdefault(person_id, "Manual antiguo")
     candidates = [ObjectId(pid) for pid in reasons if pid not in excluded and ObjectId.is_valid(pid)]
     rows = [{"_id": str(doc["_id"]), "canonical_person_id": str(doc["_id"]), "nombre": " ".join(filter(None, [doc.get("nombre"), doc.get("apellido")])) or "Persona",
-             "motivo": reasons[str(doc["_id"])]}
+             "motivo": reasons[str(doc["_id"])], "origen": origins.get(str(doc["_id"]))}
             async for doc in db.persons.find({"_id": {"$in": candidates}, "is_archived": {"$ne": True}, "is_test": {"$ne": True}}, {"nombre": 1, "apellido": 1})]
     rows.sort(key=lambda row: row["nombre"].lower())
     return rows[:limit]
