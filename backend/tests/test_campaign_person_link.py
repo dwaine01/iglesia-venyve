@@ -2,6 +2,8 @@
 import os
 import time
 import requests
+
+from tests.conftest import campaign_receiver_headers
 import pytest
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/")
@@ -76,7 +78,7 @@ class TestExplicitPersonLink:
         r = requests.post(
             f"{BASE_URL}/api/campaigns/venycome/donations/{donation_id}/verify",
             json={"payment_method": "cash"},
-            headers=auth_headers,
+            headers=campaign_receiver_headers(),
         )
         assert r.status_code == 200, f"Verify failed: {r.status_code} {r.text}"
         after = r.json()
@@ -106,7 +108,7 @@ class TestExplicitPersonLink:
         rv = requests.post(
             f"{BASE_URL}/api/campaigns/venycome/donations/{donation_id}/verify",
             json={"payment_method": "cash"},
-            headers=auth_headers,
+            headers=campaign_receiver_headers(),
         )
         assert rv.status_code == 200
         assert rv.json().get("finance_person_id") == test_person["person_id"]
@@ -137,7 +139,7 @@ class TestBackwardCompat:
         r = requests.post(
             f"{BASE_URL}/api/campaigns/venycome/donations/{donation_id}/verify",
             json={"payment_method": "cash"},
-            headers=auth_headers,
+            headers=campaign_receiver_headers(),
         )
         assert r.status_code == 200, f"Verify failed: {r.status_code} {r.text}"
         after = r.json()

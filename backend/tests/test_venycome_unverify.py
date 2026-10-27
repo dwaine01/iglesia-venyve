@@ -12,6 +12,8 @@ import uuid
 import pytest
 import requests
 
+
+from tests.conftest import campaign_receiver_headers
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL").rstrip("/")
 PASTOR = ("qa.baptismui53.pastor@example.com", "QaBaptismUI53!")
 API = f"{BASE_URL}/api/campaigns/venycome"
@@ -53,7 +55,7 @@ def _create_received_donation(headers, amount=5000):
 
 
 def _verify(headers, donation_id, method="zelle"):
-    r = requests.post(f"{API}/donations/{donation_id}/verify", headers=headers,
+    r = requests.post(f"{API}/donations/{donation_id}/verify", headers=campaign_receiver_headers(),
                       json={"payment_method": method}, timeout=30)
     assert r.status_code == 200, f"verify failed {r.status_code} {r.text}"
     return r.json()
@@ -75,7 +77,7 @@ class TestUnverifyHappyPath:
         assert collection["source"] == "campaign_venycome" and collection["is_test"] is True  # ensayo: datos de prueba
         assert item["status"] == "active" and item["amount_cents"] == 5000 and item["method"] == "zelle"
 
-        r = requests.post(f"{API}/donations/{did}/unverify", headers=headers, timeout=30)
+        r = requests.post(f"{API}/donations/{did}/unverify", headers=campaign_receiver_headers(), timeout=30)
         assert r.status_code == 200, f"unverify failed {r.status_code} {r.text}"
         after = r.json()
         assert after.get("verified") is False
@@ -93,7 +95,7 @@ class TestUnverifyHappyPath:
     def test_unverify_on_not_verified_returns_409(self, headers):
         donation = _create_received_donation(headers)
         did = donation["donation_id"]
-        r = requests.post(f"{API}/donations/{did}/unverify", headers=headers, timeout=30)
+        r = requests.post(f"{API}/donations/{did}/unverify", headers=campaign_receiver_headers(), timeout=30)
         assert r.status_code == 409, f"expected 409 got {r.status_code} {r.text}"
         body = r.json()
         detail = (body.get("detail") or "").lower()
@@ -111,7 +113,7 @@ class TestUnverifyHappyPath:
         assert edit_while_verified.status_code == 409
 
         # Unverify
-        u = requests.post(f"{API}/donations/{did}/unverify", headers=headers, timeout=30)
+        u = requests.post(f"{API}/donations/{did}/unverify", headers=campaign_receiver_headers(), timeout=30)
         assert u.status_code == 200
 
         # Edit should now succeed
@@ -127,13 +129,13 @@ class TestUnverifyHappyPath:
         assert new_cid and new_cid != original_cid, f"expected new cid, orig={original_cid} new={new_cid}"
 
         # Unverify again, then try /void and DELETE
-        requests.post(f"{API}/donations/{did}/unverify", headers=headers, timeout=30)
+        requests.post(f"{API}/donations/{did}/unverify", headers=campaign_receiver_headers(), timeout=30)
 
         # Try void
         donation2 = _create_received_donation(headers, amount=3000)
         did2 = donation2["donation_id"]
         _verify(headers, did2, "zelle")
-        requests.post(f"{API}/donations/{did2}/unverify", headers=headers, timeout=30)
+        requests.post(f"{API}/donations/{did2}/unverify", headers=campaign_receiver_headers(), timeout=30)
         void_r = requests.post(f"{API}/donations/{did2}/void", headers=headers, timeout=30)
         assert void_r.status_code == 200, f"void after unverify failed {void_r.status_code} {void_r.text}"
 
