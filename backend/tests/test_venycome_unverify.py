@@ -71,7 +71,7 @@ class TestUnverifyHappyPath:
         assert item_id and collection_id, f"verify did not register a collection item: {verified}"
         assert verified.get("finance_contribution_id") in (None, "")
         assert verified.get("verified") is True
-        assert verified.get("finance_person_id")
+        assert verified.get("finance_person_id") is None  # sin Persona 360 vinculada: entra con el nombre (no se crea por nombre)
         collection = requests.get(f"{BASE_URL}/api/finance/collections/{collection_id}", headers=headers, timeout=30).json()
         item = next(x for x in collection["items"] if x["item_id"] == item_id)
         assert collection["source"] == "campaign_venycome" and collection["is_test"] is True  # ensayo: datos de prueba

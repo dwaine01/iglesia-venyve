@@ -139,7 +139,7 @@ async def view(collection: dict, current_user: dict, with_items: bool = True) ->
         sees_names = can_see_donors(current_user) or any(has_finance_role(current_user, cap) for cap in (FINANCE_COLLECTION_RECORD, "finance.collection.verify", FINANCE_TREASURY))
         for item in items:
             if sees_names:
-                item["person_name"] = "Anónimo" if item.get("anonymous") else await person_label(item.get("person_id"))
+                item["person_name"] = "Anónimo" if item.get("anonymous") else (await person_label(item.get("person_id")) or (f"{item['donor_name']} (sin Persona 360)" if item.get("donor_name") else None))
             else:
                 item.pop("person_id", None)
                 item["person_name"] = "Anónimo" if item.get("anonymous") else "Donante reservado"
@@ -529,7 +529,7 @@ async def post_collection(collection: dict, current_user: dict) -> dict:
                               "contribution_type": item["contribution_type"], "amount_cents": item["amount_cents"], "received_date": collection["service_date"],
                               "accounting_date": collection["service_date"], "payment_method": {"cash": "cash", "zelle": "zelle"}.get(item["method"], "other"),
                               "reference": item.get("reference"), "allocations": [{"fund_id": item["fund_id"], "amount_cents": item["amount_cents"], "contribution_type": item["contribution_type"], **({"campaign_id": item["campaign_id"]} if item.get("campaign_id") else {})}],
-                              "campaign_id": item.get("campaign_id"), "origin": item.get("origin"),
+                              "campaign_id": item.get("campaign_id"), "origin": item.get("origin"), "donor_name": item.get("donor_name"), "without_person": bool(item.get("without_person")),
                               "source": "collection", "collection_id": collection["collection_id"], "collection_item_id": item["item_id"], "journal_entry_id": journal["entry_id"],
                               "deposit_id": None if item["method"] == "cash" else "directo_al_banco", "batch_id": None, "status": "recorded", "is_test": bool(collection.get("is_test")),
                               "created_by_user_id": item.get("created_by_user_id"), "validated_by_user_id": current_user["user_id"], "created_at": now, "updated_at": now})
@@ -852,7 +852,7 @@ EXTERNAL_SOURCES = {"campaign_venycome": "Ven y Come · donativos", "library": "
 
 async def register_external_item(*, source: str, source_id: str, service_date: str, amount_cents: int, method: str, contribution_type: str, fund_id: str,
                                  person_id: Optional[str], reference: Optional[str], note: Optional[str], actor_user_id: str,
-                                 campaign_id: Optional[str] = None, is_test: bool = False) -> dict:
+                                 campaign_id: Optional[str] = None, is_test: bool = False, donor_name: Optional[str] = None, anonymous: Optional[bool] = None) -> dict:
     """Agrega el aporte a la colecta abierta de ese origen y ese día (la abre si no hay). Devuelve los ids."""
     if not await db.finance_contribution_types.find_one({"type_key": contribution_type, "active": True}, {"_id": 1}):
         raise HTTPException(status_code=409, detail=f"Concepto {contribution_type} no configurado en Finanzas")
@@ -873,7 +873,8 @@ async def register_external_item(*, source: str, source_id: str, service_date: s
     if await db.finance_collection_items.find_one({"origin_key": f"{source}:{source_id}", "status": "active"}, {"_id": 1}):
         raise HTTPException(status_code=409, detail="Ese aporte ya está en una colecta de Finanzas")
     item_id = str(uuid4())
-    await db.finance_collection_items.insert_one({"_id": item_id, "item_id": item_id, "collection_id": collection["collection_id"], "person_id": person_id, "anonymous": not person_id,
+    await db.finance_collection_items.insert_one({"_id": item_id, "item_id": item_id, "collection_id": collection["collection_id"], "person_id": person_id, "anonymous": bool(anonymous) if anonymous is not None else not person_id,
+                                                  "donor_name": None if person_id else donor_name, "without_person": bool(not person_id and donor_name and not anonymous),
                                                   "contribution_type": contribution_type, "fund_id": fund_id, "amount_cents": amount_cents, "method": method if method in METHODS else "other",
                                                   "reference": reference, "note": note, "campaign_id": campaign_id, "origin": {"source": source, "source_id": source_id}, "origin_key": f"{source}:{source_id}",
                                                   "zelle_tx_id": None, "status": "active", "is_test": bool(is_test), "created_by_user_id": actor_user_id, "created_at": now, "updated_at": now, "history": []})

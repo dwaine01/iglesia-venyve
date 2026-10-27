@@ -260,14 +260,13 @@ async def find_or_create_person(donor_name: Optional[str], user_id: str) -> tupl
 
 
 async def resolve_donation_person(donation: dict, user_id: str) -> tuple:
-    """Si el operador vinculó explícitamente una Persona 360 al registrar el donativo,
-    se respeta esa elección (la forma más confiable); si no, se recurre al match por nombre."""
+    """Solo la Persona 360 que el operador vinculó a mano. Revisión de producción (decisión del dueño): ya no se
+    busca ni se CREA una persona por el nombre al recibir (eso duplicaba perfiles). Sin vínculo, el dinero no se
+    bloquea: entra con el nombre tal como lo dieron y la etiqueta «sin Persona 360»; se vincula después."""
     explicit_person_id = donation.get("person_id")
-    if explicit_person_id:
-        exists = await db.persons.find_one({"_id": ObjectId(explicit_person_id)}, {"_id": 1}) if ObjectId.is_valid(explicit_person_id) else None
-        if exists:
-            return explicit_person_id, False
-    return await find_or_create_person(donation.get("donor_name"), user_id)
+    if explicit_person_id and ObjectId.is_valid(explicit_person_id) and await db.persons.find_one({"_id": ObjectId(explicit_person_id)}, {"_id": 1}):
+        return explicit_person_id, False
+    return None, False
 
 
 VEN_Y_COME_CAMPAIGN_NAME = "Ven y Come · Bus de comida"
@@ -312,7 +311,8 @@ async def create_finance_deposit_for_donation(donation: dict, payment_method: st
         source="campaign_venycome", source_id=donation["donation_id"], service_date=received_date, amount_cents=donation["amount_cents"],
         method=payment_method, contribution_type="building", fund_id=fund["fund_id"], person_id=person_id,
         reference=f"Ven y Come #{donation['donation_id'][:8]}", note=f"{VEN_Y_COME_CAMPAIGN_NAME} · {donor_private_label(donation)}",
-        actor_user_id=current_user["user_id"], campaign_id=finance_campaign["campaign_id"], is_test=bool(donation.get("is_test") or donation.get("is_rehearsal")))  # el ensayo no toca Finanzas real
+        actor_user_id=current_user["user_id"], campaign_id=finance_campaign["campaign_id"], is_test=bool(donation.get("is_test") or donation.get("is_rehearsal")),  # el ensayo no toca Finanzas real
+        donor_name=None if donation.get("anonymous") else donation.get("donor_name"), anonymous=bool(donation.get("anonymous")))
     return {"contribution_id": None, "collection_id": registered["collection_id"], "collection_item_id": registered["item_id"],
             "person_id": person_id, "created_new_person": created_new_person}
 
@@ -499,6 +499,48 @@ async def unverify_donation(donation_id: str, current_user: dict = Depends(recei
     }})
     after = await donation_doc(donation_id)
     await audit("donation_unverified", donation_id, current_user["user_id"], before, after)
+    return serialize(after)
+
+
+class LinkPersonInput(BaseModel):
+    person_id: Optional[str] = None          # vincular a una Persona 360 existente
+    create: bool = False                     # o crearla (con la misma búsqueda de duplicados de Persona 360)
+    confirm_distinct_person: bool = False
+    distinct_reason: Optional[str] = Field(default=None, max_length=400)
+
+
+@router.post("/donations/{donation_id}/link-person", response_model=dict)
+async def link_person(donation_id: str, payload: LinkPersonInput, current_user: dict = Depends(receiver)):
+    """«Vincular a Persona 360» sin duplicar: elegir una existente o crearla (si se parece a alguien, primero se
+    muestran las candidatas). Se actualiza también el aporte en Finanzas (con historial)."""
+    before = await donation_doc(donation_id)
+    if before.get("anonymous"):
+        raise HTTPException(status_code=409, detail="Un donativo anónimo no se vincula a una persona")
+    person_id = payload.person_id
+    if person_id:
+        if not ObjectId.is_valid(person_id) or not await db.persons.find_one({"_id": ObjectId(person_id), "is_archived": {"$ne": True}}, {"_id": 1}):
+            raise HTTPException(status_code=404, detail="Persona 360 no encontrada")
+    elif payload.create:
+        from person_matching import PersonQuickCreate, quick_create_person
+        tokens = (before.get("donor_name") or "").strip().split()
+        if not tokens:
+            raise HTTPException(status_code=422, detail="El donativo no tiene nombre para crear la Persona 360")
+        result = await quick_create_person(db, PersonQuickCreate(nombre=tokens[0], apellido=" ".join(tokens[1:]) or "", idempotency_key=f"venycome-link:{donation_id}",
+                                                                 confirm_distinct_person=payload.confirm_distinct_person, distinct_reason=payload.distinct_reason),
+                                           current_user["user_id"], "campaign_venycome")
+        if result["status"] != "created":
+            raise HTTPException(status_code=409, detail={"message": "Ya hay una Persona 360 que se parece: elija la existente o confirme que es otra persona (con un motivo).",
+                                                         "candidates": result.get("candidates") or [], "requires_confirmation": result["status"] == "possible_match"})
+        person_id = result["person"]["person_id"]
+    else:
+        raise HTTPException(status_code=422, detail="Elija una Persona 360 existente o créela")
+    now = now_utc()
+    await db.campaign_donations.update_one({"donation_id": donation_id}, {"$set": {"person_id": person_id, "finance_person_id": person_id if before.get("verified") else before.get("finance_person_id"), "updated_at": now}})
+    change = {"action": "person_linked", "before": None, "person_id": person_id, "by_user_id": current_user["user_id"], "at": now, "source": "campaign_venycome"}
+    await db.finance_collection_items.update_many({"origin_key": f"campaign_venycome:{donation_id}", "person_id": None}, {"$set": {"person_id": person_id, "without_person": False, "updated_at": now}, "$push": {"history": change}})
+    await db.finance_contributions.update_many({"origin.source_id": donation_id, "origin.source": "campaign_venycome", "person_id": None}, {"$set": {"person_id": person_id, "without_person": False, "anonymous": False, "updated_at": now}, "$push": {"history": change}})
+    after = await donation_doc(donation_id)
+    await audit("donation_person_linked", donation_id, current_user["user_id"], before, after)
     return serialize(after)
 
 
