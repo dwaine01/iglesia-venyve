@@ -11,7 +11,7 @@ const MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', '
 const monthLabel = (key) => `${MONTHS[Number(key.slice(5, 7)) - 1]} ${key.slice(0, 4)}`;
 
 /** Perfil 360 · Finanzas (decisión del dueño): historial de diezmos, ofrendas y donaciones, último diezmo,
- * totales del período elegido y meses sin registros. Solo lectura, sin etiquetas automáticas. La ven la pastora
+ * totales del período elegido y meses sin registros. Solo suma lo contabilizado; lo pendiente y las promesas van aparte. Solo lectura, sin etiquetas automáticas. La ven la pastora
  * y quien ella autorice; cada consulta queda registrada en el servidor. */
 export const PersonFinanceSection = ({ personId }) => {
   const { API, getAuthHeaders } = useAuth();
@@ -58,6 +58,20 @@ export const PersonFinanceSection = ({ personId }) => {
             </table>
             {!data.items.length && <FinanceEmpty>No hay registros en este período.</FinanceEmpty>}
           </div>
+          {data.pending?.items?.length > 0 && (
+            <div className="border border-amber-300 bg-amber-50 p-4" data-testid="person-finance-pending">
+              <p className="font-semibold text-amber-950">Pendiente de contabilizar · <Money cents={data.pending.cents} /></p>
+              <p className="text-xs text-amber-900">Registrado, pero aún no lo valida una segunda persona: no suma en el total ni en el Resumen de Finanzas.</p>
+              <ul className="mt-2 space-y-1 text-sm">{data.pending.items.map((item) => <li key={item.contribution_id || item.item_id}>{item.received_date || '—'} · {displayLabel(item.contribution_type)}{item.campaign_name ? ` · ${item.campaign_name}` : ''} · <b><Money cents={item.amount_cents} /></b> <span className="text-xs text-amber-900">({item.label})</span></li>)}</ul>
+            </div>
+          )}
+          {data.pledges?.length > 0 && (
+            <div className="border border-sky-200 bg-sky-50 p-4" data-testid="person-finance-pledges">
+              <p className="font-semibold text-sky-950">Promesa pendiente · <Money cents={data.pledges.reduce((sum, item) => sum + item.amount_cents, 0)} /></p>
+              <p className="text-xs text-sky-900">Prometido en la campaña y aún no recibido. Nunca suma como ingreso.</p>
+              <ul className="mt-2 space-y-1 text-sm">{data.pledges.map((item) => <li key={item.donation_id}>{(item.promised_at || '').slice(0, 10)} · {item.campaign} · <b><Money cents={item.amount_cents} /></b></li>)}</ul>
+            </div>
+          )}
         </>
       )}
     </section>
