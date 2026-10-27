@@ -303,6 +303,7 @@ async def dashboard(current_user: dict = Depends(reader)):
         "budget_total_cents": budget_total_cents,
         "budget_remaining_cents": budget_total_cents - fiscal_expense_cents,
         "pending_entries": await db.finance_journal_entries.count_documents({"status": {"$in": ["submitted", "reviewed"]}}),
+        "pending_to_post": {key: value for key, value in (await pending_to_post()).items() if key != "items"},  # registrado, aún no cuenta como ingreso
         "unreconciled_deposits": await db.finance_deposits.count_documents({"status": {"$ne": "reconciled"}}),
         "unpaid_expenses": len(unpaid_items),
         "pushpay_status": "connected" if all(os.environ.get(key) for key in ["PUSHPAY_CLIENT_ID", "PUSHPAY_CLIENT_SECRET", "PUSHPAY_ORGANIZATION_KEY", "PUSHPAY_MERCHANT_KEY"]) else "blocked_credentials_required",
@@ -496,6 +497,44 @@ async def contributions(current_user: dict = Depends(reader)):
     return {"items": serialize(items), "donors_hidden": False}
 
 
+async def posted_entry_ids(entry_ids) -> set:
+    """Asientos ya contabilizados (lo único que cuenta como ingreso, igual que en el Resumen)."""
+    ids = [item for item in set(entry_ids) if item]
+    return set(await db.finance_journal_entries.distinct("entry_id", {"entry_id": {"$in": ids}, "status": "posted"})) if ids else set()
+
+
+async def pending_to_post(person_ids: Optional[list] = None) -> dict:
+    """«Pendiente de contabilizar»: aportes registrados que aún NO cuentan como ingreso.
+    (a) contribuciones antiguas cuyo asiento no está contabilizado (p. ej. Ven y Come de antes de la Colecta);
+    (b) aportes de colectas que todavía no valida una segunda persona. Sin datos de prueba."""
+    query = {"status": {"$ne": "corrected"}, "is_test": {"$ne": True}}
+    if person_ids is not None:
+        query["person_id"] = {"$in": person_ids}
+    legacy = await db.finance_contributions.find(query, {"_id": 0}).to_list(20000)
+    posted = await posted_entry_ids(item.get("journal_entry_id") for item in legacy)
+    legacy = [item for item in legacy if item.get("journal_entry_id") not in posted]
+    open_collections = {doc["collection_id"]: doc async for doc in db.finance_collections.find({"status": {"$in": ["registering", "registered"]}, "is_test": {"$ne": True}},
+                                                                                               {"_id": 0, "collection_id": 1, "service_name": 1, "service_date": 1, "status": 1})}
+    item_query = {"collection_id": {"$in": list(open_collections)}, "status": "active", "is_test": {"$ne": True}}
+    if person_ids is not None:
+        item_query["person_id"] = {"$in": person_ids}
+    collection_items = await db.finance_collection_items.find(item_query, {"_id": 0}).to_list(20000) if open_collections else []
+    rows = [{"kind": "contribution", "contribution_id": item["contribution_id"], "received_date": item.get("received_date"), "amount_cents": item.get("amount_cents", 0),
+             "contribution_type": item.get("contribution_type"), "campaign_id": item.get("campaign_id"), "allocations": item.get("allocations"),
+             "label": "Registrado; espera que una segunda persona lo valide en Asientos"} for item in legacy]
+    rows += [{"kind": "collection_item", "item_id": item["item_id"], "collection_id": item["collection_id"], "received_date": open_collections[item["collection_id"]].get("service_date"),
+              "amount_cents": item.get("amount_cents", 0), "contribution_type": item.get("contribution_type"), "campaign_id": item.get("campaign_id"),
+              "label": f"En la colecta «{open_collections[item['collection_id']].get('service_name')}»; espera la validación de una segunda persona"} for item in collection_items]
+    return {"cents": sum(row["amount_cents"] for row in rows), "count": len(rows), "items": rows}
+
+
+async def pending_pledges(person_ids: list) -> list:
+    """«Promesa pendiente» (Ven y Come): lo prometido y aún no recibido. Nunca suma como ingreso."""
+    rows = await db.campaign_donations.find({"person_id": {"$in": person_ids}, "donation_type": "promise", "status": "active", "is_rehearsal": {"$ne": True}},
+                                            {"_id": 0, "donation_id": 1, "amount_cents": 1, "created_at": 1, "donor_name": 1}).sort("created_at", -1).to_list(500)
+    return [{"donation_id": row["donation_id"], "amount_cents": row["amount_cents"], "campaign": "Ven y Come · Bus de comida", "promised_at": serialize(row.get("created_at"))} for row in rows]
+
+
 @router.get("/persons/{person_id}/contributions", response_model=dict)
 async def person_contributions(person_id: str, scope: Literal["person", "family"] = "person", start: Optional[date] = None, end: Optional[date] = None,
                                current_user: dict = Depends(private_person_reader)):
@@ -514,8 +553,15 @@ async def person_contributions(person_id: str, scope: Literal["person", "family"
         raise HTTPException(status_code=422, detail="La fecha final debe ser posterior a la inicial")
     base_query = {"person_id": {"$in": person_ids}, "status": {"$ne": "corrected"}, "is_test": {"$ne": True}}
     items = await db.finance_contributions.find({**base_query, "received_date": {"$gte": start.isoformat(), "$lte": end.isoformat()}}, {"_id": 0}).sort("received_date", -1).to_list(5000)
-    items = await enrich_campaign_names(items)
-    last_tithe = await db.finance_contributions.find_one({**base_query, "$or": [{"contribution_type": "tithe"}, {"allocations.contribution_type": "tithe"}]}, {"_id": 0, "received_date": 1, "amount_cents": 1, "allocations": 1}, sort=[("received_date", -1)])
+    # Revisión de producción: solo cuenta lo CONTABILIZADO (lo mismo que suma el Resumen de Finanzas);
+    # lo registrado sin validar va aparte como «Pendiente de contabilizar».
+    posted = await posted_entry_ids(item.get("journal_entry_id") for item in items)
+    items = await enrich_campaign_names([item for item in items if item.get("journal_entry_id") in posted])
+    tithes = await db.finance_contributions.find({**base_query, "$or": [{"contribution_type": "tithe"}, {"allocations.contribution_type": "tithe"}]}, {"_id": 0, "received_date": 1, "amount_cents": 1, "allocations": 1, "journal_entry_id": 1}).sort("received_date", -1).to_list(50)
+    tithe_posted = await posted_entry_ids(item.get("journal_entry_id") for item in tithes)
+    last_tithe = next((item for item in tithes if item.get("journal_entry_id") in tithe_posted), None)
+    pending = await pending_to_post(person_ids)
+    pending["items"] = await enrich_campaign_names(pending["items"])
     totals_by_type: dict = {}
     for item in items:
         for allocation in item.get("allocations") or [{"contribution_type": item.get("contribution_type"), "amount_cents": item.get("amount_cents", 0)}]:
@@ -529,7 +575,8 @@ async def person_contributions(person_id: str, scope: Literal["person", "family"
     await log_donor_view(current_user, "person_profile_contributions", person_id, {"scope": scope, "start": start.isoformat(), "end": end.isoformat()})
     return {"scope": scope, "person_ids": person_ids, "start": start.isoformat(), "end": end.isoformat(), "total_cents": sum(item.get("amount_cents", 0) for item in items),
             "totals_by_type": totals_by_type, "last_tithe": serialize(last_tithe and {"received_date": last_tithe["received_date"], "amount_cents": sum(int(a.get("amount_cents", 0)) for a in last_tithe.get("allocations") or [] if a.get("contribution_type") == "tithe") or last_tithe.get("amount_cents")}),
-            "months_without_records": [month for month in months if month not in with_records], "months_in_period": len(months), "items": serialize(items)}
+            "months_without_records": [month for month in months if month not in with_records], "months_in_period": len(months), "items": serialize(items),
+            "pending": serialize(pending), "pledges": await pending_pledges(person_ids)}
 
 
 async def refresh_batch_totals(batch_id: str) -> dict:

@@ -19,9 +19,13 @@ async def test_profile_finance_tab():
         lectora = await fx.account(await fx.person(f"LectoraF{tag}"), "lider", privilege_groups=["finance"], capabilities=["finance.read"], permissions_mode="manual")
         member = await fx.person(f"MiembroF{tag}")
         rows = [("2025-01-05", "tithe", 10000), ("2025-01-19", "offering", 2000), ("2025-03-02", "tithe", 12000), ("2025-03-09", "donation", 5000)]
-        for contribution_id, (day, kind, cents) in zip(ids, rows):
+        for number, (contribution_id, (day, kind, cents)) in enumerate(zip(ids, rows)):
+            # Solo cuenta lo contabilizado (revisión de producción): cada aporte con su asiento «posted».
+            await db.finance_journal_entries.insert_one({"_id": f"je-{contribution_id}", "entry_id": f"je-{contribution_id}", "entry_number": 900_000_000 + int(tag[:6], 16) * 10 + number,
+                                                         "status": "posted", "source_type": "contribution", "source_id": contribution_id, "lines": [], "test_tag": tag})
             await db.finance_contributions.insert_one({"_id": contribution_id, "contribution_id": contribution_id, "person_id": member, "contribution_type": kind, "amount_cents": cents,
-                                                       "received_date": day, "allocations": [{"contribution_type": kind, "amount_cents": cents, "fund_id": "x"}], "status": "recorded", "test_tag": tag})
+                                                       "received_date": day, "allocations": [{"contribution_type": kind, "amount_cents": cents, "fund_id": "x"}], "status": "recorded", "test_tag": tag,
+                                                       "journal_entry_id": f"je-{contribution_id}"})
         await db.finance_contributions.insert_one({"_id": f"{ids[0]}-t", "contribution_id": f"{ids[0]}-t", "person_id": member, "contribution_type": "tithe", "amount_cents": 99900,
                                                    "received_date": "2025-02-02", "allocations": [{"contribution_type": "tithe", "amount_cents": 99900}], "status": "recorded", "is_test": True})
         ids.append(f"{ids[0]}-t")
@@ -38,5 +42,6 @@ async def test_profile_finance_tab():
         assert (await pastora.get(f"/api/finance/persons/{member}/contributions", params={"start": "2025-05-01", "end": "2025-01-01"})).status_code == 422
     finally:
         await db.finance_contributions.delete_many({"contribution_id": {"$in": ids}})
+        await db.finance_journal_entries.delete_many({"test_tag": tag})
         await db.finance_audit_events.delete_many({"action": "donor_data_viewed", "entity_id": {"$in": fx.person_ids}})
         await fx.cleanup()
