@@ -16,6 +16,13 @@ PASTOR = ("qa.baptismui53.pastor@example.com", "QaBaptismUI53!")
 LIDER = ("qa.baptismui53.lider@example.com", "QaBaptismUI53!")
 
 
+
+def _finance_team_headers():
+    """La orden de compra la decide el equipo de Finanzas; la pastora solo consulta Finanzas (decisión del dueño)."""
+    import os
+    from tests.conftest import finance_team_token
+    return {"Authorization": f"Bearer {finance_team_token(os.environ['REACT_APP_BACKEND_URL'])}", "Content-Type": "application/json"}
+
 def _read_env_secret():
     if not os.path.exists("/app/backend/.env"):
         return os.environ.get("WEBHOOK_CRON_SECRET")
@@ -151,7 +158,7 @@ def test_e2e_04_submit_po(h_pastor, e2e_state):
 
 def test_e2e_05_approve_po(h_pastor, e2e_state):
     r = requests.post(f"{API}/library/purchase-orders/{e2e_state['po_id']}/decision",
-                      json={"action": "approve", "note": "approved"}, headers=h_pastor, timeout=15)
+                      json={"action": "approve", "note": "approved"}, headers=_finance_team_headers(), timeout=15)
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["status"] == "approved"

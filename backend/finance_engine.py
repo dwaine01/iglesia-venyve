@@ -37,10 +37,25 @@ def require_finance_read(current_user: dict) -> None:
         raise HTTPException(status_code=403, detail="El pastor no ha concedido acceso a Finanzas")
 
 
+PASTORAL_READ_ONLY = "La pastora consulta Finanzas (solo lectura): no registra, valida, aprueba, recibe, deposita, anula, cierra ni migra"
+
+
 def require_finance_manage(current_user: dict) -> None:
+    """Cualquier cambio en Finanzas. Decisión del dueño: la pastora (y toda cuenta con Acceso Maestro) solo
+    consulta; los cambios los hace el equipo de Finanzas con su rol asignado."""
+    if is_global_pastoral_authority(current_user):
+        raise HTTPException(status_code=403, detail=PASTORAL_READ_ONLY)
     require_finance_read(current_user)
-    if not is_global_pastoral_authority(current_user) and FINANCE_MANAGE not in (current_user.get("capabilities") or []):
+    if FINANCE_MANAGE not in (current_user.get("capabilities") or []):
         raise HTTPException(status_code=403, detail="Acceso financiero de consulta solamente")
+
+
+def has_finance_manage(current_user: dict) -> bool:
+    try:
+        require_finance_manage(current_user)
+        return True
+    except HTTPException:
+        return False
 
 
 def require_private_person_finance(current_user: dict) -> None:
@@ -173,7 +188,7 @@ def has_finance_role(current_user: dict, capability: str) -> bool:
 def require_finance_role(current_user: dict, capability: str) -> None:
     if not has_finance_role(current_user, capability):
         labels = {FINANCE_COLLECTION_RECORD: "registrar la colecta", FINANCE_COLLECTION_VERIFY: "validar (segunda persona)", FINANCE_TREASURY: "Tesorería (recibir, depositar y pagar)"}
-        detail = "La pastora consulta Finanzas pero no cuenta, valida, recibe ni deposita" if is_global_pastoral_authority(current_user) else f"Necesita el permiso de Finanzas para {labels.get(capability, capability)}"
+        detail = PASTORAL_READ_ONLY if is_global_pastoral_authority(current_user) else f"Necesita el permiso de Finanzas para {labels.get(capability, capability)}"
         raise HTTPException(status_code=403, detail=detail)
 
 
@@ -184,7 +199,7 @@ def finance_roles(current_user: dict) -> dict:
         can_read = True
     except HTTPException:
         can_read = False
-    return {"read": can_read, "record": has_finance_role(current_user, FINANCE_COLLECTION_RECORD), "verify": has_finance_role(current_user, FINANCE_COLLECTION_VERIFY),
+    return {"read": can_read, "manage": has_finance_manage(current_user), "record": has_finance_role(current_user, FINANCE_COLLECTION_RECORD), "verify": has_finance_role(current_user, FINANCE_COLLECTION_VERIFY),
             "treasury": has_finance_role(current_user, FINANCE_TREASURY), "donors": can_see_donors(current_user), "pastoral_read_only": is_global_pastoral_authority(current_user)}
 
 
@@ -218,4 +233,4 @@ async def log_donor_view(current_user: dict, what: str, person_id: str | None = 
 def deny_pastoral_registration(current_user: dict) -> None:
     """Nuevo flujo (decisión del dueño): la pastora no cuenta, registra, valida, recibe ni deposita."""
     if is_global_pastoral_authority(current_user):
-        raise HTTPException(status_code=403, detail="La pastora consulta Finanzas pero no registra, cuenta, valida, recibe ni deposita; use la Colecta con el equipo de Finanzas")
+        raise HTTPException(status_code=403, detail=PASTORAL_READ_ONLY)

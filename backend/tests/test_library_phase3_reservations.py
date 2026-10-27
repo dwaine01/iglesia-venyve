@@ -16,6 +16,13 @@ DB_NAME = os.environ.get("DB_NAME")
 mongo = MongoClient(MONGO_URL)[DB_NAME]
 
 
+
+def _finance_team_headers():
+    """La orden de compra la decide el equipo de Finanzas; la pastora solo consulta Finanzas (decisión del dueño)."""
+    import os
+    from tests.conftest import finance_team_token
+    return {"Authorization": f"Bearer {finance_team_token(os.environ['REACT_APP_BACKEND_URL'])}", "Content-Type": "application/json"}
+
 def _login(email, password):
     r = requests.post(f"{API}/auth/login", json={"email": email, "password": password}, timeout=15)
     assert r.status_code == 200, f"login {email} -> {r.status_code} {r.text}"
@@ -261,7 +268,7 @@ def test_create_and_mark_po_overdue(h_pastor):
     # submit -> approve -> mark ordered
     assert requests.post(f"{API}/library/purchase-orders/{po_id}/submit", headers=h_pastor, timeout=15).status_code == 200
     assert requests.post(f"{API}/library/purchase-orders/{po_id}/decision",
-                        headers=h_pastor, json={"action": "approve", "note": "ok"}, timeout=15).status_code == 200
+                        headers=_finance_team_headers(), json={"action": "approve", "note": "ok"}, timeout=15).status_code == 200
     assert requests.post(f"{API}/library/purchase-orders/{po_id}/mark-ordered", headers=h_pastor, timeout=15).status_code == 200
 
     # Force expected_date to 5 days ago via mongo

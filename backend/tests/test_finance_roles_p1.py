@@ -31,7 +31,7 @@ async def test_finance_roles_assignment_and_pastoral_read_only():
 
         # La pastora: solo lectura en la colecta; sí ve aportes por persona.
         roles = (await pastora.get("/api/finance/my-roles")).json()
-        assert roles == {"read": True, "record": False, "verify": False, "treasury": False, "donors": True, "pastoral_read_only": True}
+        assert roles == {"read": True, "manage": False, "record": False, "verify": False, "treasury": False, "donors": True, "pastoral_read_only": True}
         # Wanda sin roles asignados: consulta, pero no registra ni ve aportes por persona.
         roles = (await wanda.get("/api/finance/my-roles")).json()
         assert roles["read"] and not (roles["record"] or roles["verify"] or roles["treasury"] or roles["donors"])

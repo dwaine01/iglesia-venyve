@@ -49,7 +49,10 @@ async def test_venycome_goes_through_collection_and_old_entries_are_closed():
         cash, envelopes = collection["summary"]["cash_detail_cents"], collection["summary"]["envelopes_registered"]  # la colecta del día puede traer otros donativos de prueba
 
         # Finanzas cuenta y envía; otra persona valida. Nadie espera a la pastora.
-        assert (await wanda.post(f"{base}/cash-count", json={"counted_cash_cents": cash, "envelope_count": envelopes})).status_code == 200
+        counted = await wanda.post(f"{base}/cash-count", json={"counted_cash_cents": cash, "envelope_count": envelopes})
+        assert counted.status_code == 200
+        for kind in counted.json()["summary"]["pending_explanations"]:  # p. ej. Zelle de prueba de otros donativos del día
+            assert (await wanda.post(f"{base}/explanations", json={"kind": kind, "note": "Datos de prueba del mismo día"})).status_code == 200
         assert (await wanda.post(f"{base}/submit")).status_code == 200
         assert (await wanda.post(f"{base}/validate")).status_code == 403
         assert (await pastora.post(f"{base}/validate")).status_code == 403

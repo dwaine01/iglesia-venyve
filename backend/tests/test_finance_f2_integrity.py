@@ -19,7 +19,7 @@ async def test_f2_corrected_deposit_adjustment_void_and_fiscal_budget():
     try:
         pastora = await fx.account(await fx.person(f"PastoraF{tag}"), "pastora")
         # Nuevo flujo: la pastora consulta; registra y deposita el equipo de Finanzas.
-        fin = await fx.account(await fx.person(f"FinanzasF{tag}"), "lider", privilege_groups=["finance"], capabilities=["finance.read", "finance.manage"], permissions_mode="manual")
+        fin = await fx.account(await fx.person(f"FinanzasF{tag}"), "lider", privilege_groups=["finance"], capabilities=["finance.read", "finance.manage", "finance.treasury"], permissions_mode="manual")  # Tesorería deposita
         donor = await fx.person(f"DonanteF{tag}")
         funds = {item["code"]: item["fund_id"] for item in (await pastora.get("/api/finance/catalog")).json()["funds"]}
         accounts = {item["code"]: item["account_id"] for item in (await pastora.get("/api/finance/catalog")).json()["accounts"]}

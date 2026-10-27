@@ -46,6 +46,13 @@ LIDER = ("qa.baptismui53.lider@example.com", "QaBaptismUI53!")
 CENTRAL_HOLDER = {"type": "warehouse", "id": "central"}
 
 
+
+def _finance_team_headers():
+    """La orden de compra la decide el equipo de Finanzas; la pastora solo consulta Finanzas (decisión del dueño)."""
+    import os
+    from tests.conftest import finance_team_token
+    return {"Authorization": f"Bearer {finance_team_token(os.environ['REACT_APP_BACKEND_URL'])}", "Content-Type": "application/json"}
+
 def _login(email, password):
     r = requests.post(f"{API}/auth/login", json={"email": email, "password": password}, timeout=15)
     assert r.status_code == 200, f"login {email} -> {r.status_code} {r.text}"
@@ -109,7 +116,7 @@ def seed_book(h_pastor):
         pass  # handled below
     requests.post(f"{API}/library/purchase-orders/{po_id}/submit", headers=h_pastor, timeout=15)
     requests.post(f"{API}/library/purchase-orders/{po_id}/decision",
-                  json={"action": "approve", "note": "ok"}, headers=h_pastor, timeout=15)
+                  json={"action": "approve", "note": "ok"}, headers=_finance_team_headers(), timeout=15)
     requests.post(f"{API}/library/purchase-orders/{po_id}/mark-ordered", headers=h_pastor, timeout=15)
     receive_r = requests.post(
         f"{API}/library/purchase-orders/{po_id}/receive",

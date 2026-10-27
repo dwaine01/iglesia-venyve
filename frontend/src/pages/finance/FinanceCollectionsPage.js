@@ -45,7 +45,6 @@ function CollectionList({ roles }) {
   };
   return (
     <FinanceShell title="Colecta" description="Cada colecta pasa por: Registrada › Validada por segunda persona › Efectivo recibido por Tesorería › Depositada.">
-      {roles.pastoral_read_only && <p className="mb-4 border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900">La pastora consulta todo; no cuenta, valida, recibe ni deposita.</p>}
       {roles.record && (
         <form onSubmit={open} className="mb-6 grid gap-3 border bg-white p-4 sm:grid-cols-[1fr_2fr_auto_auto]" data-testid="collection-open-form">
           <input type="date" className={field} value={form.service_date} onChange={(event) => setForm({ ...form, service_date: event.target.value })} required />
