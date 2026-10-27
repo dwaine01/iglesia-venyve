@@ -1,7 +1,7 @@
 """Backend tests for Ven y Come campaign_name label on finance contributions.
 
 Verifies:
- - verified donation produces finance_contribution with campaign_id, campaign_name, allocations[0].campaign_id, description
+ - verified donation becomes a Colecta item tagged with the Ven y Come project (contribution after validation)
  - finance_campaigns 'Ven y Come · Bus de comida' is idempotent (not duplicated)
  - GET /finance/contributions and GET /finance/persons/{id}/contributions include campaign_name
  - Regression: non-campaign contribution returns campaign_name null
@@ -70,23 +70,18 @@ def _create_and_verify_donation(auth_headers, person_id, donor_name, amount=1500
 
 
 class TestCampaignNameLabel:
-    def test_verified_donation_contribution_has_campaign_fields(self, auth_headers, test_person):
+    def test_verified_donation_collection_item_has_campaign_fields(self, auth_headers, test_person):
+        # Nuevo flujo: el donativo verificado es un aporte de la colecta «Ven y Come» con el proyecto; la
+        # contribución (con campaign_name) aparece cuando una segunda persona valida la colecta.
         verify_resp = _create_and_verify_donation(auth_headers, test_person["person_id"], test_person["full_name"], amount=1500, method="cash")
-        contribution_id = verify_resp.get("finance_contribution_id")
-        assert contribution_id, f"verify response missing finance_contribution_id: {verify_resp}"
-        # Fetch general contributions and find exact one
-        r = requests.get(f"{BASE_URL}/api/finance/contributions", headers=auth_headers, params={"limit": 200})
-        assert r.status_code == 200, r.text
-        items = r.json().get("items") or r.json()
-        latest = next((x for x in items if x.get("contribution_id") == contribution_id or x.get("_id") == contribution_id), None)
-        assert latest, f"Contribution {contribution_id} not found. Sample keys: {[list(x.keys()) for x in items[:1]]}"
-        assert latest.get("campaign_id"), f"campaign_id missing: {latest}"
-        assert latest.get("campaign_name") == CAMPAIGN_NAME, f"campaign_name wrong: {latest.get('campaign_name')!r}"
-        allocs = latest.get("allocations") or []
-        assert allocs and allocs[0].get("campaign_id") == latest["campaign_id"], f"allocations missing campaign_id: {allocs}"
-        desc = latest.get("description") or ""
-        assert CAMPAIGN_NAME in desc, f"Description missing campaign name: {desc!r}"
-        assert test_person["full_name"] in desc, f"Description missing donor name: {desc!r}"
+        item_id, collection_id = verify_resp.get("finance_collection_item_id"), verify_resp.get("finance_collection_id")
+        assert item_id and collection_id, f"verify response missing the collection item: {verify_resp}"
+        collection = requests.get(f"{BASE_URL}/api/finance/collections/{collection_id}", headers=auth_headers).json()
+        item = next(x for x in collection["items"] if x["item_id"] == item_id)
+        campaigns = requests.get(f"{BASE_URL}/api/finance/campaigns", headers=auth_headers).json()["items"]
+        campaign = next(c for c in campaigns if c.get("name") == CAMPAIGN_NAME)
+        assert item["campaign_id"] == campaign["campaign_id"]
+        assert CAMPAIGN_NAME in (item.get("note") or "") and test_person["full_name"] in (item.get("note") or "")
 
     def test_finance_campaign_record_is_idempotent(self, auth_headers, test_person):
         # Create & verify a second donation; ensure only ONE finance_campaigns record exists
@@ -106,10 +101,9 @@ class TestCampaignNameLabel:
             headers=auth_headers,
         )
         assert r.status_code == 200, f"{r.status_code} {r.text}"
-        items = r.json().get("items") or r.json()
-        assert items, "Expected at least one contribution"
+        items = r.json().get("items") or []
+        # Los donativos de este archivo aún esperan la validación de la colecta: no cuentan todavía.
         campaign_items = [x for x in items if x.get("campaign_name")]
-        assert campaign_items, f"No item with campaign_name. Items: {items[:3]}"
         for it in campaign_items:
             assert it["campaign_name"] == CAMPAIGN_NAME
 

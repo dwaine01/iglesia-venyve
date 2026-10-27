@@ -512,8 +512,9 @@ async def post_collection(collection: dict, current_user: dict) -> dict:
         # Solo el efectivo pasa por «fondos no depositados» (Tesorería lo deposita); Zelle y otros medios llegan al banco.
         debit_account = accounts["1010"] if item["method"] == "cash" else accounts["1020"]
         name = types.get(item["contribution_type"], {}).get("name", item["contribution_type"])
-        lines += [{"account_id": debit_account, "fund_id": item["fund_id"], "debit_cents": item["amount_cents"], "credit_cents": 0, "description": f"Colecta · {name}"},
-                  {"account_id": types[item["contribution_type"]]["revenue_account_id"], "fund_id": item["fund_id"], "debit_cents": 0, "credit_cents": item["amount_cents"], "description": f"Colecta · {name}"}]
+        campaign = {"campaign_id": item["campaign_id"]} if item.get("campaign_id") else {}
+        lines += [{"account_id": debit_account, "fund_id": item["fund_id"], "debit_cents": item["amount_cents"], "credit_cents": 0, "description": f"Colecta · {name}", **campaign},
+                  {"account_id": types[item["contribution_type"]]["revenue_account_id"], "fund_id": item["fund_id"], "debit_cents": 0, "credit_cents": item["amount_cents"], "description": f"Colecta · {name}", **campaign}]
     journal = await create_journal(collection["registered_by_user_id"], collection["service_date"], f"Colecta {collection['service_name']} · {collection['service_date']}",
                                    "collection", collection["collection_id"], lines, "submitted")
     now = now_utc()
@@ -525,7 +526,8 @@ async def post_collection(collection: dict, current_user: dict) -> dict:
         contributions.append({"_id": contribution_id, "contribution_id": contribution_id, "person_id": item.get("person_id"), "anonymous": bool(item.get("anonymous")),
                               "contribution_type": item["contribution_type"], "amount_cents": item["amount_cents"], "received_date": collection["service_date"],
                               "accounting_date": collection["service_date"], "payment_method": {"cash": "cash", "zelle": "zelle"}.get(item["method"], "other"),
-                              "reference": item.get("reference"), "allocations": [{"fund_id": item["fund_id"], "amount_cents": item["amount_cents"], "contribution_type": item["contribution_type"]}],
+                              "reference": item.get("reference"), "allocations": [{"fund_id": item["fund_id"], "amount_cents": item["amount_cents"], "contribution_type": item["contribution_type"], **({"campaign_id": item["campaign_id"]} if item.get("campaign_id") else {})}],
+                              "campaign_id": item.get("campaign_id"), "origin": item.get("origin"),
                               "source": "collection", "collection_id": collection["collection_id"], "collection_item_id": item["item_id"], "journal_entry_id": journal["entry_id"],
                               "deposit_id": None if item["method"] == "cash" else "directo_al_banco", "batch_id": None, "status": "recorded", "is_test": bool(collection.get("is_test")),
                               "created_by_user_id": item.get("created_by_user_id"), "validated_by_user_id": current_user["user_id"], "created_at": now, "updated_at": now})
@@ -837,3 +839,59 @@ async def register_deposit(collection_id: str, payload: DepositInput, current_us
     await db.finance_collections.update_one({"collection_id": collection_id}, update)
     await touch(collection_id, current_user, "deposit_registered", {"deposit_id": deposit_id, "amount_cents": payload.amount_cents, "pending_cents": left})
     return await view(await load_collection(collection_id), current_user)
+
+
+# ------------------------------------------------------------------ aportes que llegan de otros módulos
+# Decisión del dueño: los donativos de Ven y Come y los pagos de Librería NO crean contribuciones por su
+# cuenta: entran como aportes de una colecta («Ven y Come» / «Librería» del día) que Finanzas cuadra y
+# envía, y que una SEGUNDA persona valida. Nadie espera a la pastora.
+EXTERNAL_SOURCES = {"campaign_venycome": "Ven y Come · donativos", "library": "Librería · pagos"}
+
+
+async def register_external_item(*, source: str, source_id: str, service_date: str, amount_cents: int, method: str, contribution_type: str, fund_id: str,
+                                 person_id: Optional[str], reference: Optional[str], note: Optional[str], actor_user_id: str,
+                                 campaign_id: Optional[str] = None, is_test: bool = False) -> dict:
+    """Agrega el aporte a la colecta abierta de ese origen y ese día (la abre si no hay). Devuelve los ids."""
+    if not await db.finance_contribution_types.find_one({"type_key": contribution_type, "active": True}, {"_id": 1}):
+        raise HTTPException(status_code=409, detail=f"Concepto {contribution_type} no configurado en Finanzas")
+    now = now_utc()
+    query = {"source": source, "service_date": service_date, "status": "registering", "is_test": bool(is_test)}
+    collection = await db.finance_collections.find_one(query, {"_id": 0})
+    if not collection:
+        collection_id = str(uuid4())
+        name = EXTERNAL_SOURCES.get(source, source)
+        collection = {"_id": collection_id, "collection_id": collection_id, "service_date": service_date, "service_name": name, "source": source,
+                      "notes": "Se abre sola con los aportes de este módulo; Finanzas la cuadra y la envía, y otra persona la valida.",
+                      "is_test": bool(is_test), "status": "registering", "cash_count": None, "explanations": [],
+                      "opened_by_user_id": actor_user_id, "opened_by_name": name, "opened_at": now,
+                      "timeline": [{"stage": "opened", "label": "Abierta", "by_user_id": actor_user_id, "by_name": name, "at": now}],
+                      "history": [], "created_at": now, "updated_at": now}
+        await db.finance_collections.insert_one(collection)
+        await audit(actor_user_id, "collection_opened", "collection", collection_id, {"service_date": service_date, "source": source, "is_test": bool(is_test)})
+    item_id = str(uuid4())
+    await db.finance_collection_items.insert_one({"_id": item_id, "item_id": item_id, "collection_id": collection["collection_id"], "person_id": person_id, "anonymous": not person_id,
+                                                  "contribution_type": contribution_type, "fund_id": fund_id, "amount_cents": amount_cents, "method": method if method in METHODS else "other",
+                                                  "reference": reference, "note": note, "campaign_id": campaign_id, "origin": {"source": source, "source_id": source_id},
+                                                  "zelle_tx_id": None, "status": "active", "is_test": bool(is_test), "created_by_user_id": actor_user_id, "created_at": now, "updated_at": now, "history": []})
+    await db.finance_collections.update_one({"collection_id": collection["collection_id"]}, {"$set": {"updated_at": now}, "$push": {"history": {
+        "action": "item_added", "by_user_id": actor_user_id, "at": now, "item_id": item_id, "amount_cents": amount_cents, "method": method, "source": source}}})
+    await audit(actor_user_id, "collection_item_added", "collection", collection["collection_id"], {"item_id": item_id, "source": source, "source_id": source_id, "amount_cents": amount_cents})
+    return {"collection_id": collection["collection_id"], "item_id": item_id}
+
+
+async def void_external_item(item_id: str, actor_user_id: str, reason: str) -> None:
+    """Deshacer desde el módulo de origen: solo mientras la colecta se está registrando. Después, Finanzas
+    corrige la colecta (queda historial y se vuelve a validar)."""
+    item = await db.finance_collection_items.find_one({"item_id": item_id}, {"_id": 0})
+    if not item or item["status"] != "active":
+        return
+    collection = await load_collection(item["collection_id"])
+    if collection.get("status") not in OPEN_STATUSES:
+        raise HTTPException(status_code=409, detail="La colecta de Finanzas ya se envió a validación; pida a Finanzas que la corrija (queda historial)")
+    now = now_utc()
+    await db.finance_collection_items.update_one({"item_id": item_id}, {"$set": {"status": "voided", "void_reason": reason, "voided_by_user_id": actor_user_id, "voided_at": now, "zelle_tx_id": None, "updated_at": now}})
+    if item.get("zelle_tx_id"):
+        await db.finance_zelle_received.update_one({"tx_id": item["zelle_tx_id"], "matched_item_id": item_id}, {"$set": {"matched_item_id": None, "matched_at": None}})
+    await db.finance_collections.update_one({"collection_id": collection["collection_id"]}, {"$set": {"updated_at": now}, "$push": {"history": {
+        "action": "item_voided", "by_user_id": actor_user_id, "at": now, "item_id": item_id, "reason": reason}}})
+    await audit(actor_user_id, "collection_item_voided", "collection", collection["collection_id"], {"item_id": item_id, "reason": reason})

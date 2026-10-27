@@ -287,50 +287,26 @@ async def get_or_create_ven_y_come_finance_campaign(fund_id: str, user_id: str) 
 
 
 async def create_finance_deposit_for_donation(donation: dict, payment_method: str, current_user: dict) -> dict:
-    """Registra el donativo verificado como una contribución de Finanzas al fondo Pro-Templo
-    (misma lógica contable de /api/finance/contributions: débito fondos no depositados,
-    crédito ingresos Pro-Templo), etiquetada con el proyecto 'Ven y Come' para diferenciarla
-    de otros ingresos de Pro-Templo."""
+    """El donativo verificado entra a Finanzas como un aporte de la colecta «Ven y Come» del día (fondo
+    Pro-Templo, proyecto «Ven y Come»). Finanzas la cuadra y la envía, y una segunda persona la valida:
+    recién ahí se crea la contribución contabilizada. Nadie espera a la pastora (decisión del dueño)."""
     fund = await db.finance_funds.find_one({"code": "BUILDING"}, {"_id": 0})
     if not fund:
         raise HTTPException(status_code=409, detail="Fondo Pro-Templo no configurado en Finanzas")
-    contribution_type = await db.finance_contribution_types.find_one({"type_key": "building"}, {"_id": 0})
-    if not contribution_type:
-        raise HTTPException(status_code=409, detail="Concepto Pro-Templo no configurado en Finanzas")
-    undeposited = await db.finance_accounts.find_one({"code": "1010"}, {"_id": 0})
-    if not undeposited:
-        raise HTTPException(status_code=409, detail="Configure la cuenta de fondos no depositados en Finanzas")
     finance_campaign = await get_or_create_ven_y_come_finance_campaign(fund["fund_id"], current_user["user_id"])
     person_id, created_new_person = await resolve_donation_person(donation, current_user["user_id"])
-    amount_cents = donation["amount_cents"]
-    label = donor_private_label(donation)
-    description = f"{VEN_Y_COME_CAMPAIGN_NAME} · {label}"
-    lines = [
-        {"account_id": undeposited["account_id"], "fund_id": fund["fund_id"], "campaign_id": finance_campaign["campaign_id"], "debit_cents": amount_cents, "credit_cents": 0, "description": description},
-        {"account_id": contribution_type["revenue_account_id"], "fund_id": fund["fund_id"], "campaign_id": finance_campaign["campaign_id"], "debit_cents": 0, "credit_cents": amount_cents, "description": description},
-    ]
     created_at = donation.get("created_at")
     # F2: el día del donativo en la zona de la iglesia (no en UTC).
     from report_period import local_day, report_zone
     received_date = local_day(created_at if isinstance(created_at, datetime) else now_utc(), await report_zone())
-    journal = await create_journal(current_user["user_id"], received_date, description, "contribution", donation["donation_id"], lines, "submitted")
-    contribution_id = str(uuid4())
-    now = now_utc()
-    contribution_doc = {
-        "_id": contribution_id, "contribution_id": contribution_id,
-        "person_id": person_id, "household_id": None, "anonymous": person_id is None,
-        "contribution_type": "building", "amount_cents": amount_cents,
-        "received_date": received_date, "accounting_date": received_date,
-        "payment_method": payment_method, "reference": f"Ven y Come #{donation['donation_id'][:8]}",
-        "allocations": [{"fund_id": fund["fund_id"], "campaign_id": finance_campaign["campaign_id"], "amount_cents": amount_cents, "contribution_type": "building"}],
-        "source": "manual", "campaign_id": finance_campaign["campaign_id"], "description": description,
-        "notes": "Registrado automáticamente al verificar un donativo de la campaña Ven y Come.",
-        "batch_id": None, "journal_entry_id": journal["entry_id"], "deposit_id": None,
-        "status": "recorded", "created_by_user_id": current_user["user_id"],
-        "updated_by_user_id": current_user["user_id"], "created_at": now, "updated_at": now,
-    }
-    await db.finance_contributions.insert_one(contribution_doc)
-    return {"contribution_id": contribution_id, "person_id": person_id, "created_new_person": created_new_person}
+    from finance_collections import register_external_item
+    registered = await register_external_item(
+        source="campaign_venycome", source_id=donation["donation_id"], service_date=received_date, amount_cents=donation["amount_cents"],
+        method=payment_method, contribution_type="building", fund_id=fund["fund_id"], person_id=person_id,
+        reference=f"Ven y Come #{donation['donation_id'][:8]}", note=f"{VEN_Y_COME_CAMPAIGN_NAME} · {donor_private_label(donation)}",
+        actor_user_id=current_user["user_id"], campaign_id=finance_campaign["campaign_id"], is_test=bool(donation.get("is_test") or donation.get("is_rehearsal")))  # el ensayo no toca Finanzas real
+    return {"contribution_id": None, "collection_id": registered["collection_id"], "collection_item_id": registered["item_id"],
+            "person_id": person_id, "created_new_person": created_new_person}
 
 
 async def donation_doc(donation_id: str) -> dict:
@@ -443,6 +419,7 @@ async def verify_donation(donation_id: str, payload: VerifyDonationInput, curren
     await db.campaign_donations.update_one({"donation_id": donation_id}, {"$set": {
         "verified": True, "verified_at": now_utc(), "verified_by_user_id": current_user["user_id"],
         "verified_payment_method": payload.payment_method, "finance_contribution_id": deposit["contribution_id"],
+        "finance_collection_id": deposit["collection_id"], "finance_collection_item_id": deposit["collection_item_id"],
         "finance_person_id": deposit["person_id"], "updated_at": now_utc(),
     }})
     after = await donation_doc(donation_id)
@@ -460,6 +437,10 @@ async def unverify_donation(donation_id: str, current_user: dict = Depends(opera
         raise HTTPException(status_code=409, detail="Este donativo no está verificado")
     contribution_id = before.get("finance_contribution_id")
     now = now_utc()
+    if before.get("finance_collection_item_id"):
+        # Nuevo flujo: se anula el aporte en la colecta mientras Finanzas aún la registra (queda historial).
+        from finance_collections import void_external_item
+        await void_external_item(before["finance_collection_item_id"], current_user["user_id"], "Verificación revertida en campaña Ven y Come (error del operador)")
     if contribution_id:
         contribution = await db.finance_contributions.find_one({"contribution_id": contribution_id})
         if contribution and contribution.get("status") != "corrected":
@@ -479,7 +460,7 @@ async def unverify_donation(donation_id: str, current_user: dict = Depends(opera
             }})
     await db.campaign_donations.update_one({"donation_id": donation_id}, {"$set": {
         "verified": False, "verified_at": None, "verified_by_user_id": None, "verified_payment_method": None,
-        "finance_contribution_id": None, "finance_person_id": None, "updated_at": now,
+        "finance_contribution_id": None, "finance_collection_id": None, "finance_collection_item_id": None, "finance_person_id": None, "updated_at": now,
     }})
     after = await donation_doc(donation_id)
     await audit("donation_unverified", donation_id, current_user["user_id"], before, after)

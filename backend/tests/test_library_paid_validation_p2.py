@@ -132,7 +132,7 @@ def test_deliver_pagado_exact_price_success(h_pastor, sample_person, test_book):
     after_stock, _ = _holding_central(h_pastor, test_book["book_id"])
     assert after_stock == before_stock - 1
     # Verify finance sync happened
-    assert mv.get("finance_contribution_id"), "expected finance income posted"
+    assert mv.get("finance_collection_item_id"), "expected the payment in the day's Librería colecta"
 
 
 def test_deliver_pagado_overpayment_success(h_pastor, sample_person, test_book):

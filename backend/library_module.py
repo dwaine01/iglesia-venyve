@@ -327,23 +327,25 @@ def map_payment_method(value: Optional[str]) -> str:
 
 
 async def record_library_income(person: dict, book: dict, amount_cents: int, payment_method: Optional[str], actor_user_id: str, movement_id: str) -> Optional[str]:
+    """El pago entra a Finanzas como aporte de la colecta «Librería» del día: Finanzas la cuadra y otra
+    persona la valida (recién ahí cuenta como ingreso). Nadie espera a la pastora (decisión del dueño)."""
     if amount_cents <= 0:
         return None
     try:
-        from finance_routes import Allocation, ContributionCreate, contribution_create
         fund = await db.finance_funds.find_one({"code": "GENERAL", "active": True}, {"_id": 0, "fund_id": 1})
         if not fund:
             return None
-        payload = ContributionCreate(
-            person_id=person["person_id"], amount_cents=amount_cents, received_date=date.today(),
-            payment_method=map_payment_method(payment_method),
-            allocations=[Allocation(fund_id=fund["fund_id"], amount_cents=amount_cents, contribution_type="libreria_material_educativo",
-                                     description=f"Librería · {book['name']} · {person_display_name(person)}")],
-            description=f"Pago de material educativo · {book['name']}", source="manual",
-        )
-        contribution = await contribution_create(payload, {"user_id": actor_user_id})
-        await db.library_movements.update_one({"movement_id": movement_id}, {"$set": {"finance_contribution_id": contribution["contribution_id"]}})
-        return contribution["contribution_id"]
+        await ensure_library_finance_category()
+        from count_rules import church_today
+        from finance_collections import register_external_item
+        method = map_payment_method(payment_method)
+        registered = await register_external_item(
+            source="library", source_id=movement_id, service_date=(await church_today()).isoformat(), amount_cents=amount_cents,
+            method=method if method in {"cash", "zelle"} else "other", contribution_type="libreria_material_educativo", fund_id=fund["fund_id"],
+            person_id=person.get("person_id"), reference=f"Librería #{movement_id[:8]}", note=f"Librería · {book['name']} · {person_display_name(person)}",
+            actor_user_id=actor_user_id)
+        await db.library_movements.update_one({"movement_id": movement_id}, {"$set": {"finance_collection_id": registered["collection_id"], "finance_collection_item_id": registered["item_id"]}})
+        return registered["item_id"]
     except Exception as exc:
         await db.library_movements.update_one({"movement_id": movement_id}, {"$set": {"finance_sync_error": str(exc)}})
         return None

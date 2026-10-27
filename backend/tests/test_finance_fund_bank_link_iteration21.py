@@ -125,9 +125,9 @@ def contrib_ids(pastor_client, catalog):
             "allocations": [{"fund_id": funds[code]["fund_id"], "amount_cents": amount, "contribution_type": c_type}],
             "reference": f"TEST_iter21_{code}_{uuid.uuid4().hex[:6]}",
         }
-        r = pastor_client.post(f"{BASE_URL}/api/finance/contributions", json=payload, timeout=20)
-        assert r.status_code == 201, f"{code}: {r.status_code} {r.text}"
-        created[code] = r.json()["contribution_id"]
+        # Los aportes nuevos van por la Colecta; aquí se prueba el depósito de registros antiguos.
+        from tests.conftest import seed_legacy_contribution
+        created[code] = seed_legacy_contribution(payload)
     return created
 
 

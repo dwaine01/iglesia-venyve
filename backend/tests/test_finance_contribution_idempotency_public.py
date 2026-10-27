@@ -61,60 +61,15 @@ def test_manual_split_and_external_idempotency():
     }
 
     try:
-        first_manual = requests.post(
-            api("/api/finance/contributions"),
-            headers=headers,
-            json={
-                **common,
-                "reference": f"{reference_prefix}-MANUAL-1",
-                "amount_cents": 100,
-                "allocations": [{"fund_id": funds[0]["fund_id"], "amount_cents": 100}],
-                "source": "manual",
-            },
-            timeout=30,
-        )
-        second_manual_split = requests.post(
-            api("/api/finance/contributions"),
-            headers=headers,
-            json={
-                **common,
-                "reference": f"{reference_prefix}-MANUAL-2",
-                "amount_cents": 300,
-                "allocations": [
-                    {"fund_id": funds[0]["fund_id"], "amount_cents": 100},
-                    {"fund_id": funds[1]["fund_id"], "amount_cents": 200},
-                ],
-                "source": "manual",
-            },
-            timeout=30,
-        )
-        assert first_manual.status_code == 201, first_manual.text
-        assert second_manual_split.status_code == 201, second_manual_split.text
-
-        external_id = f"{reference_prefix}-EXTERNAL"
-        external_payload = {
-            **common,
-            "reference": f"{reference_prefix}-CSV",
-            "amount_cents": 250,
-            "allocations": [{"fund_id": funds[0]["fund_id"], "amount_cents": 250}],
-            "source": "csv",
-            "external_transaction_id": external_id,
-        }
-        imported = requests.post(
-            api("/api/finance/contributions"), headers=headers, json=external_payload, timeout=30
-        )
-        duplicate = requests.post(
-            api("/api/finance/contributions"), headers=headers, json=external_payload, timeout=30
-        )
-        missing_external_id = requests.post(
-            api("/api/finance/contributions"),
-            headers=headers,
-            json={**external_payload, "external_transaction_id": ""},
-            timeout=30,
-        )
-
-        assert imported.status_code == 201, imported.text
-        assert duplicate.status_code == 409, duplicate.text
-        assert missing_external_id.status_code == 422, missing_external_id.text
+        # Los aportes nuevos ya no entran por aquí: van por Finanzas › Colecta (registro y validación por una
+        # segunda persona). La regla de transacción externa única sigue probada en test_finance_old_entries_closed.
+        payload = {**common, "reference": f"{reference_prefix}-MANUAL-1", "amount_cents": 100,
+                   "allocations": [{"fund_id": funds[0]["fund_id"], "amount_cents": 100}], "source": "csv", "external_transaction_id": f"{reference_prefix}-EXTERNAL"}
+        for _ in range(2):
+            closed = requests.post(api("/api/finance/contributions"), headers=headers, json=payload, timeout=30)
+            assert closed.status_code == 410, closed.text
+            assert "Colecta" in closed.json()["detail"]
+        listed = requests.get(api("/api/finance/contributions"), headers=headers, timeout=30).json()["items"]
+        assert not [item for item in listed if str(item.get("reference") or "").startswith(reference_prefix)]
     finally:
         cleanup_finance_regression(reference_prefix)

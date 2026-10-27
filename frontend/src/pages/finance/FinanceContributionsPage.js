@@ -118,9 +118,6 @@ export default function FinanceContributionsPage() {
         if (correctionReason.trim().length < 5) { setSaving(false); return toast.error('Indique el motivo de la corrección'); }
         await axios.post(`${API}/api/finance/contributions/${correctionId}/correct`, { reason: correctionReason, correction_date: today(), replacement: payload }, getAuthHeaders());
         toast.success('Corrección registrada sin borrar el original');
-      } else {
-        await axios.post(`${API}/api/finance/contributions`, payload, getAuthHeaders());
-        toast.success('Sobre o contribución registrado con asiento balanceado');
       }
       setForm((current) => ({ ...current, reference: '', envelope_number: '', notes: '', allocations: [emptyLine()] }));
       await load();
@@ -133,8 +130,9 @@ export default function FinanceContributionsPage() {
 
   const types = catalog.contribution_types || [];
   return (
-    <FinanceShell title="Registro rápido de sobres y contribuciones" description="Una Persona 360, varios conceptos y destinos, un solo registro auditable y un asiento balanceado.">
-      <form onSubmit={submit} className="space-y-6 border bg-white p-4 sm:p-6" data-testid="contribution-form">
+    <FinanceShell title="Contribuciones" description="Historial de contribuciones y corrección trazable de registros antiguos.">
+      {!correctionId && <div className="border border-sky-200 bg-sky-50 p-4 text-sm text-sky-900" data-testid="old-entry-closed-notice">Los aportes nuevos (también Ven y Come y Librería) se registran en <Link className="font-semibold underline" to="/finanzas/colecta">Finanzas › Colecta</Link>: Finanzas registra y cuadra, y una segunda persona valida. Aquí queda el historial.</div>}
+      {correctionId && <form onSubmit={submit} className="space-y-6 border bg-white p-4 sm:p-6" data-testid="contribution-form">
         {correctionId && <div className="border-l-4 border-amber-500 bg-amber-50 p-4" data-testid="contribution-correction-banner"><p className="font-semibold">Corrección trazable</p><p className="text-sm">Se conservará el registro original y se generará reversión/ajuste cuando corresponda.</p><Input className="mt-3" value={correctionReason} onChange={(event) => setCorrectionReason(event.target.value)} placeholder="Motivo obligatorio de la corrección" data-testid="contribution-correction-reason" /></div>}
         <section className="grid gap-4 lg:grid-cols-[1.4fr_repeat(4,minmax(0,1fr))]">
           <div className="relative">
@@ -168,7 +166,7 @@ export default function FinanceContributionsPage() {
 
         <div className="grid gap-4 sm:grid-cols-2"><div><Label>Referencia bancaria / cheque</Label><Input className="mt-1" value={form.reference} onChange={(event) => setForm({ ...form, reference: event.target.value })} data-testid="contribution-reference-input" /></div><div><Label>Notas</Label><Textarea className="mt-1 min-h-20" value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} data-testid="contribution-notes-input" /></div></div>
         <div className="flex flex-col gap-3 border-t pt-5 sm:flex-row sm:items-center sm:justify-between"><p className="text-2xl font-semibold" data-testid="contribution-total">Total: <Money cents={totalCents} /></p><Button disabled={saving || !totalCents || form.allocations.some((line) => !line.fund_id || !line.contribution_type)} data-testid="create-contribution-button">{saving ? 'Guardando…' : correctionId ? 'Registrar corrección' : 'Registrar contribución'}</Button></div>
-      </form>
+      </form>}
 
       <section className="mt-8 space-y-2" data-testid="recent-contributions-list"><h2 className="font-['Spectral'] text-2xl font-semibold">Registros recientes</h2>{items.length ? items.slice(0, 30).map((item) => <article key={item.contribution_id} className="flex flex-col justify-between gap-2 border bg-white p-4 sm:flex-row"><div><p className="font-semibold">{item.contribution_type === 'mixed' ? 'Sobre con varios conceptos' : displayLabel(item.contribution_type)} · {item.allocations?.length || 0} concepto(s){item.campaign_name && <span className="ml-2 rounded-full bg-[#B5953F]/15 px-2 py-0.5 text-xs font-semibold text-[#8a6d1f]">{item.campaign_name}</span>}</p><p className="text-xs text-slate-500">{item.received_date} · {displayLabel(item.payment_method)} · {item.anonymous ? 'Anónima' : ((item.donor_hidden ? 'Donante reservado' : item.person_name || `Persona ${item.person_id?.slice(-8)}`))}</p></div><Money cents={item.amount_cents} /></article>) : <FinanceEmpty>No hay contribuciones registradas.</FinanceEmpty>}</section>
     </FinanceShell>
