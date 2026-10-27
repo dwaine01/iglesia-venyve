@@ -842,6 +842,9 @@ async def startup():
     asyncio.create_task(library_ledger_migration())  # vínculos y pendientes de libros (idempotente, en segundo plano)
     await invasion_alerts_ensure_indexes()
     await consolidation_leads_ensure_indexes()
+    # E1 (Equipo y Responsables): anota en el libro de permisos lo que ya dieron los Encargados de Consolidación.
+    from capability_grants import migrate_consolidation_leads
+    await migrate_consolidation_leads()
     await radio_ensure_indexes()
     await campaign_venycome_ensure_indexes()
     await ensure_mentorship_indexes()

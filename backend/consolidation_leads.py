@@ -121,12 +121,12 @@ async def designate_lead(payload: LeadCreate, current_user: dict = Depends(requi
         account_created = True
     elif user.get("is_active") is False:
         raise HTTPException(status_code=409, detail="La cuenta de esta persona está desactivada; reactívela en Gestión de accesos")
-    existing = set(user.get("capabilities") or [])
-    granted = LEAD_CAPABILITIES if account_created else sorted(set(LEAD_CAPABILITIES) - existing)
-    if granted and not account_created:
-        await db.users.update_one({"_id": user["_id"]}, {"$addToSet": {"capabilities": {"$each": granted}}, "$set": {"updated_at": now_utc()}})
-    who = await _name(current_user.get("person_id")) or current_user.get("nombre")
+    # E1: el libro de permisos anota lo que da ESTA designación (si otro cargo ya lo daba, también); lo que la
+    # persona tenía por su cuenta no se anota y por eso nunca se le quita al retirar la designación.
     designation_id = str(uuid4())
+    from capability_grants import grant
+    granted = await grant(user["_id"], LEAD_CAPABILITIES, f"consolidation_lead:{designation_id}", owned=account_created)
+    who = await _name(current_user.get("person_id")) or current_user.get("nombre")
     doc = {"_id": designation_id, "designation_id": designation_id, "person_id": payload.person_id, "user_id": str(user["_id"]),
            "active": True, "granted": granted, "account_created": account_created,
            "designated_by_user_id": current_user["user_id"], "designated_by_name": who, "designated_at": now_utc()}
@@ -143,8 +143,9 @@ async def remove_lead(designation_id: str, current_user: dict = Depends(require_
     if not doc:
         raise HTTPException(status_code=404, detail="Designación activa no encontrada")
     if doc.get("granted") and doc.get("user_id") and ObjectId.is_valid(doc["user_id"]):
-        # Solo se retira lo que dio esta designación; se cierran sus sesiones para que el cambio rija ya.
-        await db.users.update_one({"_id": ObjectId(doc["user_id"])}, {"$pull": {"capabilities": {"$in": doc["granted"]}}, "$inc": {"token_version": 1}, "$set": {"updated_at": now_utc()}})
+        # Solo se retira lo que dio esta designación y que ningún otro cargo da; se cierran sus sesiones.
+        from capability_grants import revoke
+        await revoke(doc["user_id"], f"consolidation_lead:{designation_id}")
     who = await _name(current_user.get("person_id")) or current_user.get("nombre")
     await db.consolidation_lead_designations.update_one({"designation_id": designation_id}, {"$set": {
         "active": False, "removed_by_user_id": current_user["user_id"], "removed_by_name": who, "removed_at": now_utc()}})

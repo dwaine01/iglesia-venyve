@@ -47,6 +47,7 @@ from access_control import (
     CAPABILITY_CATALOG,
     STAFF_TOOLS_CAPABILITIES,
 )
+from capability_grants import sources_by_capability  # noqa: E402 (libro de permisos E1)
 from canonical_identity import IdentityConflictError, ensure_user_person_link, migrate_core_identity
 from server import db, get_current_user
 
@@ -115,6 +116,7 @@ class UserAccessItem(BaseModel):
     onboarding_completed_at: Optional[str] = None
     invitation_token: Optional[str] = None
     permissions_mode: str = "role_defaults"
+    capabilities_by_role: dict = {}
 
 
 class UserAccessList(BaseModel):
@@ -280,6 +282,8 @@ def serialize_user(user: dict) -> dict:
         "onboarding_required": user.get("onboarding_required", False) is True,
         "onboarding_completed_at": user.get("onboarding_completed_at").isoformat().replace("+00:00", "Z") if isinstance(user.get("onboarding_completed_at"), datetime) else user.get("onboarding_completed_at"),
         "permissions_mode": user.get("permissions_mode") or "role_defaults",
+        # E1: qué permisos vienen de un cargo (no se quitan desde Gestión de accesos; se quitan retirando el cargo).
+        "capabilities_by_role": sources_by_capability(user),
     }
 
 
@@ -364,6 +368,15 @@ async def integrity_snapshot() -> dict:
         "duplicate_candidates": duplicates,
         "last_migration": last,
     }
+
+
+@router.post("/migrations/capability-grants/undo", response_model=dict)
+async def undo_capability_grants_migration(current_user: dict = Depends(require_governance)):
+    """Deshace la anotación inicial del libro de permisos (E1). Los permisos de las cuentas no cambian."""
+    if not is_global_pastoral_authority(current_user):
+        raise HTTPException(status_code=403, detail="Solo la autoridad pastoral")
+    from capability_grants import undo_consolidation_leads_migration
+    return await undo_consolidation_leads_migration()
 
 
 @router.get("/integrity", response_model=IntegrityResponse)
@@ -595,6 +608,10 @@ async def update_user_access(
             capabilities = sorted(set(defaults["capabilities"]) | preserved_existing | {item for item in payload.capabilities if item in customizable})
             if requested_role == "pastor" and CORE_GOVERNANCE_MANAGE not in capabilities:
                 capabilities.append(CORE_GOVERNANCE_MANAGE)
+    # E1: lo que da un cargo activo (Encargados de Consolidación, Equipo y Responsables) no se pierde al guardar
+    # aquí; Gestión de accesos edita solo lo dado a mano. Se quita retirando el cargo.
+    from capability_grants import keep_granted
+    capabilities = keep_granted(target, capabilities)
     if "finance" not in requested_groups:
         capabilities = [item for item in capabilities if item not in FINANCE_CAPABILITIES]
     if "board" not in requested_groups:
