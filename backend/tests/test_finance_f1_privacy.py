@@ -66,3 +66,22 @@ async def test_donor_data_only_for_pastora_and_logged():
         await db.finance_contributions.delete_many({"contribution_id": {"$in": contributions}})
         await db.finance_contribution_corrections.delete_many({"original_contribution_id": {"$in": contributions}})
         await fx.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_contributor_search_and_detail_show_vv_code():
+    """Contribuyentes muestra el código VV (vive en person_number) y también se busca por él."""
+    fx, tag = Fixture(), uuid.uuid4().hex[:8]
+    try:
+        pastora = await fx.account(await fx.person(f"PastoraVV{tag}"), "pastora")
+        donor = await fx.person(f"LuisVV{tag}")
+        from bson import ObjectId
+        await db.persons.update_one({"_id": ObjectId(donor)}, {"$set": {"person_number": f"VV-9{tag[:5]}"}})
+        rows = (await pastora.get("/api/finance/contributors/search", params={"search": f"LuisVV{tag}"})).json()["items"]
+        assert rows[0]["vv_number"] == f"VV-9{tag[:5]}"
+        by_code = (await pastora.get("/api/finance/contributors/search", params={"search": f"VV-9{tag[:5]}"})).json()["items"]
+        assert [row["person_id"] for row in by_code] == [donor]
+        detail = (await pastora.get(f"/api/finance/contributors/{donor}")).json()
+        assert detail["person"]["vv_number"] == f"VV-9{tag[:5]}"
+    finally:
+        await fx.cleanup()
