@@ -88,8 +88,11 @@ class Change(BaseModel):
     op: Literal["assign", "remove", "replace"]
     role_id: str
     person_id: Optional[str] = None            # assign / replace: quién entra
-    assignment_id: Optional[str] = None        # remove / replace: a quién sustituye
+    assignment_id: Optional[str] = None        # remove / replace: a quién sustituye (en módulos: su registro)
     reason: Optional[str] = Field(default=None, max_length=300)
+    unit_id: Optional[str] = None              # E4: grupo frontal o ministerio
+    slot: Optional[Literal["leader", "co_leader"]] = None   # E4: grupo frontal
+    reassign_to_person_id: Optional[str] = None             # E4: al quitar la insignia de mentor, a quién pasar su trabajo
 
 
 class ChangeSet(BaseModel):
@@ -108,7 +111,13 @@ async def validate(changes: list[Change], actor: dict) -> list[dict]:
             if role["source"] == "account_role":
                 raise HTTPException(status_code=409, detail=f"«{role['name']}» se cambia en Gestión de accesos")
             if role["source"] != "team":
-                raise HTTPException(status_code=409, detail=f"«{role['name']}» se asigna en su módulo (pronto también desde aquí)")
+                # E4: cargos de otro módulo: mismas reglas y permisos del módulo, sin copiar datos.
+                from team_modules import MODULE_SOURCES, prevalidate
+                if role["source"] not in MODULE_SOURCES:
+                    raise HTTPException(status_code=409, detail=f"«{role['name']}» no se asigna desde aquí")
+                await prevalidate(change, role, actor)
+                plan.append({"change": change, "role": role, "module": True})
+                continue
             ensure_actor_may_assign(actor, role)
             if role["role_id"] not in holders:
                 holders[role["role_id"]] = {doc["assignment_id"]: doc async for doc in db.team_assignments.find({"role_id": role["role_id"], "active": True}, {"_id": 0})}
@@ -182,7 +191,23 @@ async def save_changes(payload: ChangeSet, current_user: dict = Depends(require_
     plan = await validate(payload.changes, current_user)
     change_set_id = str(uuid4())
     events = []
-    for step in plan:
+    # Primero los cambios en otros módulos (son los únicos que pueden fallar al aplicar, p. ej. un mentor con
+    # trabajo pendiente): si uno falla, se informa qué quedó hecho y no se aplica lo de este módulo.
+    from team_modules import apply as module_apply
+    for step in [item for item in plan if item.get("module")]:
+        change, role = step["change"], step["role"]
+        try:
+            result = await module_apply(change, role, current_user)
+        except HTTPException as error:
+            if events:
+                await db.team_events.insert_many(events)
+            raise HTTPException(status_code=409, detail={"message": f"«{role['name']}»: no se pudo aplicar en su módulo. Lo anterior a este cambio sí quedó hecho.",
+                                                         "applied": len(events), "problem": error.detail, "change_set_id": change_set_id})
+        events.append({"_id": str(uuid4()), "change_set_id": change_set_id, "op": change.op, "role_id": role["role_id"], "role_name": role["name"], "area_id": role["area_id"],
+                       "source": role["source"], "unit_id": change.unit_id, "slot": change.slot, "person_id": change.person_id, "module_ref_id": result.get("ref_id"),
+                       "previous_assignment_id": change.assignment_id if change.op == "remove" else None, "reason": change.reason,
+                       "by_user_id": current_user["user_id"], "at": _now(), "is_test": payload.is_test})
+    for step in [item for item in plan if not item.get("module")]:
         change, role, leaving, entering = step["change"], step["role"], step["leaving"], step["entering"]
         if leaving:
             await apply_remove(leaving, current_user, change.reason, change_set_id)
@@ -206,7 +231,9 @@ async def assignments(include_test: bool = False, current_user: dict = Depends(r
         by_role.setdefault(doc["role_id"], []).append({**serialize(doc), "person": await person_card(doc["person_id"])})
     roles = await db.team_roles.find({"active": True, "source": "team"}, {"_id": 0, "role_id": 1, "name": 1, "area_id": 1, "max_holders": 1}).to_list(1000)
     pending = [{"role_id": role["role_id"], "name": role["name"], "area_id": role["area_id"]} for role in roles if not by_role.get(role["role_id"])]
-    return {"by_role": by_role, "pending": pending}
+    from team_modules import module_holders
+    modules = await module_holders(person_card)
+    return {"by_role": by_role, "pending": pending + modules["pending"], "modules": modules["holders"]}
 
 
 @router.get("/history", response_model=dict)
