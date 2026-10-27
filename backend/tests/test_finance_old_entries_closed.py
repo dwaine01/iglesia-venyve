@@ -24,6 +24,7 @@ async def test_venycome_goes_through_collection_and_old_entries_are_closed():
         wanda = await fx.account(await fx.person(f"WandaB{tag}"), "lider", privilege_groups=["finance"], capabilities=BOTH, permissions_mode="manual")
         ana = await fx.account(await fx.person(f"AnaB{tag}"), "lider", privilege_groups=["finance"], capabilities=BOTH, permissions_mode="manual")
         donor = await fx.person(f"DonanteB{tag}")
+        encargado = await fx.account(await fx.person(f"EncargadoB{tag}"), "lider", capabilities=["campaign.venycome.manage"], permissions_mode="manual")
         funds = {item["code"]: item["fund_id"] for item in (await wanda.get("/api/finance/catalog")).json()["funds"]}
 
         # Las pantallas antiguas ya no crean aportes (la pastora: no autorizado).
@@ -37,7 +38,8 @@ async def test_venycome_goes_through_collection_and_old_entries_are_closed():
         donation = (await pastora.post("/api/campaigns/venycome/donations", json={"donor_name": f"DonanteB{tag}", "person_id": donor, "amount_cents": 2500,
                                                                                     "donation_type": "received", "idempotency_key": str(uuid.uuid4())})).json()
         donation_id = donation["donation_id"]
-        verified = await pastora.post(f"/api/campaigns/venycome/donations/{donation_id}/verify", json={"payment_method": "cash"})
+        assert (await pastora.post(f"/api/campaigns/venycome/donations/{donation_id}/receive", json={"payment_method": "cash"})).status_code == 403  # la pastora no
+        verified = await encargado.post(f"/api/campaigns/venycome/donations/{donation_id}/receive", json={"payment_method": "cash"})
         assert verified.status_code == 200, verified.text
         collection_id = verified.json()["finance_collection_id"]
         assert not await db.finance_contributions.find_one({"origin.source_id": donation_id})  # aún no es contribución
@@ -65,7 +67,8 @@ async def test_venycome_goes_through_collection_and_old_entries_are_closed():
         assert journal["status"] == "posted" and all(line.get("campaign_id") for line in journal["lines"])
 
         # Ya validada: deshacer desde Ven y Come pide una corrección de la colecta en Finanzas.
-        assert (await pastora.post(f"/api/campaigns/venycome/donations/{donation_id}/unverify")).status_code == 409
+        assert (await encargado.post(f"/api/campaigns/venycome/donations/{donation_id}/unverify")).status_code == 409
+        assert (await encargado.post(f"/api/campaigns/venycome/donations/{donation_id}/receive", json={"payment_method": "cash"})).status_code == 409  # sin duplicar
 
         # La regla «transacción externa única» sigue en los registros antiguos (correcciones).
         from finance_routes import ContributionCreate, record_contribution

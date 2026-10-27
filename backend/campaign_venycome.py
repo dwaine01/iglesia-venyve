@@ -45,6 +45,14 @@ def operator(current_user: dict = Depends(get_current_user)) -> dict:
     return current_user
 
 
+def receiver(current_user: dict = Depends(get_current_user)) -> dict:
+    """Decisión del dueño: «Recibido» (el dinero llegó y pasa a Finanzas) lo confirma SOLO el encargado de la
+    campaña, con el permiso Operador Ven y Come. La pastora no (aunque tenga Acceso Maestro)."""
+    if is_global_pastoral_authority(current_user) or not has_capability(current_user, CAMPAIGN_VENYCOME_MANAGE):
+        raise HTTPException(status_code=403, detail="«Recibido» lo confirma solo el encargado de la campaña (permiso Operador Ven y Come); la pastora no")
+    return current_user
+
+
 async def audit(action: str, donation_id: Optional[str], actor_user_id: str, before: Optional[dict], after: Optional[dict]):
     await db.campaign_audit_events.insert_one({
         "_id": str(uuid4()), "action": action, "donation_id": donation_id,
@@ -406,29 +414,56 @@ async def delete_donation(donation_id: str, current_user: dict = Depends(operato
     return {"ok": True}
 
 
-@router.post("/donations/{donation_id}/verify", response_model=dict)
-async def verify_donation(donation_id: str, payload: VerifyDonationInput, current_user: dict = Depends(operator)):
+async def receive_into_finance(donation_id: str, payment_method: str, current_user: dict) -> dict:
+    """Recibido (efectivo o Zelle) → aporte de la colecta «Ven y Come» del día, UNA sola vez por donativo."""
     before = await donation_doc(donation_id)
     if before["status"] == "voided":
-        raise HTTPException(status_code=409, detail="No se puede verificar un donativo anulado")
+        raise HTTPException(status_code=409, detail="No se puede recibir un donativo anulado")
     if before.get("verified"):
-        raise HTTPException(status_code=409, detail="Este donativo ya fue verificado")
-    if before["donation_type"] != "received":
-        raise HTTPException(status_code=409, detail="Solo se pueden verificar donativos marcados como recibidos")
-    deposit = await create_finance_deposit_for_donation(before, payload.payment_method, current_user)
+        raise HTTPException(status_code=409, detail="Este donativo ya fue verificado y está en Finanzas")
+    now = now_utc()
+    # Reserva atómica: dos toques (o dos personas) a la vez no meten el mismo donativo dos veces.
+    claimed = await db.campaign_donations.update_one({"donation_id": donation_id, "verified": {"$ne": True}, "finance_claim": {"$exists": False}, "status": {"$ne": "voided"}},
+                                                     {"$set": {"finance_claim": {"by_user_id": current_user["user_id"], "at": now}}})
+    if not claimed.modified_count:
+        raise HTTPException(status_code=409, detail="Este donativo ya se está pasando a Finanzas")
+    try:
+        if before["donation_type"] != "received":
+            await db.campaign_donations.update_one({"donation_id": donation_id}, {"$set": {"donation_type": "received", "received_at": now, "updated_at": now}})
+            before = {**before, "donation_type": "received"}
+        deposit = await create_finance_deposit_for_donation(before, payment_method, current_user)
+    except Exception:
+        await db.campaign_donations.update_one({"donation_id": donation_id}, {"$unset": {"finance_claim": ""}})
+        raise
     await db.campaign_donations.update_one({"donation_id": donation_id}, {"$set": {
         "verified": True, "verified_at": now_utc(), "verified_by_user_id": current_user["user_id"],
-        "verified_payment_method": payload.payment_method, "finance_contribution_id": deposit["contribution_id"],
+        "verified_payment_method": payment_method, "finance_contribution_id": deposit["contribution_id"],
         "finance_collection_id": deposit["collection_id"], "finance_collection_item_id": deposit["collection_item_id"],
         "finance_person_id": deposit["person_id"], "updated_at": now_utc(),
-    }})
+    }, "$unset": {"finance_claim": ""}})
     after = await donation_doc(donation_id)
     await audit("donation_verified", donation_id, current_user["user_id"], before, after)
+    settings = await get_settings()
+    await manager.broadcast({"type": "summary", **(await compute_summary(settings["mode"]))})
     return serialize(after)
 
 
+@router.post("/donations/{donation_id}/receive", response_model=dict)
+async def receive_donation(donation_id: str, payload: VerifyDonationInput, current_user: dict = Depends(receiver)):
+    """Un solo paso: «Recibido (efectivo/Zelle)». Sirve para promesas y para donativos ya anotados como recibidos."""
+    return await receive_into_finance(donation_id, payload.payment_method, current_user)
+
+
+@router.post("/donations/{donation_id}/verify", response_model=dict)
+async def verify_donation(donation_id: str, payload: VerifyDonationInput, current_user: dict = Depends(receiver)):
+    before = await donation_doc(donation_id)
+    if before["donation_type"] != "received" and not before.get("verified"):
+        raise HTTPException(status_code=409, detail="Solo se pueden verificar donativos marcados como recibidos")
+    return await receive_into_finance(donation_id, payload.payment_method, current_user)
+
+
 @router.post("/donations/{donation_id}/unverify", response_model=dict)
-async def unverify_donation(donation_id: str, current_user: dict = Depends(operator)):
+async def unverify_donation(donation_id: str, current_user: dict = Depends(receiver)):
     """Revierte una verificación hecha por error: anula/revierte el depósito contable en
     Finanzas (sin borrar el rastro contable) y deja el donativo activo de nuevo, para poder
     editarlo, anularlo o volver a verificarlo correctamente."""
@@ -483,22 +518,17 @@ async def void_donation(donation_id: str, current_user: dict = Depends(operator)
     return serialize(after)
 
 
+class MarkReceivedInput(BaseModel):
+    payment_method: Optional[Literal["zelle", "cash"]] = None
+
+
 @router.post("/donations/{donation_id}/mark-received", response_model=dict)
-async def mark_received(donation_id: str, current_user: dict = Depends(operator)):
-    before = await donation_doc(donation_id)
-    if before["status"] == "voided":
-        raise HTTPException(status_code=409, detail="No se puede modificar un donativo anulado")
-    if before.get("verified"):
-        raise HTTPException(status_code=409, detail="No se puede modificar un donativo ya verificado/sellado")
-    if before["donation_type"] == "received":
-        raise HTTPException(status_code=409, detail="Ya estaba marcado como recibido")
-    await db.campaign_donations.update_one({"donation_id": donation_id}, {"$set": {"donation_type": "received", "updated_at": now_utc()}})
-    after = await donation_doc(donation_id)
-    await audit("donation_marked_received", donation_id, current_user["user_id"], before, after)
-    settings = await get_settings()
-    summary = await compute_summary(settings["mode"])
-    await manager.broadcast({"type": "summary", **summary})
-    return serialize(after)
+async def mark_received(donation_id: str, payload: Optional[MarkReceivedInput] = None, current_user: dict = Depends(receiver)):
+    """Antes cambiaba solo el estado. Ahora «Recibido» es UN paso que también lo pasa a Finanzas: hay que decir
+    si llegó en efectivo o por Zelle (así nunca queda dinero «recibido» fuera de Finanzas)."""
+    if not payload or not payload.payment_method:
+        raise HTTPException(status_code=422, detail="Diga si llegó en efectivo o por Zelle: al marcarlo recibido pasa a Finanzas")
+    return await receive_into_finance(donation_id, payload.payment_method, current_user)
 
 
 @router.post("/donations/{donation_id}/show", response_model=dict)

@@ -9,6 +9,8 @@ import uuid
 import pytest
 import requests
 
+
+from tests.conftest import campaign_receiver_headers
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "http://localhost:8001").rstrip("/")
 PASTOR = ("qa.baptismui53.pastor@example.com", "QaBaptismUI53!")
 LIDER = ("qa.baptismui53.lider@example.com", "QaBaptismUI53!")
@@ -149,9 +151,12 @@ class TestDonationsCRUD:
         assert s1["pending_cents"] == 10000
         assert s1["received_cents"] == 0
 
-        r = requests.post(f"{API}/donations/{p['donation_id']}/mark-received", headers=pastor_headers)
+        # «Recibido» es un solo paso que también lo pasa a Finanzas: hay que decir efectivo o Zelle.
+        assert requests.post(f"{API}/donations/{p['donation_id']}/mark-received", headers=campaign_receiver_headers()).status_code == 422
+        assert requests.post(f"{API}/donations/{p['donation_id']}/mark-received", headers=pastor_headers, json={"payment_method": "cash"}).status_code == 403  # la pastora no
+        r = requests.post(f"{API}/donations/{p['donation_id']}/mark-received", headers=campaign_receiver_headers(), json={"payment_method": "cash"})
         assert r.status_code == 200
-        assert r.json()["donation_type"] == "received"
+        assert r.json()["donation_type"] == "received" and r.json()["verified"] is True and r.json()["finance_collection_item_id"]
 
         s2 = requests.get(f"{API}/summary", headers=pastor_headers).json()
         assert s2["pending_cents"] == 0
@@ -162,8 +167,10 @@ class TestDonationsCRUD:
         c = requests.post(f"{API}/donations", headers=pastor_headers, json={
             "donor_name": "TEST_AlreadyR", "amount_cents": 500, "donation_type": "received",
             "consent_show_name": True}).json()
-        r = requests.post(f"{API}/donations/{c['donation_id']}/mark-received", headers=pastor_headers)
-        assert r.status_code == 409
+        first = requests.post(f"{API}/donations/{c['donation_id']}/mark-received", headers=campaign_receiver_headers(), json={"payment_method": "zelle"})
+        assert first.status_code == 200
+        r = requests.post(f"{API}/donations/{c['donation_id']}/mark-received", headers=campaign_receiver_headers(), json={"payment_method": "zelle"})
+        assert r.status_code == 409  # nunca entra dos veces a Finanzas
 
     def test_void_donation(self, pastor_headers):
         c = requests.post(f"{API}/donations", headers=pastor_headers, json={

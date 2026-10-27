@@ -17,8 +17,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Checkbox } from '../ui/checkbox';
 import { Textarea } from '../ui/textarea';
 import { formatUsdCents, normalizeSearchText } from '../../lib/campaignFormat';
+import { useAuth } from '../../context/AuthContext';
+import { hasCapability, isPastoralAuthority } from '../../lib/accessControl';
 
 export const CampaignDonationHistory = ({ base, getAuthHeaders, donations, onChanged }) => {
+  const { user } = useAuth();
+  // «Recibido» (pasa a Finanzas) lo confirma solo el encargado de la campaña; la pastora no (el servidor también lo exige).
+  const canReceive = hasCapability(user, 'campaign.venycome.manage') && !isPastoralAuthority(user);
   const [busyId, setBusyId] = useState(null);
   const [editing, setEditing] = useState(null);
   const [verifying, setVerifying] = useState(null);
@@ -51,7 +56,6 @@ export const CampaignDonationHistory = ({ base, getAuthHeaders, donations, onCha
   };
 
   const showAgain = (id) => run(id, () => axios.post(`${base}/donations/${id}/show`, {}, getAuthHeaders()));
-  const markReceived = (id) => run(id, () => axios.post(`${base}/donations/${id}/mark-received`, {}, getAuthHeaders()));
   const voidDonation = (id) => run(id, () => axios.post(`${base}/donations/${id}/void`, {}, getAuthHeaders()));
   const deleteDonation = (id) => run(id, () => axios.delete(`${base}/donations/${id}`, getAuthHeaders()));
   const unverifyDonation = (id) => run(id, async () => {
@@ -108,8 +112,8 @@ export const CampaignDonationHistory = ({ base, getAuthHeaders, donations, onCha
   const confirmVerify = async () => {
     if (!verifying) return;
     await run(verifying.donation_id, async () => {
-      await axios.post(`${base}/donations/${verifying.donation_id}/verify`, { payment_method: verifyMethod }, getAuthHeaders());
-      toast.success('Donativo verificado y depositado en Finanzas (Pro-Templo)');
+      await axios.post(`${base}/donations/${verifying.donation_id}/receive`, { payment_method: verifyMethod }, getAuthHeaders());
+      toast.success('Recibido: pasó a la colecta «Ven y Come» de Finanzas; allí lo cuadran y lo valida una segunda persona');
     });
     setVerifying(null);
   };
@@ -212,7 +216,7 @@ export const CampaignDonationHistory = ({ base, getAuthHeaders, donations, onCha
                         <ShieldCheck className="mr-1 h-3 w-3 inline" />Verificado · {item.verified_payment_method === 'zelle' ? 'Zelle' : 'Efectivo'}
                       </Badge>
                     )}
-                    {item.verified && (
+                    {item.verified && canReceive && (
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
                           <button
@@ -259,12 +263,9 @@ export const CampaignDonationHistory = ({ base, getAuthHeaders, donations, onCha
                       </Button>
                     )}
                     <Button size="icon" variant="ghost" disabled={busyId === item.donation_id || item.status === 'voided'} title="Mostrar de nuevo" onClick={() => showAgain(item.donation_id)} data-testid={`campaign-show-again-${item.donation_id}`}><Eye className="h-4 w-4" /></Button>
-                    {item.donation_type === 'promise' && item.status !== 'voided' && (
-                      <Button size="icon" variant="ghost" disabled={busyId === item.donation_id} title="Marcar recibido" onClick={() => markReceived(item.donation_id)} data-testid={`campaign-mark-received-${item.donation_id}`}><CheckCircle2 className="h-4 w-4 text-emerald-600" /></Button>
-                    )}
-                    {item.donation_type === 'received' && item.status !== 'voided' && !item.verified && (
-                      <Button size="icon" variant="ghost" disabled={busyId === item.donation_id} title="Verificar y depositar en Finanzas (Pro-Templo)" onClick={() => { setVerifying(item); setVerifyMethod('zelle'); }} data-testid={`campaign-verify-${item.donation_id}`}>
-                        <ShieldCheck className="h-4 w-4 text-[#B5953F]" />
+                    {canReceive && item.status !== 'voided' && !item.verified && (
+                      <Button size="sm" variant="outline" disabled={busyId === item.donation_id} title="El dinero llegó: pasa a Finanzas" onClick={() => { setVerifying(item); setVerifyMethod('cash'); }} data-testid={`campaign-receive-${item.donation_id}`}>
+                        <CheckCircle2 className="h-4 w-4 text-emerald-600" />Recibido
                       </Button>
                     )}
                     {item.status !== 'voided' && !item.verified && (
@@ -358,10 +359,10 @@ export const CampaignDonationHistory = ({ base, getAuthHeaders, donations, onCha
       <Dialog open={Boolean(verifying)} onOpenChange={(open) => !open && setVerifying(null)}>
         <DialogContent className="bg-white" data-testid="campaign-verify-dialog">
           <DialogHeader>
-            <DialogTitle>Verificar y sellar donativo</DialogTitle>
+            <DialogTitle>Recibido: pasar a Finanzas</DialogTitle>
             <DialogDescription>
               Confirma que el dinero de {verifying?.anonymous ? 'este donante anónimo' : (verifying?.donor_name || 'este donante')} ({formatUsdCents(verifying?.amount_cents)}) ya llegó a la cuenta.
-              Una vez verificado, no podrá editarse ni borrarse, y se registrará automáticamente como depósito en Finanzas al fondo Pro-Templo.
+              Entra como aporte a la colecta «Ven y Come» del día en Finanzas (fondo Pro-Templo). El efectivo se entrega a Finanzas para contarlo; el Zelle debe coincidir con la transacción del banco. Cuenta como ingreso cuando una segunda persona valida la colecta.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
@@ -374,7 +375,7 @@ export const CampaignDonationHistory = ({ base, getAuthHeaders, donations, onCha
               </SelectContent>
             </Select>
             <Button className="w-full bg-[#132443]" onClick={confirmVerify} data-testid="campaign-verify-confirm-button">
-              <ShieldCheck className="h-4 w-4" />Verificar y sellar
+              <ShieldCheck className="h-4 w-4" />Recibido · pasar a Finanzas
             </Button>
           </div>
         </DialogContent>

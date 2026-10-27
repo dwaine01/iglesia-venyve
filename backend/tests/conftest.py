@@ -94,6 +94,31 @@ def seed_legacy_contribution(fields: dict) -> str:
     return contribution_id
 
 
+CAMPAIGN_RECEIVER = ("qa.campaign.receiver@example.com", "QaCampaignRecv2026!")
+_receiver_token = {}
+
+
+def campaign_receiver_headers(base_url: str | None = None) -> dict:
+    """Decisión del dueño: «Recibido»/verificar en Ven y Come lo hace SOLO el encargado de la campaña (permiso
+    Operador Ven y Come), no la pastora. Cuenta QA con ese permiso, en la base de PRUEBAS."""
+    base_url = (base_url or os.environ["REACT_APP_BACKEND_URL"]).rstrip("/")
+    if base_url not in _receiver_token:
+        client = MongoClient(os.environ["MONGO_URL"])
+        try:
+            client[os.environ["DB_NAME"]].users.update_one({"email": CAMPAIGN_RECEIVER[0]}, {"$set": {
+                "nombre": "QA Encargado Ven y Come", "password": bcrypt.hashpw(CAMPAIGN_RECEIVER[1].encode(), bcrypt.gensalt()).decode(), "rol": "lider", "access_level": "lider",
+                "is_active": True, "token_version": 1, "must_change_password": False, "onboarding_required": False, "permissions_mode": "manual",
+                "privilege_groups": [], "capabilities": ["campaign.venycome.manage"], "access_scope": {"persons": "created_by"}},
+                "$setOnInsert": {"created_at": datetime.now(timezone.utc)}}, upsert=True)
+            client[os.environ["DB_NAME"]].login_attempts.delete_many({})
+        finally:
+            client.close()
+        response = requests.post(f"{base_url}/api/auth/login", json={"email": CAMPAIGN_RECEIVER[0], "password": CAMPAIGN_RECEIVER[1]}, timeout=30)
+        assert response.status_code == 200, response.text
+        _receiver_token[base_url] = response.json()["token"]
+    return {"Authorization": f"Bearer {_receiver_token[base_url]}", "Content-Type": "application/json"}
+
+
 BACKEND_DIR = str(APP_DIR / "backend")
 if BACKEND_DIR not in sys.path:
     sys.path.insert(0, BACKEND_DIR)

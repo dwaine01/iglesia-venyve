@@ -9,6 +9,8 @@ import time
 import pytest
 import requests
 
+
+from tests.conftest import campaign_receiver_headers
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "http://localhost:8001").rstrip("/")
 PASTOR_EMAIL = "qa.baptismui53.pastor@example.com"
 PASTOR_PASSWORD = "QaBaptismUI53!"
@@ -58,7 +60,7 @@ def test_e2e_verify_then_unverify_filters_corrected(h):
 
     # 2. Verify: nuevo flujo, entra como aporte de la colecta «Ven y Come» (todavía no es contribución).
     r = requests.post(f"{BASE_URL}/api/campaigns/venycome/donations/{did}/verify",
-                      json={"payment_method": "zelle"}, headers=h)
+                      json={"payment_method": "zelle"}, headers=campaign_receiver_headers())
     assert r.status_code == 200, r.text
     verified = r.json()
     item_id, collection_id = verified.get("finance_collection_item_id"), verified.get("finance_collection_id")
@@ -71,7 +73,7 @@ def test_e2e_verify_then_unverify_filters_corrected(h):
     assert not [i for i in items if i.get("amount_cents") == 7777 and i.get("collection_item_id") == item_id]
 
     # 5. Unverify: el aporte queda anulado en la colecta (nunca se borra).
-    r = requests.post(f"{BASE_URL}/api/campaigns/venycome/donations/{did}/unverify", headers=h)
+    r = requests.post(f"{BASE_URL}/api/campaigns/venycome/donations/{did}/unverify", headers=campaign_receiver_headers())
     assert r.status_code == 200, r.text
     collection = requests.get(f"{BASE_URL}/api/finance/collections/{collection_id}", headers=h).json()
     assert next(i for i in collection["items"] if i["item_id"] == item_id)["status"] == "voided"

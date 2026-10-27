@@ -9,6 +9,8 @@ Verifies:
 import os
 import time
 import requests
+
+from tests.conftest import campaign_receiver_headers
 import pytest
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/")
@@ -63,7 +65,7 @@ def _create_and_verify_donation(auth_headers, person_id, donor_name, amount=1500
     rv = requests.post(
         f"{BASE_URL}/api/campaigns/venycome/donations/{donation_id}/verify",
         json={"payment_method": method},
-        headers=auth_headers,
+        headers=campaign_receiver_headers(),
     )
     assert rv.status_code == 200, f"Verify failed: {rv.text}"
     return rv.json()

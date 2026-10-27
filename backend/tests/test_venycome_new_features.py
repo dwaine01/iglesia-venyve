@@ -4,6 +4,8 @@ import os
 import pytest
 import requests
 
+
+from tests.conftest import campaign_receiver_headers
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/")
 if not BASE_URL:
     # fallback to frontend .env
@@ -74,7 +76,7 @@ class TestVerifyDonation:
         did = d["donation_id"]
         r = requests.post(
             f"{BASE_URL}/api/campaigns/venycome/donations/{did}/verify",
-            headers=auth_headers,
+            headers=campaign_receiver_headers(),
             json={"payment_method": "zelle"},
             timeout=20,
         )
@@ -98,16 +100,16 @@ class TestVerifyDonation:
     def test_re_verify_returns_409(self, auth_headers):
         d = _create_donation(auth_headers, donor_name="TEST_ReVerify Gamma", amount_cents=10000)
         did = d["donation_id"]
-        r = requests.post(f"{BASE_URL}/api/campaigns/venycome/donations/{did}/verify", headers=auth_headers, json={"payment_method": "cash"}, timeout=20)
+        r = requests.post(f"{BASE_URL}/api/campaigns/venycome/donations/{did}/verify", headers=campaign_receiver_headers(), json={"payment_method": "cash"}, timeout=20)
         assert r.status_code == 200
-        r2 = requests.post(f"{BASE_URL}/api/campaigns/venycome/donations/{did}/verify", headers=auth_headers, json={"payment_method": "cash"}, timeout=15)
+        r2 = requests.post(f"{BASE_URL}/api/campaigns/venycome/donations/{did}/verify", headers=campaign_receiver_headers(), json={"payment_method": "cash"}, timeout=15)
         assert r2.status_code == 409
         assert "verificado" in r2.json().get("detail", "").lower()
 
     def test_cannot_edit_verified(self, auth_headers):
         d = _create_donation(auth_headers, donor_name="TEST_LockedEdit Delta", amount_cents=10000)
         did = d["donation_id"]
-        requests.post(f"{BASE_URL}/api/campaigns/venycome/donations/{did}/verify", headers=auth_headers, json={"payment_method": "zelle"}, timeout=20)
+        requests.post(f"{BASE_URL}/api/campaigns/venycome/donations/{did}/verify", headers=campaign_receiver_headers(), json={"payment_method": "zelle"}, timeout=20)
         r = requests.put(
             f"{BASE_URL}/api/campaigns/venycome/donations/{did}",
             headers=auth_headers,
@@ -119,21 +121,21 @@ class TestVerifyDonation:
     def test_cannot_void_verified(self, auth_headers):
         d = _create_donation(auth_headers, donor_name="TEST_LockedVoid Eps", amount_cents=10000)
         did = d["donation_id"]
-        requests.post(f"{BASE_URL}/api/campaigns/venycome/donations/{did}/verify", headers=auth_headers, json={"payment_method": "zelle"}, timeout=20)
+        requests.post(f"{BASE_URL}/api/campaigns/venycome/donations/{did}/verify", headers=campaign_receiver_headers(), json={"payment_method": "zelle"}, timeout=20)
         r = requests.post(f"{BASE_URL}/api/campaigns/venycome/donations/{did}/void", headers=auth_headers, timeout=15)
         assert r.status_code == 409
 
     def test_cannot_delete_verified(self, auth_headers):
         d = _create_donation(auth_headers, donor_name="TEST_LockedDelete Zeta", amount_cents=10000)
         did = d["donation_id"]
-        requests.post(f"{BASE_URL}/api/campaigns/venycome/donations/{did}/verify", headers=auth_headers, json={"payment_method": "zelle"}, timeout=20)
+        requests.post(f"{BASE_URL}/api/campaigns/venycome/donations/{did}/verify", headers=campaign_receiver_headers(), json={"payment_method": "zelle"}, timeout=20)
         r = requests.delete(f"{BASE_URL}/api/campaigns/venycome/donations/{did}", headers=auth_headers, timeout=15)
         assert r.status_code == 409
 
     def test_cannot_verify_promise(self, auth_headers):
         d = _create_donation(auth_headers, donor_name="TEST_Promise Eta", amount_cents=10000, donation_type="promise")
         did = d["donation_id"]
-        r = requests.post(f"{BASE_URL}/api/campaigns/venycome/donations/{did}/verify", headers=auth_headers, json={"payment_method": "zelle"}, timeout=15)
+        r = requests.post(f"{BASE_URL}/api/campaigns/venycome/donations/{did}/verify", headers=campaign_receiver_headers(), json={"payment_method": "zelle"}, timeout=15)
         assert r.status_code == 409
         assert "recibidos" in r.json().get("detail", "").lower()
 

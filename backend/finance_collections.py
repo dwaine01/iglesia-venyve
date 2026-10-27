@@ -69,6 +69,8 @@ async def ensure_indexes() -> None:
     await db.finance_zelle_received.create_index("dedupe_key", unique=True)
     # Una transacción Zelle solo puede coincidir con un aporte.
     await db.finance_zelle_received.create_index("matched_item_id", unique=True, partialFilterExpression={"matched_item_id": {"$type": "string"}})
+    # Un donativo (o pago de otro módulo) solo puede estar una vez activo en una colecta.
+    await db.finance_collection_items.create_index("origin_key", unique=True, partialFilterExpression={"origin_key": {"$type": "string"}, "status": "active"})
     if not await db.finance_accounts.find_one({"code": "1090"}):
         await db.finance_accounts.update_one({"code": "1090"}, {"$setOnInsert": {"_id": str(uuid4()), "account_id": str(uuid4()), "code": "1090", "name": "Diferencias de efectivo por aclarar",
                                                                                 "account_type": "asset", "active": True, "created_at": now_utc()}}, upsert=True)
@@ -868,10 +870,12 @@ async def register_external_item(*, source: str, source_id: str, service_date: s
                       "history": [], "created_at": now, "updated_at": now}
         await db.finance_collections.insert_one(collection)
         await audit(actor_user_id, "collection_opened", "collection", collection_id, {"service_date": service_date, "source": source, "is_test": bool(is_test)})
+    if await db.finance_collection_items.find_one({"origin_key": f"{source}:{source_id}", "status": "active"}, {"_id": 1}):
+        raise HTTPException(status_code=409, detail="Ese aporte ya está en una colecta de Finanzas")
     item_id = str(uuid4())
     await db.finance_collection_items.insert_one({"_id": item_id, "item_id": item_id, "collection_id": collection["collection_id"], "person_id": person_id, "anonymous": not person_id,
                                                   "contribution_type": contribution_type, "fund_id": fund_id, "amount_cents": amount_cents, "method": method if method in METHODS else "other",
-                                                  "reference": reference, "note": note, "campaign_id": campaign_id, "origin": {"source": source, "source_id": source_id},
+                                                  "reference": reference, "note": note, "campaign_id": campaign_id, "origin": {"source": source, "source_id": source_id}, "origin_key": f"{source}:{source_id}",
                                                   "zelle_tx_id": None, "status": "active", "is_test": bool(is_test), "created_by_user_id": actor_user_id, "created_at": now, "updated_at": now, "history": []})
     await db.finance_collections.update_one({"collection_id": collection["collection_id"]}, {"$set": {"updated_at": now}, "$push": {"history": {
         "action": "item_added", "by_user_id": actor_user_id, "at": now, "item_id": item_id, "amount_cents": amount_cents, "method": method, "source": source}}})
