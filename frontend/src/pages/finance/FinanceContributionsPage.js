@@ -12,6 +12,7 @@ import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { Textarea } from '../../components/ui/textarea';
+import { useFinanceRoles } from '../../components/finance/useFinanceRoles';
 import { useAuth } from '../../context/AuthContext';
 import { displayLabel } from '../../lib/displayLabels';
 
@@ -19,6 +20,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 const emptyLine = () => ({ contribution_type: 'tithe', fund_id: '', campaign_id: '', description: '', amount: '' });
 
 export default function FinanceContributionsPage() {
+  const roles = useFinanceRoles();
   const { API, getAuthHeaders } = useAuth();
   const [searchParams] = useSearchParams();
   const [catalog, setCatalog] = useState({ funds: [], contribution_types: [] });
@@ -132,7 +134,7 @@ export default function FinanceContributionsPage() {
   return (
     <FinanceShell title="Contribuciones" description="Historial de contribuciones y corrección trazable de registros antiguos.">
       {!correctionId && <div className="border border-sky-200 bg-sky-50 p-4 text-sm text-sky-900" data-testid="old-entry-closed-notice">Los aportes nuevos (también Ven y Come y Librería) se registran en <Link className="font-semibold underline" to="/finanzas/colecta">Finanzas › Colecta</Link>: Finanzas registra y cuadra, y una segunda persona valida. Aquí queda el historial.</div>}
-      {correctionId && <form onSubmit={submit} className="space-y-6 border bg-white p-4 sm:p-6" data-testid="contribution-form">
+      {correctionId && roles.manage && <form onSubmit={submit} className="space-y-6 border bg-white p-4 sm:p-6" data-testid="contribution-form">
         {correctionId && <div className="border-l-4 border-amber-500 bg-amber-50 p-4" data-testid="contribution-correction-banner"><p className="font-semibold">Corrección trazable</p><p className="text-sm">Se conservará el registro original y se generará reversión/ajuste cuando corresponda.</p><Input className="mt-3" value={correctionReason} onChange={(event) => setCorrectionReason(event.target.value)} placeholder="Motivo obligatorio de la corrección" data-testid="contribution-correction-reason" /></div>}
         <section className="grid gap-4 lg:grid-cols-[1.4fr_repeat(4,minmax(0,1fr))]">
           <div className="relative">
