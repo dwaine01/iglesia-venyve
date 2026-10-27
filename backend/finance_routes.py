@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field, model_validator
 from pymongo.errors import DuplicateKeyError
 from bson import ObjectId
 
-from access_control import FINANCE_COLLECTION_VERIFY, FINANCE_TREASURY, is_global_pastoral_authority
+from access_control import FINANCE_COLLECTION_VERIFY, FINANCE_TREASURY
 from finance_engine import audit, can_see_donors, deny_pastoral_registration, create_journal, ensure_open_period, log_donor_view, now_utc, require_donor_access, require_finance_manage, require_finance_read, require_finance_role, require_private_person_finance, serialize, validate_lines, without_donor
 from server import db, get_current_user
 
@@ -19,6 +19,10 @@ router = APIRouter(prefix="/api/finance", tags=["finance"])
 def reader(current_user: dict = Depends(get_current_user)) -> dict: require_finance_read(current_user); return current_user
 def manager(current_user: dict = Depends(get_current_user)) -> dict: require_finance_manage(current_user); return current_user
 def private_person_reader(current_user: dict = Depends(get_current_user)) -> dict: require_private_person_finance(current_user); return current_user
+# Roles del flujo (antes del cuerpo de la petición: «no autorizado» va primero).
+def validator(current_user: dict = Depends(get_current_user)) -> dict: require_finance_role(current_user, FINANCE_COLLECTION_VERIFY); return current_user
+def treasurer(current_user: dict = Depends(get_current_user)) -> dict: require_finance_role(current_user, FINANCE_TREASURY); return current_user
+def not_pastoral(current_user: dict = Depends(get_current_user)) -> dict: deny_pastoral_registration(current_user); return current_user
 
 
 class FundCreate(BaseModel):
@@ -319,7 +323,6 @@ async def settings(current_user: dict = Depends(reader)):
 
 @router.put("/settings", response_model=dict)
 async def update_settings(payload: dict, current_user: dict = Depends(manager)):
-    if not is_global_pastoral_authority(current_user): raise HTTPException(status_code=403, detail="Solo Pastor/Pastora puede cambiar la política contable")
     allowed = {key: payload[key] for key in ["accounting_basis", "currency", "fiscal_year_start_month"] if key in payload}
     if allowed.get("accounting_basis") not in {None, "cash", "accrual", "modified_cash"}: raise HTTPException(status_code=422, detail="Base contable no válida")
     await db.finance_settings.update_one({"_id": "primary"}, {"$set": {**allowed, "updated_at": now_utc(), "updated_by_user_id": current_user["user_id"]}})
@@ -398,7 +401,6 @@ async def period_checklist(period_id: str, current_user: dict = Depends(reader))
 
 @router.post("/periods/{period_id}/close", response_model=dict)
 async def period_close(period_id: str, current_user: dict = Depends(manager)):
-    if not is_global_pastoral_authority(current_user): raise HTTPException(status_code=403, detail="El cierre final corresponde a Pastor/Pastora")
     period = await db.finance_periods.find_one({"period_id": period_id})
     if not period: raise HTTPException(status_code=404, detail="Período no encontrado")
     checklist = await build_period_checklist(period)
@@ -409,9 +411,9 @@ async def period_close(period_id: str, current_user: dict = Depends(manager)):
 
 
 @router.post("/periods/{period_id}/reopen", response_model=dict)
-async def period_reopen(period_id: str, payload: dict, current_user: dict = Depends(manager)):
-    if not is_global_pastoral_authority(current_user):
-        raise HTTPException(status_code=403, detail="Solo Pastor/Pastora puede reabrir un período")
+async def period_reopen(period_id: str, payload: dict, current_user: dict = Depends(validator)):
+    # Reabrir un mes cerrado: una persona con el rol Validar, con motivo (queda en la auditoría). Sin la pastora.
+    require_finance_role(current_user, FINANCE_COLLECTION_VERIFY)
     reason = str(payload.get("reason") or "").strip()
     if len(reason) < 5:
         raise HTTPException(status_code=422, detail="Indique el motivo de reapertura")
@@ -435,7 +437,7 @@ async def journal_create(payload: JournalCreate, current_user: dict = Depends(ma
 
 
 @router.post("/journals/{entry_id}/{action}", response_model=dict)
-async def journal_workflow(entry_id: str, action: Literal["submit", "review", "approve", "reject"], current_user: dict = Depends(get_current_user)):
+async def journal_workflow(entry_id: str, action: Literal["submit", "review", "approve", "reject"], current_user: dict = Depends(not_pastoral)):
     # Sin la pastora: Finanzas prepara y una segunda persona con el rol Validar contabiliza (nunca quien lo preparó).
     deny_pastoral_registration(current_user)
     entry = await db.finance_journal_entries.find_one({"entry_id": entry_id})
@@ -557,7 +559,8 @@ OLD_ENTRY_CLOSED = "Los aportes nuevos se registran en Finanzas › Colecta (reg
 
 
 @router.post("/contributions", response_model=dict, status_code=410)
-async def contribution_create_closed(current_user: dict = Depends(reader)):
+async def contribution_create_closed(current_user: dict = Depends(not_pastoral)):
+    require_finance_read(current_user)
     deny_pastoral_registration(current_user)
     raise HTTPException(status_code=410, detail=OLD_ENTRY_CLOSED)
 
@@ -653,7 +656,8 @@ async def record_contribution(payload: ContributionCreate, current_user: dict) -
 
 
 @router.post("/contributions/import-csv", response_model=dict, status_code=410)
-async def import_contributions_csv(current_user: dict = Depends(reader)):
+async def import_contributions_csv(current_user: dict = Depends(not_pastoral)):
+    require_finance_read(current_user)
     deny_pastoral_registration(current_user)
     raise HTTPException(status_code=410, detail=OLD_ENTRY_CLOSED + "; los Zelle del banco se cargan en la Colecta (CSV)")
 
@@ -698,7 +702,8 @@ async def batches(current_user: dict = Depends(reader)):
 
 
 @router.post("/batches", response_model=dict, status_code=410)
-async def batch_create(current_user: dict = Depends(reader)):
+async def batch_create(current_user: dict = Depends(not_pastoral)):
+    require_finance_read(current_user)
     deny_pastoral_registration(current_user)
     # Los conteos ya abiertos pueden terminarse; los nuevos se hacen en la Colecta.
     raise HTTPException(status_code=410, detail=OLD_ENTRY_CLOSED)
@@ -770,7 +775,7 @@ async def expense_create(payload: ExpenseCreate, current_user: dict = Depends(ma
 
 
 @router.post("/expenses/{expense_id}/workflow/{action}", response_model=dict)
-async def expense_workflow(expense_id: str, action: Literal["review", "approve", "reject"], current_user: dict = Depends(get_current_user)):
+async def expense_workflow(expense_id: str, action: Literal["review", "approve", "reject"], current_user: dict = Depends(validator)):
     # Decisión del dueño: Finanzas registra, una segunda persona con el rol Validar aprueba (nunca quien lo
     # registró) y Tesorería paga. La pastora no aprueba gastos. Mismo criterio para todos los montos.
     require_finance_role(current_user, FINANCE_COLLECTION_VERIFY)
@@ -787,7 +792,7 @@ async def expense_workflow(expense_id: str, action: Literal["review", "approve",
 
 
 @router.post("/expenses/{expense_id}/schedule", response_model=dict)
-async def schedule_expense(expense_id: str, payload: PaymentSchedule, current_user: dict = Depends(get_current_user)):
+async def schedule_expense(expense_id: str, payload: PaymentSchedule, current_user: dict = Depends(treasurer)):
     require_finance_role(current_user, FINANCE_TREASURY)
     item = await db.finance_expenses.find_one({"expense_id": expense_id})
     if not item or item.get("status") != "approved":
@@ -807,7 +812,7 @@ async def payments(current_user: dict = Depends(reader)):
 
 
 @router.post("/expenses/{expense_id}/payments", response_model=dict, status_code=201)
-async def pay_expense(expense_id: str, payload: PaymentCreate, current_user: dict = Depends(get_current_user)):
+async def pay_expense(expense_id: str, payload: PaymentCreate, current_user: dict = Depends(treasurer)):
     require_finance_role(current_user, FINANCE_TREASURY)
     item = await db.finance_expenses.find_one({"expense_id": expense_id})
     if not item or item["status"] not in {"approved", "scheduled"}: raise HTTPException(status_code=409, detail="El gasto debe estar validado por una segunda persona")
@@ -830,8 +835,8 @@ async def deposits(current_user: dict = Depends(reader)): return {"items": seria
 
 
 @router.post("/deposits", response_model=dict, status_code=201)
-async def deposit_create(payload: DepositCreate, current_user: dict = Depends(manager)):
-    deny_pastoral_registration(current_user)
+async def deposit_create(payload: DepositCreate, current_user: dict = Depends(treasurer)):
+    require_finance_role(current_user, FINANCE_TREASURY)  # Tesorería deposita (registros antiguos)
     # F2: una contribución corregida ya no existe para el banco (su reemplazo es la que vale).
     contributions = await db.finance_contributions.find({"contribution_id": {"$in": payload.contribution_ids}, "deposit_id": None, "status": {"$ne": "corrected"}}, {"_id": 0}).to_list(1000)
     if len(contributions) != len(set(payload.contribution_ids)): raise HTTPException(status_code=422, detail="Hay contribuciones inexistentes, corregidas o ya depositadas")
@@ -864,8 +869,8 @@ class DepositAdjustment(BaseModel):
 
 
 @router.post("/deposits/{deposit_id}/resolve-adjustment", response_model=dict)
-async def deposit_resolve_adjustment(deposit_id: str, payload: DepositAdjustment, current_user: dict = Depends(manager)):
-    deny_pastoral_registration(current_user)
+async def deposit_resolve_adjustment(deposit_id: str, payload: DepositAdjustment, current_user: dict = Depends(treasurer)):
+    require_finance_role(current_user, FINANCE_TREASURY)  # Tesorería deposita (registros antiguos)
     """F2: una contribución corregida que ya estaba depositada deja el depósito en «ajuste requerido».
     Aquí se cierra ese ajuste: el reemplazo queda dentro del mismo depósito (no se vuelve a depositar) y,
     si cambió el fondo o el monto, un asiento de ajuste mueve banco ↔ fondos no depositados por fondo.

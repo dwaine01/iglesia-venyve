@@ -9,7 +9,7 @@ trabados para siempre. Esta migración:
   `migracion_nuevo_flujo` (quién y cuándo). Gastos, pagos, asientos manuales y transferencias NO se tocan.
 - `undo`: devuelve cada asiento a su estado anterior desde el respaldo (si no fue conciliado después).
 
-Solo la autoridad pastoral o el dueño la ejecuta, escribiendo la frase de confirmación. Nada se borra.
+La ejecuta el equipo de Finanzas o Tesorería (nunca la pastora), escribiendo la frase de confirmación. Nada se borra.
 """
 from datetime import datetime, timezone
 from uuid import uuid4
@@ -17,8 +17,8 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from access_control import is_global_pastoral_authority
-from finance_engine import audit, serialize
+from access_control import FINANCE_TREASURY
+from finance_engine import audit, has_finance_manage, has_finance_role, require_finance_manage, require_finance_read, serialize
 from server import db, get_current_user
 
 router = APIRouter(prefix="/api/finance/migration", tags=["finance-migration"])
@@ -28,8 +28,14 @@ PHRASE = "CONTABILIZAR PENDIENTES"
 
 
 def require_owner(current_user: dict = Depends(get_current_user)) -> dict:
-    if not is_global_pastoral_authority(current_user):
-        raise HTTPException(status_code=403, detail="La migración la ejecuta la autoridad pastoral o el dueño")
+    """La migración la ejecuta el equipo de Finanzas o Tesorería (decisión del dueño), nunca la pastora."""
+    if not (has_finance_role(current_user, FINANCE_TREASURY) or has_finance_manage(current_user)):
+        require_finance_manage(current_user)
+    return current_user
+
+
+def viewer(current_user: dict = Depends(get_current_user)) -> dict:
+    require_finance_read(current_user)  # la vista previa es solo lectura: también la pastora
     return current_user
 
 
@@ -38,7 +44,7 @@ def pending_query() -> dict:
 
 
 @router.get("/preview", response_model=dict)
-async def preview(current_user: dict = Depends(require_owner)):
+async def preview(current_user: dict = Depends(viewer)):
     rows = await db.finance_journal_entries.aggregate([{"$match": pending_query()}, {"$group": {"_id": {"source_type": "$source_type", "status": "$status"}, "count": {"$sum": 1}, "cents": {"$sum": "$total_debit_cents"}}}]).to_list(50)
     untouched = await db.finance_journal_entries.count_documents({"source_type": {"$nin": SOURCE_TYPES}, "status": {"$in": PENDING}})
     return {"pending": [{"source_type": row["_id"]["source_type"], "status": row["_id"]["status"], "count": row["count"], "total_cents": row["cents"]} for row in rows],

@@ -16,6 +16,13 @@ PASTOR_EMAIL = "qa.baptismui53.pastor@example.com"
 PASSWORD = "QaBaptismUI53!"
 
 
+
+def _finance_team_headers():
+    """La orden de compra la decide el equipo de Finanzas; la pastora solo consulta Finanzas (decisión del dueño)."""
+    import os
+    from tests.conftest import finance_team_token
+    return {"Authorization": f"Bearer {finance_team_token(os.environ['REACT_APP_BACKEND_URL'])}", "Content-Type": "application/json"}
+
 def _login(email: str) -> dict:
     r = requests.post(f"{BASE_URL}/api/auth/login", json={"email": email, "password": PASSWORD}, timeout=30)
     assert r.status_code == 200, f"login failed: {r.status_code} {r.text}"
@@ -87,7 +94,7 @@ class TestPOApproveFlow:
 
     def test_approve_creates_expense(self, pastor):
         r = requests.post(f"{BASE_URL}/api/library/purchase-orders/{self.po_id}/decision",
-                          headers=_h(pastor["token"]), json={"action": "approve", "note": "OK"}, timeout=30)
+                          headers=_finance_team_headers(), json={"action": "approve", "note": "OK"}, timeout=30)
         assert r.status_code == 200, r.text
         po = r.json()
         assert po["status"] == "approved"
@@ -184,7 +191,7 @@ class TestPORejectFlow:
         rs = requests.post(f"{BASE_URL}/api/library/purchase-orders/{self.po_id}/submit", headers=_h(pastor["token"]), json={}, timeout=30)
         assert rs.status_code == 200
         rj = requests.post(f"{BASE_URL}/api/library/purchase-orders/{self.po_id}/decision",
-                           headers=_h(pastor["token"]), json={"action": "reject", "note": "no"}, timeout=30)
+                           headers=_finance_team_headers(), json={"action": "reject", "note": "no"}, timeout=30)
         assert rj.status_code == 200
         po = rj.json()
         assert po["status"] == "rejected"
@@ -205,7 +212,7 @@ class TestPORequestChangesFlow:
         TestPORequestChangesFlow.po_id = pid
         requests.post(f"{BASE_URL}/api/library/purchase-orders/{pid}/submit", headers=_h(pastor["token"]), json={}, timeout=30)
         rc = requests.post(f"{BASE_URL}/api/library/purchase-orders/{pid}/decision",
-                           headers=_h(pastor["token"]), json={"action": "request_changes", "note": "adjust"}, timeout=30)
+                           headers=_finance_team_headers(), json={"action": "request_changes", "note": "adjust"}, timeout=30)
         assert rc.status_code == 200
         assert rc.json()["status"] == "changes_requested"
         # Edit is allowed only in draft, changes_requested should allow resubmit

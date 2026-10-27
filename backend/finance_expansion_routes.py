@@ -13,7 +13,6 @@ from fastapi.responses import StreamingResponse
 from motor.motor_asyncio import AsyncIOMotorGridFSBucket
 from pydantic import BaseModel, Field
 
-from access_control import is_global_pastoral_authority
 from finance_engine import audit, can_see_donors, create_journal, ensure_open_period, log_donor_view, now_utc, require_donor_access, require_finance_manage, require_finance_read, serialize, without_donor
 from finance_routes import ContributionCreate, ExpenseCreate, expense_create, record_contribution
 from server import db, get_current_user
@@ -35,8 +34,9 @@ def manager(current_user: dict = Depends(get_current_user)) -> dict:
 
 
 def require_pastor(current_user: dict) -> None:
-    if not is_global_pastoral_authority(current_user):
-        raise HTTPException(status_code=403, detail="Esta configuración corresponde a Pastor/Pastora")
+    """Antes: «solo la pastora». Decisión del dueño: la configuración la hace el equipo de Finanzas
+    (Administrar Finanzas); la pastora solo consulta."""
+    require_finance_manage(current_user)
 
 
 class ContributionTypeInput(BaseModel):
@@ -281,7 +281,7 @@ async def annual_statement_settings_update(payload: StatementSettingsInput, curr
 
 @router.post("/contributors/{person_id}/annual-statements/{year}", response_model=dict, status_code=201)
 async def annual_statement_generate(person_id: str, year: int, current_user: dict = Depends(manager)):
-    require_donor_access(current_user)
+    require_donor_access(current_user)  # Finanzas con «Ver aportes por persona»; la pastora no genera (solo consulta)
     if year < 2000 or year > 2200:
         raise HTTPException(status_code=422, detail="Año no válido")
     summary = await contribution_summary(person_id, year=year)

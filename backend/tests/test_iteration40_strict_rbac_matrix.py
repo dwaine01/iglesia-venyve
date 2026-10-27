@@ -177,17 +177,18 @@ def test_pastora_has_global_finance_board_and_private_profile_access(rbac_matrix
     assert profile.status_code == 200 and profile.json()["private_finance_can_read"] is True
 
 
-def test_pastora_can_write_finance_without_restricted_group(rbac_matrix):
+def test_pastora_reads_finance_but_cannot_write(rbac_matrix):
+    # Decisión del dueño: la pastora solo consulta Finanzas; cualquier cambio suyo es «no autorizado».
     state = rbac_matrix
     token = state["tokens"]["pastora"]
+    assert requests.get(f"{BASE_URL}/api/finance/dashboard", headers=auth(token), timeout=30).status_code == 200
     vendor = requests.post(
         f"{BASE_URL}/api/finance/vendors",
         headers=auth(token),
         json={"name": f"QA Pastora Vendor I40 {uuid4().hex[:6]}"},
         timeout=30,
     )
-    assert vendor.status_code == 201, vendor.text
-    state["vendors"].append(vendor.json()["vendor_id"])
+    assert vendor.status_code == 403, vendor.text
 
 
 def test_coordinator_defaults_deny_even_with_stale_restricted_capabilities(rbac_matrix):
