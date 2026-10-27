@@ -289,8 +289,8 @@ CAPABILITY_CATALOG = [
         {"capability": FINANCE_READ, "action": "consultar", "label": "Consultar: Finanzas"},
         {"capability": FINANCE_MANAGE, "action": "administrar", "label": "Administrar: Finanzas"},
         {"capability": FINANCE_COLLECTION_RECORD, "action": "agregar", "label": "Colecta: registrar aportes (Finanzas)"},
-        {"capability": FINANCE_COLLECTION_VERIFY, "action": "administrar", "label": "Colecta: validar el cuadre (segunda persona)"},
-        {"capability": FINANCE_TREASURY, "action": "administrar", "label": "Tesorería: recibir efectivo y depositar"},
+        {"capability": FINANCE_COLLECTION_VERIFY, "action": "administrar", "label": "Validar (segunda persona): colecta, gastos y asientos"},
+        {"capability": FINANCE_TREASURY, "action": "administrar", "label": "Tesorería: recibir efectivo, depositar y pagar gastos"},
         {"capability": FINANCE_DONORS_READ, "action": "consultar", "label": "Ver aportes por persona (cada consulta queda registrada)"},
     ]},
     {"module_key": "board", "label": "Junta Directiva (requiere grupo de privilegio Junta)", "items": [
