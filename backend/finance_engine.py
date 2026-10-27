@@ -174,7 +174,7 @@ async def ensure_indexes_and_seed():
 # ------------------------------------------------------------------ F1: privacidad de lo que da cada persona
 # Decisión del dueño: lo que cada persona da lo ve SOLO la pastora (autoridad pastoral); el resto de
 # Finanzas ve totales sin nombres, y cada consulta de datos por persona queda registrada.
-DONOR_FIELDS = ("person_id", "person_name", "household_id", "envelope_number", "reference", "notes", "description", "replaced_by_contribution_id", "corrects_contribution_id")
+DONOR_FIELDS = ("person_id", "person_name", "donor_name", "household_id", "envelope_number", "reference", "notes", "description", "replaced_by_contribution_id", "corrects_contribution_id")
 
 
 def has_finance_role(current_user: dict, capability: str) -> bool:

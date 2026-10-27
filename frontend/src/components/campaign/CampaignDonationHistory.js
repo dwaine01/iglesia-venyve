@@ -18,6 +18,7 @@ import { Checkbox } from '../ui/checkbox';
 import { Textarea } from '../ui/textarea';
 import { formatUsdCents, normalizeSearchText } from '../../lib/campaignFormat';
 import { useAuth } from '../../context/AuthContext';
+import { PersonPicker } from '../dedication/PersonPicker';
 import { hasCapability, isPastoralAuthority } from '../../lib/accessControl';
 
 export const CampaignDonationHistory = ({ base, getAuthHeaders, donations, onChanged }) => {
@@ -27,6 +28,9 @@ export const CampaignDonationHistory = ({ base, getAuthHeaders, donations, onCha
   const [busyId, setBusyId] = useState(null);
   const [editing, setEditing] = useState(null);
   const [verifying, setVerifying] = useState(null);
+  const [linking, setLinking] = useState(null);
+  const [linkPerson, setLinkPerson] = useState(null);
+  const [linkCandidates, setLinkCandidates] = useState([]);
   const [verifyMethod, setVerifyMethod] = useState('zelle');
   const [search, setSearch] = useState('');
   const [paymentFilter, setPaymentFilter] = useState('all');
@@ -118,6 +122,18 @@ export const CampaignDonationHistory = ({ base, getAuthHeaders, donations, onCha
     setVerifying(null);
   };
 
+  const linkTo = async (body) => {
+    if (!linking) return;
+    try {
+      await axios.post(`${base}/donations/${linking.donation_id}/link-person`, body, getAuthHeaders());
+      toast.success('Vinculado a Persona 360 (también en Finanzas)'); setLinking(null); onChanged?.();
+    } catch (error) {
+      const detail = error?.response?.data?.detail;
+      if (detail?.candidates) { setLinkCandidates(detail.candidates); toast.error(detail.message); }
+      else toast.error(typeof detail === 'string' ? detail : 'No se pudo vincular');
+    }
+  };
+
   const saveEdit = async () => {
     if (!editing) return;
     try {
@@ -203,7 +219,7 @@ export const CampaignDonationHistory = ({ base, getAuthHeaders, donations, onCha
                 data-testid={`campaign-donation-row-${item.donation_id}`}
                 className={isPendingVerification(item) ? 'border-l-4 border-l-amber-400 bg-amber-50/60' : ''}
               >
-                <TableCell>{item.anonymous ? 'Anónimo' : (item.donor_name || '—')} {item.person_id && !item.anonymous && <Badge variant="outline" className="ml-1 border-emerald-300 text-emerald-700" data-testid={`campaign-person-linked-badge-${item.donation_id}`}>360</Badge>}</TableCell>
+                <TableCell>{item.anonymous ? 'Anónimo' : (item.donor_name || '—')} {item.person_id && !item.anonymous && <Badge variant="outline" className="ml-1 border-emerald-300 text-emerald-700" data-testid={`campaign-person-linked-badge-${item.donation_id}`}>360</Badge>}{!item.person_id && !item.anonymous && <><Badge variant="outline" className="ml-1 border-amber-300 text-amber-800" data-testid={`campaign-no-person-badge-${item.donation_id}`}>sin Persona 360</Badge>{canReceive && item.status !== 'voided' && <button type="button" className="ml-1 text-xs text-[#132443] underline" onClick={() => { setLinking(item); setLinkPerson(null); setLinkCandidates([]); }} data-testid={`campaign-link-person-${item.donation_id}`}>Vincular a Persona 360</button>}</>}</TableCell>
                 <TableCell className="font-semibold">{formatUsdCents(item.amount_cents)}</TableCell>
                 <TableCell><Badge variant="outline">{item.donation_type === 'received' ? 'Recibido' : 'Promesa'}</Badge></TableCell>
                 <TableCell>
@@ -353,6 +369,25 @@ export const CampaignDonationHistory = ({ base, getAuthHeaders, donations, onCha
               <Button className="w-full bg-[#132443]" onClick={saveEdit} data-testid="campaign-edit-save-button">Guardar cambios</Button>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(linking)} onOpenChange={(open) => !open && setLinking(null)}>
+        <DialogContent className="bg-white" data-testid="campaign-link-person-dialog">
+          <DialogHeader>
+            <DialogTitle>Vincular a Persona 360</DialogTitle>
+            <DialogDescription>Busque primero si «{linking?.donor_name}» ya existe; solo si no está, créela. Así no se duplica.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <PersonPicker label="Persona existente" value={linkPerson} onSelect={setLinkPerson} testId="campaign-link-person-picker" />
+            <Button className="w-full bg-[#132443]" disabled={!linkPerson} onClick={() => linkTo({ person_id: linkPerson.person_id })} data-testid="campaign-link-existing">Vincular a la persona elegida</Button>
+            {linkCandidates.length > 0 && <div className="rounded border border-amber-300 bg-amber-50 p-2 text-sm" data-testid="campaign-link-candidates">
+              <p className="font-semibold">Se parece a:</p>
+              {linkCandidates.map((candidate) => <button key={candidate.person_id} type="button" className="block w-full py-1 text-left underline" onClick={() => linkTo({ person_id: candidate.person_id })}>{[candidate.nombre, candidate.apellido].filter(Boolean).join(' ') || candidate.nombre_completo} · {candidate.person_number || ''}</button>)}
+              <button type="button" className="mt-1 text-xs text-slate-600 underline" onClick={() => { const reason = window.prompt('¿Por qué es otra persona?'); if (reason && reason.trim().length >= 3) linkTo({ create: true, confirm_distinct_person: true, distinct_reason: reason.trim() }); }}>Es otra persona: crearla igual</button>
+            </div>}
+            <Button variant="outline" className="w-full" onClick={() => linkTo({ create: true })} data-testid="campaign-link-create">No existe: crear Persona 360 con este nombre</Button>
+          </div>
         </DialogContent>
       </Dialog>
 

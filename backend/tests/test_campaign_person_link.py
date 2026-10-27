@@ -37,6 +37,9 @@ def test_person(auth_headers):
         "idempotency_key": f"test-person-link-{int(time.time())}",
     }
     r = requests.post(f"{BASE_URL}/api/core/persons", json=payload, headers=auth_headers)
+    if r.status_code == 409:  # ya existe de una corrida anterior: se usa la misma (no se duplica)
+        data = r.json()["detail"]["candidates"][0]
+        return {"person_id": data["person_id"], "nombre_completo": "TESTPersonLink CampaignQA"}
     assert r.status_code in (200, 201), f"Person create failed: {r.status_code} {r.text}"
     data = r.json()
     person_id = data.get("person_id") or data.get("id") or data.get("_id")
@@ -133,7 +136,7 @@ class TestBackwardCompat:
         d = _mk_donation(auth_headers, person_id=None, donor_name="TEST Legacy Free Text Donor Unique XYZ")
         assert d.get("person_id") in (None, "")
 
-    def test_verify_without_person_id_falls_back_to_name_matching(self, auth_headers):
+    def test_verify_without_person_id_enters_without_person360(self, auth_headers):
         d = _mk_donation(auth_headers, person_id=None, donor_name="TEST Legacy FreeText Unique Donor")
         donation_id = d["donation_id"]
         r = requests.post(
@@ -143,6 +146,7 @@ class TestBackwardCompat:
         )
         assert r.status_code == 200, f"Verify failed: {r.status_code} {r.text}"
         after = r.json()
-        # Fallback should produce some finance_person_id (new or matched)
-        assert after.get("finance_person_id"), "Fallback flow should produce a finance_person_id"
+        # Decisión del dueño: ya no se busca ni se crea una persona por el nombre; entra «sin Persona 360»
+        # con el nombre tal como lo dieron y se vincula después con «Vincular a Persona 360».
+        assert after.get("finance_person_id") is None and after.get("finance_collection_item_id")
         assert after.get("verified") is True
