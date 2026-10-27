@@ -865,6 +865,9 @@ async def pay_expense(expense_id: str, payload: PaymentCreate, current_user: dic
     if not item or item["status"] not in {"approved", "scheduled"}: raise HTTPException(status_code=409, detail="El gasto debe estar validado por una segunda persona")
     if item.get("payment_id"):
         raise HTTPException(status_code=409, detail="El pago ya fue registrado")
+    # Decisión del dueño: quien APROBÓ el gasto no lo paga; quien lo registró sí puede (la tesorera no siempre está).
+    if item.get("approved_by_user_id") == current_user["user_id"]:
+        raise HTTPException(status_code=403, detail="Quien aprobó el gasto no puede pagarlo; debe pagarlo otra persona de Tesorería")
     bank = await db.finance_accounts.find_one({"account_id": payload.bank_account_id, "account_type": "asset", "active": True})
     if not bank: raise HTTPException(status_code=422, detail="Cuenta bancaria no válida")
     lines = []
