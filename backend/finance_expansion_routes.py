@@ -181,7 +181,7 @@ async def contribution_summary(
                 "updated_by_user_id": contribution.get("updated_by_user_id"),
             })
     return {
-        "person": {"person_id": canonical_id, "name": person_name(person), "vv_number": person.get("vv_number")},
+        "person": {"person_id": canonical_id, "name": person_name(person), "vv_number": person.get("person_number") or person.get("vv_number")},
         "filters": {"year": year, "start": start.isoformat() if start else None, "end": end.isoformat() if end else None, "contribution_type": contribution_type, "fund_id": fund_id, "payment_method": payment_method},
         "total_cents": sum(item["amount_cents"] for item in rows),
         "reportable_total_cents": reportable_total,
@@ -228,11 +228,11 @@ async def contribution_type_update(type_key: str, payload: ContributionTypeInput
 @router.get("/contributors/search", response_model=dict)
 async def contributor_search(search: str = Query(min_length=2, max_length=120), current_user: dict = Depends(reader)):
     safe = re.escape(search.strip())
-    people = await db.persons.find({"$or": [{"nombre": {"$regex": safe, "$options": "i"}}, {"apellido": {"$regex": safe, "$options": "i"}}, {"display_name": {"$regex": safe, "$options": "i"}}, {"email": {"$regex": safe, "$options": "i"}}]}).limit(20).to_list(20)
+    people = await db.persons.find({"$or": [{"nombre": {"$regex": safe, "$options": "i"}}, {"apellido": {"$regex": safe, "$options": "i"}}, {"display_name": {"$regex": safe, "$options": "i"}}, {"email": {"$regex": safe, "$options": "i"}}, {"person_number": {"$regex": safe, "$options": "i"}}]}).limit(20).to_list(20)
     items = []
     for person in people:
         pid = person.get("person_id") or str(person.get("_id"))
-        row = {"person_id": pid, "name": person_name(person), "vv_number": person.get("vv_number")}
+        row = {"person_id": pid, "name": person_name(person), "vv_number": person.get("person_number") or person.get("vv_number")}  # el código VV vive en person_number
         if can_see_donors(current_user):  # cuántas veces dio = dato de ofrendas: solo la pastora
             row["contribution_count"] = await db.finance_contributions.count_documents({"person_id": pid, "status": {"$ne": "corrected"}, "is_test": {"$ne": True}})
         items.append(row)
