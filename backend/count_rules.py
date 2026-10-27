@@ -53,7 +53,6 @@ async def open_consolidation_by_mentor(mentor_ids: list[str]) -> dict[str, int]:
 async def staff_and_team_person_ids() -> tuple[set, set]:
     """(cuentas del sistema/pastorales, líderes y mentores) por person_id, enlazados por la cuenta
     (users.person_id) o por la persona (persons.auth_user_id)."""
-    from bson import ObjectId
     from access_control import is_global_pastoral_authority
     users = await db.users.find({}, {"_id": 1, "person_id": 1, "rol": 1, "role": 1, "access_level": 1, "is_active": 1}).to_list(20000)
     by_user = {str(user["_id"]): user for user in users}
@@ -115,3 +114,22 @@ async def people_without_mentor(limit: int = 500) -> list[dict]:
             async for doc in db.persons.find({"_id": {"$in": candidates}, "is_archived": {"$ne": True}, "is_test": {"$ne": True}}, {"nombre": 1, "apellido": 1})]
     rows.sort(key=lambda row: row["nombre"].lower())
     return rows[:limit]
+
+
+
+# ------------------------------------------------------------------ una sola regla para «cuántas personas»
+PERSON_COUNT_RULE = ("Personas activas de Persona 360: no cuenta las archivadas (incluidas las fusionadas como duplicado) "
+                     "ni las marcadas de prueba o excluidas en «Datos de prueba».")
+
+
+async def person_count_breakdown() -> dict:
+    """La MISMA cifra para Panel General, Estadísticas Globales y Gobierno del Núcleo, con lo que excluye."""
+    from report_period import SETTINGS_ID
+    settings = await db.app_settings.find_one({"_id": SETTINGS_ID}, {"_id": 0, "person_ids": 1}) or {}
+    from bson import ObjectId
+    excluded_oids = [ObjectId(pid) for pid in settings.get("person_ids") or [] if ObjectId.is_valid(str(pid))]
+    total = await db.persons.count_documents({})
+    archived = await db.persons.count_documents({"is_archived": True})
+    test = await db.persons.count_documents({"is_archived": {"$ne": True}, "is_test": True})
+    excluded = await db.persons.count_documents({"_id": {"$in": excluded_oids}, "is_archived": {"$ne": True}, "is_test": {"$ne": True}}) if excluded_oids else 0
+    return {"counted": total - archived - test - excluded, "registered": total, "archived": archived, "test": test, "excluded": excluded, "rule": PERSON_COUNT_RULE}

@@ -183,7 +183,9 @@ async def summary(period: Literal["today", "week", "month", "quarter", "year", "
     require_section(current_user, "summary")
     p = await resolve(period, date_from, date_to)
     excluded = await excluded_ids()
-    persons_total = await db.persons.count_documents({"is_archived": {"$ne": True}, "is_test": {"$ne": True}})
+    from count_rules import person_count_breakdown
+    person_counts = await person_count_breakdown()
+    persons_total = person_counts["counted"]
     new_now = await db.persons.count_documents({"is_archived": {"$ne": True}, "is_test": {"$ne": True}, "created_at": {"$gte": p["start"], "$lt": p["end"]}})
     new_prev = await db.persons.count_documents({"is_archived": {"$ne": True}, "is_test": {"$ne": True}, "created_at": {"$gte": p["prev_start"], "$lt": p["prev_end"]}})
     rows_now, rows_prev = await attendance_rows(p["first"], p["last"], p["zone"]), await attendance_rows(p["prev_first"], p["prev_last"], p["zone"])
@@ -207,7 +209,7 @@ async def summary(period: Literal["today", "week", "month", "quarter", "year", "
         from consolidation_panorama import aware
         return sum(1 for item in population if aware(item.get("created_at")) and start <= aware(item.get("created_at")) < end)
     cards = [
-        card("persons_total", "Personas en Persona 360", persons_total, unit="personas", definition="Todas las personas registradas en Persona 360 que no han sido eliminadas del directorio.", source="Persona 360", link="/personas"),
+        card("persons_total", "Personas en Persona 360", persons_total, unit="personas", definition=f"{person_counts['rule']} De {person_counts['registered']} registradas: {person_counts['archived']} archivadas, {person_counts['test'] + person_counts['excluded']} de prueba.", source="Persona 360", link="/personas"),
         card("persons_new", "Personas nuevas", new_now, previous=new_prev, unit="personas", definition="Personas registradas por primera vez en Persona 360 dentro del período.", source="Persona 360", empty_reason="No se registraron personas nuevas en este período."),
         card("active_people", "Personas que asistieron", att_now["unique_people"], previous=att_prev["unique_people"], unit="personas", definition="Personas distintas con al menos una asistencia registrada (servicios, actividades o células) en el período. No incluye a la pastora ni cuentas de prueba.", source="Asistencia de Persona 360 (incluye Operaciones y Células)", empty_reason="Aún no se ha registrado asistencia en este período."),
         card("service_average", "Asistencia promedio por servicio", att_now["service_average"], previous=att_prev["service_average"], unit="personas por servicio", definition="Asistentes de los servicios de domingo y miércoles ÷ número de servicios con asistencia registrada.", source="Check-ins de Operaciones", empty_reason="Aún no se ha tomado asistencia de servicios (domingo o miércoles) en este período."),

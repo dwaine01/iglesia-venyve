@@ -45,6 +45,7 @@ async def inventory() -> dict:
     async for doc in db.persons.find({"$or": [{"demo": True}, {"is_test": True}, {"nombre": {"$regex": NAME_HINT.pattern, "$options": "i"}},
                                               {"apellido": {"$regex": NAME_HINT.pattern, "$options": "i"}}]}, {"_id": 1, "demo": 1, "is_test": 1}):
         add(str(doc["_id"]), "Ya marcada como prueba" if doc.get("is_test") else ("Marcada demo" if doc.get("demo") else "Nombre de prueba"))
+    await _more_candidates(add, reasons)
     oids = [ObjectId(pid) for pid in list(reasons)[:LIMIT * 2]]
     persons = {str(doc["_id"]): doc async for doc in db.persons.find({"_id": {"$in": oids}}, {"nombre": 1, "apellido": 1, "is_test": 1, "is_archived": 1, "person_number": 1})}
     people_rows = sorted(({"person_id": pid, "name": _name(doc), "person_number": doc.get("person_number"), "is_test": bool(doc.get("is_test")),
@@ -66,6 +67,71 @@ async def inventory() -> dict:
                    "campaigns": len(campaigns), "campaigns_marked": sum(1 for row in campaigns if row["is_test"])},
         "note": "Solo lectura. Marcar como prueba saca a la persona o invasión de las cifras; no borra nada y se puede quitar.",
     }
+
+
+SYSTEM_HINT = re.compile(r"\b(admin|administrador|sistema|system|root|soporte)\b", re.IGNORECASE)
+LINK_COLLECTIONS = (("person_contacts", "person_id"), ("household_memberships", "person_id"), ("process_enrollments", "person_id"), ("person_attendance", "person_id"),
+                    ("finance_contributions", "person_id"), ("outreach_visits", "person_id"), ("outreach_visits", "converted_person_id"), ("person_relationships", "person_id"),
+                    ("person_relationships", "related_person_id"), ("ministry_assignments", "person_id"), ("mentor_badges", "person_id"), ("person_memberships", "person_id"))
+
+
+async def _more_candidates(add, reasons: dict) -> None:
+    """Revisión de producción: más candidatas, SOLO para revisar a mano (nada se marca solo).
+    - cuentas del sistema (rol admin/superadmin, o «admin» en el nombre o el correo);
+    - correos de prueba también cuando la persona está enlazada por persons.auth_user_id;
+    - registros sueltos: sin teléfono ni correo, sin cuenta y sin ningún vínculo real;
+    - dos personas con el mismo teléfono, nombres distintos, creadas el mismo día;
+    - creadas sin teléfono en un día en que se crearon 3 o más registros de prueba."""
+    from report_period import TEST_HINT
+    users = {str(user["_id"]): user async for user in db.users.find({}, {"_id": 1, "person_id": 1, "email": 1, "nombre": 1, "rol": 1, "role": 1})}
+    linked = {}
+    async for person in db.persons.find({"auth_user_id": {"$nin": [None, ""]}}, {"_id": 1, "auth_user_id": 1}):
+        linked[str(person["_id"])] = users.get(str(person["auth_user_id"]))
+    for user in users.values():
+        if user.get("person_id"):
+            linked.setdefault(user["person_id"], user)
+    for person_id, user in linked.items():
+        if not user:
+            continue
+        roles = {str(user.get("rol") or "").lower(), str(user.get("role") or "").lower()}
+        if roles & {"admin", "superadmin"} or SYSTEM_HINT.search(user.get("nombre") or "") or SYSTEM_HINT.search((user.get("email") or "").split("@")[0]):
+            add(person_id, "Cuenta del sistema (admin)")
+        if TEST_HINT.search(user.get("email") or ""):
+            add(person_id, f"Correo de prueba ({user.get('email')})")
+    # Registros sueltos (sin teléfono, correo, cuenta ni vínculo alguno).
+    with_links = set(linked)
+    for collection, field in LINK_COLLECTIONS:
+        with_links |= {str(value) for value in await db[collection].distinct(field) if value}
+    created_by_day: dict[str, list] = {}
+    async for person in db.persons.find({"is_archived": {"$ne": True}}, {"_id": 1, "created_at": 1, "nombre": 1, "apellido": 1}):
+        person_id = str(person["_id"])
+        if person_id not in with_links:
+            add(person_id, "Registro suelto: sin teléfono ni correo, sin cuenta y sin ningún vínculo")
+        if isinstance(person.get("created_at"), datetime):
+            created_by_day.setdefault(person["created_at"].date().isoformat(), []).append(person_id)
+    day_of = {pid: day for day, ids in created_by_day.items() for pid in ids}
+    # Mismo teléfono, nombres distintos, creadas el mismo día (como una prueba hecha en la tableta).
+    phones = set(await db.person_contacts.distinct("person_id", {"tipo": "telefono"}))
+    async for row in db.person_contacts.aggregate([{"$match": {"tipo": "telefono", "valor_normalizado": {"$nin": [None, ""]}}},
+                                                   {"$group": {"_id": "$valor_normalizado", "ids": {"$addToSet": "$person_id"}}}, {"$match": {"ids.1": {"$exists": True}}}]):
+        days: dict[str, list] = {}
+        for pid in row["ids"]:
+            if day_of.get(pid):
+                days.setdefault(day_of[pid], []).append(pid)
+        for day, ids in days.items():
+            if len(ids) > 1:
+                for pid in ids:
+                    add(pid, f"Mismo teléfono ({row['_id']}) que otra persona creada el mismo día ({day})")
+    # Días de pruebas: 3 o más candidatas creadas ese día; las demás de ese día SIN teléfono, a revisar.
+    flagged_days: dict[str, int] = {}
+    for pid in list(reasons):
+        if day_of.get(pid):
+            flagged_days[day_of[pid]] = flagged_days.get(day_of[pid], 0) + 1
+    for day, count in flagged_days.items():
+        if count >= 3:
+            for pid in created_by_day.get(day, []):
+                if pid not in reasons and pid not in phones:
+                    add(pid, f"Creada sin teléfono el {day}, día en que se crearon {count} registros de prueba")
 
 
 @router.get("/inventory", response_model=dict)

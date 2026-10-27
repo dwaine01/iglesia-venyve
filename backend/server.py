@@ -2524,7 +2524,7 @@ async def get_dashboard_by_role(authorization: Optional[str] = Header(None), lea
         
         # Personas que quedaron sin líder (p. ej. al eliminar la cuenta de su líder): visibles para reasignar.
         # Auditoría 8/10: se calcula desde Persona 360 y baja sola al asignar un mentor (antes nunca bajaba).
-        from count_rules import people_without_mentor
+        from count_rules import people_without_mentor, person_count_breakdown
         sin_lider = await people_without_mentor()
         return {
             "rol": "pastor",
@@ -2533,7 +2533,8 @@ async def get_dashboard_by_role(authorization: Optional[str] = Header(None), lea
             # La tarjeta cuenta las MISMAS filas de la tabla: cuentas de líder + mentores con insignia sin cuenta de líder.
             "total_lideres": len(lideres_data),
             "total_lideres_desglose": {"lideres": sum(1 for row in lideres_data if not row.get("es_mentor")), "mentores": sum(1 for row in lideres_data if row.get("es_mentor"))},
-        "total_personas_global": await db.persons.count_documents({"is_archived": {"$ne": True}, "is_test": {"$ne": True}}),
+        "total_personas_global": (person_counts := await person_count_breakdown())["counted"],
+        "total_personas_desglose": person_counts,
         "total_personas_en_proceso": sum(l["total_personas"] for l in lideres_data),
         }
     

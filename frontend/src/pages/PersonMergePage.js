@@ -14,16 +14,29 @@ const refLabel = (key) => { const [collection] = key.split('.'); return LABELS[c
 export default function PersonMergePage() {
   const { API, getAuthHeaders } = useAuth();
   const [groups, setGroups] = useState(null);
+  const [dismissed, setDismissed] = useState([]);
   const [history, setHistory] = useState([]);
   const [plan, setPlan] = useState(null);
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const load = useCallback(() => {
-    axios.get(`${API}/api/person-merge/candidates`, getAuthHeaders()).then((response) => setGroups(response.data.groups)).catch((error) => toast.error(apiErrorMessage(error, 'No se pudieron cargar los posibles duplicados')));
+    axios.get(`${API}/api/person-merge/candidates`, getAuthHeaders()).then((response) => { setGroups(response.data.groups); setDismissed(response.data.dismissed || []); }).catch((error) => toast.error(apiErrorMessage(error, 'No se pudieron cargar los posibles duplicados')));
     axios.get(`${API}/api/person-merge/history`, getAuthHeaders()).then((response) => setHistory(response.data.items)).catch(() => setHistory([]));
   }, [API, getAuthHeaders]);
   useEffect(() => { load(); }, [load]);
 
+  const notDuplicate = async (group) => {
+    const why = window.prompt('¿Por qué no es la misma persona? (p. ej. «Son madre e hijo, comparten teléfono»)', 'Familia: comparten teléfono');
+    if (!why || why.trim().length < 3) return;
+    setBusy(true);
+    try { await axios.post(`${API}/api/person-merge/not-duplicate`, { person_ids: group.people.map((person) => person.person_id), reason: why.trim() }, getAuthHeaders()); toast.success('Marcado: no es duplicado (se puede deshacer)'); load(); }
+    catch (error) { toast.error(apiErrorMessage(error, 'No se pudo marcar')); } finally { setBusy(false); }
+  };
+  const restore = async (signature) => {
+    setBusy(true);
+    try { await axios.post(`${API}/api/person-merge/not-duplicate/undo`, { signature }, getAuthHeaders()); toast.success('El grupo vuelve a la lista'); load(); }
+    catch (error) { toast.error(apiErrorMessage(error, 'No se pudo deshacer')); } finally { setBusy(false); }
+  };
   const review = async (keep, merged) => {
     setBusy(true);
     try { setPlan((await axios.post(`${API}/api/person-merge/preview`, { keep_person_id: keep, merged_person_id: merged }, getAuthHeaders())).data); setReason(''); }
@@ -73,18 +86,32 @@ export default function PersonMergePage() {
         {groups && groups.length === 0 && <p className="text-sm text-slate-500">No se encontraron personas con el mismo teléfono o nombre.</p>}
         {(groups || []).map((group) => (
           <div key={`${group.reason}-${group.key}`} className="rounded-xl border border-[#E8E5DE] bg-white p-3" data-testid="person-merge-group">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{group.reason}: {group.key}</p>
+            <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{group.reason}: {group.key}</p>
+              <button type="button" className={button} disabled={busy} onClick={() => notDuplicate(group)} data-testid="person-not-duplicate">No es duplicado</button></div>
+            {group.suggest_merge === false && <p className="mt-1 text-xs text-slate-600" data-testid="person-merge-family-hint">Nombres distintos con el mismo teléfono: suele ser familia. No se sugiere fusionar.</p>}
             <ul className="mt-2 divide-y">{group.people.map((person, index) => (
               <li key={person.person_id} className="flex flex-wrap items-center justify-between gap-2 py-2">
                 <span><a href={`/personas/${person.person_id}`} className="font-semibold text-[#101D36] hover:underline">{person.name}</a>
                   <span className="block text-xs text-slate-500">{[person.person_number, person.fecha_nacimiento, person.created_at && `creada ${person.created_at.slice(0, 10)}`].filter(Boolean).join(' · ')}</span></span>
-                {index > 0 && <button type="button" className={button} disabled={busy} onClick={() => review(group.people[0].person_id, person.person_id)}>Fusionar con {group.people[0].name.split(' ')[0]} (la más antigua)</button>}
-                {index === 0 && group.people.length === 2 && <button type="button" className={button} disabled={busy} onClick={() => review(group.people[1].person_id, person.person_id)}>Conservar la otra</button>}
+                {index > 0 && group.suggest_merge !== false && <button type="button" className={button} disabled={busy} onClick={() => review(group.people[0].person_id, person.person_id)}>Fusionar con {group.people[0].name.split(' ')[0]} (la más antigua)</button>}
+                {index === 0 && group.people.length === 2 && group.suggest_merge !== false && <button type="button" className={button} disabled={busy} onClick={() => review(group.people[1].person_id, person.person_id)}>Conservar la otra</button>}
               </li>
             ))}</ul>
           </div>
         ))}
       </section>
+
+      {dismissed.length > 0 && (
+        <section className="space-y-2 rounded-xl border border-[#E8E5DE] bg-white p-4" data-testid="person-not-duplicate-list">
+          <h2 className="text-lg font-semibold text-[#101D36]">Marcados «No es duplicado» ({dismissed.length})</h2>
+          <ul className="divide-y">{dismissed.map((row) => (
+            <li key={row.signature} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
+              <span>{row.people.join(' · ')}{row.reason ? ` — ${row.reason}` : ''}</span>
+              <button type="button" className={button} disabled={busy} onClick={() => restore(row.signature)}><Undo2 className="h-4 w-4" />Volver a revisar</button>
+            </li>
+          ))}</ul>
+        </section>
+      )}
 
       {history.length > 0 && (
         <section className="space-y-2 rounded-xl border border-[#E8E5DE] bg-white p-4">
