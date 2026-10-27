@@ -11,8 +11,8 @@ from pydantic import BaseModel, Field, model_validator
 from pymongo.errors import DuplicateKeyError
 from bson import ObjectId
 
-from access_control import is_global_pastoral_authority
-from finance_engine import audit, can_see_donors, deny_pastoral_registration, create_journal, ensure_open_period, log_donor_view, now_utc, require_donor_access, require_finance_manage, require_finance_read, require_private_person_finance, serialize, validate_lines, without_donor
+from access_control import FINANCE_COLLECTION_VERIFY, FINANCE_TREASURY, is_global_pastoral_authority
+from finance_engine import audit, can_see_donors, deny_pastoral_registration, create_journal, ensure_open_period, log_donor_view, now_utc, require_donor_access, require_finance_manage, require_finance_read, require_finance_role, require_private_person_finance, serialize, validate_lines, without_donor
 from server import db, get_current_user
 
 router = APIRouter(prefix="/api/finance", tags=["finance"])
@@ -437,25 +437,28 @@ async def journal_create(payload: JournalCreate, current_user: dict = Depends(ma
 
 
 @router.post("/journals/{entry_id}/{action}", response_model=dict)
-async def journal_workflow(entry_id: str, action: Literal["submit", "review", "approve", "reject"], current_user: dict = Depends(manager)):
+async def journal_workflow(entry_id: str, action: Literal["submit", "review", "approve", "reject"], current_user: dict = Depends(get_current_user)):
+    # Sin la pastora: Finanzas prepara y una segunda persona con el rol Validar contabiliza (nunca quien lo preparó).
+    deny_pastoral_registration(current_user)
     entry = await db.finance_journal_entries.find_one({"entry_id": entry_id})
     if not entry: raise HTTPException(status_code=404, detail="Asiento no encontrado")
     uid = current_user["user_id"]; now = now_utc(); changes = {"updated_at": now}
     if action == "submit":
+        require_finance_manage(current_user)
         if entry["status"] != "draft": raise HTTPException(status_code=409, detail="Solo un borrador puede enviarse")
         changes.update(status="submitted", submitted_at=now)
-    elif action == "review":
-        if entry["status"] != "submitted": raise HTTPException(status_code=409, detail="El asiento no está pendiente de revisión")
-        if entry["prepared_by_user_id"] == uid: raise HTTPException(status_code=403, detail="El preparador no puede revisar su propio asiento")
-        changes.update(status="reviewed", reviewed_by_user_id=uid, reviewed_at=now)
-    elif action == "approve":
-        if not is_global_pastoral_authority(current_user): raise HTTPException(status_code=403, detail="La aprobación final corresponde a Pastor/Pastora")
-        if entry["status"] != "reviewed": raise HTTPException(status_code=409, detail="El asiento requiere revisión previa")
-        if uid in {entry["prepared_by_user_id"], entry.get("reviewed_by_user_id")}: raise HTTPException(status_code=403, detail="Nadie puede aprobar un asiento que preparó o revisó")
-        period = await db.finance_periods.find_one({"start_date": {"$lte": entry["entry_date"]}, "end_date": {"$gte": entry["entry_date"]}, "status": "closed"})
-        if period: raise HTTPException(status_code=409, detail="El período está cerrado")
-        changes.update(status="posted", approved_by_user_id=uid, approved_at=now, posted_at=now)
-    else: changes.update(status="rejected", rejected_by_user_id=uid, rejected_at=now)
+    else:
+        require_finance_role(current_user, FINANCE_COLLECTION_VERIFY)
+        if entry["status"] not in {"submitted", "reviewed"}: raise HTTPException(status_code=409, detail="El asiento no está pendiente de validación")
+        if entry["prepared_by_user_id"] == uid: raise HTTPException(status_code=403, detail="Quien preparó el asiento no puede validarlo; debe hacerlo otra persona")
+        if action == "review":
+            changes.update(status="reviewed", reviewed_by_user_id=uid, reviewed_at=now)
+        elif action == "approve":
+            period = await db.finance_periods.find_one({"start_date": {"$lte": entry["entry_date"]}, "end_date": {"$gte": entry["entry_date"]}, "status": "closed"})
+            if period: raise HTTPException(status_code=409, detail="El período está cerrado")
+            changes.update(status="posted", approved_by_user_id=uid, approved_at=now, posted_at=now, posting_policy="validacion_dos_personas")
+            if not entry.get("reviewed_by_user_id"): changes.update(reviewed_by_user_id=uid, reviewed_at=now)
+        else: changes.update(status="rejected", rejected_by_user_id=uid, rejected_at=now)
     await db.finance_journal_entries.update_one({"entry_id": entry_id}, {"$set": changes})
     if action == "approve" and entry.get("source_type") == "expense_payment":
         await db.finance_payments.update_one({"journal_entry_id": entry_id}, {"$set": {"status": "paid", "paid_at": now, "updated_at": now}})
@@ -775,6 +778,7 @@ async def expenses(current_user: dict = Depends(reader)): return {"items": seria
 
 @router.post("/expenses", response_model=dict, status_code=201)
 async def expense_create(payload: ExpenseCreate, current_user: dict = Depends(manager)):
+    deny_pastoral_registration(current_user)
     if sum(line.debit_cents for line in payload.allocations) != payload.total_cents or any(line.credit_cents for line in payload.allocations): raise HTTPException(status_code=422, detail="Las distribuciones de gasto deben sumar el total")
     if payload.vendor_id and not await db.finance_vendors.find_one({"vendor_id": payload.vendor_id, "active": True}, {"_id": 1}):
         raise HTTPException(status_code=422, detail="Proveedor o beneficiario no válido")
@@ -782,21 +786,25 @@ async def expense_create(payload: ExpenseCreate, current_user: dict = Depends(ma
 
 
 @router.post("/expenses/{expense_id}/workflow/{action}", response_model=dict)
-async def expense_workflow(expense_id: str, action: Literal["review", "approve", "reject"], current_user: dict = Depends(manager)):
+async def expense_workflow(expense_id: str, action: Literal["review", "approve", "reject"], current_user: dict = Depends(get_current_user)):
+    # Decisión del dueño: Finanzas registra, una segunda persona con el rol Validar aprueba (nunca quien lo
+    # registró) y Tesorería paga. La pastora no aprueba gastos. Mismo criterio para todos los montos.
+    require_finance_role(current_user, FINANCE_COLLECTION_VERIFY)
     item = await db.finance_expenses.find_one({"expense_id": expense_id}); uid = current_user["user_id"]; now = now_utc()
     if not item: raise HTTPException(status_code=404, detail="Gasto no encontrado")
+    if item["status"] not in {"submitted", "reviewed"}: raise HTTPException(status_code=409, detail="El gasto ya no está pendiente de validación")
+    if item["prepared_by_user_id"] == uid: raise HTTPException(status_code=403, detail="Quien registró el gasto no puede validarlo; debe hacerlo otra persona")
     if action == "review":
-        if item["status"] != "submitted" or item["prepared_by_user_id"] == uid: raise HTTPException(status_code=403, detail="Otro usuario financiero debe revisar este gasto")
         changes = {"status": "reviewed", "reviewed_by_user_id": uid, "reviewed_at": now}
     elif action == "approve":
-        if not is_global_pastoral_authority(current_user) or item["status"] != "reviewed" or uid in {item["prepared_by_user_id"], item.get("reviewed_by_user_id")}: raise HTTPException(status_code=403, detail="La aprobación pastoral requiere separación de funciones")
-        changes = {"status": "approved", "approved_by_user_id": uid, "approved_at": now}
+        changes = {"status": "approved", "approved_by_user_id": uid, "approved_at": now, "approval_policy": "gasto_dos_personas"}
     else: changes = {"status": "rejected", "rejected_by_user_id": uid, "rejected_at": now}
     await db.finance_expenses.update_one({"expense_id": expense_id}, {"$set": {**changes, "updated_at": now}}); await audit(uid, f"expense_{action}", "expense", expense_id); return serialize(await db.finance_expenses.find_one({"expense_id": expense_id}, {"_id": 0}))
 
 
 @router.post("/expenses/{expense_id}/schedule", response_model=dict)
-async def schedule_expense(expense_id: str, payload: PaymentSchedule, current_user: dict = Depends(manager)):
+async def schedule_expense(expense_id: str, payload: PaymentSchedule, current_user: dict = Depends(get_current_user)):
+    require_finance_role(current_user, FINANCE_TREASURY)
     item = await db.finance_expenses.find_one({"expense_id": expense_id})
     if not item or item.get("status") != "approved":
         raise HTTPException(status_code=409, detail="La cuenta por pagar debe estar aprobada")
@@ -815,9 +823,10 @@ async def payments(current_user: dict = Depends(reader)):
 
 
 @router.post("/expenses/{expense_id}/payments", response_model=dict, status_code=201)
-async def pay_expense(expense_id: str, payload: PaymentCreate, current_user: dict = Depends(manager)):
+async def pay_expense(expense_id: str, payload: PaymentCreate, current_user: dict = Depends(get_current_user)):
+    require_finance_role(current_user, FINANCE_TREASURY)
     item = await db.finance_expenses.find_one({"expense_id": expense_id})
-    if not item or item["status"] not in {"approved", "scheduled"}: raise HTTPException(status_code=409, detail="El gasto debe tener aprobación pastoral")
+    if not item or item["status"] not in {"approved", "scheduled"}: raise HTTPException(status_code=409, detail="El gasto debe estar validado por una segunda persona")
     if item.get("payment_id"):
         raise HTTPException(status_code=409, detail="El pago ya fue registrado")
     bank = await db.finance_accounts.find_one({"account_id": payload.bank_account_id, "account_type": "asset", "active": True})
@@ -825,7 +834,11 @@ async def pay_expense(expense_id: str, payload: PaymentCreate, current_user: dic
     lines = []
     for allocation in item["allocations"]: lines.extend([allocation, {"account_id": bank["account_id"], "fund_id": allocation["fund_id"], "debit_cents": 0, "credit_cents": allocation["debit_cents"], "description": "Pago de gasto"}])
     journal = await create_journal(current_user["user_id"], payload.payment_date.isoformat(), f"Pago: {item['description']}", "expense_payment", expense_id, lines, "submitted")
-    payment_id = str(uuid4()); now = now_utc(); doc = {"_id": payment_id, "payment_id": payment_id, "expense_id": expense_id, **payload.model_dump(mode="json"), "amount_cents": item["total_cents"], "journal_entry_id": journal["entry_id"], "status": "pending_posting", "created_by_user_id": current_user["user_id"], "created_at": now, "updated_at": now}; await db.finance_payments.insert_one(doc); await db.finance_expenses.update_one({"expense_id": expense_id}, {"$set": {"status": "payment_pending_posting", "payment_id": payment_id, "journal_entry_id": journal["entry_id"], "updated_at": now}}); await audit(current_user["user_id"], "payment_created", "payment", payment_id, {"amount_cents": item["total_cents"], "payment_method": payload.payment_method}); return serialize(doc)
+    now = now_utc()
+    # Registrado por Finanzas y validado por otra persona: Tesorería paga y el asiento queda contabilizado.
+    await db.finance_journal_entries.update_one({"entry_id": journal["entry_id"]}, {"$set": {"status": "posted", "posted_at": now, "posting_policy": "gasto_dos_personas",
+        "reviewed_by_user_id": item.get("approved_by_user_id"), "approved_by_user_id": item.get("approved_by_user_id"), "approved_at": item.get("approved_at"), "updated_at": now}})
+    payment_id = str(uuid4()); doc = {"_id": payment_id, "payment_id": payment_id, "expense_id": expense_id, **payload.model_dump(mode="json"), "amount_cents": item["total_cents"], "journal_entry_id": journal["entry_id"], "status": "paid", "paid_at": now, "created_by_user_id": current_user["user_id"], "created_at": now, "updated_at": now}; await db.finance_payments.insert_one(doc); await db.finance_expenses.update_one({"expense_id": expense_id}, {"$set": {"status": "paid", "paid_at": now, "paid_by_user_id": current_user["user_id"], "payment_id": payment_id, "journal_entry_id": journal["entry_id"], "updated_at": now}}); await audit(current_user["user_id"], "payment_created", "payment", payment_id, {"amount_cents": item["total_cents"], "payment_method": payload.payment_method}); return serialize(doc)
 
 
 @router.get("/deposits", response_model=dict)

@@ -172,7 +172,7 @@ def has_finance_role(current_user: dict, capability: str) -> bool:
 
 def require_finance_role(current_user: dict, capability: str) -> None:
     if not has_finance_role(current_user, capability):
-        labels = {FINANCE_COLLECTION_RECORD: "registrar la colecta", FINANCE_COLLECTION_VERIFY: "validar el cuadre de la colecta", FINANCE_TREASURY: "Tesorería (recibir y depositar)"}
+        labels = {FINANCE_COLLECTION_RECORD: "registrar la colecta", FINANCE_COLLECTION_VERIFY: "validar (segunda persona)", FINANCE_TREASURY: "Tesorería (recibir, depositar y pagar)"}
         detail = "La pastora consulta Finanzas pero no cuenta, valida, recibe ni deposita" if is_global_pastoral_authority(current_user) else f"Necesita el permiso de Finanzas para {labels.get(capability, capability)}"
         raise HTTPException(status_code=403, detail=detail)
 
