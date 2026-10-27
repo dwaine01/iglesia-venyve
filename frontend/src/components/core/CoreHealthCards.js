@@ -25,7 +25,7 @@ export const CoreHealthCards = ({ integrity }) => {
   return (
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" data-testid="core-health-metrics">
       <Metric testId="core-integrity-score" label="Integridad" value={`${integrity?.score ?? 0}%`} detail={integrity?.status === 'healthy' ? 'Núcleo consistente' : 'Revisión requerida'} icon={integrity?.status === 'healthy' ? CheckCircle2 : TriangleAlert} tone={integrity?.status === 'healthy' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'} />
-      <Metric testId="core-person-count" label="Personas canónicas" value={integrity?.counts?.persons ?? 0} detail="Fuente humana única" icon={Database} tone="bg-[#F4EEDB] text-[#8A6D2F]" />
+      <Metric testId="core-person-count" label="Personas activas" value={integrity?.counts?.persons ?? 0} detail={integrity?.counts?.persons_breakdown ? `De ${integrity.counts.persons_breakdown.registered} registradas: sin ${integrity.counts.persons_breakdown.archived} archivadas ni ${integrity.counts.persons_breakdown.test + integrity.counts.persons_breakdown.excluded} de prueba (misma cifra que Panel General)` : 'Fuente humana única'} icon={Database} tone="bg-[#F4EEDB] text-[#8A6D2F]" />
       <Metric testId="core-user-count" label="Cuentas enlazadas" value={integrity?.counts?.users ?? 0} detail={`${issues.users_without_person || 0} sin Perfil 360`} icon={Link2} tone="bg-cyan-50 text-cyan-700" />
       <Metric testId="core-open-issues-count" label="Alertas abiertas" value={openIssues} detail="Duplicados, huérfanos y acceso" icon={ShieldCheck} tone="bg-slate-100 text-slate-700" />
     </div>

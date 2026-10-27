@@ -79,9 +79,34 @@ async def conflicts(keep_id: str, merged_id: str) -> list[str]:
     return found
 
 
+def _name_key(person: dict) -> str:
+    import unicodedata
+    text = unicodedata.normalize("NFKD", person.get("name") or "").encode("ascii", "ignore").decode().lower()
+    return " ".join(text.split())
+
+
+def similar_names(people: list) -> bool:
+    """¿Parecen la misma persona? Mismo nombre completo, o mismo primer nombre y mismo primer apellido.
+    Mismo teléfono con nombres distintos suele ser familia (no se sugiere fusionar)."""
+    keys = [_name_key(item).split() for item in people]
+    if not all(keys):
+        return False
+    if len({" ".join(key) for key in keys}) == 1:
+        return True
+    firsts = {key[0] for key in keys}
+    lasts = {key[1] if len(key) > 1 else "" for key in keys}
+    return len(firsts) == 1 and len(lasts) == 1
+
+
+def signature_of(person_ids) -> str:
+    return "|".join(sorted(person_ids))
+
+
 @router.get("/candidates", response_model=dict)
 async def candidates(current_user: dict = Depends(get_current_user)):
-    """Grupos de posibles duplicados: mismo teléfono o mismo nombre completo (solo lectura)."""
+    """Grupos de posibles duplicados: mismo teléfono o mismo nombre completo (solo lectura).
+    Revisión de producción: el mismo teléfono con nombres distintos NO sugiere fusionar (puede ser
+    familia); se ofrece «No es duplicado», que se guarda y se puede deshacer."""
     require_merge_manager(current_user)
     groups = []
     async for row in db.person_contacts.aggregate([
@@ -93,15 +118,55 @@ async def candidates(current_user: dict = Depends(get_current_user)):
         {"$group": {"_id": {"$toLower": {"$concat": [{"$ifNull": ["$nombre", ""]}, " ", {"$ifNull": ["$apellido", ""]}]}}, "ids": {"$addToSet": {"$toString": "$_id"}}}},
         {"$match": {"ids.1": {"$exists": True}}}, {"$limit": 200}]):
         groups.append(("Mismo nombre", row["_id"], row["ids"]))
-    out, seen = [], set()
+    dismissed = {doc["signature"]: doc async for doc in db.person_duplicate_dismissals.find({"active": True}, {"_id": 0})}
+    out, seen, hidden = [], set(), []
     for reason, key, ids in groups:
         oids = [ObjectId(pid) for pid in ids if pid and ObjectId.is_valid(pid)]
         people = [card(doc) async for doc in db.persons.find({"_id": {"$in": oids}, "is_archived": {"$ne": True}})]
-        signature = tuple(sorted(item["person_id"] for item in people))
-        if len(people) > 1 and signature not in seen:
-            seen.add(signature)
-            out.append({"reason": reason, "key": key, "people": sorted(people, key=lambda item: item.get("created_at") or "")})
-    return {"groups": out[:200]}
+        signature = signature_of(item["person_id"] for item in people)
+        if len(people) < 2 or signature in seen:
+            continue
+        seen.add(signature)
+        if signature in dismissed:
+            hidden.append({"signature": signature, "people": [item["name"] for item in people], "reason": dismissed[signature].get("reason")})
+            continue
+        suggest = reason == "Mismo nombre" or similar_names(people)
+        out.append({"reason": reason if suggest else "Mismo teléfono, nombres distintos (puede ser familia)", "key": key, "suggest_merge": suggest,
+                    "signature": signature, "people": sorted(people, key=lambda item: item.get("created_at") or "")})
+    out.sort(key=lambda group: not group["suggest_merge"])  # primero los que de verdad parecen la misma persona
+    return {"groups": out[:200], "dismissed": hidden[:200]}
+
+
+class NotDuplicateInput(BaseModel):
+    person_ids: list[str] = Field(min_length=2, max_length=20)
+    reason: str = Field(min_length=3, max_length=300)
+
+
+@router.post("/not-duplicate", response_model=dict)
+async def not_duplicate(payload: NotDuplicateInput, current_user: dict = Depends(get_current_user)):
+    """«No es duplicado»: el grupo deja de aparecer. Se guarda quién y por qué; se puede deshacer."""
+    require_merge_manager(current_user)
+    signature = signature_of(payload.person_ids)
+    now = datetime.now(timezone.utc)
+    await db.person_duplicate_dismissals.update_one({"signature": signature}, {"$set": {"signature": signature, "person_ids": sorted(payload.person_ids), "active": True,
+                                                                                         "reason": payload.reason.strip(), "by_user_id": current_user["user_id"], "at": now},
+                                                                                "$push": {"history": {"action": "dismissed", "reason": payload.reason.strip(), "by_user_id": current_user["user_id"], "at": now}}}, upsert=True)
+    return {"signature": signature, "active": True}
+
+
+class UndoDismissInput(BaseModel):
+    signature: str = Field(min_length=3, max_length=2000)
+
+
+@router.post("/not-duplicate/undo", response_model=dict)
+async def undo_not_duplicate(payload: UndoDismissInput, current_user: dict = Depends(get_current_user)):
+    require_merge_manager(current_user)
+    now = datetime.now(timezone.utc)
+    result = await db.person_duplicate_dismissals.update_one({"signature": payload.signature, "active": True}, {"$set": {"active": False, "updated_at": now},
+                                                                                                              "$push": {"history": {"action": "restored", "by_user_id": current_user["user_id"], "at": now}}})
+    if not result.matched_count:
+        raise HTTPException(status_code=404, detail="No hay una marca «No es duplicado» activa para ese grupo")
+    return {"signature": payload.signature, "active": False}
 
 
 class MergeInput(BaseModel):

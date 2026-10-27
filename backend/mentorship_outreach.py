@@ -494,7 +494,9 @@ async def require_existing_person_proof(person: dict, contact_phone: Optional[st
         for item in await db.person_contacts.find({"person_id": person_id, "tipo": "telefono"}, {"_id": 0, "valor": 1, "valor_normalizado": 1}).to_list(20):
             if normalize_phone(item.get("valor_normalizado") or item.get("valor")) == digits:
                 return
-    raise HTTPException(status_code=422, detail="Para vincular a esta persona escriba su teléfono (el que tiene registrado). Si no coincide, regístrela como contacto nuevo o pida ayuda a su líder.")
+    # Revisión de producción: antes el mensaje empujaba a «registrarla como contacto nuevo», y eso creaba
+    # una SEGUNDA Persona 360 de la misma persona. Ahora pide al líder vincularla (los líderes no necesitan el teléfono).
+    raise HTTPException(status_code=422, detail="Para vincular a esta persona escriba su teléfono (el que tiene registrado). Si no tiene teléfono registrado o no coincide, pida a su líder que la vincule: no la registre como contacto nuevo, porque se duplicaría su Perfil 360.")
 
 
 async def resolve_and_insert_contact_visit(

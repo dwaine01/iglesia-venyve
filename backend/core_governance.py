@@ -56,6 +56,8 @@ router = APIRouter(prefix="/api/core/governance", tags=["core-governance"])
 class IntegrityCounts(BaseModel):
     users: int
     persons: int
+    persons_registered: Optional[int] = None
+    persons_breakdown: Optional[dict] = None
     legacy_people: int
     households: int
     relationships: int
@@ -312,6 +314,7 @@ async def duplicate_candidates() -> list[dict]:
 
 
 async def integrity_snapshot() -> dict:
+    from count_rules import person_count_breakdown
     person_ids = {str(item["_id"]) async for item in db.persons.find({}, {"_id": 1})}
     assignments = await db.ministry_assignments.find({}, {"_id": 0, "person_id": 1}).to_list(10000)
     relationships = await db.person_relationships.find({}, {"_id": 0, "person_a_id": 1, "person_b_id": 1}).to_list(10000)
@@ -347,7 +350,10 @@ async def integrity_snapshot() -> dict:
         "score": max(0, 100 - weighted),
         "counts": {
             "users": await db.users.count_documents({}),
-            "persons": len(person_ids),
+            # Misma regla que Panel General y Estadísticas Globales (revisión de producción).
+            "persons": (person_counts := await person_count_breakdown())["counted"],
+            "persons_registered": len(person_ids),
+            "persons_breakdown": person_counts,
             "legacy_people": await db.people.count_documents({}),
             "households": await db.households.count_documents({}),
             "relationships": await db.person_relationships.count_documents({}),
