@@ -14,8 +14,9 @@ import { Textarea } from '../ui/textarea';
 import { useAuth } from '../../context/AuthContext';
 import { displayLabel } from '../../lib/displayLabels';
 import { FinanceEmpty, Money } from './FinanceShell';
+import { churchToday } from '../../lib/churchDate';
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => churchToday();
 
 export const FinanceBatchesPanel = () => {
   const { API, getAuthHeaders } = useAuth();

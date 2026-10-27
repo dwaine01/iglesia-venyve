@@ -11,12 +11,13 @@ import { useFinanceRoles } from './useFinanceRoles';
 import { useAuth } from '../../context/AuthContext';
 import { displayLabel } from '../../lib/displayLabels';
 import { FinanceEmpty, Money } from './FinanceShell';
+import { churchToday } from '../../lib/churchDate';
 
 export const FinanceRecurringPanel = ({ catalog, vendors }) => {
   const roles = useFinanceRoles();
   const { API, getAuthHeaders } = useAuth();
   const [items, setItems] = useState([]);
-  const [form, setForm] = useState({ name: '', vendor_id: '', beneficiary_type: 'vendor', description: '', category: '', amount: '', account_id: '', fund_id: '', frequency: 'monthly', next_due_date: new Date().toISOString().slice(0, 10) });
+  const [form, setForm] = useState({ name: '', vendor_id: '', beneficiary_type: 'vendor', description: '', category: '', amount: '', account_id: '', fund_id: '', frequency: 'monthly', next_due_date: churchToday() });
   const expenseAccounts = useMemo(() => catalog.accounts.filter((item) => item.account_type === 'expense'), [catalog]);
   const load = () => axios.get(`${API}/api/finance/recurring-obligations`, getAuthHeaders()).then((response) => setItems(response.data.items || []));
   useEffect(() => { load(); }, []);

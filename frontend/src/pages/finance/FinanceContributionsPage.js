@@ -15,8 +15,9 @@ import { Textarea } from '../../components/ui/textarea';
 import { useFinanceRoles } from '../../components/finance/useFinanceRoles';
 import { useAuth } from '../../context/AuthContext';
 import { displayLabel } from '../../lib/displayLabels';
+import { churchToday } from '../../lib/churchDate';
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => churchToday();
 const emptyLine = () => ({ contribution_type: 'tithe', fund_id: '', campaign_id: '', description: '', amount: '' });
 
 export default function FinanceContributionsPage() {

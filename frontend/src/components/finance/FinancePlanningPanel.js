@@ -10,8 +10,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { useFinanceRoles } from './useFinanceRoles';
 import { useAuth } from '../../context/AuthContext';
 import { FinanceEmpty, Money } from './FinanceShell';
+import { churchToday } from '../../lib/churchDate';
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => churchToday();
 
 export const FinancePlanningPanel = ({ catalog }) => {
   const roles = useFinanceRoles();

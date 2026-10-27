@@ -7,13 +7,14 @@ import { toast } from 'sonner';
 import { FinanceEmpty, FinanceShell, Money } from '../../components/finance/FinanceShell';
 import { useAuth } from '../../context/AuthContext';
 import { apiErrorMessage } from '../../lib/apiErrors';
+import { churchToday } from '../../lib/churchDate';
 
 const METHODS = { cash: 'Efectivo', zelle: 'Zelle', other: 'Otro' };
 const STATUS = { registering: 'Registrando', registered: 'Registrada · falta validar', validated: 'Validada', cash_received: 'Efectivo recibido por Tesorería', deposited: 'Depositada' };
 const field = 'h-12 w-full border border-slate-300 bg-white px-3 text-base';
 const button = 'inline-flex min-h-12 items-center justify-center gap-2 px-4 text-base font-semibold disabled:opacity-50';
 const toCents = (value) => Math.round(Number(String(value || '').replace(/[^0-9.]/g, '')) * 100);
-const today = () => new Date().toLocaleDateString('en-CA');
+const today = () => churchToday();
 
 function useApi() {
   const { API, getAuthHeaders } = useAuth();

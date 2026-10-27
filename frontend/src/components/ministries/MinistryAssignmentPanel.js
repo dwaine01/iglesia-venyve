@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
+import { churchToday } from '../../lib/churchDate';
 
 const messageFrom = (error) => {
   const detail = error?.response?.data?.detail;
@@ -42,7 +43,7 @@ export const MinistryAssignmentPanel = ({ ministryId, roles, API, getAuthHeaders
         ministry_id: ministryId,
         role_id: roleId,
         activo: true,
-        fecha_inicio: new Date().toISOString().slice(0, 10),
+        fecha_inicio: churchToday(),
       }, getAuthHeaders());
       toast.success(`${selected.nombre_completo} fue asignado correctamente.`);
       setSelected(null); setCandidates([]); setQuery(''); setRoleId('');

@@ -10,6 +10,7 @@ import { Alert, AlertDescription, AlertTitle } from '../components/ui/alert';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Skeleton } from '../components/ui/skeleton';
+import { churchToday } from '../lib/churchDate';
 
 const detailText = (error, fallback) => typeof error?.response?.data?.detail === 'string' ? error.response.data.detail : fallback;
 
@@ -38,7 +39,7 @@ export default function MinisterioDetailPage() {
   const deactivate = async (member) => {
     if (!window.confirm(`¿Retirar a ${member.nombre_completo} de este Ministerio?`)) return;
     try {
-      await axios.put(`${API}/api/ministries/assignments/${member.assignment_id}`, { activo: false, fecha_fin: new Date().toISOString().slice(0, 10) }, getAuthHeaders());
+      await axios.put(`${API}/api/ministries/assignments/${member.assignment_id}`, { activo: false, fecha_fin: churchToday() }, getAuthHeaders());
       toast.success('Asignación ministerial finalizada.'); await load();
     } catch (requestError) { toast.error(detailText(requestError, 'No se pudo finalizar la asignación.')); }
   };

@@ -12,6 +12,7 @@ import { InvasionHousesMap } from '../components/outreach/InvasionHousesMap';
 import { ToConsolidationDialog } from '../components/outreach/ToConsolidationDialog';
 import { TransfersPanel } from '../components/outreach/TransfersPanel';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../components/ui/dialog';
+import { churchToday } from '../lib/churchDate';
 
 const FIGURES = [
   ['visited', 'Viviendas visitadas', Home], ['opened', 'Abrieron', DoorOpen], ['pending_return', 'Pendientes de regresar', CalendarClock],
@@ -20,7 +21,7 @@ const FIGURES = [
 const BUCKETS = [['overdue', 'Con fecha pasada'], ['today', 'Hoy'], ['upcoming', 'Próximos'], ['no_date', 'Sin fecha programada']];
 const NEXT_ACTIONS = ['Visitar de nuevo', 'Llamar por teléfono', 'Enviar mensaje', 'Invitar a la iglesia'];
 // Fecha de hoy en el calendario local (AAAA-MM-DD) para programar con un toque.
-const localToday = () => { const now = new Date(); return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
+const localToday = () => churchToday();
 const fmtDay = (iso) => (iso ? new Date(iso.length === 10 ? `${iso}T12:00:00` : iso).toLocaleDateString('es', { weekday: 'short', day: 'numeric', month: 'short' }) : '');
 
 // Seguimiento de una persona contactada: próxima acción y fecha (no inicia Consolidación).

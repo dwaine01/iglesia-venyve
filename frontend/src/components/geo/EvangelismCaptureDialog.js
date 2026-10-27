@@ -10,6 +10,7 @@ import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Textarea } from '../ui/textarea';
 import { isPastoralAuthority } from '../../lib/accessControl';
+import { churchToday } from '../../lib/churchDate';
 
 const emptyForm = { house_number: '', street_name: '', address2: '', city: 'Columbus', state: 'OH', zip: '', language: 'unknown', notes: '', pastoral_notes: '', assigned_to_user_id: '' };
 
@@ -20,7 +21,7 @@ export const EvangelismCaptureDialog = ({ open, onOpenChange, onCreated, frontGr
   const update = (field) => (event) => setForm((current) => ({ ...current, [field]: event.target.value }));
   const submit = async (event) => {
     event.preventDefault(); setSaving(true); setError('');
-    try { const response = await axios.post(`${API}/api/geo/evangelism`, { ...form, address2: form.address2 || null, zip: form.zip || null, notes: form.notes || null, pastoral_notes: !frontGroup && canUsePastoralNotes && form.pastoral_notes ? form.pastoral_notes : null, assigned_to_user_id: form.assigned_to_user_id || null, front_group_id: frontGroup?.front_group_id || null, invasion_reference: frontGroup ? `INV-${frontGroup.front_group_id.slice(0, 8)}-${new Date().toISOString().slice(0, 10)}` : null }, getAuthHeaders()); toast.success(response.data.geocoding_status === 'matched' ? 'Casa registrada y ubicada en el mapa' : 'Casa registrada; ubicación pendiente de verificación'); setForm(emptyForm); onOpenChange(false); onCreated?.(response.data); }
+    try { const response = await axios.post(`${API}/api/geo/evangelism`, { ...form, address2: form.address2 || null, zip: form.zip || null, notes: form.notes || null, pastoral_notes: !frontGroup && canUsePastoralNotes && form.pastoral_notes ? form.pastoral_notes : null, assigned_to_user_id: form.assigned_to_user_id || null, front_group_id: frontGroup?.front_group_id || null, invasion_reference: frontGroup ? `INV-${frontGroup.front_group_id.slice(0, 8)}-${churchToday()}` : null }, getAuthHeaders()); toast.success(response.data.geocoding_status === 'matched' ? 'Casa registrada y ubicada en el mapa' : 'Casa registrada; ubicación pendiente de verificación'); setForm(emptyForm); onOpenChange(false); onCreated?.(response.data); }
     catch (requestError) { setError(apiErrorMessage(requestError, 'No se pudo registrar la casa')); }
     finally { setSaving(false); }
   };

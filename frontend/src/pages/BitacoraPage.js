@@ -12,9 +12,10 @@ import {
   NotebookPen, Home, Users, Heart, Sparkles, CalendarDays,
   Save, Loader2, Trash2, Pencil, X, CheckCircle2, TrendingUp
 } from 'lucide-react';
+import { churchToday } from '../lib/churchDate';
 
 // ==================== helpers ====================
-const todayIso = () => new Date().toISOString().slice(0, 10);
+const todayIso = () => churchToday();
 
 const formatFechaLarga = (iso) => {
   if (!iso) return '';

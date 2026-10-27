@@ -4,8 +4,9 @@ import axios from 'axios';
 import { FinanceEmpty, Money } from './FinanceShell';
 import { useAuth } from '../../context/AuthContext';
 import { displayLabel } from '../../lib/displayLabels';
+import { churchToday } from '../../lib/churchDate';
 
-const iso = (value) => value.toLocaleDateString('en-CA');
+const iso = (value) => churchToday(value);
 const MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 const monthLabel = (key) => `${MONTHS[Number(key.slice(5, 7)) - 1]} ${key.slice(0, 4)}`;
 

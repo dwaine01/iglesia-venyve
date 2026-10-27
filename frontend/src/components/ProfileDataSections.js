@@ -22,6 +22,7 @@ import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
 import PersonCanonicalLink from './PersonCanonicalLink';
 import { displayLabel, stageLabel, statusLabel } from '../lib/displayLabels';
+import { churchToday } from '../lib/churchDate';
 
 function Shell({ title, description, icon: Icon, children, action }) {
   return (
@@ -96,7 +97,7 @@ export function ProcessesSection({ personId, arrival, processes = [], ministries
   const [saving, setSaving] = useState(false);
   const [ministryOptions, setMinistryOptions] = useState([]);
   const [roleOptions, setRoleOptions] = useState([]);
-  const [assignment, setAssignment] = useState({ ministry_id: '', role_id: '', fecha_inicio: new Date().toISOString().slice(0, 10) });
+  const [assignment, setAssignment] = useState({ ministry_id: '', role_id: '', fecha_inicio: churchToday() });
   const [newMinistry, setNewMinistry] = useState('');
   useEffect(() => { if (arrival) setForm(arrival); }, [arrival]);
   useEffect(() => {
@@ -177,7 +178,7 @@ function YearAttendance({ personId, API, getAuthHeaders, refreshKey }) {
 }
 
 export function AttendanceSection({ personId, items = [], canWrite, API, getAuthHeaders, onChanged }) {
-  const [form, setForm] = useState({ fecha: new Date().toISOString().slice(0, 10), actividad: '', estado: 'presente', notas: '' });
+  const [form, setForm] = useState({ fecha: churchToday(), actividad: '', estado: 'presente', notas: '' });
   const [saving, setSaving] = useState(false);
   const add = async (event) => { event.preventDefault(); setSaving(true); try { await request(API, getAuthHeaders, 'post', `/api/core/persons/${personId}/attendance`, form); setForm((old) => ({ ...old, actividad: '', notas: '' })); await onChanged(); } finally { setSaving(false); } };
   const remove = async (id) => { if (!window.confirm('¿Eliminar este registro de asistencia?')) return; await request(API, getAuthHeaders, 'delete', `/api/core/persons/${personId}/attendance/${id}`); await onChanged(); };

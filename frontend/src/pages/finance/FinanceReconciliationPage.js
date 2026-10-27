@@ -13,6 +13,7 @@ import { Textarea } from '../../components/ui/textarea';
 import { useFinanceRoles } from '../../components/finance/useFinanceRoles';
 import { useAuth } from '../../context/AuthContext';
 import { displayLabel } from '../../lib/displayLabels';
+import { churchToday } from '../../lib/churchDate';
 
 export default function FinanceReconciliationPage() {
   const roles = useFinanceRoles();
@@ -21,7 +22,7 @@ export default function FinanceReconciliationPage() {
   const [entries, setEntries] = useState([]);
   const [items, setItems] = useState([]);
   const [selected, setSelected] = useState([]);
-  const [form, setForm] = useState({ bank_account_id: '', statement_end_date: new Date().toISOString().slice(0, 10), starting: '0', ending: '', notes: '' });
+  const [form, setForm] = useState({ bank_account_id: '', statement_end_date: churchToday(), starting: '0', ending: '', notes: '' });
   const load = async () => { const [catalogResponse, journalResponse, reconciliationResponse] = await Promise.all([axios.get(`${API}/api/finance/catalog`, getAuthHeaders()), axios.get(`${API}/api/finance/journals`, getAuthHeaders()), axios.get(`${API}/api/finance/reconciliations`, getAuthHeaders())]); setCatalog(catalogResponse.data); setEntries((journalResponse.data.items || []).filter((item) => item.status === 'posted' && !item.reconciliation_id)); setItems(reconciliationResponse.data.items || []); };
   useEffect(() => { load().catch(() => toast.error('No se pudo cargar Conciliación')); }, []);
   const bankAccounts = catalog.accounts.filter((item) => item.account_type === 'asset' && item.code !== '1010');
