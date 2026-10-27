@@ -28,7 +28,8 @@ async def test_f2_corrected_deposit_adjustment_void_and_fiscal_budget():
         def contribution(fund, cents, **extra):
             return {"person_id": donor, "contribution_type": "tithe", "amount_cents": cents, "received_date": today, "payment_method": "cash",
                     "allocations": [{"fund_id": funds[fund], "amount_cents": cents}], **extra}
-        original = (await fin.post("/api/finance/contributions", json=contribution("GENERAL", 10000))).json()
+        from finance_routes import ContributionCreate, record_contribution
+        original = await record_contribution(ContributionCreate(**contribution("GENERAL", 10000)), {"user_id": str(fx.user_ids[1])})  # registro antiguo
         created["contributions"].append(original["contribution_id"])
         deposit = await fin.post("/api/finance/deposits", json={"deposit_date": today, "bank_account_id": accounts["1020"], "contribution_ids": [original["contribution_id"]]})
         assert deposit.status_code == 201, deposit.text
@@ -46,7 +47,7 @@ async def test_f2_corrected_deposit_adjustment_void_and_fiscal_budget():
         # La corregida ya no se puede depositar ni contar otra vez.
         again = await fin.post("/api/finance/deposits", json={"deposit_date": today, "bank_account_id": accounts["1020"], "contribution_ids": [original["contribution_id"]]})
         assert again.status_code == 422
-        assert (await fin.post("/api/finance/batches", json={"batch_date": today, "contribution_ids": [original["contribution_id"]]})).status_code == 422
+        assert (await fin.post("/api/finance/batches", json={"batch_date": today, "contribution_ids": [original["contribution_id"]]})).status_code == 410  # conteos nuevos: en la Colecta
 
         # Ajuste: el reemplazo queda en el mismo depósito; asiento por fondo (GENERAL −100, MISIONES +120).
         assert (await fin.post(f"/api/finance/deposits/{deposit_id}/resolve-adjustment", json={"reason": "x"})).status_code == 422

@@ -56,57 +56,29 @@ def test_e2e_verify_then_unverify_filters_corrected(h):
     did = donation["donation_id"]
     print(f"Created donation {did}")
 
-    # 2. Verify (creates finance_contributions status=recorded)
+    # 2. Verify: nuevo flujo, entra como aporte de la colecta «Ven y Come» (todavía no es contribución).
     r = requests.post(f"{BASE_URL}/api/campaigns/venycome/donations/{did}/verify",
                       json={"payment_method": "zelle"}, headers=h)
     assert r.status_code == 200, r.text
     verified = r.json()
-    contribution_id = verified.get("finance_contribution_id")
-    finance_person_id = verified.get("finance_person_id")
-    assert contribution_id, "verify did not return finance_contribution_id"
-    print(f"Verified: contribution_id={contribution_id} person_id={finance_person_id}")
+    item_id, collection_id = verified.get("finance_collection_item_id"), verified.get("finance_collection_id")
+    assert item_id and collection_id, "verify did not register a collection item"
 
-    # 3. Confirm it appears in /api/finance/contributions with the Ven y Come campaign_name
-    r = requests.get(f"{BASE_URL}/api/finance/contributions", headers=h)
-    assert r.status_code == 200
-    items = r.json()["items"]
-    match = next((i for i in items if i.get("contribution_id") == contribution_id), None)
-    assert match is not None, "verified contribution missing from finance list"
-    assert match.get("status") == "recorded"
-    assert match.get("campaign_name") == "Ven y Come · Bus de comida", f"got {match.get('campaign_name')}"
-    assert match.get("amount_cents") == 7777
+    # 3. En la colecta, activo; en la lista de contribuciones aún no (espera la validación de otra persona).
+    collection = requests.get(f"{BASE_URL}/api/finance/collections/{collection_id}", headers=h).json()
+    assert next(i for i in collection["items"] if i["item_id"] == item_id)["status"] == "active"
+    items = requests.get(f"{BASE_URL}/api/finance/contributions", headers=h).json()["items"]
+    assert not [i for i in items if i.get("amount_cents") == 7777 and i.get("collection_item_id") == item_id]
 
-    # 4. Confirm it appears in person 360 financial history
-    if finance_person_id:
-        r = requests.get(f"{BASE_URL}/api/finance/persons/{finance_person_id}/contributions", headers=h)
-        assert r.status_code == 200
-        data = r.json()
-        pitems = data["items"]
-        pmatch = next((i for i in pitems if i.get("contribution_id") == contribution_id), None)
-        assert pmatch is not None, "verified contribution missing from person contributions"
-        assert data["total_cents"] >= 7777
-
-    # 5. Unverify (sets status=corrected)
+    # 5. Unverify: el aporte queda anulado en la colecta (nunca se borra).
     r = requests.post(f"{BASE_URL}/api/campaigns/venycome/donations/{did}/unverify", headers=h)
     assert r.status_code == 200, r.text
-    print("Unverified")
+    collection = requests.get(f"{BASE_URL}/api/finance/collections/{collection_id}", headers=h).json()
+    assert next(i for i in collection["items"] if i["item_id"] == item_id)["status"] == "voided"
 
-    # 6. Confirm it is NO LONGER in /api/finance/contributions
-    r = requests.get(f"{BASE_URL}/api/finance/contributions", headers=h)
-    items = r.json()["items"]
-    leaked = next((i for i in items if i.get("contribution_id") == contribution_id), None)
-    assert leaked is None, f"corrected contribution still leaking: {leaked}"
-    # And no corrected rows at all
+    # 6. Ninguna contribución corregida se filtra en la lista.
+    items = requests.get(f"{BASE_URL}/api/finance/contributions", headers=h).json()["items"]
     assert all(i.get("status") != "corrected" for i in items)
-
-    # 7. Confirm it is NO LONGER in person contributions and total_cents does not include it
-    if finance_person_id:
-        r = requests.get(f"{BASE_URL}/api/finance/persons/{finance_person_id}/contributions", headers=h)
-        data = r.json()
-        pitems = data["items"]
-        leaked_p = next((i for i in pitems if i.get("contribution_id") == contribution_id), None)
-        assert leaked_p is None, "corrected contribution still in person history"
-        assert all(i.get("status") != "corrected" for i in pitems)
 
     # 8. The donation itself should now be unverified/active
     r = requests.get(f"{BASE_URL}/api/campaigns/venycome/donations", headers=h)

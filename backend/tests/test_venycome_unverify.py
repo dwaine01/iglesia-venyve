@@ -2,11 +2,9 @@
 endpoint (iteration: revert donation verification).
 
 Covers:
-- Verify -> unverify happy path (donation state + finance contribution corrected +
-  journal voided for submitted-only journal).
+- Verify -> unverify happy path (donation state + the Colecta item voided; nothing deleted).
 - 409 when unverifying a non-verified donation.
-- Post-unverify: PUT (edit), /void, DELETE, re-verify (new contribution) all work.
-- Finance totals exclude the original 'corrected' contribution.
+- Post-unverify: PUT (edit), /void, DELETE, re-verify (new Colecta item) all work.
 """
 import os
 import uuid
@@ -62,56 +60,35 @@ def _verify(headers, donation_id, method="zelle"):
 
 
 class TestUnverifyHappyPath:
-    def test_unverify_resets_flags_and_corrects_contribution(self, headers):
+    def test_unverify_resets_flags_and_voids_collection_item(self, headers):
         donation = _create_received_donation(headers)
         did = donation["donation_id"]
         verified = _verify(headers, did, "zelle")
-        contribution_id = verified.get("finance_contribution_id")
-        assert contribution_id, f"verify did not return finance_contribution_id: {verified}"
+        # Nuevo flujo: el donativo entra como aporte de la colecta «Ven y Come» (aún no es contribución).
+        item_id, collection_id = verified.get("finance_collection_item_id"), verified.get("finance_collection_id")
+        assert item_id and collection_id, f"verify did not register a collection item: {verified}"
+        assert verified.get("finance_contribution_id") in (None, "")
         assert verified.get("verified") is True
         assert verified.get("finance_person_id")
+        collection = requests.get(f"{BASE_URL}/api/finance/collections/{collection_id}", headers=headers, timeout=30).json()
+        item = next(x for x in collection["items"] if x["item_id"] == item_id)
+        assert collection["source"] == "campaign_venycome" and collection["is_test"] is True  # ensayo: datos de prueba
+        assert item["status"] == "active" and item["amount_cents"] == 5000 and item["method"] == "zelle"
 
-        # Unverify
         r = requests.post(f"{API}/donations/{did}/unverify", headers=headers, timeout=30)
         assert r.status_code == 200, f"unverify failed {r.status_code} {r.text}"
         after = r.json()
         assert after.get("verified") is False
         assert after.get("verified_at") in (None, "")
-        assert after.get("finance_contribution_id") in (None, "")
+        assert after.get("finance_collection_item_id") in (None, "")
         assert after.get("finance_person_id") in (None, "")
         assert after.get("verified_payment_method") in (None, "")
-
-        # GET donations list and confirm persisted
         g = requests.get(f"{API}/donations", headers=headers, timeout=30)
-        assert g.status_code == 200
         gitems = g.json() if isinstance(g.json(), list) else g.json().get("items", [])
-        this = next((x for x in gitems if x.get("donation_id") == did), None)
-        assert this is not None, "created donation not in list"
-        assert this.get("verified") is False
-
-        # Finance contribution now 'corrected'
-        fc = requests.get(f"{BASE_URL}/api/finance/contributions", headers=headers, timeout=30)
-        assert fc.status_code == 200, fc.text
-        items = fc.json() if isinstance(fc.json(), list) else fc.json().get("items", [])
-        # Default listing often filters out 'corrected' - try query param
-        found = next((x for x in items if x.get("contribution_id") == contribution_id), None)
-        if not found:
-            fc2 = requests.get(f"{BASE_URL}/api/finance/contributions",
-                               headers=headers, params={"include_corrected": "true"}, timeout=30)
-            if fc2.status_code == 200:
-                items2 = fc2.json() if isinstance(fc2.json(), list) else fc2.json().get("items", [])
-                found = next((x for x in items2 if x.get("contribution_id") == contribution_id), None)
-        # If still not found, that in itself confirms it's excluded from standard listing
-        if found:
-            assert found.get("status") == "corrected", f"expected corrected got {found.get('status')}"
-            assert "revert" in (found.get("correction_reason") or "").lower() or \
-                   "verific" in (found.get("correction_reason") or "").lower()
-        else:
-            # Verify directly by trying to fetch it individually
-            one = requests.get(f"{BASE_URL}/api/finance/contributions/{contribution_id}", headers=headers, timeout=30)
-            if one.status_code == 200:
-                data = one.json()
-                assert data.get("status") == "corrected"
+        assert next(x for x in gitems if x.get("donation_id") == did).get("verified") is False
+        # El aporte queda anulado en la colecta (nunca se borra).
+        collection = requests.get(f"{BASE_URL}/api/finance/collections/{collection_id}", headers=headers, timeout=30).json()
+        assert next(x for x in collection["items"] if x["item_id"] == item_id)["status"] == "voided"
 
     def test_unverify_on_not_verified_returns_409(self, headers):
         donation = _create_received_donation(headers)
@@ -126,7 +103,7 @@ class TestUnverifyHappyPath:
         donation = _create_received_donation(headers, amount=7000)
         did = donation["donation_id"]
         v1 = _verify(headers, did, "zelle")
-        original_cid = v1["finance_contribution_id"]
+        original_cid = v1["finance_collection_item_id"]
 
         # While verified: edit should 409
         edit_while_verified = requests.put(f"{API}/donations/{did}", headers=headers,
@@ -146,7 +123,7 @@ class TestUnverifyHappyPath:
 
         # Re-verify -> new contribution id
         v2 = _verify(headers, did, "cash")
-        new_cid = v2["finance_contribution_id"]
+        new_cid = v2["finance_collection_item_id"]
         assert new_cid and new_cid != original_cid, f"expected new cid, orig={original_cid} new={new_cid}"
 
         # Unverify again, then try /void and DELETE

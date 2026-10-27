@@ -23,10 +23,12 @@ async def test_donor_data_only_for_pastora_and_logged():
         catalog = (await pastora.get("/api/finance/catalog")).json()
         general = next(item["fund_id"] for item in catalog["funds"] if item["code"] == "GENERAL")
         today = (await church_today()).isoformat()
-        created = await finance.post("/api/finance/contributions", json={"person_id": donor, "contribution_type": "tithe", "amount_cents": 4200, "received_date": today, "payment_method": "cash",
-                                                                         "reference": "Cheque 77", "notes": f"Sobre de DonanteP{tag}", "allocations": [{"fund_id": general, "amount_cents": 4200}]})
-        assert created.status_code == 201, created.text  # la tesorera sigue registrando con nombre
-        contributions.append(created.json()["contribution_id"])
+        legacy = {"person_id": donor, "contribution_type": "tithe", "amount_cents": 4200, "received_date": today, "payment_method": "cash",
+                  "reference": "Cheque 77", "notes": f"Sobre de DonanteP{tag}", "allocations": [{"fund_id": general, "amount_cents": 4200}]}
+        assert (await finance.post("/api/finance/contributions", json=legacy)).status_code == 410  # los aportes nuevos van por la Colecta
+        from finance_routes import ContributionCreate, record_contribution
+        created = await record_contribution(ContributionCreate(**legacy), {"user_id": str(fx.user_ids[1])})  # un registro antiguo
+        contributions.append(created["contribution_id"])
 
         # El resto de Finanzas: la lista sin quién dio; los totales siguen.
         listed = (await finance.get("/api/finance/contributions")).json()

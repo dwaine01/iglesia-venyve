@@ -69,7 +69,7 @@ class TestDeleteDonation:
 
 # ---------- Verify donation + finance integration ----------
 class TestVerifyDonation:
-    def test_verify_received_and_creates_finance_contribution(self, auth_headers, building_fund_id):
+    def test_verify_received_registers_collection_item(self, auth_headers, building_fund_id):
         d = _create_donation(auth_headers, donor_name="TEST_VerifyFlow Beta", amount_cents=55500)
         did = d["donation_id"]
         r = requests.post(
@@ -82,20 +82,18 @@ class TestVerifyDonation:
         after = r.json()
         assert after["verified"] is True
         assert after["verified_payment_method"] == "zelle"
-        assert after.get("finance_contribution_id")
-        contribution_id = after["finance_contribution_id"]
-
-        # Finance contribution exists
-        r2 = requests.get(f"{BASE_URL}/api/finance/contributions", headers=auth_headers, timeout=15)
+        # Nuevo flujo: entra como aporte de la colecta «Ven y Come» del día; Finanzas la cuadra y otra persona valida.
+        item_id = after.get("finance_collection_item_id")
+        assert item_id and after.get("finance_collection_id")
+        r2 = requests.get(f"{BASE_URL}/api/finance/collections/{after['finance_collection_id']}", headers=auth_headers, timeout=15)
         assert r2.status_code == 200, r2.text
-        items = r2.json() if isinstance(r2.json(), list) else r2.json().get("items", [])
-        match = next((c for c in items if c.get("contribution_id") == contribution_id), None)
-        assert match is not None, f"Finance contribution {contribution_id} not found"
+        assert r2.json()["source"] == "campaign_venycome" and r2.json()["status"] == "registering"
+        match = next((c for c in r2.json()["items"] if c.get("item_id") == item_id), None)
+        assert match is not None, f"Collection item {item_id} not found"
         assert match["contribution_type"] == "building"
         assert match["amount_cents"] == 55500
-        assert match["payment_method"] == "zelle"
-        allocations = match.get("allocations", [])
-        assert allocations and allocations[0]["fund_id"] == building_fund_id
+        assert match["method"] == "zelle"
+        assert match["fund_id"] == building_fund_id and match.get("campaign_id")
 
     def test_re_verify_returns_409(self, auth_headers):
         d = _create_donation(auth_headers, donor_name="TEST_ReVerify Gamma", amount_cents=10000)

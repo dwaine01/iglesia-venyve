@@ -77,6 +77,23 @@ def finance_team_token(base_url: str) -> str:
     return response.json()["token"]
 
 
+def seed_legacy_contribution(fields: dict) -> str:
+    """Un registro ANTIGUO de contribución (de antes de la Colecta) en la base de PRUEBAS, para probar lo que
+    se sigue haciendo con el historial (depósitos, correcciones, listados). Los aportes nuevos van por la Colecta."""
+    from uuid import uuid4
+    contribution_id = str(uuid4())
+    now = datetime.now(timezone.utc)
+    doc = {"_id": contribution_id, "contribution_id": contribution_id, "person_id": None, "anonymous": True, "household_id": None, "source": "manual",
+           "batch_id": None, "deposit_id": None, "journal_entry_id": None, "status": "recorded", "created_by_user_id": "qa-legacy", "created_at": now, "updated_at": now, **fields}
+    doc.setdefault("accounting_date", doc.get("received_date"))
+    client = MongoClient(os.environ["MONGO_URL"])
+    try:
+        client[os.environ["DB_NAME"]].finance_contributions.insert_one(doc)
+    finally:
+        client.close()
+    return contribution_id
+
+
 BACKEND_DIR = str(APP_DIR / "backend")
 if BACKEND_DIR not in sys.path:
     sys.path.insert(0, BACKEND_DIR)

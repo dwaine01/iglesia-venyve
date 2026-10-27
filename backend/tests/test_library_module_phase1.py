@@ -180,7 +180,7 @@ class TestDeliveryAndFinance:
                           }, timeout=30)
         assert r.status_code == 201, r.text
         movement = r.json()
-        assert movement["finance_contribution_id"], f"finance_contribution_id missing: {movement}"
+        assert movement.get("finance_collection_item_id"), f"finance_collection_item_id missing: {movement}"
         assert not movement.get("finance_sync_error")
 
         # my-holdings decreased by 1
@@ -194,16 +194,14 @@ class TestDeliveryAndFinance:
         assert pm.status_code == 200
         assert any(m["movement_id"] == movement["movement_id"] for m in pm.json()["items"])
 
-        # Verify contribution in finance list (no GET /:id endpoint)
-        cid = movement["finance_contribution_id"]
+        # Nuevo flujo: el pago entra como aporte de la colecta «Librería» del día (Finanzas cuadra y otra persona valida).
         pastor_state = _login(PASTOR_EMAIL)
-        fc = requests.get(f"{BASE_URL}/api/finance/contributions", headers=_h(pastor_state["token"]), timeout=30)
+        fc = requests.get(f"{BASE_URL}/api/finance/collections/{movement['finance_collection_id']}", headers=_h(pastor_state["token"]), timeout=30)
         assert fc.status_code == 200, fc.text
-        found = next((c for c in fc.json()["items"] if c.get("contribution_id") == cid), None)
-        assert found, f"contribution {cid} not found in finance list"
-        assert found["amount_cents"] == 1500
-        allocs = found.get("allocations") or []
-        assert any(a.get("contribution_type") == "libreria_material_educativo" for a in allocs)
+        found = next((c for c in fc.json()["items"] if c.get("item_id") == movement["finance_collection_item_id"]), None)
+        assert found and fc.json()["source"] == "library"
+        assert found["amount_cents"] == 1500 and found["method"] == "cash"
+        assert found["contribution_type"] == "libreria_material_educativo"
 
         # Dashboard delivered incremented
         after_dash = _dashboard_totals(lider["token"])

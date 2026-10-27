@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 
 from access_control import is_global_pastoral_authority
 from finance_engine import audit, can_see_donors, create_journal, ensure_open_period, log_donor_view, now_utc, require_donor_access, require_finance_manage, require_finance_read, serialize, without_donor
-from finance_routes import ContributionCreate, ExpenseCreate, contribution_create, expense_create
+from finance_routes import ContributionCreate, ExpenseCreate, expense_create, record_contribution
 from server import db, get_current_user
 
 
@@ -343,7 +343,7 @@ async def contribution_correct(contribution_id: str, payload: ContributionCorrec
         reversal_lines = [{**line, "debit_cents": line.get("credit_cents", 0), "credit_cents": line.get("debit_cents", 0), "description": f"Reversión: {line.get('description', '')}"} for line in original_journal.get("lines", [])]
         reversal = await create_journal(current_user["user_id"], payload.correction_date.isoformat(), f"Reversión por corrección · {payload.reason}", "contribution_reversal", contribution_id, reversal_lines, "submitted")
     try:
-        replacement = await contribution_create(payload.replacement, current_user)
+        replacement = await record_contribution(payload.replacement, current_user)
     except Exception:
         if reversal:
             from finance_routes import void_journal

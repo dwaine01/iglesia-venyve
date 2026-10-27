@@ -1,12 +1,10 @@
 """Mega‑Bloque G: APIs financieras con contabilidad por fondos y RBAC estricto."""
-import csv
-import io
 import os
 from datetime import date, datetime, timezone
 from typing import Literal, Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, model_validator
 from pymongo.errors import DuplicateKeyError
 from bson import ObjectId
@@ -553,9 +551,19 @@ async def refresh_batch_totals(batch_id: str) -> dict:
     return {**batch, **updates}
 
 
-@router.post("/contributions", response_model=dict, status_code=201)
-async def contribution_create(payload: ContributionCreate, current_user: dict = Depends(manager)):
+# Decisión del dueño: todo aporte nuevo entra por Finanzas › Colecta (registro y validación por una segunda
+# persona). Las pantallas antiguas ya no crean aportes; su historial se sigue consultando.
+OLD_ENTRY_CLOSED = "Los aportes nuevos se registran en Finanzas › Colecta (registro y validación por una segunda persona)"
+
+
+@router.post("/contributions", response_model=dict, status_code=410)
+async def contribution_create_closed(current_user: dict = Depends(reader)):
     deny_pastoral_registration(current_user)
+    raise HTTPException(status_code=410, detail=OLD_ENTRY_CLOSED)
+
+
+async def record_contribution(payload: ContributionCreate, current_user: dict) -> dict:
+    """Solo uso interno: el reemplazo de una corrección de una contribución antigua (queda historial)."""
     if not payload.anonymous and not payload.person_id:
         raise HTTPException(status_code=422, detail="Seleccione una Persona 360 o marque contribución anónima")
     person_doc = None
@@ -644,21 +652,10 @@ async def contribution_create(payload: ContributionCreate, current_user: dict = 
     return serialize(doc)
 
 
-@router.post("/contributions/import-csv", response_model=dict)
-async def import_contributions_csv(file: UploadFile = File(...), current_user: dict = Depends(manager)):
+@router.post("/contributions/import-csv", response_model=dict, status_code=410)
+async def import_contributions_csv(current_user: dict = Depends(reader)):
     deny_pastoral_registration(current_user)
-    content = await file.read()
-    try: rows = list(csv.DictReader(io.StringIO(content.decode("utf-8-sig"))))
-    except Exception: raise HTTPException(status_code=400, detail="CSV no válido")
-    imported = 0; rejected = []
-    for index, row in enumerate(rows, start=2):
-        try:
-            fund = await db.finance_funds.find_one({"code": row["fund_code"].strip().upper(), "active": True})
-            if not fund: raise ValueError("Fondo no encontrado")
-            payload = ContributionCreate(person_id=row.get("person_id") or None, anonymous=(row.get("anonymous", "").lower() in {"true", "1", "sí", "si"}), contribution_type=row["contribution_type"].strip().lower(), amount_cents=int(row["amount_cents"]), received_date=date.fromisoformat(row["received_date"]), payment_method=row.get("payment_method", "other").strip().lower(), reference=row.get("reference"), allocations=[Allocation(fund_id=fund["fund_id"], amount_cents=int(row["amount_cents"]))], source="csv", external_transaction_id=row["external_transaction_id"].strip())
-            await contribution_create(payload, current_user); imported += 1
-        except Exception as error: rejected.append({"row": index, "reason": str(getattr(error, "detail", error))[:240]})
-    return {"imported": imported, "rejected": rejected, "total": len(rows)}
+    raise HTTPException(status_code=410, detail=OLD_ENTRY_CLOSED + "; los Zelle del banco se cargan en la Colecta (CSV)")
 
 
 @router.get("/campaigns", response_model=dict)
@@ -700,24 +697,11 @@ async def batches(current_user: dict = Depends(reader)):
     return {"items": serialize(await db.finance_batches.find({}, {"_id": 0}).sort("batch_date", -1).to_list(2000))}
 
 
-@router.post("/batches", response_model=dict, status_code=201)
-async def batch_create(payload: BatchCreate, current_user: dict = Depends(manager)):
+@router.post("/batches", response_model=dict, status_code=410)
+async def batch_create(current_user: dict = Depends(reader)):
     deny_pastoral_registration(current_user)
-    contributions = await db.finance_contributions.find({"contribution_id": {"$in": payload.contribution_ids}, "batch_id": {"$in": [None, ""]}, "status": {"$ne": "corrected"}}, {"_id": 0}).to_list(2000)
-    if len(contributions) != len(set(payload.contribution_ids)): raise HTTPException(status_code=422, detail="Hay contribuciones inexistentes, corregidas o ya incluidas en otro conteo")
-    batch_id = str(uuid4()); expected = sum(item["amount_cents"] for item in contributions)
-    payment_totals = {}; concept_totals = {}; fund_totals = {}
-    for contribution in contributions:
-        method = contribution.get("payment_method", "other")
-        payment_totals[method] = payment_totals.get(method, 0) + contribution.get("amount_cents", 0)
-        for allocation in contribution.get("allocations", []):
-            concept = allocation.get("contribution_type") or contribution.get("contribution_type") or "other"
-            concept_totals[concept] = concept_totals.get(concept, 0) + allocation.get("amount_cents", 0)
-            fund_id = allocation.get("fund_id")
-            fund_totals[fund_id] = fund_totals.get(fund_id, 0) + allocation.get("amount_cents", 0)
-    now = now_utc()
-    doc = {"_id": batch_id, "batch_id": batch_id, **payload.model_dump(mode="json"), "service_date": (payload.service_date or payload.batch_date).isoformat(), "expected_envelope_count": payload.expected_envelope_count if payload.expected_envelope_count is not None else len(contributions), "expected_envelope_count_locked": payload.expected_envelope_count is not None, "registered_envelope_count": len(contributions), "expected_total_cents": expected, "expected_payment_totals": payment_totals, "expected_concept_totals": concept_totals, "expected_fund_totals": fund_totals, "counts": [], "status": "awaiting_first_count" if contributions else "collecting", "deposit_id": None, "created_by_user_id": current_user["user_id"], "created_at": now, "updated_at": now}
-    await db.finance_batches.insert_one(doc); await db.finance_contributions.update_many({"contribution_id": {"$in": payload.contribution_ids}}, {"$set": {"batch_id": batch_id}}); await audit(current_user["user_id"], "batch_created", "batch", batch_id, {"expected_total_cents": expected}); return serialize(doc)
+    # Los conteos ya abiertos pueden terminarse; los nuevos se hacen en la Colecta.
+    raise HTTPException(status_code=410, detail=OLD_ENTRY_CLOSED)
 
 
 @router.post("/batches/{batch_id}/start-count", response_model=dict)

@@ -253,26 +253,15 @@ def test_finance_role_registers_with_name_but_sees_totals_without_names(rbac_mat
     assert catalog.status_code == 200, catalog.text
     general_fund = next(item for item in catalog.json()["funds"] if item["code"] == "GENERAL")
     reference = f"QA-I40-NAMED-{uuid4().hex[:8]}"
-    contribution = requests.post(
-        f"{BASE_URL}/api/finance/contributions",
-        headers=auth(token),
-        json={
-            "person_id": person_id,
-            "anonymous": False,
-            "amount_cents": 12345,
-            "received_date": datetime.now(timezone.utc).date().isoformat(),
-            "payment_method": "cash",
-            "reference": reference,
-            "source": "manual",
-            "allocations": [{"fund_id": general_fund["fund_id"], "amount_cents": 12345, "contribution_type": "tithe"}],
-        },
-        timeout=30,
-    )
-    assert contribution.status_code == 201, contribution.text
-    created = contribution.json()
+    legacy = {"person_id": person_id, "anonymous": False, "amount_cents": 12345, "received_date": datetime.now(timezone.utc).date().isoformat(),
+              "payment_method": "cash", "reference": reference, "source": "manual",
+              "allocations": [{"fund_id": general_fund["fund_id"], "amount_cents": 12345, "contribution_type": "tithe"}]}
+    # Los aportes nuevos se registran en la Colecta; aquí se prueba la privacidad sobre un registro antiguo con nombre.
+    assert requests.post(f"{BASE_URL}/api/finance/contributions", headers=auth(token), json=legacy, timeout=30).status_code == 410
+    from tests.conftest import seed_legacy_contribution
+    created = {"contribution_id": seed_legacy_contribution({**legacy, "contribution_type": "tithe"})}
     state["contributions"].append(created["contribution_id"])
-    state["journals"].append(created["journal_entry_id"])
-    # Registra con nombre, pero sin «ver aportes por persona» no ve el detalle ni quién dio (F1).
+    # Sin «ver aportes por persona» no ve el detalle ni quién dio (F1).
     assert requests.get(f"{BASE_URL}/api/finance/contributors/{person_id}", headers=auth(token), timeout=30).status_code == 403
     assert requests.get(f"{BASE_URL}/api/finance/contributors/{person_id}/history", headers=auth(token), timeout=30).status_code == 403
     listed = requests.get(f"{BASE_URL}/api/finance/contributions", headers=auth(token), timeout=30)
