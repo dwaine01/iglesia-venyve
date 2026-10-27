@@ -36,6 +36,8 @@ PERSON_ADDRESSES_WRITE = "person.addresses.write"
 PERSON_PASTORAL_NOTES_READ = "person.notes.pastoral.read"
 CORE_GOVERNANCE_MANAGE = "core.governance.manage"
 CORE_ACCESS_MANAGE = "core.access.manage"
+TEAM_ASSIGN_FINANCE = "team.assign.finance"   # Equipo y Responsables: asignar los cargos de Finanzas (lo da el pastor)
+TEAM_ASSIGN_BOARD = "team.assign.board"       # Equipo y Responsables: asignar los cargos de Junta (lo da el pastor)
 BOARD_ACCESS = "board.access"
 BOARD_CONFIDENTIAL_ACCESS = "board.confidential.access"
 FINANCE_READ = "finance.read"
@@ -158,6 +160,10 @@ STAFF_TOOLS_CAPABILITIES = [INVITATION_CODES_MANAGE, EVANGELISM_LOG_WRITE, PRESE
 # lo que el administrador marque aquí explícitamente (más el paquete de
 # mentor si corresponde); no hereda el paquete amplio por cargo.
 CAPABILITY_CATALOG = [
+    {"module_key": "team", "label": "Equipo y Responsables", "items": [
+        {"capability": TEAM_ASSIGN_FINANCE, "action": "administrar", "label": "Administrar: asignar el equipo de Finanzas"},
+        {"capability": TEAM_ASSIGN_BOARD, "action": "administrar", "label": "Administrar: asignar cargos de Junta"},
+    ]},
     {"module_key": "persons", "label": "Personas y Directorio 360", "items": [
         {"capability": PERSON_DIRECTORY_SEARCH, "action": "consultar", "label": "Consultar: buscar personas en el directorio"},
         {"capability": PERSON_PROFILE_SENSITIVE_READ, "action": "consultar", "label": "Consultar: datos sensibles del perfil (nacimiento, género, estado civil)"},
