@@ -629,6 +629,8 @@ app.include_router(invasion_alerts_router)
 app.include_router(consolidation_leads_router)
 from team_catalog import router as team_catalog_router, ensure_team_catalog  # noqa: E402
 app.include_router(team_catalog_router)
+from team_assignments import router as team_assignments_router, ensure_indexes as team_assignments_ensure_indexes  # noqa: E402
+app.include_router(team_assignments_router)
 app.include_router(consolidation_panorama_router)
 app.include_router(radio_router)
 app.include_router(invasion_planning_router)
@@ -848,6 +850,7 @@ async def startup():
     from capability_grants import migrate_consolidation_leads
     await migrate_consolidation_leads()
     await ensure_team_catalog()  # Equipo y Responsables E2: áreas y cargos iniciales
+    await team_assignments_ensure_indexes()
     await radio_ensure_indexes()
     await campaign_venycome_ensure_indexes()
     await ensure_mentorship_indexes()
