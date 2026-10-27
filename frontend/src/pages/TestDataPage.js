@@ -11,6 +11,8 @@ export default function TestDataPage() {
   const { API, getAuthHeaders } = useAuth();
   const [data, setData] = useState(null);
   const [busy, setBusy] = useState('');
+  const [legacy, setLegacy] = useState(null);
+  useEffect(() => { axios.get(`${API}/api/processes/legacy-auto/report`, getAuthHeaders()).then((response) => setLegacy(response.data)).catch(() => setLegacy(null)); }, [API, getAuthHeaders]);
   const load = useCallback(() => axios.get(`${API}/api/test-data/inventory`, getAuthHeaders()).then((response) => setData(response.data))
     .catch((error) => toast.error(apiErrorMessage(error, 'No se pudo cargar el inventario'))), [API, getAuthHeaders]);
   useEffect(() => { load(); }, [load]);
@@ -36,6 +38,18 @@ export default function TestDataPage() {
   const button = 'inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg border px-3 text-sm font-semibold disabled:opacity-50';
   return (
     <div className="mx-auto max-w-5xl space-y-5 p-4 sm:p-6" data-testid="test-data-page">
+      {legacy && (
+        <section className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950" data-testid="legacy-auto-report">
+          <h2 className="font-semibold">Expedientes que el sistema creaba solo desde el Manual viejo</h2>
+          <p>Creación automática: <b>{legacy.auto_migration_enabled ? 'ENCENDIDA' : 'apagada'}</b>{legacy.disabled_at ? ` desde ${legacy.disabled_at.slice(0, 16).replace('T', ' ')} (UTC)` : ''}. Solo lectura; lo ya creado no se borra.</p>
+          <ul className="grid gap-1 sm:grid-cols-2">
+            <li>Creados solos en total: <b>{legacy.total_auto_created}</b></li>
+            <li>Personas distintas: <b>{legacy.distinct_people}</b> · recreadas: <b>{legacy.people_recreated}</b> (copias de más: {legacy.extra_copies})</li>
+            <li>«Personas sin líder» hoy: <b>{legacy.people_without_leader_total}</b> · solo por un expediente del Manual viejo: <b>{legacy.people_without_leader_only_legacy}</b></li>
+            <li>Creados después del apagado: <b>{legacy.created_after_disabled ?? '—'}</b> (debe quedar en 0)</li>
+          </ul>
+        </section>
+      )}
       <header className="space-y-1">
         <h1 className="flex items-center gap-2 font-['Spectral'] text-2xl font-semibold text-[#101D36]"><FlaskConical className="h-6 w-6 text-[#9A7A2F]" />Datos de prueba</h1>
         <p className="text-sm text-slate-600">{data.note} Las marcas y los archivos quedan en el historial.</p>

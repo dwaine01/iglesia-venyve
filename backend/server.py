@@ -631,6 +631,8 @@ from team_catalog import router as team_catalog_router, ensure_team_catalog  # n
 app.include_router(team_catalog_router)
 from team_assignments import router as team_assignments_router, ensure_indexes as team_assignments_ensure_indexes  # noqa: E402
 app.include_router(team_assignments_router)
+from legacy_auto_report import router as legacy_auto_router  # noqa: E402
+app.include_router(legacy_auto_router)
 app.include_router(consolidation_panorama_router)
 app.include_router(radio_router)
 app.include_router(invasion_planning_router)
@@ -817,7 +819,11 @@ async def startup():
     await seed_activity_catalog()
     await ensure_leadership_indexes_and_seed()
     await migrate_historical_consolidation(db)
-    await migrate_legacy_processes(db, "system:startup")
+    # R1 (decisión del dueño): ya NO se crean expedientes solos desde el Manual viejo en cada arranque.
+    # Reversible desde /api/processes/legacy-auto/setting; lo ya creado no se borra.
+    from legacy_auto_report import auto_migration_enabled
+    if await auto_migration_enabled():
+        await migrate_legacy_processes(db, "system:startup")
     await evaluate_alerts(db)
     await seed_cellular_catalog(db)
     await ensure_cellular_indexes(db)
