@@ -8,6 +8,7 @@ import { useAuth } from '../../context/AuthContext';
 import { INVASIONS_CHANGED_EVENT } from '../../context/InvasionTodayContext';
 import { apiErrorMessage } from '../../lib/apiErrors';
 import { MyPrayerCard } from './PrayerProgress';
+import { churchToday } from '../../lib/churchDate';
 
 const STATUS_STYLE = {
   invited: 'bg-amber-50 text-amber-800 border-amber-200',
@@ -92,7 +93,7 @@ export function MyInvasionsCard({ onChanged }) {
               </div>
               {!item.finished && item.status !== 'declined' && <MyPrayerCard campaignId={item.campaign_id} />}
               {item.finished && <p className="mt-3 text-xs text-slate-500">Esta invasión ya terminó.</p>}
-              {item.roles.includes('mentor') && item.start_date <= new Date().toISOString().slice(0, 10) && <Link to={`/invasiones/${item.campaign_id}/reporte`} className="mt-2 inline-flex min-h-10 items-center text-sm font-semibold text-[#101D36] underline" data-testid={`my-invasion-report-${item.campaign_id}`}>Ver mi reporte</Link>}
+              {item.roles.includes('mentor') && item.start_date <= churchToday() && <Link to={`/invasiones/${item.campaign_id}/reporte`} className="mt-2 inline-flex min-h-10 items-center text-sm font-semibold text-[#101D36] underline" data-testid={`my-invasion-report-${item.campaign_id}`}>Ver mi reporte</Link>}
             </article>
           );
         })}

@@ -5,8 +5,9 @@ import { toast } from 'sonner';
 
 import { useAuth } from '../../context/AuthContext';
 import { apiErrorMessage } from '../../lib/apiErrors';
+import { churchToday } from '../../lib/churchDate';
 
-const todayIso = () => { const now = new Date(); return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
+const todayIso = () => churchToday();
 const addDays = (iso, days) => { const value = new Date(`${iso}T12:00:00`); value.setDate(value.getDate() + days); return value.toISOString().slice(0, 10); };
 const shortDate = (iso) => (iso ? new Date(`${iso}T12:00:00`).toLocaleDateString('es', { weekday: 'short', day: 'numeric', month: 'short' }) : '');
 const periodDays = (period) => { const list = []; if (!period) return list; let cursor = period.prayer_start; while (cursor <= period.prep_end && list.length < 60) { list.push(cursor); cursor = addDays(cursor, 1); } return list; };

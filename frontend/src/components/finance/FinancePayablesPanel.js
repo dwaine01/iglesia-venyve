@@ -11,8 +11,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { useAuth } from '../../context/AuthContext';
 import { displayLabel } from '../../lib/displayLabels';
 import { FinanceEmpty, Money } from './FinanceShell';
+import { churchToday } from '../../lib/churchDate';
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => churchToday();
 
 export const FinancePayablesPanel = ({ catalog, vendors, refreshVendors }) => {
   const { API, getAuthHeaders, user } = useAuth();

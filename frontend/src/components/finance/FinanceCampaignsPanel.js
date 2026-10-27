@@ -11,13 +11,14 @@ import { useFinanceRoles } from './useFinanceRoles';
 import { useAuth } from '../../context/AuthContext';
 import { displayLabel } from '../../lib/displayLabels';
 import { FinanceEmpty, Money } from './FinanceShell';
+import { churchToday } from '../../lib/churchDate';
 
 export const FinanceCampaignsPanel = ({ funds }) => {
   const roles = useFinanceRoles();
   const { API, getAuthHeaders } = useAuth();
   const [items, setItems] = useState([]);
   const [activity, setActivity] = useState({});
-  const [form, setForm] = useState({ name: '', fund_id: '', goal: '', budget: '', project_type: 'campaign', description: '', start_date: new Date().toISOString().slice(0, 10), end_date: '' });
+  const [form, setForm] = useState({ name: '', fund_id: '', goal: '', budget: '', project_type: 'campaign', description: '', start_date: churchToday(), end_date: '' });
   const load = () => axios.get(`${API}/api/finance/campaigns`, getAuthHeaders()).then((response) => setItems(response.data.items || []));
   useEffect(() => { load(); }, []);
   const create = async (event) => { event.preventDefault(); try { await axios.post(`${API}/api/finance/campaigns`, { name: form.name, fund_id: form.fund_id, goal_cents: Math.round(Number(form.goal) * 100), budget_cents: Math.round(Number(form.budget || 0) * 100), project_type: form.project_type, description: form.description || null, start_date: form.start_date, end_date: form.end_date || null }, getAuthHeaders()); toast.success('Proyecto o campaña creado'); setForm({ ...form, name: '', goal: '', budget: '', description: '' }); await load(); } catch (error) { toast.error(error?.response?.data?.detail || 'No se pudo crear'); } };

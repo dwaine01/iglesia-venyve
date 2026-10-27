@@ -12,8 +12,9 @@ import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { MembershipDocumentDialog } from './MembershipDocumentDialog';
 import { formatMembershipDate } from './MembershipDocumentTemplates';
+import { churchToday } from '../../lib/churchDate';
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => churchToday();
 
 export const MembershipDocumentsSection = ({ personId, photoSrc }) => {
   const { API, getAuthHeaders, user } = useAuth();
