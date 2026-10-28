@@ -32,7 +32,7 @@ STAGES = ["visitor_followup", "prayer", "invasion", "mcd", "npt", "welcome_party
 STAGE_LABELS = {"visitor_followup": "Nuevo y seguimiento", "prayer": "Oración", "invasion": "Invasión", "mcd": "MCD", "npt": "Nací Para Triunfar",
                 "welcome_party": "Fiesta de Bienvenida", "lbs_1": "LBS 1", "lbs_2": "LBS 2", "lbs_3": "LBS 3", "retreat": "Retiro", "graduation": "Graduación", "discipleship_handoff": "Educación / Discipulado"}
 PERIOD_DAYS = {"week": 7, "month": 30, "quarter": 90}
-METRICS = ("total", "new", "unattended", "no_next_action", "transfers", "first_contact", "memberships")
+METRICS = ("total", "new", "unattended", "no_next_action", "transfers", "first_contact", "memberships", "stalled", "without_leader")
 
 
 def now_utc() -> datetime:
@@ -158,6 +158,10 @@ async def panorama(period: Literal["week", "month", "quarter", "invasion", "all"
                    for item in items if activity.get(item["enrollment_id"]) and aware(activity[item["enrollment_id"]].get("first")) and created[item["enrollment_id"]]]
     first_hours = [value for value in first_hours if value >= 0]
     unattended = [item for item in items if is_unattended(item, activity, now)]
+    from count_rules import STALLED_DAYS, STALLED_RULE, is_stalled, people_without_mentor
+    stalled = [item for item in items if is_stalled(item, (activity.get(item["enrollment_id"]) or {}).get("last"), now)]
+    # «Personas sin líder»: la MISMA lista del Panel General (regla única); solo en la vista de toda la iglesia.
+    without_leader = len(await people_without_mentor(limit=100000)) if scope["level"] == "all" else None
     no_next = [item for item in active if not item.get("next_action_at")]
     transfers = [item for item in active if item.get("mentor_transfer_required") is True]
 
@@ -204,14 +208,34 @@ async def panorama(period: Literal["week", "month", "quarter", "invasion", "all"
         "filters": {"campaign_id": campaign_id, "campaign_name": (campaign or {}).get("name"), "mentor_person_id": mentor_person_id if scope["level"] == "all" else scope.get("mentor_person_id"), "front_group_id": front_group_id, "stage_key": stage_key},
         "figures": {
             "total": len(counted), "open": len(open_items), "active": len(active), "new": len(in_period), "new_previous": len(in_previous), "new_delta": delta(len(in_period), len(in_previous)),
-            "unattended": len(unattended), "no_next_action": len(no_next), "transfers": len(transfers), "memberships": len(members),
+            "unattended": len(unattended), "stalled": len(stalled), "without_leader": without_leader, "no_next_action": len(no_next), "transfers": len(transfers), "memberships": len(members),
             "first_contact_avg_hours": round(sum(first_hours) / len(first_hours), 1) if first_hours else None, "first_contact_count": len(first_hours),
         },
         "funnel": funnel,
         "by_stage": [{"stage_key": key, "label": STAGE_LABELS[key], "active": by_stage.get(key, 0)} for key in STAGES if by_stage.get(key)],
         "mentor_load": {"items": loads, "average": average, "mentors": len(loads)},
-        "by_campaign": by_campaign, "trend": trend, "unattended_hours": UNATTENDED_HOURS,
+        "by_campaign": by_campaign, "trend": trend, "unattended_hours": UNATTENDED_HOURS, "stalled_days": STALLED_DAYS, "stalled_rule": STALLED_RULE,
     }
+
+
+async def without_leader_list(scope: dict, offset: int, limit: int) -> dict:
+    """La lista del Panel General (count_rules.people_without_mentor), con el expediente abierto si lo hay."""
+    if scope["level"] != "all":
+        raise HTTPException(status_code=403, detail="«Personas sin líder» se ve en la vista de toda la iglesia")
+    from count_rules import CONSOLIDATION_OPEN, people_without_mentor
+    rows = await people_without_mentor(limit=100000)
+    page = rows[offset:offset + limit]
+    open_by_person = {doc["person_id"]: doc async for doc in db.process_enrollments.find(
+        {"process_key": "consolidation", "status": {"$in": CONSOLIDATION_OPEN}, "person_id": {"$in": [row["canonical_person_id"] for row in page]}},
+        {"_id": 0, "enrollment_id": 1, "person_id": 1, "current_stage_key": 1, "created_at": 1})}
+    items = []
+    for row in page:
+        enrollment = open_by_person.get(row["canonical_person_id"]) or {}
+        items.append({"enrollment_id": enrollment.get("enrollment_id"), "person_id": row["canonical_person_id"], "name": row["nombre"], "mentor_name": None,
+                      "stage_key": enrollment.get("current_stage_key"), "stage_label": STAGE_LABELS.get(enrollment.get("current_stage_key"), row.get("origen")),
+                      "reason": row.get("motivo"), "created_at": aware(enrollment.get("created_at")).isoformat() if aware(enrollment.get("created_at")) else None,
+                      "last_activity_at": None, "next_action": None, "next_action_at": None})
+    return {"metric": "without_leader", "total": len(rows), "items": items, "scope": scope["level"]}
 
 
 @router.get("/list/{metric}", response_model=dict)
@@ -230,6 +254,11 @@ async def panorama_list(metric: str, campaign_id: Optional[str] = None, mentor_p
         rows = [item for item in items if start and aware(item.get("created_at")) and aware(item["created_at"]) >= start]
     elif metric == "unattended":
         rows = [item for item in items if is_unattended(item, activity, now)]
+    elif metric == "stalled":
+        from count_rules import is_stalled
+        rows = [item for item in items if is_stalled(item, (activity.get(item["enrollment_id"]) or {}).get("last"), now)]
+    elif metric == "without_leader":
+        return await without_leader_list(scope, offset, limit)
     elif metric == "no_next_action":
         rows = [item for item in items if item.get("status") == "active" and not item.get("next_action_at")]
     elif metric == "transfers":
@@ -261,6 +290,7 @@ async def panorama_list(metric: str, campaign_id: Optional[str] = None, mentor_p
     rows.sort(key=lambda item: aware(item.get("created_at")) or now, reverse=True)
     page = rows[offset:offset + limit]
     from mentorship_outreach import person_display_name
+    from count_rules import last_activity
     out = []
     for item in page:
         stats = activity.get(item["enrollment_id"]) or {}
@@ -268,7 +298,7 @@ async def panorama_list(metric: str, campaign_id: Optional[str] = None, mentor_p
                     "mentor_person_id": item.get("mentor_person_id"), "mentor_name": await person_display_name(item.get("mentor_person_id")) if item.get("mentor_person_id") else None,
                     "stage_key": item.get("current_stage_key"), "stage_label": STAGE_LABELS.get(item.get("current_stage_key"), item.get("current_stage_key")), "status": item.get("status"),
                     "created_at": aware(item.get("created_at")).isoformat() if aware(item.get("created_at")) else None,
-                    "last_activity_at": aware(stats.get("last")).isoformat() if aware(stats.get("last")) else None,
+                    "last_activity_at": (lambda last: last.isoformat() if last else None)(last_activity(item, stats.get("last"))),
                     "next_action": item.get("next_action"), "next_action_at": item.get("next_action_at").isoformat() if isinstance(item.get("next_action_at"), datetime) else item.get("next_action_at"),
                     "campaign_id": item.get("campaign_id")})
     return {"metric": metric, "total": len(rows), "items": out, "scope": scope["level"]}

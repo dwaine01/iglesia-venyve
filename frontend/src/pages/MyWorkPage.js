@@ -121,7 +121,7 @@ const HOUSE_FILTERS = [['all', 'Todas'], ['pending', 'Pendientes'], ['visited', 
 const STATUS_TONE = { contacted: 'bg-amber-100 text-amber-900', followup: 'bg-sky-100 text-sky-900', consolidation: 'bg-emerald-100 text-emerald-900' };
 
 /** Etiqueta del mentor con su trabajo real (no solo pendientes). */
-export const mentorLabel = (item) => `${item.name} · ${item.houses_visited ?? item.households} vivienda(s) visitada(s) · ${item.books_delivered ?? 0} libro(s) · ${item.people_contacted ?? item.people} persona(s) contactada(s) · ${item.pending ?? 0} pendiente(s)`;
+export const mentorLabel = (item) => `${item.name} · ${item.houses_visited ?? item.households} vivienda(s) visitada(s) · ${item.books_delivered ?? 0} libro(s) · ${item.people_contacted ?? item.people} persona(s) contactada(s) · ${item.pending ?? 0} pendiente(s)${item.stalled ? ` · ${item.stalled} parado(s)` : ''}`;
 
 function Chips({ options, value, onChange, counts = {}, testId }) {
   return (

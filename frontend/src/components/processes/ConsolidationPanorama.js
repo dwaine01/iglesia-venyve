@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, ArrowDownRight, ArrowUpRight, Clock, Filter, Loader2, Repeat, Sprout, UserX, UsersRound } from 'lucide-react';
+import { AlertTriangle, ArrowDownRight, ArrowUpRight, Clock, Filter, Loader2, PauseCircle, Repeat, Sprout, UserX, UsersRound } from 'lucide-react';
 
 import { useAuth } from '../../context/AuthContext';
 import { ChartCard, COLORS, HBars, Lines, PALETTE, VBars } from '../invasions/reportCharts';
@@ -29,10 +29,10 @@ function MetricList({ metric, filters, onClose }) {
         {!data ? <Loader2 className="mx-auto h-6 w-6 animate-spin text-slate-400" /> : data.items.length === 0 ? <p className="text-base text-slate-500">Nadie en esta lista.</p> : (
           <ul className="divide-y divide-[#EEECE6]">
             {data.items.map((item) => (
-              <li key={item.enrollment_id}>
-                <button type="button" onClick={() => navigate(`/procesos/consolidacion/${item.enrollment_id}`)} className="flex min-h-14 w-full items-start justify-between gap-3 py-2 text-left" data-testid={`panorama-row-${item.enrollment_id}`}>
+              <li key={item.enrollment_id || item.person_id}>
+                <button type="button" onClick={() => navigate(item.enrollment_id ? `/procesos/consolidacion/${item.enrollment_id}` : `/personas/${item.person_id}`)} className="flex min-h-14 w-full items-start justify-between gap-3 py-2 text-left" data-testid={`panorama-row-${item.enrollment_id || item.person_id}`}>
                   <span className="min-w-0"><span className="block truncate text-base font-semibold text-[#101D36]">{item.name}</span>
-                    <span className="block text-sm text-slate-600">{item.stage_label || 'Sin etapa'} · {item.mentor_name || 'Sin mentor'}</span>
+                    <span className="block text-sm text-slate-600">{item.stage_label || 'Sin etapa'} · {item.reason || item.mentor_name || 'Sin mentor'}</span>
                     <span className="block text-xs text-slate-500">Desde {fmtDate(item.created_at)} · última actividad {fmtDate(item.last_activity_at)}{item.next_action ? ` · próxima: ${item.next_action}${item.next_action_at ? ` (${fmtDate(item.next_action_at)})` : ''}` : ''}</span></span>
                   <span className="shrink-0 text-sm font-semibold text-[#101D36] underline">Abrir</span>
                 </button>
@@ -114,6 +114,8 @@ export function ConsolidationPanorama({ groups = [] }) {
         <Tile icon={UsersRound} label="Personas en Consolidación" value={f.total} hint={`${f.active} activas`} onClick={() => show('total', 'Personas en Consolidación')} testId="panorama-total" />
         <Tile icon={Sprout} label={`Nuevas ${periodLabel || ''}`} value={f.new} hint={delta == null ? null : delta === 0 ? 'Igual que el periodo anterior' : `${delta > 0 ? '+' : ''}${delta} vs. periodo anterior`} onClick={() => show('new', `Nuevas ${periodLabel || ''}`)} testId="panorama-new" />
         <Tile icon={UserX} label={`Sin atender (> ${data.unattended_hours} h)`} value={f.unattended} tone={f.unattended ? 'warn' : 'normal'} onClick={() => show('unattended', 'Sin atender')} testId="panorama-unattended" />
+        <Tile icon={PauseCircle} label={`Parados (${data.stalled_days} días sin actividad)`} value={f.stalled} tone={f.stalled ? 'warn' : 'normal'} onClick={() => show('stalled', `Parados: ${data.stalled_days} días sin actividad`)} testId="panorama-stalled" />
+        {f.without_leader != null && <Tile icon={UserX} label="Personas sin líder" value={f.without_leader} tone={f.without_leader ? 'warn' : 'normal'} hint="La misma lista del Panel General" onClick={() => show('without_leader', 'Personas sin líder')} testId="panorama-without-leader" />}
         <Tile icon={Clock} label="Sin próxima acción" value={f.no_next_action} tone={f.no_next_action ? 'warn' : 'normal'} onClick={() => show('no_next_action', 'Sin próxima acción programada')} testId="panorama-no-next" />
         <Tile icon={Clock} label="Primer contacto (promedio)" value={hoursLabel(f.first_contact_avg_hours)} hint={f.first_contact_count ? `${f.first_contact_count} con contacto` : null} onClick={() => show('first_contact', 'Con primer contacto registrado')} testId="panorama-first-contact" />
         <Tile icon={Repeat} label="Transferencias pendientes" value={f.transfers} tone={f.transfers ? 'warn' : 'normal'} onClick={() => show('transfers', 'Transferencias pendientes')} testId="panorama-transfers" />

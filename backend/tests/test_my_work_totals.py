@@ -88,7 +88,7 @@ async def test_legacy_visits_totals_people_households_and_inventory():
         assert (luis_row["trabajo"]["houses_visited"], luis_row["trabajo"]["people_contacted"], luis_row["trabajo"]["books_delivered"]) == (9, 9, 8)
         assert luis_row["trabajo"]["today"]["books"] == 8 and luis_row["trabajo"]["work_status_label"] == "Trabajó hoy"
         detail = (await pastora.get("/api/my-work/leader-detail", params={"mentor_person_id": luis_id})).json()
-        assert detail["summary"]["total"] == {"houses": 9, "people": 9, "books": 8, "in_consolidation": 0, "pending": 0}
+        assert detail["summary"]["total"] == {"houses": 9, "people": 9, "books": 8, "in_consolidation": 0, "stalled": 0, "pending": 0}
         assert detail["summary"]["today"]["books"] == 8 and sum(1 for item in detail["timeline"] if item["kind"] == "book") == 8
         assert all(item["time"] for item in detail["timeline"]) and any("Elvido" in (item.get("detail") or "") for item in detail["timeline"])
         assert detail["inventory"] == row["inventory"]
