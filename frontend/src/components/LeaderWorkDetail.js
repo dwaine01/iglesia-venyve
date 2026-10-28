@@ -39,7 +39,7 @@ export function LeaderWorkDetail({ mentorPersonId }) {
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-3" data-testid="leader-detail-summary">
         {block('Hoy', [['Viviendas visitadas', today.houses], ['Personas registradas', today.people], ['Libros entregados', today.books]])}
         {block('Esta semana', [['Viviendas visitadas', week.houses], ['Abrieron', week.opened], ['Comenzaron Consolidación', week.started_consolidation]])}
-        {block('Total', [['Viviendas visitadas', total.houses], ['Personas contactadas', total.people], ['Libros entregados', total.books], ['Personas en Consolidación', total.in_consolidation], ['Pendientes', total.pending]])}
+        {block('Total', [['Viviendas visitadas', total.houses], ['Personas contactadas', total.people], ['Libros entregados', total.books], ['Personas en Consolidación', total.in_consolidation], ['Parados (7 días sin actividad)', total.stalled ?? 0], ['Pendientes', total.pending]])}
       </div>
       <div className="rounded-xl border border-[#E8E5DE] bg-white p-3" data-testid="leader-detail-timeline">
         <p className="flex items-center gap-1.5 text-base font-semibold text-[#101D36]"><Clock className="h-4 w-4 text-[#9A7A2F]" />Su trabajo de hoy, hora por hora</p>

@@ -246,6 +246,8 @@ async def evaluate_alerts(db, force: bool = False) -> dict:
     # precarga en lote (mismos filtros y mismo orden), sin cambiar el resultado.
     enrollment_ids = [item["enrollment_id"] for item in enrollments]
     person_ids = list({item["person_id"] for item in enrollments})
+    from count_rules import last_done_by_enrollment
+    last_done = await last_done_by_enrollment([item["enrollment_id"] for item in enrollments if item["process_key"] == "consolidation" and item.get("status") == "active"])
     discipleship_programs = [doc["program_id"] async for doc in db.formation_programs.find({"purpose": "discipleship"}, {"_id": 0, "program_id": 1})]
     in_discipleship = set(await db.formation_enrollments.distinct("person_id", {"program_id": {"$in": discipleship_programs}, "person_id": {"$in": person_ids},
                                                                                 "status": {"$nin": ["withdrawn", "cancelled"]}})) if discipleship_programs and person_ids else set()
@@ -280,6 +282,11 @@ async def evaluate_alerts(db, force: bool = False) -> dict:
                 fact = "La inscripción no tiene responsable asignado."
             elif condition == "no_next_action" and not enrollment.get("next_action") and enrollment.get("status") != "completed":
                 fact = "No existe una próxima acción registrada."
+            elif condition == "stage_stalled" and enrollment.get("status") == "active" and enrollment["process_key"] == "consolidation":
+                # R2: en Consolidación «parado» es la regla única (7 días, decisión del dueño), con las actividades realizadas.
+                from count_rules import STALLED_DAYS, is_stalled
+                if is_stalled(enrollment, last_done.get(enrollment["enrollment_id"]), now):
+                    fact = f"Parado: {STALLED_DAYS} días sin actividad."
             elif condition == "stage_stalled" and enrollment.get("status") == "active":
                 last = _as_utc(enrollment.get("last_activity_at") or enrollment.get("created_at"))
                 if last and now - last >= timedelta(hours=threshold):

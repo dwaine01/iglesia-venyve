@@ -11,12 +11,67 @@ tomaban en UTC. Aquí vive la regla única; las pantallas la importan.
   los retirados/cancelados se muestran aparte y los archivados (historial) no cuentan.
 - «Hoy», «esta semana», «vencida»: siempre en la zona de la iglesia (Nueva York si no hay otra).
 """
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, time, timedelta, timezone
 
 from server import db
 
 CONSOLIDATION_OPEN = ["planned", "active", "paused"]
 CONSOLIDATION_COUNTED = CONSOLIDATION_OPEN + ["completed"]
+
+# «Parado» (decisión del dueño): 7 días sin ninguna actividad. Una sola regla para el panorama, la alerta y el mentor.
+STALLED_DAYS = 7
+STALLED_RULE = ("Parado: expediente activo sin ninguna actividad en 7 días (actividad realizada, tarea, etapa o contacto). "
+                "No cuentan los pausados ni los que esperan la fecha de graduación que fija la iglesia.")
+
+
+def _aware(value):
+    if isinstance(value, str):
+        try:
+            value = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    return None
+
+
+def last_activity(enrollment: dict, last_done=None):
+    """Lo más reciente entre el último movimiento del expediente y la última actividad realizada."""
+    values = [_aware(enrollment.get("last_activity_at")), _aware(last_done), _aware(enrollment.get("created_at"))]
+    values = [value for value in values if value]
+    return max(values) if values else None
+
+
+def is_stalled(enrollment: dict, last_done=None, now: datetime | None = None) -> bool:
+    if enrollment.get("status") != "active" or enrollment.get("current_stage_key") == "graduation":
+        return False
+    last = last_activity(enrollment, last_done)
+    return bool(last) and (now or datetime.now(timezone.utc)) - last >= timedelta(days=STALLED_DAYS)
+
+
+async def last_done_by_enrollment(enrollment_ids: list[str]) -> dict:
+    if not enrollment_ids:
+        return {}
+    return {row["_id"]: row["last"] async for row in db.consolidation_activities.aggregate([
+        {"$match": {"enrollment_id": {"$in": enrollment_ids}, "status": "done"}}, {"$group": {"_id": "$enrollment_id", "last": {"$max": "$completed_at"}}}])}
+
+
+async def stalled_by_mentor(mentor_ids: list[str]) -> dict[str, int]:
+    """{mentor: personas paradas} con la misma población que «En Consolidación» por mentor."""
+    from enrollment_cleanup import representatives
+    from report_period import excluded_person_ids
+    if not mentor_ids:
+        return {}
+    excluded = await excluded_person_ids()
+    items, _ = representatives(await db.process_enrollments.find(
+        {"mentor_person_id": {"$in": mentor_ids}, "process_key": "consolidation", "status": {"$in": CONSOLIDATION_OPEN}, "person_id": {"$nin": list(excluded)}}, {"_id": 0}).to_list(50000))
+    last_done = await last_done_by_enrollment([item["enrollment_id"] for item in items])
+    now = datetime.now(timezone.utc)
+    counts = {pid: 0 for pid in mentor_ids}
+    for item in items:
+        if is_stalled(item, last_done.get(item["enrollment_id"]), now):
+            counts[item["mentor_person_id"]] = counts.get(item["mentor_person_id"], 0) + 1
+    return counts
 
 
 async def church_today() -> date:

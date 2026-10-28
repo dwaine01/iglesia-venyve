@@ -339,6 +339,8 @@ async def mentor_work_rows(mentor_ids: list[str]) -> dict:
         {"$match": {"mentor_person_id": {"$in": mentor_ids}, "archived": {"$ne": True}, "door_status": {"$in": PENDING_DOORS}}}, {"$group": {"_id": "$mentor_person_id", "n": {"$sum": 1}}}])}
     from count_rules import open_consolidation_by_mentor
     people = await open_consolidation_by_mentor(mentor_ids)  # personas únicas, misma regla que Consolidación
+    from count_rules import stalled_by_mentor
+    stalled = await stalled_by_mentor(mentor_ids)  # «Parado» = 7 días sin actividad (regla única)
     contacts = {row["_id"]: row["n"] async for row in db.outreach_visits.aggregate([
         {"$match": {"mentor_person_id": {"$in": mentor_ids}, "archived": {"$ne": True}, "enrollment_id": {"$in": [None, ""]}, "$or": [{"followup_accepted": True}, {"status": "wants_followup"}]}},
         {"$group": {"_id": "$mentor_person_id", "n": {"$sum": 1}}}])}
@@ -352,7 +354,7 @@ async def mentor_work_rows(mentor_ids: list[str]) -> dict:
         worked_today = bool(day["houses"] or day["books"] or day["people"])
         rows[pid] = {"person_id": pid, "name": await person_display_name(pid) or "Mentor", **row,
                      "pending_households": houses.get(pid, 0), "pending_people": people.get(pid, 0) + contacts.get(pid, 0),
-                     "in_consolidation": people.get(pid, 0), "today": day,
+                     "in_consolidation": people.get(pid, 0), "stalled": stalled.get(pid, 0), "today": day,
                      # Compatibilidad: «households»/«people» = totales reales del trabajo (no solo pendientes).
                      "households": row["houses_visited"], "people": row["people_contacted"], "pending": pending,
                      "work_status": "worked_today" if worked_today else ("has_pending" if pending else "no_activity_today"),
@@ -458,7 +460,7 @@ async def leader_detail(mentor_person_id: str, current_user: dict = Depends(get_
     attendance.sort(key=lambda item: item.get("start_date") or "", reverse=True)
     return {"mentor_person_id": mentor, "name": row["name"], "row": row,
             "summary": {"today": row["today"], "week": {"houses": week["figures"]["visited"], "opened": week["figures"]["opened"], "started_consolidation": week["figures"]["started_consolidation"]},
-                        "total": {"houses": row["houses_visited"], "people": row["people_contacted"], "books": row["books_delivered"], "in_consolidation": row["in_consolidation"], "pending": row["pending"]}},
+                        "total": {"houses": row["houses_visited"], "people": row["people_contacted"], "books": row["books_delivered"], "in_consolidation": row["in_consolidation"], "stalled": row["stalled"], "pending": row["pending"]}},
             "timeline": serialize(timeline), "enrollments": serialize(enrollments), "attendance": attendance, "inventory": row["inventory"]}
 
 

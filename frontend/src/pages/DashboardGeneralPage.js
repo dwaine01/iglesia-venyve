@@ -327,7 +327,7 @@ export default function DashboardGeneralPage() {
                     </div>
 
                     <div className="grid grid-cols-2 gap-2" data-testid="leader-work-mobile">
-                      {[['Viviendas visitadas', lider.trabajo?.houses_visited], ['Personas contactadas', lider.trabajo?.people_contacted], ['Libros entregados', lider.trabajo?.books_delivered], ['En Consolidación', lider.trabajo?.in_consolidation], ['Pendientes', lider.trabajo?.pending]].map(([label, value]) => (
+                      {[['Viviendas visitadas', lider.trabajo?.houses_visited], ['Personas contactadas', lider.trabajo?.people_contacted], ['Libros entregados', lider.trabajo?.books_delivered], ['En Consolidación', lider.trabajo?.in_consolidation], ['Parados (7 días)', lider.trabajo?.stalled], ['Pendientes', lider.trabajo?.pending]].map(([label, value]) => (
                         <div key={label} className="rounded-lg border border-[#E7E2D6] bg-white p-2 text-center">
                           <p className="text-xs text-slate-600">{label}</p>
                           <p className="text-lg font-bold text-[#1B2A4A]">{value ?? 0}</p>
@@ -362,6 +362,7 @@ export default function DashboardGeneralPage() {
                       <TableHead className="font-bold text-[#1B2A4A]">Personas contactadas</TableHead>
                       <TableHead className="font-bold text-[#1B2A4A]">Libros entregados</TableHead>
                       <TableHead className="font-bold text-[#1B2A4A]">Personas en Consolidación</TableHead>
+                      <TableHead className="font-bold text-[#1B2A4A]" title="Expedientes activos sin ninguna actividad en 7 días">Parados (7 días)</TableHead>
                       <TableHead className="font-bold text-[#1B2A4A]">Pendientes</TableHead>
                       <TableHead className="font-bold text-[#1B2A4A]">Trabajo de hoy</TableHead>
                       <TableHead className="font-bold text-[#1B2A4A]">Estado</TableHead>
@@ -387,7 +388,7 @@ export default function DashboardGeneralPage() {
                             </div>
                           </div>
                         </TableCell>
-                        {[lider.trabajo?.houses_visited, lider.trabajo?.people_contacted, lider.trabajo?.books_delivered, lider.trabajo?.in_consolidation, lider.trabajo?.pending].map((value, position) => (
+                        {[lider.trabajo?.houses_visited, lider.trabajo?.people_contacted, lider.trabajo?.books_delivered, lider.trabajo?.in_consolidation, lider.trabajo?.stalled, lider.trabajo?.pending].map((value, position) => (
                           <TableCell key={position} className="text-base font-semibold text-[#1B2A4A]">{value ?? 0}</TableCell>
                         ))}
                         <TableCell className="min-w-[180px] text-sm text-slate-700" data-testid="leader-work-today">{todayText(lider.trabajo)}</TableCell>

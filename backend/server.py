@@ -2544,7 +2544,7 @@ async def get_dashboard_by_role(authorization: Optional[str] = Header(None), lea
         # Personas que quedaron sin líder (p. ej. al eliminar la cuenta de su líder): visibles para reasignar.
         # Auditoría 8/10: se calcula desde Persona 360 y baja sola al asignar un mentor (antes nunca bajaba).
         from count_rules import people_without_mentor, person_count_breakdown
-        sin_lider = await people_without_mentor()
+        sin_lider = await people_without_mentor(limit=100000)  # la cifra completa: la misma que el panorama de Consolidación
         return {
             "rol": "pastor",
             "personas_sin_lider": sin_lider,
