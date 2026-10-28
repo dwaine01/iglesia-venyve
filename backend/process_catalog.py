@@ -72,7 +72,9 @@ CONSOLIDATION_V2_STAGES = [
     {"key": "lbs_2", "order": 8, "name": "LBS 2 · Bendición", "short_name": "LBS 2", "sla_hours": 168, "tasks": [("lbs_2_session", "Registrar sesión LBS 2", True), ("lbs_2_result", "Documentar resultado", True)]},
     {"key": "lbs_3", "order": 9, "name": "LBS 3 · Sanidad", "short_name": "LBS 3", "sla_hours": 168, "tasks": [("lbs_3_session", "Registrar sesión LBS 3", True), ("lbs_3_result", "Documentar resultado", True)]},
     {"key": "retreat", "order": 10, "name": "Retiro", "short_name": "Retiro", "sla_hours": 336, "tasks": [("retreat_attended", "Registrar Retiro completado", True), ("document_delivery", "Registrar entrega documental", True)]},
-    {"key": "discipleship_handoff", "order": 11, "name": "Educación / Discipulado", "short_name": "Discipulado", "sla_hours": 72, "tasks": [("discipleship_opened", "Abrir expediente en Discipulado", True)]},
+    # Graduación: acto aparte después del Retiro, en un evento con la fecha que fija la iglesia (sin plazo automático).
+    {"key": "graduation", "order": 11, "name": "Graduación", "short_name": "Graduación", "sla_hours": 0, "tasks": [("graduation_registered", "Registrar graduación en un evento", True)]},
+    {"key": "discipleship_handoff", "order": 12, "name": "Educación / Discipulado", "short_name": "Discipulado", "sla_hours": 72, "tasks": [("discipleship_opened", "Inscribir en Discipulado de Formación", True)]},
 ]
 
 DISCIPLESHIP_STAGES = [
@@ -105,7 +107,7 @@ PROCESS_DEFINITIONS = [
     },
     {
         "process_key": "consolidation", "name": "Consolidación v2", "version": 2,
-        "description": "Ruta única desde las cuatro puertas de entrada hasta Membresía, Retiro y Discipulado.",
+        "description": "Ruta única desde las cuatro puertas de entrada hasta Membresía, Retiro, Graduación y Discipulado.",
         "stages": CONSOLIDATION_V2_STAGES,
     },
     {
@@ -166,7 +168,7 @@ ALERT_RULES = [
     ("welcome_membership_pending", "Fiesta sin Carta de Membresía", "consolidation", "welcome_membership_pending", 168, "warning"),
     ("mentor_lbs_unqualified", "Mentor no autorizado para LBS", "consolidation", "mentor_lbs_unqualified", 0, "critical"),
     ("retreat_delivery_pending", "Retiro con entrega documental pendiente", "consolidation", "retreat_delivery_pending", 0, "warning"),
-    ("discipleship_handoff_missing", "Retiro sin apertura de Discipulado", "consolidation", "discipleship_handoff_missing", 0, "critical"),
+    ("discipleship_handoff_missing", "Graduado sin inscripción en Discipulado", "consolidation", "discipleship_handoff_missing", 0, "critical"),
 ]
 
 

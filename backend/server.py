@@ -513,6 +513,9 @@ from admin_audit import router as admin_audit_router
 app.include_router(admin_audit_router)
 from consolidation_activities import router as consolidation_activities_router, seed_activity_catalog
 app.include_router(consolidation_activities_router)
+# Antes que consolidation_v2: su GET /{enrollment_id} atraparía «/graduations».
+from graduation import router as graduation_router, ensure_indexes as graduation_ensure_indexes
+app.include_router(graduation_router)
 from consolidation_v2 import router as consolidation_v2_router, ensure_indexes as consolidation_v2_ensure_indexes
 app.include_router(consolidation_v2_router)
 from leadership import router as leadership_router, ensure_leadership_indexes_and_seed
@@ -816,6 +819,7 @@ async def startup():
     await ensure_front_group_report_indexes()
     await ensure_supervision_indexes()
     await consolidation_v2_ensure_indexes()
+    await graduation_ensure_indexes()
     await seed_activity_catalog()
     await ensure_leadership_indexes_and_seed()
     await migrate_historical_consolidation(db)

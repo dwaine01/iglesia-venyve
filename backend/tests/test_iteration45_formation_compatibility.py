@@ -44,10 +44,9 @@ def test_retreat_handoff_creates_recommendation_not_legacy_enrollment(state):
     response = requests.post(f"{BASE_URL}/api/processes/consolidation/{state['enrollment_id']}/retreat-close", headers=auth(state["token"]), json={"retreat_date": datetime.now(timezone.utc).isoformat(), "certificate_delivery_status": "pending_exception", "card_delivery_status": "pending", "delivery_notes": "QA configurable"}, timeout=30)
     assert response.status_code == 200, response.text
     updated = DB.process_enrollments.find_one({"enrollment_id": state["enrollment_id"]})
-    assert updated.get("formation_recommendation_id")
+    # R2: la recomendación de Formación nace en la Graduación (evento), no al cerrar el Retiro.
+    assert updated["consolidation_status"] == "graduation_pending" and not updated.get("formation_recommendation_id")
     assert not updated.get("discipleship_enrollment_id")
-    recommendation = DB.formation_recommendations.find_one({"person_id": state["target"], "source_enrollment_id": state["enrollment_id"]})
-    assert recommendation and recommendation["source"] == "consolidation_retreat"
     assert DB.process_enrollments.count_documents({"person_id": state["target"], "process_key": "discipleship"}) == 1
 
 

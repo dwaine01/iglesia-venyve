@@ -13,7 +13,7 @@ const STAGE_SHORT_LABELS = {
   visitor_followup: 'Seguimiento', prayer: 'Oración', invasion: 'Invasión',
   mcd: 'MCD', npt: 'NPT', welcome_party: 'Fiesta de bienvenida',
   lbs_1: 'LBS · Liberación', lbs_2: 'LBS · Bendición', lbs_3: 'LBS · Sanidad',
-  retreat: 'Retiro', discipleship_handoff: 'Entrega a discipulado',
+  retreat: 'Retiro', graduation: 'Graduación', discipleship_handoff: 'Entrega a discipulado',
 };
 
 

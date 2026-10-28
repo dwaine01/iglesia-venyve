@@ -212,7 +212,7 @@ CAPABILITY_CATALOG = [
         {"capability": MENTORSHIP_OUTREACH_ASSIGN, "action": "administrar", "label": "Administrar: asignar visitas e invasiones"},
         {"capability": MENTORSHIP_OUTREACH_REPORT, "action": "agregar", "label": "Agregar: rendir informe de visitas propias"},
         {"capability": CONSOLIDATION_MENTOR_TRANSFER, "action": "administrar", "label": "Administrar: transferir mentor"},
-        {"capability": CONSOLIDATION_RETREAT_CLOSE, "action": "administrar", "label": "Administrar: cerrar Retiro"},
+        {"capability": CONSOLIDATION_RETREAT_CLOSE, "action": "administrar", "label": "Administrar: cerrar Retiro y registrar Graduación"},
         {"capability": CONSOLIDATION_ASSIGN, "action": "administrar", "label": "Administrar: asignación de Consolidación"},
         {"capability": CAMPAIGN_VENYCOME_MANAGE, "action": "administrar", "label": "Administrar: Campaña Ven y Come"},
     ]},

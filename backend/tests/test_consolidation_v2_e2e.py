@@ -205,7 +205,17 @@ async def test_fiesta_membership_retreat_discipleship_and_scoped_leadership():
             await complete_stage(client, headers, enrollment_id, stage)
         closed = await client.post(f"/api/processes/consolidation/{enrollment_id}/retreat-close", json={"certificate_delivery_status": "pending_exception", "card_delivery_status": "not_applicable", "delivery_notes": "Entrega documentada como pendiente"}, headers=headers)
         assert closed.status_code == 200, closed.text
-        assert closed.json()["consolidation_status"] == "completed"
+        # R2: cerrar el Retiro deja «pendiente de graduación»; la Graduación (evento) completa y abre Discipulado.
+        assert closed.json()["consolidation_status"] == "graduation_pending"
+        assert closed.json()["status"] == "active" and closed.json()["current_stage_key"] == "graduation"
+        assert closed.json()["discipleship"] is None and not closed.json().get("formation_recommendation")
+        from graduation import church_today
+        event = await client.post("/api/processes/consolidation/graduations", json={"name": "QA Graduación E2E", "event_date": await church_today()}, headers=headers)
+        assert event.status_code == 201, event.text
+        graduated = await client.post(f"/api/processes/consolidation/graduations/{event.json()['event_id']}/graduates", json={"enrollment_ids": [enrollment_id]}, headers=headers)
+        assert graduated.status_code == 200, graduated.text
+        closed = await client.get(f"/api/processes/consolidation/{enrollment_id}", headers=headers)
+        assert closed.json()["consolidation_status"] == "completed" and closed.json()["graduated_at"]
         assert closed.json()["discipleship"] is None
         assert closed.json()["next_action"] in {"Configurar programa de Formación / Discipulado"} or closed.json().get("formation_recommendation")
         assert not await server.db.process_enrollments.find_one({"person_id": candidate_person_id, "process_key": "discipleship", "source_id": enrollment_id})
@@ -243,6 +253,8 @@ async def test_fiesta_membership_retreat_discipleship_and_scoped_leadership():
             module_ids = await server.db.formation_modules.distinct("module_id", {"program_id": formation_program_id})
             await server.db.formation_achievements.delete_many({"program_id": formation_program_id})
             await server.db.formation_recommendations.delete_many({"program_id": formation_program_id})
+            await server.db.graduation_records.delete_many({"person_id": candidate_person_id})
+            await server.db.graduation_events.delete_many({"name": "QA Graduación E2E"})
             await server.db.formation_module_prerequisites.delete_many({"$or": [{"module_id": {"$in": module_ids}}, {"prerequisite_module_id": {"$in": module_ids}}]})
             await server.db.formation_modules.delete_many({"program_id": formation_program_id})
             await server.db.formation_programs.delete_one({"program_id": formation_program_id})

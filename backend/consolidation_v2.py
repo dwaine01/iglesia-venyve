@@ -163,6 +163,8 @@ async def consolidation_dashboard(current_user: dict = Depends(require_read)):
         "followup_pending": sum(1 for item in items if item.get("consolidation_status") == "followup_pending"),
         "members": len(memberships),
         "retreat_completed": sum(1 for item in items if item.get("retreat_completed_at")),
+        "graduation_pending": sum(1 for item in items if item.get("status") == "active" and item.get("current_stage_key") == "graduation"),
+        "graduated": sum(1 for item in items if item.get("graduated_at")),
         "mentor_transfer_required": sum(1 for item in items if item.get("mentor_transfer_required") is True),
         "by_entry": by_entry,
         "by_stage": by_stage,
@@ -468,30 +470,10 @@ async def close_retreat(enrollment_id: str, payload: RetreatClose, current_user:
         "updated_by_user_id": current_user["user_id"],
         "updated_at": now,
     }})
-    program = await db.formation_programs.find_one({"purpose": "discipleship", "active": True}, {"_id": 0}, sort=[("created_at", 1)])
-    module = await db.formation_modules.find_one({"program_id": program["program_id"], "active": True}, {"_id": 0}, sort=[("order", 1)]) if program else None
-    recommendation_id = None
-    if program and module:
-        recommendation_id = str(uuid4())
-        await db.formation_recommendations.update_one(
-            {"person_id": enrollment["person_id"], "module_id": module["module_id"], "status": "recommended"},
-            {"$setOnInsert": {"_id": recommendation_id, "recommendation_id": recommendation_id, "person_id": enrollment["person_id"], "program_id": program["program_id"], "module_id": module["module_id"], "program_name_snapshot": program["name"], "module_name_snapshot": module["name"], "source": "consolidation_retreat", "source_enrollment_id": enrollment_id, "status": "recommended", "created_by_user_id": current_user["user_id"], "created_at": now}},
-            upsert=True,
-        )
-    for stage_key in ["retreat", "discipleship_handoff"]:
-        stage = await db.process_stage_progress.find_one({"enrollment_id": enrollment_id, "stage_key": stage_key})
-        if stage:
-            tasks = stage.get("tasks", [])
-            for task in tasks:
-                task.update({"completed": True, "completed_at": now})
-            await db.process_stage_progress.update_one({"_id": stage["_id"]}, {"$set": {"status": "completed", "tasks": tasks, "completed_at": now, "updated_at": now}})
-    await db.process_enrollments.update_one({"enrollment_id": enrollment_id}, {"$set": {
-        "status": "completed", "consolidation_status": "completed", "decision_status": "completed", "progress_pct": 100,
-        "current_stage_key": "discipleship_handoff", "retreat_completed_at": payload.retreat_date,
-        "formation_recommendation_id": recommendation_id, "completed_at": now,
-        "next_action": f"Inscribir en {module['name']}" if module else "Configurar programa de Formación / Discipulado", "next_action_at": None, "updated_at": now,
-    }})
-    await record_event(db, enrollment, current_user["user_id"], "retreat_closed", "Consolidación cerrada en Retiro", f"Formación recomendada {module['name']}" if module else "Formación pendiente de configuración")
+    # R2 · Graduación (decisión del dueño): cerrar el Retiro ya NO completa la Consolidación. Queda «Retiro hecho,
+    # pendiente de graduación» hasta que se registre la graduación en un evento; ahí se abre el traspaso a Discipulado.
+    from graduation import mark_retreat_done
+    await mark_retreat_done(enrollment, payload.retreat_date, current_user["user_id"])
     return await enrollment_detail(db, await load_consolidation(db, enrollment_id))
 
 

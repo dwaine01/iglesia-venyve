@@ -11,7 +11,7 @@ const mentorValue = (status, contact) => {
 
 const blocks = (status, contact) => [
   [BadgeCheck, 'Membresía', status?.membership?.status === 'active' ? `Miembro · ${status.membership.member_number}` : 'No activa', 'text-emerald-700'],
-  [Route, 'Consolidación', status?.consolidation ? `${status.consolidation.consolidation_status === 'completed' ? 'Completada' : 'En progreso'} · ${processStageLabel(status.consolidation.current_stage_key)}` : 'Sin proceso', 'text-amber-700'],
+  [Route, 'Consolidación', status?.consolidation ? `${status.consolidation.consolidation_status === 'completed' ? 'Completada' : status.consolidation.consolidation_status === 'graduation_pending' ? 'Pendiente de graduación' : 'En progreso'} · ${processStageLabel(status.consolidation.current_stage_key)}` : 'Sin proceso', 'text-amber-700'],
   [UserRoundCheck, 'Mentor actual', mentorValue(status, contact), 'text-blue-700'],
   [BookHeart, 'Discipulado', status?.discipleship ? `${status.discipleship.status === 'completed' ? 'Completado' : 'En progreso'} · ${processStageLabel(status.discipleship.current_stage_key)}` : 'Pendiente', 'text-teal-700'],
   [Award, 'Liderazgo', status?.leadership?.status === 'leader' ? 'Líder ministerial' : 'No promovido', 'text-rose-700'],
