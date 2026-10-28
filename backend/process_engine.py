@@ -141,6 +141,9 @@ async def create_enrollment(
     if stage_docs:
         await db.process_stage_progress.insert_many(stage_docs)
     await record_event(db, enrollment, actor_user_id, "enrolled", "Inscripción creada", definition["name"])
+    if process_key == "consolidation":
+        from library_enrollment_link import link_prior_deliveries
+        await link_prior_deliveries(db, enrollment)  # R2: libros entregados antes de abrir el expediente
     return {key: value for key, value in enrollment.items() if key != "_id"}, True
 
 

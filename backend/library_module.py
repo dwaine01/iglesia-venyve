@@ -250,6 +250,7 @@ async def ensure_indexes_and_seed() -> None:
     await db.library_movements.create_index("movement_id", unique=True)
     await db.library_movements.create_index([("book_id", 1), ("occurred_at", -1)])
     await db.library_movements.create_index([("person_id", 1)])
+    await db.library_movements.create_index("enrollment_id", sparse=True)
     await db.library_movements.create_index([("campaign_id", 1)])
     # L1: clave contra doble toque (única cuando existe) y vínculos de trazabilidad.
     await db.library_movements.create_index("idempotency_key", unique=True, partialFilterExpression={"idempotency_key": {"$type": "string"}})
@@ -403,7 +404,13 @@ async def apply_movement(payload: MovementInput, actor_user_id: str, is_reversal
         "idempotency_key": payload.idempotency_key, "household_id": payload.household_id, "visit_id": payload.visit_id, "visit_event_id": payload.visit_event_id,
         "recipient_status": payload.recipient_status or (("identified" if payload.person_id else "unidentified") if payload.movement_type in {"DELIVERY", "LOAN"} else None),
         "already_counted": False, "completes_movement_id": None, "inventory_status": "applied",
+        "enrollment_id": None,
     }
+    if payload.movement_type in {"DELIVERY", "LOAN"} and not is_reversal:
+        from library_enrollment_link import enrollment_for_delivery
+        doc["enrollment_id"] = await enrollment_for_delivery(db, payload.person_id, payload.visit_id)  # R2: el libro queda unido al expediente
+        if doc["enrollment_id"]:
+            doc["enrollment_link_source"] = "delivery"
     if not payload.idempotency_key:
         doc.pop("idempotency_key")  # el índice único solo aplica a las claves presentes
     try:
