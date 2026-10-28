@@ -75,6 +75,10 @@ async def record_pending_delivery(*, book_id: Optional[str], book_label: str, qu
         "recipient_status": "identified" if (person_id or visit_id) else "unidentified", "already_counted": False, "completes_movement_id": None,
         "inventory_status": "pending_reconciliation", "counts_in_balance": False, "pending_reason": reason,
     }
+    from library_enrollment_link import enrollment_for_delivery
+    doc["enrollment_id"] = await enrollment_for_delivery(db, person_id, visit_id)  # R2: el libro queda unido al expediente
+    if doc["enrollment_id"]:
+        doc["enrollment_link_source"] = "delivery"
     try:
         await db.library_movements.insert_one(doc)
     except DuplicateKeyError:

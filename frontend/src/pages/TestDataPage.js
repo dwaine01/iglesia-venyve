@@ -46,6 +46,8 @@ export default function TestDataPage() {
             <li>Creados solos en total: <b>{legacy.total_auto_created}</b></li>
             <li>Personas distintas: <b>{legacy.distinct_people}</b> · recreadas: <b>{legacy.people_recreated}</b> (copias de más: {legacy.extra_copies})</li>
             <li>«Personas sin líder» hoy: <b>{legacy.people_without_leader_total}</b> · solo por un expediente del Manual viejo: <b>{legacy.people_without_leader_only_legacy}</b></li>
+            {legacy.library && <li data-testid="legacy-library-unlinked">Libros entregados a personas: <b>{legacy.library.deliveries_to_people}</b> · todavía sin expediente unido (historial): <b>{legacy.library.without_enrollment}</b></li>}
+            {legacy.graduation && <li data-testid="legacy-graduation-pending">Cerraron el Retiro con la regla anterior (sin graduación registrada): <b>{legacy.graduation.legacy_retreat_closed}</b></li>}
             <li>Creados después del apagado: <b>{legacy.created_after_disabled ?? '—'}</b> (debe quedar en 0)</li>
           </ul>
         </section>

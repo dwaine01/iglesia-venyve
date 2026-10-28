@@ -55,6 +55,8 @@ async def legacy_report() -> dict:
     created_after = await db.process_enrollments.count_documents({**base, "created_at": {"$gt": disabled_at}}) if disabled_at else None
     # Cuántos de «Personas sin líder» están ahí SOLO por un expediente creado solo desde el Manual viejo.
     from count_rules import people_without_mentor
+    from graduation import legacy_retreat_closed_count
+    from library_enrollment_link import unlinked_history_count
     rows = await people_without_mentor(limit=100000)
     ids = [row["canonical_person_id"] for row in rows]
     open_q = {"process_key": "consolidation", "status": {"$in": ["planned", "active", "paused"]}, "person_id": {"$in": ids}}
@@ -71,6 +73,8 @@ async def legacy_report() -> dict:
         "created_last_30_days": per_day and [{"day": row["_id"], "count": row["count"]} for row in per_day] or [],
         "created_after_disabled": created_after,
         "people_without_leader_total": len(rows), "people_without_leader_only_legacy": only_legacy,
+        "library": await unlinked_history_count(db),  # R2: entregas de libros aún sin expediente unido (solo lectura)
+        "graduation": {"legacy_retreat_closed": await legacy_retreat_closed_count()},  # R2: propuesta pendiente del dueño
         "note": "Solo lectura. Apagar la creación automática no borra lo ya creado.",
     }
 
