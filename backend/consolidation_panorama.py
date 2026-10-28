@@ -28,9 +28,9 @@ from server import db, get_current_user
 router = APIRouter(prefix="/api/consolidation/panorama", tags=["consolidation-panorama"])
 
 UNATTENDED_HOURS = 48
-STAGES = ["visitor_followup", "prayer", "invasion", "mcd", "npt", "welcome_party", "lbs_1", "lbs_2", "lbs_3", "retreat", "discipleship_handoff"]
+STAGES = ["visitor_followup", "prayer", "invasion", "mcd", "npt", "welcome_party", "lbs_1", "lbs_2", "lbs_3", "retreat", "graduation", "discipleship_handoff"]
 STAGE_LABELS = {"visitor_followup": "Nuevo y seguimiento", "prayer": "Oración", "invasion": "Invasión", "mcd": "MCD", "npt": "Nací Para Triunfar",
-                "welcome_party": "Fiesta de Bienvenida", "lbs_1": "LBS 1", "lbs_2": "LBS 2", "lbs_3": "LBS 3", "retreat": "Retiro", "discipleship_handoff": "Educación / Discipulado"}
+                "welcome_party": "Fiesta de Bienvenida", "lbs_1": "LBS 1", "lbs_2": "LBS 2", "lbs_3": "LBS 3", "retreat": "Retiro", "graduation": "Graduación", "discipleship_handoff": "Educación / Discipulado"}
 PERIOD_DAYS = {"week": 7, "month": 30, "quarter": 90}
 METRICS = ("total", "new", "unattended", "no_next_action", "transfers", "first_contact", "memberships")
 
@@ -147,6 +147,7 @@ async def panorama(period: Literal["week", "month", "quarter", "invasion", "all"
         {"key": "npt", "label": "NPT", "value": sum(1 for value in reached if value >= STAGES.index("npt"))},
         {"key": "lbs", "label": "LBS", "value": sum(1 for value in reached if value >= STAGES.index("lbs_1"))},
         {"key": "retreat", "label": "Retiro", "value": sum(1 for item, value in zip(items, reached) if value >= STAGES.index("retreat") or item.get("retreat_completed_at"))},
+        {"key": "graduation", "label": "Graduación", "value": sum(1 for item in items if item.get("graduated_at"))},
         {"key": "membership", "label": "Membresía", "value": sum(1 for item in items if item["person_id"] in members)},
         {"key": "discipleship", "label": "Educación / Discipulado", "value": sum(1 for value in reached if value >= STAGES.index("discipleship_handoff"))},
     ]
@@ -246,6 +247,8 @@ async def panorama_list(metric: str, campaign_id: Optional[str] = None, mentor_p
             rows = [item for item in items if item.get("mentor_person_id")]
         elif step == "membership":
             rows = [item for item in items if item["person_id"] in members]
+        elif step == "graduation":
+            rows = [item for item in items if item.get("graduated_at")]
         elif step in thresholds:
             rows = [item for item in items if stage_index(item) >= STAGES.index(thresholds[step])]
         else:

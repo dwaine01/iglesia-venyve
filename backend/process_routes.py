@@ -474,8 +474,8 @@ async def update_stage(enrollment_id: str, stage_key: str, payload: StageUpdate,
         if enrollment.get("process_key") == "consolidation" and enrollment.get("definition_version", 1) >= 2:
             if stage_doc.get("status") not in {"open", "in_progress"}:
                 raise HTTPException(status_code=409, detail="Solo puede completar la etapa activa")
-            if stage_key in {"retreat", "discipleship_handoff"}:
-                raise HTTPException(status_code=409, detail="Cierre el Retiro desde la acción formal para registrar documentos y Discipulado")
+            if stage_key in {"retreat", "graduation", "discipleship_handoff"}:
+                raise HTTPException(status_code=409, detail="Retiro, Graduación y Discipulado se registran desde su acción formal (cerrar Retiro, evento de graduación, inscripción en Formación)")
             if stage_key == "welcome_party":
                 membership = await db.person_memberships.find_one({"person_id": enrollment["person_id"], "status": "active", "acceptance_signed_at": {"$exists": True}}, {"_id": 1})
                 if not membership:
@@ -508,6 +508,8 @@ async def update_task(enrollment_id: str, stage_key: str, task_id: str, payload:
     if not stage_doc: raise HTTPException(status_code=404, detail="Etapa no encontrada")
     if enrollment.get("process_key") == "consolidation" and enrollment.get("definition_version", 1) >= 2 and stage_doc.get("status") == "locked":
         raise HTTPException(status_code=409, detail="La tarea pertenece a una etapa todavía bloqueada")
+    if enrollment.get("process_key") == "consolidation" and enrollment.get("definition_version", 1) >= 2 and stage_key in {"graduation", "discipleship_handoff"}:
+        raise HTTPException(status_code=409, detail="Graduación y Discipulado se registran desde su acción formal (evento de graduación, inscripción en Formación)")
     tasks = stage_doc.get("tasks", []); found = False; now = now_utc()
     for task in tasks:
         if task["task_id"] == task_id:
@@ -546,6 +548,8 @@ async def add_contact(enrollment_id: str, payload: ContactCreate, current_user: 
     if enrollment["process_key"] not in {"consolidation", "mentorship"}: raise HTTPException(status_code=400, detail="Contacto no aplica a este proceso")
     if payload.advance_stage and enrollment.get("process_key") == "consolidation" and enrollment.get("definition_version", 1) >= 2 and enrollment.get("current_stage_key") == "visitor_followup":
         raise HTTPException(status_code=409, detail="Inicie MCD desde la acción formal para asignar mentor y registrar la respuesta")
+    if payload.advance_stage and enrollment.get("process_key") == "consolidation" and enrollment.get("definition_version", 1) >= 2 and enrollment.get("current_stage_key") in {"retreat", "graduation", "discipleship_handoff"}:
+        raise HTTPException(status_code=409, detail="Retiro, Graduación y Discipulado se registran desde su acción formal")
     update = {"last_contact_at": payload.occurred_at, "next_contact_at": payload.next_contact_at, "next_action": payload.next_action, "next_action_at": payload.next_contact_at, "last_activity_at": now_utc(), "updated_at": now_utc()}
     await db.process_enrollments.update_one({"enrollment_id": enrollment_id}, {"$set": update})
     if payload.advance_stage:

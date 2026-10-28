@@ -246,6 +246,9 @@ async def evaluate_alerts(db, force: bool = False) -> dict:
     # precarga en lote (mismos filtros y mismo orden), sin cambiar el resultado.
     enrollment_ids = [item["enrollment_id"] for item in enrollments]
     person_ids = list({item["person_id"] for item in enrollments})
+    discipleship_programs = [doc["program_id"] async for doc in db.formation_programs.find({"purpose": "discipleship"}, {"_id": 0, "program_id": 1})]
+    in_discipleship = set(await db.formation_enrollments.distinct("person_id", {"program_id": {"$in": discipleship_programs}, "person_id": {"$in": person_ids},
+                                                                                "status": {"$nin": ["withdrawn", "cancelled"]}})) if discipleship_programs and person_ids else set()
     stages_by_enrollment: dict = {}
     if enrollment_ids:
         async for stage in db.process_stage_progress.find({"enrollment_id": {"$in": enrollment_ids}}, {"_id": 0}).sort("stage_order", 1):
@@ -323,7 +326,11 @@ async def evaluate_alerts(db, force: bool = False) -> dict:
                 if membership and membership.get("certificate_delivery_status") != "delivered":
                     fact = "La entrega del certificado continúa pendiente en Retiro."
             elif condition == "discipleship_handoff_missing" and enrollment.get("retreat_completed_at") and not enrollment.get("discipleship_enrollment_id"):
-                fact = "Retiro completado sin expediente de Educación / Discipulado."
+                # R2: aplica después de la Graduación (o a los que cerraron el Retiro con la regla anterior) y se
+                # resuelve sola en cuanto la persona está inscrita en Discipulado de Formación.
+                pending_graduation = enrollment.get("current_stage_key") == "graduation" and not enrollment.get("graduated_at")
+                if not pending_graduation and enrollment["person_id"] not in in_discipleship:
+                    fact = "Graduado sin inscripción en Discipulado de Formación."
             open_alert = open_alerts.get((rule["rule_key"], enrollment["enrollment_id"]))
             if fact and not open_alert:
                 alert = {

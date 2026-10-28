@@ -93,6 +93,7 @@ const SevenWeeksPage = lazyPage(() => import('./pages/processes/SevenWeeksPage')
 const SevenWeeksDetailPage = lazyPage(() => import('./pages/processes/SevenWeeksDetailPage'));
 const ConsolidationPage = lazyPage(() => import('./pages/processes/ConsolidationPage'));
 const ConsolidationDetailPage = lazyPage(() => import('./pages/processes/ConsolidationDetailPage'));
+const GraduationsPage = lazyPage(() => import('./pages/processes/GraduationsPage'));
 const MentorPanelPage = lazyPage(() => import('./pages/processes/MentorPanelPage'));
 const SupervisionPage = lazyPage(() => import('./pages/mentoria/SupervisionPage'));
 const AdminDeletionsPage = lazyPage(() => import('./pages/admin/AdminDeletionsPage'));
@@ -299,6 +300,7 @@ function App() {
             <Route path="procesos/7-semanas/:enrollmentId" element={<SevenWeeksDetailPage />} />
             <Route path="procesos/consolidacion" element={<CapabilityRoute allowed={canViewProcesses}><ConsolidationPage /></CapabilityRoute>} />
             <Route path="procesos/consolidacion/mi-panel" element={<MentorPanelPage />} />
+            <Route path="procesos/consolidacion/graduaciones" element={<CapabilityRoute allowed={canViewProcesses}><GraduationsPage /></CapabilityRoute>} />
             <Route path="procesos/consolidacion/:enrollmentId" element={<ConsolidationDetailPage />} />
             <Route path="procesos/discipulado" element={<CapabilityRoute allowed={canViewProcesses}><DiscipleshipPage /></CapabilityRoute>} />
             <Route path="formacion" element={<FormationRoute><FormationAdminPage /></FormationRoute>} />

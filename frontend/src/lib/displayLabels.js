@@ -12,7 +12,7 @@ const COMMON_LABELS = Object.freeze({
   ready_for_cellular: 'Listo para integrarse a una célula', ready_for_activation: 'Listo para servir',
   door_suggested: 'Puerta recomendada', door_selected: 'Puerta confirmada', activated: 'Activo en servicio', continuous_training: 'En desarrollo continuo', evaluated: 'Dones identificados',
   new_visitor: 'Nuevo visitante', contacted: 'Contactado', first_visit: 'Primera visita', follow_up: 'Seguimiento', formation: 'Formación',
-  visitor_followup: 'Nuevo y seguimiento', prayer: 'Oración', invasion: 'Invasión', mcd: 'MCD', npt: 'NPT', welcome_party: 'Fiesta de Bienvenida', lbs_1: 'LBS 1', lbs_2: 'LBS 2', lbs_3: 'LBS 3', retreat: 'Retiro', discipleship_handoff: 'Transferencia a Discipulado', orientation: 'Orientación', foundations: 'Fundamentos', service: 'Servicio ministerial',
+  visitor_followup: 'Nuevo y seguimiento', prayer: 'Oración', invasion: 'Invasión', mcd: 'MCD', npt: 'NPT', welcome_party: 'Fiesta de Bienvenida', lbs_1: 'LBS 1', lbs_2: 'LBS 2', lbs_3: 'LBS 3', retreat: 'Retiro', graduation: 'Graduación', discipleship_handoff: 'Transferencia a Discipulado', orientation: 'Orientación', foundations: 'Fundamentos', service: 'Servicio ministerial',
   pastor: 'Pastor', lider: 'Líder', leader: 'Líder', persona: 'Persona', disciple: 'Discípulo',
   general_coordinator: 'Coordinador general', network_director: 'Director de red', supervisor: 'Supervisor', cell_leader: 'Líder de célula', assistant_leader: 'Líder asistente', assistant: 'Asistente', host: 'Anfitrión', intercessor: 'Intercesor', collaborator: 'Colaborador', server: 'Servidor', door_leader: 'Líder de Puerta', member: 'Miembro', visitor: 'Visitante',
   primary: 'Membresía principal', service: 'Servicio adicional',

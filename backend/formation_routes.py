@@ -219,6 +219,8 @@ async def enroll(cohort_id: str, payload: EnrollmentInput, current_user: dict = 
     enrollment_id, now = str(uuid4()), now_utc()
     doc = {"_id": enrollment_id, "enrollment_id": enrollment_id, "cohort_id": cohort_id, "cohort_name_snapshot": cohort["name"], "program_id": cohort["program_id"], "module_id": cohort["module_id"], "person_id": payload.person_id, "person_name_snapshot": person["name"], "program_name_snapshot": cohort["program_name_snapshot"], "module_name_snapshot": cohort["module_name_snapshot"], "status": "enrolled", "attendance_pct": 0, "final_grade_pct": None, "progress_pct": 0, "eligibility_snapshot": eligibility, "override_eligibility": payload.override_eligibility, "override_reason": payload.override_reason, "enrolled_by_user_id": current_user["user_id"], "enrolled_at": now, "created_at": now, "updated_at": now}
     await db.formation_enrollments.insert_one(doc); await audit(db, current_user, "person_enrolled", "formation_enrollment", enrollment_id, None, doc, payload.override_reason, payload.person_id)
+    from graduation import on_formation_enrollment
+    await on_formation_enrollment(doc, current_user["user_id"])  # R2: cumple el traspaso a Discipulado del expediente graduado
     return serialize(doc)
 
 

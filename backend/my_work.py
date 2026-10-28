@@ -32,7 +32,7 @@ router = APIRouter(prefix="/api/my-work", tags=["my-work"])
 ACTIVE_ENROLLMENT = ["active", "paused", "planned"]
 PENDING_DOORS = ["pending_revisit", "followup_scheduled"]
 STAGE_LABELS = {"visitor_followup": "Nuevo y seguimiento", "prayer": "Oración", "invasion": "Invasión", "mcd": "MCD", "npt": "Nací Para Triunfar", "welcome_party": "Fiesta de Bienvenida",
-                "lbs_1": "LBS 1", "lbs_2": "LBS 2", "lbs_3": "LBS 3", "retreat": "Retiro", "discipleship_handoff": "Educación / Discipulado"}
+                "lbs_1": "LBS 1", "lbs_2": "LBS 2", "lbs_3": "LBS 3", "retreat": "Retiro", "graduation": "Graduación", "discipleship_handoff": "Educación / Discipulado"}
 RESULT_LABELS = {"opened": "Abrieron", "no_answer": "No abrieron", "requested_return": "Pidieron que regresen", "no_more_visits": "No desean más visitas"}
 ACTIVITY_RESULTS = {"done": "Realizada", "no_answer": "Sin respuesta", "rescheduled": "Reprogramada"}
 SUMMARY_METRICS = ("visited", "opened", "pending_return", "people_to_attend", "started_consolidation")

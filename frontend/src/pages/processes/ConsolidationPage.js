@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
-import { AlertTriangle, BadgeCheck, Route, UsersRound } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { AlertTriangle, BadgeCheck, GraduationCap, Route, UsersRound } from 'lucide-react';
 
 import { useAuth } from '../../context/AuthContext';
 import { ConsolidationIntakeDialog } from '../../components/processes/ConsolidationIntakeDialog';
@@ -49,7 +50,7 @@ export default function ConsolidationPage() {
   const canAssign = isPastoralAuthority(user) || hasCapability(user, 'consolidation.assign');
   // C3: pastoral, coordinador general y encargados ven el panorama ampliado (reemplaza las tarjetas y el embudo).
   const panoramaViewer = canAssign || isGeneralCoordinator(user);
-  return <ProcessShell title="Consolidación" eyebrow="Ruta oficial" description="Cuatro puertas de entrada, un solo recorrido y un historial permanente hasta Membresía, Retiro y Discipulado." actions={<div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center"><InvasionHeaderActions onDark /><ConsolidationIntakeDialog groups={data.groups} assignees={data.assignees} onCreated={load} canAssign={canAssign} routing={data.routing} /></div>}>
+  return <ProcessShell title="Consolidación" eyebrow="Ruta oficial" description="Cuatro puertas de entrada, un solo recorrido y un historial permanente hasta Membresía, Retiro, Graduación y Discipulado." actions={<div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center"><InvasionHeaderActions onDark /><Link to="/procesos/consolidacion/graduaciones" className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border border-white/40 px-5 text-base font-semibold text-white hover:bg-white/10 sm:w-auto" data-testid="consolidation-graduations-link"><GraduationCap className="h-5 w-5" />Graduaciones</Link><ConsolidationIntakeDialog groups={data.groups} assignees={data.assignees} onCreated={load} canAssign={canAssign} routing={data.routing} /></div>}>
     <InvasionHub showAction={user?.rol === 'persona'} />
     {loading ? <ProcessLoading /> : error ? <ProcessError message={error} /> : <>
 {panoramaViewer ? <ConsolidationPanorama groups={data.groups} /> :       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" data-testid="consolidation-metrics">{metrics.map(([key, label, Icon]) => <article key={key} className="border border-slate-200 bg-white p-4"><Icon className="h-5 w-5 text-amber-600" /><strong className="mt-5 block font-['Spectral'] text-3xl text-slate-950" data-testid={`consolidation-metric-${key}`}>{data.dashboard[key] || 0}</strong><span className="text-xs text-slate-500">{label}</span></article>)}</section>}

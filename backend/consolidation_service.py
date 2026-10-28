@@ -230,7 +230,9 @@ async def enrollment_detail(db, enrollment: dict) -> dict:
     timeline = await db.process_timeline.find({"enrollment_id": enrollment["enrollment_id"]}, {"_id": 0}).sort("occurred_at", -1).to_list(500)
     membership = await db.person_memberships.find_one({"person_id": enrollment["person_id"]}, {"_id": 0})
     baptism = await db.person_baptisms.find_one({"person_id": enrollment["person_id"]}, {"_id": 0})
-    discipleship = await db.process_enrollments.find_one({"process_key": "discipleship", "source_id": enrollment["enrollment_id"]}, {"_id": 0})
+    # R2: el traspaso a Discipulado es la inscripción en Formación (programa de propósito «discipulado»).
+    discipleship = await db.formation_enrollments.find_one({"enrollment_id": enrollment["discipleship_enrollment_id"]}, {"_id": 0}) if enrollment.get("discipleship_enrollment_id") else None
+    graduation_event = await db.graduation_events.find_one({"event_id": enrollment["graduation_event_id"]}, {"_id": 0, "event_id": 1, "name": 1, "event_date": 1}) if enrollment.get("graduation_event_id") else None
     formation_recommendation = await db.formation_recommendations.find_one({"source_enrollment_id": enrollment["enrollment_id"], "status": "recommended"}, {"_id": 0})
     person = await db.persons.find_one({"_id": ObjectId(enrollment["person_id"])}, {"_id": 0, "nombre": 1, "apellido": 1, "person_number": 1})
     result = serialize(enrollment)
@@ -242,6 +244,7 @@ async def enrollment_detail(db, enrollment: dict) -> dict:
         "baptism": serialize(baptism),
         "discipleship": serialize(discipleship),
         "formation_recommendation": serialize(formation_recommendation),
+        "graduation_event": serialize(graduation_event),
         "timeline": serialize(timeline),
         "outreach_origin": await build_outreach_origin(db, enrollment),
     })
