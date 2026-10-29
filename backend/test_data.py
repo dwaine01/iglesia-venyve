@@ -14,6 +14,7 @@ from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from access_control import is_global_pastoral_authority
 from report_period import TEST_HINT, require_manager
 from server import db, get_current_user
 
@@ -46,6 +47,13 @@ async def inventory() -> dict:
                                               {"apellido": {"$regex": NAME_HINT.pattern, "$options": "i"}}]}, {"_id": 1, "demo": 1, "is_test": 1}):
         add(str(doc["_id"]), "Ya marcada como prueba" if doc.get("is_test") else ("Marcada demo" if doc.get("demo") else "Nombre de prueba"))
     await _more_candidates(add, reasons)
+    # «Es persona real» (confirmado por el pastor): ya no se sugiere como prueba; se lista aparte para poder quitar la marca.
+    confirmed = [{"person_id": str(doc["_id"]), "name": _name(doc), "person_number": doc.get("person_number"),
+                  "confirmed_at": doc["confirmed_real"].get("at").isoformat() if isinstance(doc["confirmed_real"].get("at"), datetime) else None,
+                  "reason": doc["confirmed_real"].get("reason")}
+                 async for doc in db.persons.find({"confirmed_real.active": True}, {"nombre": 1, "apellido": 1, "person_number": 1, "confirmed_real": 1})]
+    for row in confirmed:
+        reasons.pop(row["person_id"], None)
     oids = [ObjectId(pid) for pid in list(reasons)[:LIMIT * 2]]
     persons = {str(doc["_id"]): doc async for doc in db.persons.find({"_id": {"$in": oids}}, {"nombre": 1, "apellido": 1, "is_test": 1, "is_archived": 1, "person_number": 1})}
     people_rows = sorted(({"person_id": pid, "name": _name(doc), "person_number": doc.get("person_number"), "is_test": bool(doc.get("is_test")),
@@ -61,7 +69,7 @@ async def inventory() -> dict:
         {"$match": {"person_id": {"$in": finance_ids}, "status": {"$ne": "corrected"}}}, {"$group": {"_id": None, "count": {"$sum": 1}, "cents": {"$sum": "$amount_cents"}}}]).to_list(1) if finance_ids else []
     return {
         "finance_contributions": {"count": finance_rows[0]["count"] if finance_rows else 0, "amount_cents": finance_rows[0]["cents"] if finance_rows else 0},
-        "people": people_rows, "campaigns": campaigns,
+        "people": people_rows, "campaigns": campaigns, "confirmed_real": confirmed,
         "visitor_registrations_marked": await db.visitor_registrations.count_documents({"test_data": True}),
         "counts": {"people": len(people_rows), "people_marked": sum(1 for row in people_rows if row["is_test"]),
                    "campaigns": len(campaigns), "campaigns_marked": sum(1 for row in campaigns if row["is_test"])},
@@ -158,6 +166,11 @@ async def mark(payload: MarkInput, current_user: dict = Depends(get_current_user
     require_manager(current_user)
     now = datetime.now(timezone.utc)
     stamp = {"is_test": payload.is_test, "is_test_marked_by": current_user["user_id"], "is_test_marked_at": now, "is_test_reason": payload.reason}
+    if payload.kind == "person" and payload.is_test:
+        oids = [ObjectId(item) for item in payload.ids if ObjectId.is_valid(item)]
+        real = [_name(doc) async for doc in db.persons.find({"_id": {"$in": oids}, "confirmed_real.active": True}, {"nombre": 1, "apellido": 1})]
+        if real:
+            raise HTTPException(status_code=409, detail=f"No se marcó nada: {', '.join(real)} está confirmada como persona real. Para marcarla como prueba, el pastor debe quitar antes esa marca.")
     changed = 0
     for target in dict.fromkeys(payload.ids):
         if payload.kind == "person":
@@ -195,6 +208,32 @@ async def archive_campaign(campaign_id: str, payload: ArchiveInput, current_user
                                                                                      "archived_by_user_id": current_user["user_id"], "archive_reason": payload.reason}})
         await _log("campaign", campaign_id, "archived", bool(doc.get("archived")), payload.archived, payload.reason, current_user)
     return {"campaign_id": campaign_id, "archived": payload.archived}
+
+
+class RealPersonInput(BaseModel):
+    person_id: str
+    confirmed: bool
+    reason: str = Field(min_length=3, max_length=300)
+
+
+@router.post("/real-person", response_model=dict)
+async def set_real_person(payload: RealPersonInput, current_user: dict = Depends(get_current_user)):
+    """«Es persona real»: solo el pastor. Reversible y con historial; no toca la cuenta, el rol ni el correo."""
+    if not is_global_pastoral_authority(current_user):
+        raise HTTPException(status_code=403, detail="Solo el pastor confirma que alguien es una persona real")
+    if not ObjectId.is_valid(payload.person_id):
+        raise HTTPException(status_code=404, detail="Persona no encontrada")
+    person = await db.persons.find_one({"_id": ObjectId(payload.person_id)}, {"is_test": 1, "confirmed_real": 1})
+    if not person:
+        raise HTTPException(status_code=404, detail="Persona no encontrada")
+    if payload.confirmed and person.get("is_test"):
+        raise HTTPException(status_code=409, detail="Está marcada como prueba: quite primero esa marca")
+    before = bool((person.get("confirmed_real") or {}).get("active"))
+    if before != payload.confirmed:
+        now = datetime.now(timezone.utc)
+        await db.persons.update_one({"_id": person["_id"]}, {"$set": {"confirmed_real": {"active": payload.confirmed, "by_user_id": current_user["user_id"], "at": now, "reason": payload.reason}}})
+        await _log("person", payload.person_id, "confirmed_real", before, payload.confirmed, payload.reason, current_user)
+    return await inventory()
 
 
 @router.get("/history", response_model=dict)

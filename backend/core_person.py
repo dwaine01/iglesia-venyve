@@ -402,9 +402,10 @@ async def archive_person(person_id: str, reassign_to_person_id: Optional[str] = 
         raise HTTPException(status_code=409, detail="No puede eliminar su propio Perfil 360")
     linked_users = await db.users.find(
         {"person_id": person_id},
-        {"_id": 1, "rol": 1},
+        {"_id": 1, "rol": 1, "role": 1, "access_level": 1},
     ).to_list(20)
-    if any(item.get("rol") in {"pastor", "admin", "superadmin"} for item in linked_users):
+    # Misma regla que la autoridad pastoral (incluye «pastora» y el nivel «Pastor»).
+    if any(is_global_pastoral_authority(item) for item in linked_users):
         raise HTTPException(status_code=409, detail="No se puede eliminar el Perfil 360 de otra cuenta pastoral")
     # Si es líder o mentor con trabajo pendiente, primero se pasa a otro mentor (no queda huérfano).
     from work_handover import blocked, hand_over, pending_work, require_handover_target
