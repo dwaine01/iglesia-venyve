@@ -95,7 +95,7 @@ async def link_handoff(enrollment: dict, formation: dict, actor_user_id: str) ->
     if not enrollment.get("graduated_at") or enrollment.get("discipleship_enrollment_id"):
         return
     now = now_utc()
-    await _complete_stage(enrollment["enrollment_id"], "discipleship_handoff", now, result=f"Inscrito en {formation.get('module_name_snapshot') or 'Formación'}")
+    await _complete_stage(enrollment["enrollment_id"], "discipleship_handoff", now, result=f"Inscrito en {formation.get('module_name_snapshot') or 'Formación'}", completed_by_user_id=actor_user_id)
     await db.process_enrollments.update_one({"enrollment_id": enrollment["enrollment_id"]}, {"$set": {
         "discipleship_enrollment_id": formation["enrollment_id"], "discipleship_program_id": formation.get("program_id"), "discipleship_linked_at": now,
         "progress_pct": await _progress_pct(enrollment["enrollment_id"]), "next_action": None, "next_action_at": None, "updated_at": now}})
@@ -126,7 +126,7 @@ async def mark_retreat_done(enrollment: dict, retreat_date: datetime, actor_user
         return
     await ensure_graduation_stage(enrollment)
     now = now_utc()
-    await _complete_stage(enrollment_id, "retreat", now)
+    await _complete_stage(enrollment_id, "retreat", now, completed_by_user_id=actor_user_id)
     await db.process_stage_progress.update_one({"enrollment_id": enrollment_id, "stage_key": "graduation"},
                                                {"$set": {"status": "open", "opened_at": now, "due_at": None, "updated_at": now}})
     await db.process_enrollments.update_one({"enrollment_id": enrollment_id}, {"$set": {
@@ -273,7 +273,7 @@ async def register_graduates(event_id: str, payload: GraduatesInput, current_use
         await db.graduation_records.insert_one({"_id": record_id, "record_id": record_id, "event_id": event_id, "enrollment_id": enrollment_id,
                                                 "person_id": enrollment["person_id"], "graduated_at": graduated_at, "status": "active",
                                                 "registered_by_user_id": current_user["user_id"], "created_at": now})
-        await _complete_stage(enrollment_id, "graduation", now, result=event["name"])
+        await _complete_stage(enrollment_id, "graduation", now, result=event["name"], completed_by_user_id=current_user["user_id"])
         await db.process_stage_progress.update_one({"enrollment_id": enrollment_id, "stage_key": "discipleship_handoff"},
                                                    {"$set": {"status": "open", "opened_at": now, "due_at": now + timedelta(hours=HANDOFF_SLA_HOURS), "updated_at": now}})
         recommendation_id = None

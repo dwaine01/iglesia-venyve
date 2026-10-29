@@ -311,7 +311,7 @@ async def mark_prior_stages(enrollment: dict, target_stage_key: str, actor_user_
                 task.update({"completed": True, "completed_at": task.get("completed_at") or now})
             await db.process_stage_progress.update_one(
                 {"enrollment_id": enrollment["enrollment_id"], "stage_key": stage["key"]},
-                {"$set": {"status": "completed", "tasks": tasks, "completed_at": now, "updated_at": now}},
+                {"$set": {"status": "completed", "tasks": tasks, "completed_at": now, "completed_by_user_id": actor_user_id, "updated_at": now}},
             )
         elif stage["order"] == target["order"]:
             await db.process_stage_progress.update_one(
@@ -487,6 +487,7 @@ async def update_stage(enrollment_id: str, stage_key: str, payload: StageUpdate,
         if enrollment["process_key"] == "seven_weeks" and (payload.attendance or stage_doc.get("attendance")) == "pending":
             raise HTTPException(status_code=400, detail="Registre la asistencia antes de completar la semana")
         update["completed_at"] = now_utc()
+        update["completed_by_user_id"] = current_user["user_id"]
     if payload.attendance and payload.attendance != "pending": update["attendance_at"] = now_utc()
     update["updated_at"] = now_utc()
     await db.process_stage_progress.update_one({"_id": stage_doc["_id"]}, {"$set": update})

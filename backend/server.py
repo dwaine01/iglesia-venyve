@@ -615,6 +615,8 @@ from person_merge import router as person_merge_router
 app.include_router(person_merge_router)
 from person_contact import router as person_contact_router
 app.include_router(person_contact_router)
+from person_steps import router as person_steps_router  # noqa: E402 (R3 · Proceso paso a paso)
+app.include_router(person_steps_router)
 from global_stats import router as global_stats_router
 app.include_router(global_stats_router)
 from visitor_registry import admin_router as visitor_admin_router, kiosk_router as visitor_kiosk_router
