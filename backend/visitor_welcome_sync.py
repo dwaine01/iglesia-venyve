@@ -11,8 +11,11 @@ el panel del operador muestran el mismo nombre.
 - TIEMPO REAL por WebSocket en este mismo backend (como el radio, sin dependencias nuevas), con boleto de UN
   SOLO USO y 60 s: el enlace de la pantalla nunca va en la dirección del WebSocket. Respaldo: si el
   WebSocket no conecta, la pantalla consulta cada 2 s y mueve por HTTP con la misma regla de versión.
-- El enlace de pantalla puede: leer los nombres (lista blanca, sin cambios) y mover la posición del servicio
-  que se muestra. Nada más.
+- El enlace de la pantalla de la PASTORA («Visitas de hoy») puede: leer los nombres (lista blanca, sin cambios)
+  y mover la posición del servicio que se muestra. Nada más.
+- El enlace de la PANTALLA GIGANTE (público, por ProPresenter) solo LEE: recibe únicamente el nombre que se
+  está mostrando (sin «invitado por» ni «registrando»; mientras el visitante aún se está registrando, no sale).
+  No puede mover la posición: no tiene ruta para mover y en el WebSocket sus «move» se ignoran.
 - Las conexiones viven en memoria (Railway corre un solo proceso, como el radio); la posición vive en la
   base y sobrevive un reinicio."""
 import asyncio
@@ -23,7 +26,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Literal, Optional
 
 from bson import ObjectId
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
@@ -34,6 +37,7 @@ from visitor_registry import link_access, load_links, now_utc, require
 
 logger = logging.getLogger(__name__)
 screen_sync_router = APIRouter(prefix="/api/screen/welcome", tags=["visitor-screen"])
+stage_router = APIRouter(prefix="/api/stage/welcome", tags=["visitor-stage"])
 operator_sync_router = APIRouter(prefix="/api/visitors/welcome", tags=["visitor-welcome"])
 TICKET_SECONDS = 60
 ACTIONS = ("next", "prev", "first", "last")
@@ -130,10 +134,10 @@ def notify_names_changed() -> None:
     hub.broadcast({"type": "names_changed"})
 
 
-async def kick_screens() -> None:
+async def kick_screens(kind: str = "screen") -> None:
     """Enlace nuevo: las pantallas conectadas con el anterior se desconectan en el acto."""
     for member in list(hub.members.values()):
-        if member["kind"] == "screen":
+        if member["kind"] == kind:
             try:
                 await member["websocket"].close(code=4401)
             except Exception:  # noqa: BLE001
@@ -154,10 +158,10 @@ async def redeem(ticket: Optional[str]) -> dict:
         expires = expires.replace(tzinfo=timezone.utc)
     if not doc or expires is None or expires < now_utc():
         raise HTTPException(status_code=401, detail="El acceso venció. La pantalla se vuelve a conectar sola.")
-    if doc["kind"] == "screen":
-        if (await load_links())["screen"]["code"] != doc.get("link_code"):  # se generó un enlace nuevo
+    if doc["kind"] in {"screen", "stage"}:
+        if (await load_links())[doc["kind"]]["code"] != doc.get("link_code"):  # se generó un enlace nuevo
             raise HTTPException(status_code=401, detail="Este enlace ya no funciona. Pida el enlace nuevo a la administración.")
-        return {"kind": "screen", "by": "screen"}
+        return {"kind": doc["kind"], "by": doc["kind"]}
     if not ObjectId.is_valid(doc.get("user_id") or ""):
         raise HTTPException(status_code=401, detail="No autorizado")
     db_user = await db.users.find_one({"_id": ObjectId(doc["user_id"])})
@@ -191,6 +195,35 @@ async def screen_move(payload: MoveInput, request: Request, x_link_token: Option
     """Respaldo sin WebSocket: mismo permiso del enlace (mover la posición) y la misma regla de versión."""
     await link_access("screen", x_link_token, request)
     return await move(payload.action, payload.version, "screen")
+
+
+# ------------------------------------------------------------------ pantalla gigante (público): solo lectura
+async def stage_view() -> dict:
+    """Lo único que recibe la pantalla gigante: el nombre que se está mostrando (o nada)."""
+    from visitor_welcome import shown_name
+    from visitor_registry import load_kiosk_settings, registration_state
+    position = await current_position()
+    shown = None
+    if position["registration_id"]:
+        doc = await db.visitor_registrations.find_one({"registration_id": position["registration_id"], "welcome.hidden": {"$ne": True}, "status": {"$nin": ["discarded", "merged"]}},
+                                                      {"_id": 0, "registration_id": 1, "first_name": 1, "last_name": 1, "welcome": 1, "status": 1, "updated_at": 1, "created_at": 1, "origin": 1})
+        reset = (await load_kiosk_settings())["form_reset_seconds"]
+        if doc and registration_state(doc, reset) != "registering":  # a medio registrar, en público no sale
+            shown = {"id": doc["registration_id"], "name": shown_name(doc)}
+    return {"shown": shown, "version": position["version"]}
+
+
+@stage_router.get("", response_model=dict)
+async def stage_current(request: Request, x_link_token: Optional[str] = Header(default=None), code: Optional[str] = Query(default=None, alias="link", max_length=80)):
+    """El código puede llegar en la dirección (?link=…) para que sea un pedido simple, como la pantalla de la pastora."""
+    await link_access("stage", x_link_token or code, request)
+    return await stage_view()
+
+
+@stage_router.post("/ticket", response_model=dict)
+async def stage_ticket(request: Request, x_link_token: Optional[str] = Header(default=None)):
+    link = await link_access("stage", x_link_token, request)
+    return await issue_ticket("stage", {"link_code": link["code"]})
 
 
 @operator_sync_router.post("/ticket", response_model=dict)
@@ -241,6 +274,8 @@ async def welcome_socket(websocket: WebSocket, ticket: Optional[str] = None):
             except ValueError:
                 continue
             kind = parsed.get("type")
+            if kind == "move" and who["kind"] == "stage":
+                continue  # la pantalla gigante solo lee
             if kind == "move" and parsed.get("action") in ACTIONS and isinstance(parsed.get("version"), int):
                 result = await move(parsed["action"], parsed["version"], who["by"])
                 if not result["moved"]:  # versión vieja: se le manda la posición vigente solo a él

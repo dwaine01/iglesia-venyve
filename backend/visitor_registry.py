@@ -20,6 +20,7 @@ Registro:
 - Textos editables (bienvenida, aviso de privacidad versionado, confirmación) y
   la versión del aviso aceptado queda en cada registro. Auditoría de todo."""
 import hashlib
+import functools
 import hmac
 import re
 import secrets
@@ -195,11 +196,25 @@ async def set_service_today(payload: ServiceInput, current_user: dict = Depends(
     return await current_service()
 
 
+def notifies_welcome(func):
+    """Registro nuevo, completado, descartado o marcado de prueba: las pantallas de bienvenida vuelven a leer
+    la lista al instante (sin recargar). Solo es un aviso; no lleva datos."""
+    @functools.wraps(func)
+    async def wrapper(*args, **kwargs):
+        try:
+            return await func(*args, **kwargs)
+        finally:
+            from visitor_welcome_sync import notify_names_changed
+            notify_names_changed()
+    return wrapper
+
+
 # ------------------------------------------------------------------ enlaces (tabletas y pantalla)
 LINKS_ID = "visitor_links"
-LINK_KINDS = {"tablet": "Enlace de tabletas", "screen": "Enlace de pantalla de bienvenida"}
-LINK_PATHS = {"tablet": "/quiosco", "screen": "/pantalla-bienvenida"}  # enlace largo anterior (sigue funcionando hasta «Generar enlace nuevo»)
-SHORT_PATHS = {"tablet": "/r", "screen": "/b"}
+LINK_KINDS = {"tablet": "Enlace de tabletas", "screen": "Enlace de la pantalla de la pastora (Visitas de hoy)",
+              "stage": "Enlace de la pantalla gigante (público, solo lectura)"}
+LINK_PATHS = {"tablet": "/quiosco", "screen": "/pantalla-bienvenida", "stage": "/pantalla-gigante"}  # enlace largo (sigue funcionando hasta «Generar enlace nuevo»)
+SHORT_PATHS = {"tablet": "/r", "screen": "/b", "stage": "/g"}
 # Código corto: fácil de escribir y de dictar, sin letras ni números que se confunden (0/O, 1/I/L).
 CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
 CODE_LENGTH = 8
@@ -253,7 +268,7 @@ async def get_links(current_user: dict = Depends(get_current_user)):
 
 
 @admin_router.post("/links/{kind}/rotate", response_model=dict)
-async def rotate_link(kind: Literal["tablet", "screen"], current_user: dict = Depends(get_current_user)):
+async def rotate_link(kind: Literal["tablet", "screen", "stage"], current_user: dict = Depends(get_current_user)):
     """Enlace nuevo (por si se filtró): el código corto Y el enlace largo anteriores dejan de funcionar en el acto."""
     require(current_user, VISITORS_DEVICES_MANAGE)
     links = await load_links()
@@ -261,9 +276,9 @@ async def rotate_link(kind: Literal["tablet", "screen"], current_user: dict = De
     item = {"token": secrets.token_urlsafe(32), "code": next(code for code in iter(new_code, None) if code not in taken), "created_at": now_utc(), "created_by": current_user["user_id"]}
     await db.app_settings.update_one({"_id": LINKS_ID}, {"$set": {kind: item}})
     await audit("link_rotated", current_user["user_id"], {"kind": kind})
-    if kind == "screen":
+    if kind in {"screen", "stage"}:
         from visitor_welcome_sync import kick_screens
-        await kick_screens()  # las pantallas conectadas con el enlace anterior se desconectan
+        await kick_screens(kind)  # las pantallas conectadas con el enlace anterior se desconectan
     return link_view(kind, item)
 
 
@@ -551,6 +566,7 @@ def name_compatible(payload: "RegistrationInput", card: dict) -> bool:
 
 
 @kiosk_router.post("/registrations", response_model=dict, status_code=201)
+@notifies_welcome
 async def create_registration(payload: RegistrationInput, device: dict = Depends(kiosk_device)):
     await ensure_indexes()
     texts = await load_texts()
@@ -659,6 +675,7 @@ async def apply_progress(doc: dict, payload: "RegistrationInput", device: dict) 
 
 
 @kiosk_router.post("/registrations/draft", response_model=dict)
+@notifies_welcome
 async def save_draft(payload: RegistrationInput, device: dict = Depends(kiosk_device)):
     """Al escribir el nombre el borrador aparece YA en la bienvenida; en cada paso se guarda lo contestado.
     La tableta no recibe nada más."""
@@ -1030,6 +1047,7 @@ async def set_followup_status(registration_id: str, payload: ReopenInput, curren
 
 
 @admin_router.post("/registrations/{registration_id}/finish-incomplete", response_model=dict)
+@notifies_welcome
 async def finish_incomplete(registration_id: str, current_user: dict = Depends(get_current_user)):
     """El equipo completa un registro que quedó a medias: se pasa a Persona 360 con su nombre
     (misma búsqueda de duplicados; lo dudoso queda como «posible coincidencia»)."""
@@ -1051,6 +1069,7 @@ async def finish_incomplete(registration_id: str, current_user: dict = Depends(g
 
 
 @admin_router.post("/registrations/{registration_id}/discard", response_model=dict)
+@notifies_welcome
 async def discard_registration(registration_id: str, current_user: dict = Depends(get_current_user)):
     """Descartar un registro incompleto (p. ej. una prueba): no se borra, queda oculto y auditado."""
     require(current_user, VISITORS_FOLLOWUP_MANAGE)
@@ -1063,6 +1082,7 @@ async def discard_registration(registration_id: str, current_user: dict = Depend
 
 
 @admin_router.post("/registrations/{registration_id}/mark-test", response_model=dict)
+@notifies_welcome
 async def mark_test(registration_id: str, current_user: dict = Depends(get_current_user)):
     """«Es una prueba: quitar»: el registro se marca como prueba y sale de la bienvenida y del
     seguimiento (no se borra, queda auditado); su perfil de Persona 360 se retira si lo creó este

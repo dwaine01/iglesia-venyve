@@ -44,8 +44,9 @@ async def test_kiosk_link_numbers_idempotency_dedupe_and_permissions():
         assert (await mentor.get("/api/visitors/links")).status_code == 403
         assert (await mentor.get("/api/visitors/registrations")).status_code == 403
         links = (await pastora.get("/api/visitors/links")).json()["items"]
-        # Enlaces cortos: /r/CÓDIGO y /b/CÓDIGO, 8 caracteres sin 0/O ni 1/I/L.
-        assert [item["kind"] for item in links] == ["tablet", "screen"] and links[0]["path"].startswith("/r/") and links[1]["path"].startswith("/b/")
+        # Enlaces cortos: /r/CÓDIGO, /b/CÓDIGO (pastora) y /g/CÓDIGO (pantalla gigante), 8 caracteres sin 0/O ni 1/I/L.
+        assert [item["kind"] for item in links] == ["tablet", "screen", "stage"] and [item["path"][:3] for item in links] == ["/r/", "/b/", "/g/"]
+        assert len({item["code"] for item in links}) == 3  # tres códigos distintos
         for item in links:
             code = item["path"].rsplit("/", 1)[1]
             assert len(code) == 8 and code == item["code"] and set(code) <= set("ABCDEFGHJKMNPQRSTUVWXYZ23456789")

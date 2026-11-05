@@ -624,7 +624,9 @@ app.include_router(visitor_admin_router)
 app.include_router(visitor_kiosk_router)
 from visitor_welcome import operator_router as visitor_welcome_router, screen_router as visitor_screen_router
 from visitor_welcome_sync import operator_sync_router as visitor_welcome_sync_router, screen_sync_router as visitor_screen_sync_router, ensure_indexes as visitor_welcome_sync_indexes
+from visitor_welcome_sync import stage_router as visitor_stage_router
 app.include_router(visitor_welcome_sync_router)
+app.include_router(visitor_stage_router)
 app.include_router(visitor_screen_sync_router)
 app.include_router(visitor_welcome_router)
 app.include_router(visitor_screen_router)
