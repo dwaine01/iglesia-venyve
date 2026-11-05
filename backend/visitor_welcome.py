@@ -7,8 +7,8 @@
 - LISTA BLANCA: la pantalla recibe solo {id, nombre, invitado por, registrando}; nunca teléfonos,
   direcciones, fechas, oración ni consejería. Los familiares que acompañan
   (incluidos menores) NO se muestran.
-- La encargada avanza y retrocede en la propia pantalla (flechas o botones);
-  aquí solo se entrega la lista en orden de llegada."""
+- Avanzar y retroceder (flechas o botones, en la pantalla o en el panel) mueve UNA posición compartida por
+  servicio: todas las pantallas abiertas muestran el mismo nombre (visitor_welcome_sync)."""
 from datetime import timezone
 from typing import Literal, Optional
 
@@ -91,8 +91,9 @@ async def screen_welcome(request: Request, x_link_token: Optional[str] = Header(
     docs = in_order(docs)
     reset = (await load_kiosk_settings())["form_reset_seconds"]
     # El nombre aparece apenas lo escribe (borrador), con «registrando…» mientras llena el resto.
+    from visitor_welcome_sync import current_position
     return {"names": [{"id": doc["registration_id"], "name": shown_name(doc), "invited_by": shown_inviter(doc), "registering": registration_state(doc, reset) == "registering"} for doc in docs], "total": len(docs), "service_label": await service_label(state),
-            "short_path": f"/b/{link['code']}"}
+            "short_path": f"/b/{link['code']}", "position": await current_position()}
 
 
 # ------------------------------------------------------------------ operador
@@ -110,7 +111,9 @@ async def operator_view(current_user: dict = Depends(get_current_user)):
     state = await load_state()
     docs = in_order(await db.visitor_registrations.find({**await service_query(state), "status": {"$nin": ["discarded", "merged"]}}, {"_id": 0}).sort("created_at", 1).to_list(500))
     await audit("welcome_viewed", current_user["user_id"], {"count": len(docs)})
-    return {"items": [operator_item(doc) for doc in docs], "state": state, "today": await current_service(), "service_label": await service_label(state)}
+    from visitor_welcome_sync import current_position
+    return {"items": [operator_item(doc) for doc in docs], "state": state, "today": await current_service(), "service_label": await service_label(state),
+            "position": await current_position()}
 
 
 class StateInput(BaseModel):
@@ -132,6 +135,8 @@ async def set_state(payload: StateInput, current_user: dict = Depends(get_curren
         state["service_kind"] = None if payload.service_kind == "all" else payload.service_kind
     await db.app_settings.update_one({"_id": STATE_ID}, {"$set": {**state, "updated_at": now_utc(), "updated_by": current_user["user_id"]}}, upsert=True)
     await audit("welcome_state", current_user["user_id"], payload.model_dump(exclude_none=True))
+    from visitor_welcome_sync import notify_names_changed
+    notify_names_changed()
     return state
 
 
@@ -186,6 +191,8 @@ async def add_manual(payload: ManualInput, current_user: dict = Depends(get_curr
     }
     await db.visitor_registrations.insert_one(doc)
     await audit("welcome_manual_added", current_user["user_id"], {"registration_id": registration_id, "position": payload.position})
+    from visitor_welcome_sync import notify_names_changed
+    notify_names_changed()
     return operator_item(doc)
 
 
@@ -218,4 +225,6 @@ async def update_item(registration_id: str, payload: ItemInput, current_user: di
     if not result.matched_count:
         raise HTTPException(status_code=404, detail="Registro no encontrado")
     await audit("welcome_item_changed", current_user["user_id"], {"registration_id": registration_id, **{key.split(".")[1]: value for key, value in changes.items()}})
+    from visitor_welcome_sync import notify_names_changed
+    notify_names_changed()
     return operator_item(await db.visitor_registrations.find_one({"registration_id": registration_id}, {"_id": 0}))

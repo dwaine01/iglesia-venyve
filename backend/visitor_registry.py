@@ -261,6 +261,9 @@ async def rotate_link(kind: Literal["tablet", "screen"], current_user: dict = De
     item = {"token": secrets.token_urlsafe(32), "code": next(code for code in iter(new_code, None) if code not in taken), "created_at": now_utc(), "created_by": current_user["user_id"]}
     await db.app_settings.update_one({"_id": LINKS_ID}, {"$set": {kind: item}})
     await audit("link_rotated", current_user["user_id"], {"kind": kind})
+    if kind == "screen":
+        from visitor_welcome_sync import kick_screens
+        await kick_screens()  # las pantallas conectadas con el enlace anterior se desconectan
     return link_view(kind, item)
 
 

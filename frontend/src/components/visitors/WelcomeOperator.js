@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 
 import { useAuth } from '../../context/AuthContext';
 import { apiErrorMessage } from '../../lib/apiErrors';
+import { useWelcomeSync } from '../../lib/useWelcomeSync';
 
 /* Visitantes › Bienvenida en vivo: qué servicio muestra la pantalla de
  * bienvenida, y cada nombre registrado (todos entran por defecto) con «Corregir»
@@ -56,10 +57,19 @@ export default function WelcomeOperator() {
   const [editing, setEditing] = useState(null);
   const [draft, setDraft] = useState('');
   const [draftInvited, setDraftInvited] = useState('');
-  const [currentId, setCurrentId] = useState(null);
-  const load = useCallback(() => axios.get(`${API}/api/visitors/welcome`, getAuthHeaders()).then((response) => setData(response.data))
+  const syncRef = useRef(null);
+  const load = useCallback(() => axios.get(`${API}/api/visitors/welcome`, getAuthHeaders()).then((response) => { setData(response.data); syncRef.current?.(response.data.position); })
     .catch((error) => toast.error(apiErrorMessage(error, 'No se pudo cargar la bienvenida'))), [API, getAuthHeaders]);
+  // La MISMA posición que las pantallas: lo que se mueve aquí se mueve en todas, y al revés.
+  const { position, live, move, accept } = useWelcomeSync({ api: API, mode: 'operator', authHeaders: getAuthHeaders, onNamesChanged: load });
+  syncRef.current = accept;
   useEffect(() => { load(); const timer = setInterval(load, 8000); return () => clearInterval(timer); }, [load]);
+  // Respaldo sin WebSocket: solo la posición cada 2 s (la lista completa sigue cada 8 s).
+  useEffect(() => {
+    if (live) return undefined;
+    const timer = setInterval(() => axios.get(`${API}/api/visitors/welcome/position`, getAuthHeaders()).then((response) => accept(response.data)).catch(() => {}), 2000);
+    return () => clearInterval(timer);
+  }, [live, API, getAuthHeaders, accept]);
 
   const run = async (request) => { try { await request(); await load(); } catch (error) { toast.error(apiErrorMessage(error, 'No se pudo guardar')); } };
   const setState = (body) => run(() => axios.put(`${API}/api/visitors/welcome/state`, body, getAuthHeaders()));
@@ -71,15 +81,16 @@ export default function WelcomeOperator() {
   const visible = data.items.filter((item) => !item.hidden);
   const shown = visible.length;
   // Modo operador: el nombre que se está leyendo (las flechas lo mueven, como en la pantalla).
-  let index = visible.findIndex((item) => item.registration_id === currentId);
-  if (index < 0) index = 0;
+  let index = visible.findIndex((item) => item.registration_id === position?.registration_id);
+  if (index < 0) index = Math.min(Math.max(0, position?.index ?? 0), Math.max(0, visible.length - 1));
   const current = visible[index];
-  const go = (delta) => { const next = visible[Math.min(visible.length - 1, Math.max(0, index + delta))]; if (next) setCurrentId(next.registration_id); };
+  const go = (delta) => { if (visible.length) move(delta > 0 ? 'next' : 'prev'); };
   return (
     <div className="space-y-4" data-testid="welcome-operator"
       onKeyDown={(event) => { if (event.target.tagName === 'INPUT') return; if (event.key === 'ArrowRight') go(1); if (event.key === 'ArrowLeft') go(-1); }}>
       <section className="rounded-2xl bg-[#0B1530] p-4 text-center text-white" data-testid="welcome-current">
         <p className="text-sm font-semibold uppercase tracking-widest text-[#E7C766]">Leyendo ahora · Nombre {shown ? index + 1 : 0} de {shown}</p>
+        <p className="text-xs text-white/70" data-testid={live ? 'welcome-op-live' : 'welcome-op-polling'}>{live ? 'Sincronizado al instante con todas las pantallas' : 'Sincronizando cada 2 segundos'}</p>
         {current ? <>
           <p className="mt-1 text-3xl font-extrabold md:text-4xl" data-testid="welcome-current-name">{current.name}</p>
           {current.invited_by && <p className="mt-1 text-xl font-semibold text-[#E7C766]">Invitado por {current.invited_by}</p>}
@@ -91,7 +102,7 @@ export default function WelcomeOperator() {
       </section>
       <AddName currentId={current?.registration_id} onAdded={() => load()} />
       <section className="space-y-2 rounded-2xl border border-[#E8E5DE] bg-white p-4">
-        <p className="text-[15px] text-slate-700">La pantalla de bienvenida muestra un nombre a la vez. Se avanza con la <b>flecha derecha</b> y se retrocede con la <b>izquierda</b> (o con los botones grandes de la pantalla). Todos los visitantes registrados aparecen; aquí puedes corregir un nombre (o «Invitado por») antes de leerlo, o quitarlo.</p>
+        <p className="text-[15px] text-slate-700">La pantalla de bienvenida muestra un nombre a la vez. Se avanza con la <b>flecha derecha</b> y se retrocede con la <b>izquierda</b> (o con los botones grandes de la pantalla). Todas las pantallas abiertas y este panel muestran el mismo nombre: lo que se mueve en una se mueve en todas. Todos los visitantes registrados aparecen; aquí puedes corregir un nombre (o «Invitado por») antes de leerlo, o quitarlo.</p>
         <p className="text-[15px] font-semibold text-[#101D36]">Servicio que se muestra</p>
         <div className="flex flex-wrap items-end gap-2">
           {SERVICES.map(([value, label]) => <button key={value} type="button" onClick={() => setState({ service_kind: value })} className={chip(serviceKind === value)} data-testid={`welcome-service-${value}`}>{label}</button>)}
