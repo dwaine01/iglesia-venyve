@@ -15,8 +15,10 @@ export function useWelcomeSync({ api, mode, linkToken, authHeaders, onNamesChang
   const latest = useRef(null);
   const namesChanged = useRef(onNamesChanged);
   namesChanged.current = onNamesChanged;
-  const base = mode === 'screen' ? `${api}/api/screen/welcome` : `${api}/api/visitors/welcome`;
-  const headers = useCallback(() => (mode === 'screen' ? { headers: { 'X-Link-Token': linkToken } } : authHeaders()), [mode, linkToken, authHeaders]);
+  // screen = pantalla de la pastora (lee y mueve) · stage = pantalla gigante (solo lee) · operator = panel con sesión.
+  const byLink = mode === 'screen' || mode === 'stage';
+  const base = mode === 'screen' ? `${api}/api/screen/welcome` : mode === 'stage' ? `${api}/api/stage/welcome` : `${api}/api/visitors/welcome`;
+  const headers = useCallback(() => (byLink ? { headers: { 'X-Link-Token': linkToken } } : authHeaders()), [byLink, linkToken, authHeaders]);
 
   const accept = useCallback((next) => {
     // Nunca se retrocede a una versión vieja (llegan en desorden entre WebSocket y consultas).
@@ -27,7 +29,7 @@ export function useWelcomeSync({ api, mode, linkToken, authHeaders, onNamesChang
   }, []);
 
   useEffect(() => {
-    if (!enabled || (mode === 'screen' && !linkToken)) return undefined;
+    if (!enabled || (byLink && !linkToken)) return undefined;
     let alive = true;
     let attempt = 0;
     let retryTimer = null;
@@ -43,7 +45,7 @@ export function useWelcomeSync({ api, mode, linkToken, authHeaders, onNamesChang
         ws.onmessage = (event) => {
           let message;
           try { message = JSON.parse(event.data); } catch { return; }
-          if (message.type === 'position') accept(message);
+          if (message.type === 'position') { accept(message); if (mode === 'stage') namesChanged.current?.(); }
           if (message.type === 'names_changed') namesChanged.current?.();
         };
         ws.onclose = () => {
@@ -59,14 +61,15 @@ export function useWelcomeSync({ api, mode, linkToken, authHeaders, onNamesChang
     };
     connect();
     return () => { alive = false; clearTimeout(retryTimer); clearInterval(pingTimer); socket.current?.close(); socket.current = null; };
-  }, [enabled, mode, linkToken, base, api, headers, accept]);
+  }, [enabled, mode, byLink, linkToken, base, api, headers, accept]);
 
   const move = useCallback(async (action) => {
+    if (mode === 'stage') return; // la pantalla gigante solo lee
     const version = latest.current?.version ?? 0;
     const ws = socket.current;
     if (ws && ws.readyState === 1) { ws.send(JSON.stringify({ type: 'move', action, version })); return; }
     try { accept((await axios.post(`${base}/position`, { action, version }, { ...headers(), timeout: 8000 })).data); } catch { /* sin conexión: se reintenta al presionar otra vez */ }
-  }, [base, headers, accept]);
+  }, [mode, base, headers, accept]);
 
   return { position, live, move, accept };
 }

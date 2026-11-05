@@ -26,6 +26,7 @@ const TestDataPage = lazyPage(() => import('./pages/TestDataPage'));
 const PersonMergePage = lazyPage(() => import('./pages/PersonMergePage'));
 const KioskPage = lazyPage(() => import('./pages/KioskPage'));
 const WelcomeScreenPage = lazyPage(() => import('./pages/WelcomeScreenPage'));
+const StageWelcomePage = lazyPage(() => import('./pages/StageWelcomePage'));
 const VisitorsAdminPage = lazyPage(() => import('./pages/VisitorsAdminPage'));
 const PersonasListPage = lazyPage(() => import('./pages/PersonasListPage'));
 const PersonaNuevaPage = lazyPage(() => import('./pages/PersonaNuevaPage'));
@@ -276,6 +277,9 @@ function App() {
           <Route path="/r/:token" element={<KioskPage />} />
           <Route path="/b" element={<WelcomeScreenPage />} />
           <Route path="/b/:token" element={<WelcomeScreenPage />} />
+          <Route path="/g" element={<StageWelcomePage />} />
+          <Route path="/g/:token" element={<StageWelcomePage />} />
+          <Route path="/pantalla-gigante/:token" element={<StageWelcomePage />} />
           <Route path="/quiosco" element={<KioskPage />} />
           <Route path="/quiosco/:token" element={<KioskPage />} />
           <Route path="/pantalla-bienvenida" element={<WelcomeScreenPage />} />

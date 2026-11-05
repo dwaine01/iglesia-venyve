@@ -31,7 +31,7 @@ function LinkCard({ item, onRotate }) {
   return (
     <section className="rounded-2xl border border-[#E8E5DE] bg-white p-4" data-testid={`visitors-link-${item.kind}`}>
       <h3 className="flex items-center gap-2 font-['Spectral'] text-xl font-semibold text-[#101D36]">{tablet ? <Tablet className="h-5 w-5 text-[#9A7A2F]" /> : <Monitor className="h-5 w-5 text-[#9A7A2F]" />}{item.label}</h3>
-      <p className="mt-1 text-[15px] text-slate-700">{tablet ? 'Uno solo para todas las tabletas: ábrelo en cada tableta y queda lista, sin contraseña ni sesión. Solo permite crear registros.' : 'Para la pantalla o televisor de la pastora (también ProPresenter). Solo muestra los nombres, uno a la vez.'}</p>
+      <p className="mt-1 text-[15px] text-slate-700">{tablet ? 'Uno solo para todas las tabletas: ábrelo en cada tableta y queda lista, sin contraseña ni sesión. Solo permite crear registros.' : item.kind === 'stage' ? 'Para la PANTALLA GIGANTE del público (ProPresenter, 16:9). Muestra solo el nombre que está leyendo la pastora, con un saludo; nunca «invitado por» ni otros datos. Solo lee: no puede mover la lista. Texto del saludo: agrega ?m=2 o ?m=3 al final para probar los otros.' : 'Pantalla de la pastora «Visitas de hoy» (de espaldas a la gente). Lee los nombres y puede avanzar o retroceder; todas las pantallas siguen el mismo nombre.'}</p>
       <div className="mt-3 flex flex-wrap items-start gap-4">
         {qr ? <img src={qr} alt={`Código QR del ${item.label.toLowerCase()}`} className="h-44 w-44 rounded-lg border border-[#E8E5DE]" data-testid={`visitors-link-qr-${item.kind}`} /> : <div className="h-44 w-44 rounded-lg bg-slate-100" />}
         <div className="min-w-0 flex-1 space-y-2">

@@ -173,3 +173,83 @@ async def test_websocket_two_screens_and_operator_in_real_time():
             await client.aclose()
         await db.visitor_registrations.delete_many({"first_name": {"$regex": tag}})
         await fx.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_stage_screen_reads_only_the_shown_name_and_cannot_move():
+    fx, tag = Fixture(), uuid.uuid4().hex[:6]
+    clients = []
+    try:
+        pastora, pad, code = await setup(fx, tag, count=0)
+        stage_code = await link(pastora, "stage")
+        assert stage_code != code  # enlace aparte del de la pastora
+        # Un visitante invitado por alguien (el «invitado por» nunca sale en la gigante).
+        assert (await pad.post("/api/kiosk/registrations", json=visitor(f"{tag}a", last_name="Gomez", invited=True, invited_by="Hermana Rosa"))).status_code == 201
+        assert (await pad.post("/api/kiosk/registrations", json=visitor(f"{tag}b", last_name="Perez"))).status_code == 201
+        stage = AsyncClient(transport=ASGITransport(app=server.app), base_url="http://test", headers={"X-Link-Token": stage_code})
+        screen = AsyncClient(transport=ASGITransport(app=server.app), base_url="http://test", headers={"X-Link-Token": code})
+        clients += [pad, stage, screen]
+        # Llevar la posición a mi primer visitante.
+        names = (await screen.get("/api/screen/welcome")).json()["names"]
+        target = next(index for index, item in enumerate(names) if tag in item["name"])
+        while True:
+            position = (await screen.get("/api/screen/welcome/position")).json()
+            if position["index"] == target:
+                break
+            await screen.post("/api/screen/welcome/position", json={"action": "next" if position["index"] < target else "prev", "version": position["version"]})
+
+        view = (await stage.get("/api/stage/welcome")).json()
+        assert set(view) == {"shown", "version"} and set(view["shown"]) == {"id", "name"}  # lista blanca: solo el nombre
+        assert view["shown"]["name"] == f"Visit{tag}a Gomez" and "Rosa" not in str(view)
+        # Solo LEE: no puede mover (ni por la ruta de la pastora ni pedir su boleto); la de la pastora no lee la gigante.
+        assert (await stage.post("/api/screen/welcome/position", json={"action": "next", "version": position["version"]})).status_code == 401
+        assert (await stage.post("/api/screen/welcome/ticket")).status_code == 401
+        assert (await screen.get("/api/stage/welcome")).status_code == 401
+        assert (await stage.post("/api/stage/welcome/ticket")).status_code == 200
+        # Si el operador quita a quien se muestra, en la gigante no sale (pasa al siguiente).
+        shown_id = view["shown"]["id"]
+        await pastora.post(f"/api/visitors/welcome/items/{shown_id}", json={"hidden": True})
+        after = (await stage.get("/api/stage/welcome")).json()
+        assert after["shown"] is None or after["shown"]["id"] != shown_id
+        # Mientras alguien aún se registra (borrador), en público no sale.
+        draft = await db.visitor_registrations.find_one({"first_name": f"Visit{tag}b"})
+        await db.visitor_registrations.update_one({"registration_id": draft["registration_id"]}, {"$set": {"status": "draft", "updated_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc)}})
+        from visitor_welcome_sync import visible_docs
+        key, _ = await visible_docs()
+        await db.visitor_welcome_positions.update_one({"_id": key}, {"$set": {"registration_id": draft["registration_id"]}})
+        assert (await screen.get("/api/screen/welcome/position")).json()["registration_id"] == draft["registration_id"]
+        assert (await stage.get("/api/stage/welcome")).json()["shown"] is None
+        # Termina de registrarse: ya sale.
+        await db.visitor_registrations.update_one({"registration_id": draft["registration_id"]}, {"$set": {"status": "complete"}})
+        assert (await stage.get("/api/stage/welcome")).json()["shown"]["name"] == f"Visit{tag}b Perez"
+    finally:
+        for client in clients:
+            await client.aclose()
+        await db.visitor_registrations.delete_many({"first_name": {"$regex": tag}})
+        await fx.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_stage_websocket_ignores_moves_and_new_visitor_notifies_at_once():
+    fx, tag = Fixture(), uuid.uuid4().hex[:6]
+    clients = []
+    try:
+        pastora, pad, code = await setup(fx, tag, count=2)
+        stage_code = await link(pastora, "stage")
+        live_stage = AsyncClient(base_url=LIVE, headers={"X-Link-Token": stage_code}, timeout=10)
+        live_tablet = AsyncClient(base_url=LIVE, headers=dict(pad.headers), timeout=10)
+        clients += [pad, live_stage, live_tablet]
+        ticket = (await live_stage.post("/api/stage/welcome/ticket")).json()["ticket"]
+        async with websockets.connect(f"{WS}?ticket={ticket}") as ws:
+            start = await recv_type(ws, "position")
+            await ws.send(json.dumps({"type": "move", "action": "next", "version": start["version"]}))
+            await asyncio.sleep(0.5)
+            assert (await live_stage.get("/api/stage/welcome")).json()["version"] == start["version"]  # la gigante no movió nada
+            # Llega un visitante nuevo por la tableta: aviso al instante (sin recargar).
+            assert (await live_tablet.post("/api/kiosk/registrations", json=visitor(f"{tag}z", last_name="Nuevo"))).status_code == 201
+            assert (await recv_type(ws, "names_changed"))["type"] == "names_changed"
+    finally:
+        for client in clients:
+            await client.aclose()
+        await db.visitor_registrations.delete_many({"first_name": {"$regex": tag}})
+        await fx.cleanup()
