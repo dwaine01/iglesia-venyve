@@ -623,6 +623,9 @@ from visitor_registry import admin_router as visitor_admin_router, kiosk_router 
 app.include_router(visitor_admin_router)
 app.include_router(visitor_kiosk_router)
 from visitor_welcome import operator_router as visitor_welcome_router, screen_router as visitor_screen_router
+from visitor_welcome_sync import operator_sync_router as visitor_welcome_sync_router, screen_sync_router as visitor_screen_sync_router, ensure_indexes as visitor_welcome_sync_indexes
+app.include_router(visitor_welcome_sync_router)
+app.include_router(visitor_screen_sync_router)
 app.include_router(visitor_welcome_router)
 app.include_router(visitor_screen_router)
 from enrollment_cleanup import router as enrollment_cleanup_router, ensure_indexes as enrollment_cleanup_ensure_indexes
@@ -864,6 +867,7 @@ async def startup():
     await ensure_team_catalog()  # Equipo y Responsables E2: áreas y cargos iniciales
     await team_assignments_ensure_indexes()
     await radio_ensure_indexes()
+    await visitor_welcome_sync_indexes()
     await campaign_venycome_ensure_indexes()
     await ensure_mentorship_indexes()
     await ensure_outreach_indexes()

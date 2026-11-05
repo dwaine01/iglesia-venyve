@@ -10,7 +10,8 @@ from tests.test_pastoral_front_group_5c import Fixture, server  # noqa: I001 —
 from tests.test_visitor_registry import cleanup, link, tablet, visitor
 
 db = server.db
-SCREEN_KEYS = {"names", "total", "service_label", "short_path"}
+SCREEN_KEYS = {"names", "total", "service_label", "short_path", "position"}
+POSITION_KEYS = {"type", "service_key", "registration_id", "index", "total", "version"}  # solo la posición compartida; ningún dato nuevo de la persona
 ITEM_KEYS = {"registration_id", "visitor_number", "name", "default_name", "corrected", "hidden", "service_label", "invited_by", "default_invited_by", "invited_corrected", "registering", "manual"}
 
 
@@ -40,6 +41,7 @@ async def test_welcome_link_whitelist_everyone_listed_hide_and_correct():
         # Lista blanca: la pantalla recibe exactamente estas claves; cada nombre solo {id, name}.
         view = (await tv.get("/api/screen/welcome")).json()
         assert set(view) == SCREEN_KEYS and all(set(item) == {"id", "name", "invited_by", "registering"} for item in view["names"])
+        assert set(view["position"]) == POSITION_KEYS
         for leaked in ("5550409999", "Secreta", "1990", "OracionSecreta", "ConsejeriaSecreta", "secreto", "Consejería", "V-20", f"Hija{tag}"):
             assert leaked not in str(view), leaked
         mine = [item for item in view["names"] if tag in item["name"]]
